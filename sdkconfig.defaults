@@ -71,5 +71,8 @@ CONFIG_SYNC_TIMEZONE="UTC0"
 # Hardening: stack protector, no soft-AP or enterprise Wi-Fi (the board is a station only).
 CONFIG_COMPILER_STACK_CHECK_MODE_STRONG=y
 CONFIG_HEAP_POISONING_LIGHT=y
+
+# Log output and the settings console both use the USB Serial/JTAG port.
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
 CONFIG_ESP_WIFI_SOFTAP_SUPPORT=n
 CONFIG_ESP_WIFI_ENTERPRISE_SUPPORT=n

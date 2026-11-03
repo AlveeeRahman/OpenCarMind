@@ -140,7 +140,7 @@ What has been checked, on the bench or in the code: the build (with Wi-Fi clock 
 
 Known security limits are listed in [SECURITY.md](SECURITY.md#known-limits).
 
-What has not been checked: other boards, other adapters, a power-off test during a real drive, and what the screens do on a board without a panel.
+What has not been checked: other boards, other adapters, a power-off test during a real drive, and what the screens do on a board without a panel. The checks that need a car or a card are listed in [docs/FIELD_CHECKS.md](docs/FIELD_CHECKS.md), with empty result tables for users to fill in.
 
 ## Planned
 
@@ -160,7 +160,7 @@ What has not been checked: other boards, other adapters, a power-off test during
 | `tests/host/` | unit tests that run on a computer |
 | `tools/` | `ocm_report.py` (SD card sessions to reports) and the generator for `main/ml_params.h` |
 | `dashboard/` | Docker Compose file and Dashy configuration |
-| `docs/` | configuration, model notes, screen designs and figures |
+| `docs/` | configuration, the USB console, model notes, field checks, screen designs and figures |
 
 ## Credits and licence
 

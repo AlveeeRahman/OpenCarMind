@@ -1,0 +1,37 @@
+name: Field check
+description: Report what you saw when you ran a check from docs/FIELD_CHECKS.md
+labels: ["field-check"]
+body:
+  - type: input
+    id: check
+    attributes:
+      label: Which check
+      description: The row from docs/FIELD_CHECKS.md
+    validations:
+      required: true
+  - type: input
+    id: firmware
+    attributes:
+      label: Firmware version
+      description: Page 2 of the screen, or the `status` command
+    validations:
+      required: true
+  - type: input
+    id: hardware
+    attributes:
+      label: Board, car and adapter
+  - type: dropdown
+    id: result
+    attributes:
+      label: Result
+      options:
+        - Matched the expected result
+        - Did not match
+        - Could not run it
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: What you saw
+      description: Log lines are welcome. Remove Wi-Fi names and passwords first.

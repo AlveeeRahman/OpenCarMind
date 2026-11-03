@@ -2,6 +2,7 @@ idf_component_register(
     SRCS "app_main.c"
          "obd_ble.c"
          "adapter_match.c"
+         "usb_console.c"
          "harden.c"
          "elm327.c"
          "sdlog.c"
@@ -19,7 +20,7 @@ idf_component_register(
          "sys_mode.c"
          "ml_infer.cpp"
     INCLUDE_DIRS "."
-    REQUIRES bt nvs_flash driver esp_wifi esp_netif esp_event
+    REQUIRES bt nvs_flash driver esp_wifi esp_netif esp_event console
              esp_lcd fatfs sdmmc vfs esp_timer esp_driver_gpio
              esp_driver_spi esp_driver_sdmmc esp_driver_ledc
 )

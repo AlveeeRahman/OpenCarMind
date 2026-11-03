@@ -1,0 +1,37 @@
+# Field checks
+
+These checks need a real car, a real adapter or a real card, so they cannot run in CI. The result tables are empty on purpose. Run a check, then report what you saw in an issue (use the "Field check" template) and the table gets a row.
+
+## Input checks on the board
+
+Put the file named in each row on the SD card at `obd/`, boot the board and read the log over USB.
+
+| Check | Do this | Expected | Firmware | Board | Result |
+|---|---|---|---|---|---|
+| Short Wi-Fi password rejected | `wifi.csv` with the line `Home,abc` | log says `network entry rejected` | | | |
+| Over-long line skipped | `wifi.csv` with one line over 160 characters, then a valid line | log says `skipping over-long line`, the valid line is imported | | | |
+| Normal clock sync | a valid `wifi.csv` and a network in reach | log says `clock synced` | | | |
+| Control character rejected | `wifi.csv` with a tab inside the SSID | the line is not imported | | | |
+
+## Driving
+
+| Check | Do this | Expected | Firmware | Car and adapter | Result |
+|---|---|---|---|---|---|
+| Power off while driving | cut power mid-drive, pull the card | the last rows of `sNNNNNN.csv` are intact, at most the final 10 seconds are missing | | | |
+| Another adapter | pair a different BLE OBD adapter | the board finds it, connects and logs rows | | | |
+| Adapter name not on the list | an adapter whose name is not in `OBD_BLE_NAME_PREFIXES` | it is not found until its name prefix is added | | | |
+
+## USB settings console
+
+Open a serial terminal on the board's USB port at 115200 baud. Parked means the OBD adapter is off or out of range.
+
+| Check | Do this | Expected | Firmware | Computer | Result |
+|---|---|---|---|---|---|
+| Status | type `status` | firmware, model, mode and card state, then `OK` | | | |
+| Add a network | `wifi add Guest "pass word 1"`, then `wifi list` | `OK`, and the list shows `Guest` | | | |
+| Reject a bad password | `wifi add Guest abc` | `ERR rejected` | | | |
+| Refused while driving | with the car connected, `wifi add Guest password1` | `ERR busy` | | | |
+
+## How to report
+
+Open a "Field check" issue with the firmware version (page 2 of the screen, or `status`), your board, your car and adapter, and what you saw. Do not paste Wi-Fi names or passwords from the log.

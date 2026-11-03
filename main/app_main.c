@@ -22,6 +22,7 @@
 #include "sdlog.h"
 #include "obd_ble.h"
 #include "wifi_sync.h"
+#include "usb_console.h"
 #include "cpu_monitor.h"
 #include "remote_config.h"
 
@@ -186,6 +187,7 @@ void app_main(void)
     wifi_sync_start();
     ESP_LOGI(TAG, "internal heap after Wi-Fi: %u", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
     sys_mode_start();                  /* DRIVE / SEEK arbitration, see sys_mode.h */
+    usb_console_start();               /* settings over the USB port, see usb_console.h */
     ESP_LOGI(TAG, "internal heap after ML: %u (largest block %u)", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
              (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
 

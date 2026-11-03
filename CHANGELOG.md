@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- USB settings console (`main/usb_console.c`, [docs/CONSOLE.md](docs/CONSOLE.md)): `status`, `wifi list|add|forget`, `adapter forget`, `config show|set` and `reboot` over the USB port. Changes are refused while the car link is up. USB Serial/JTAG is now the primary console.
+- `docs/FIELD_CHECKS.md` and a Field check issue template list the checks that need a car, with empty result tables.
+
 - Input checks (`main/harden.c`): implausible SNTP times are refused, Wi-Fi entries are validated, over-long `wifi.csv` lines are dropped whole, NaN and infinite model inputs become missing samples, and `config.json` `rev` is range-checked. Protected management frames are used when offered, and light heap poisoning is on.
 - `SECURITY.md` lists the known limits and the optional permanent hardening steps.
 
