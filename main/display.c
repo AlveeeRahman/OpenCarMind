@@ -97,6 +97,7 @@ static int s_shown_page = -1;
 
 /* ---- widgets, page 0 ---- */
 static lv_obj_t *scr0, *bar_top, *lbl_ble, *lbl_sd, *lbl_wifi, *lbl_clock;
+static lv_obj_t *lbl_clock_bold;   /* the same text 1 px to the right: faux bold, the fonts have no bold weight */
 static lv_obj_t *lbl_rpm, *bar_rpm, *lbl_speed, *lbl_state;
 static lv_obj_t *tile_val[4], *tile_cap[4];
 static lv_obj_t *lbl_foot, *bar_cpu;
@@ -251,8 +252,11 @@ static void build_page0(void)
     lv_obj_align(lbl_wifi, LV_ALIGN_LEFT_MID, 46, 0);
     lv_obj_align(lbl_clock, LV_ALIGN_RIGHT_MID, -2, 0);
     lv_obj_t *brand = make_label(bar_top, &lv_font_montserrat_12, C_ACCENT);
-    lv_label_set_text(brand, "OpenCarMind");
-    lv_obj_align(brand, LV_ALIGN_LEFT_MID, 64, 0);
+    lv_label_set_text(brand, CARMIND_SCREEN_NAME);
+    lv_obj_align_to(brand, lbl_wifi, LV_ALIGN_OUT_RIGHT_MID, 8, 0);   /* about two spaces after the Wi-Fi icon */
+    lv_obj_align_to(lbl_clock, brand, LV_ALIGN_OUT_RIGHT_MID, 8, 0);  /* the clock follows the name, well inside the panel edge */
+    lbl_clock_bold = make_label(bar_top, &lv_font_montserrat_12, C_MUTED);
+    lv_obj_align_to(lbl_clock_bold, lbl_clock, LV_ALIGN_TOP_LEFT, 1, 0);
 
     /* RPM block */
     lv_obj_t *cap = make_label(scr0, &lv_font_montserrat_12, C_MUTED);
@@ -904,6 +908,14 @@ static lv_obj_t *page_screen(int page)
     return page == 0 ? scr0 : page == 1 ? scr1 : page == 2 ? scr2 : page == 3 ? scr3 : scr4;
 }
 
+static void set_clock(const char *text, uint32_t color)
+{
+    lv_label_set_text(lbl_clock, text);
+    lv_label_set_text(lbl_clock_bold, text);
+    lv_obj_set_style_text_color(lbl_clock, lv_color_hex(color), 0);
+    lv_obj_set_style_text_color(lbl_clock_bold, lv_color_hex(color), 0);
+}
+
 static void refresh_cb(lv_timer_t *t)
 {
     EXT_RAM_BSS_ATTR static app_status_t st;   /* ~3 KB snapshot in PSRAM, off the LVGL task stack */
@@ -925,11 +937,11 @@ static void refresh_cb(lv_timer_t *t)
         time_t now = time(NULL);
         struct tm tm;
         localtime_r(&now, &tm);
-        lv_label_set_text_fmt(lbl_clock, "%02d:%02d", tm.tm_hour, tm.tm_min);
-        lv_obj_set_style_text_color(lbl_clock, lv_color_hex(st.time_synced ? C_TEXT : C_WARN), 0);   /* amber: estimated */
+        char hhmm[8];
+        snprintf(hhmm, sizeof hhmm, "%02d:%02d", tm.tm_hour, tm.tm_min);
+        set_clock(hhmm, st.time_synced ? C_TEXT : C_WARN);                                         /* amber: estimated */
     } else {
-        lv_label_set_text(lbl_clock, "--:--");            /* no clock until the first Wi-Fi time sync */
-        lv_obj_set_style_text_color(lbl_clock, lv_color_hex(C_MUTED), 0);
+        set_clock("--:--", C_MUTED);                      /* no clock until the first Wi-Fi time sync */
     }
 
     const obd_values_t *o = &st.obd;
@@ -981,7 +993,7 @@ static void refresh_cb(lv_timer_t *t)
         static const char *wifi_txt[] = {"disabled", "scanning", "connecting", "connected", "idle"};
         lv_label_set_text_fmt(lbl_info,
             "Adapter: %s\n%s%s  rssi %d\n\nVIN: %s\nProto: %s\n\nMIL %s, %u DTC\nstored: %s\npending: %s\n\n"
-            "Wi-Fi: %s %s\nClock: %s\nSD: %s\n\nSession s%06lu  %lu rows  up %lu min\nIntake %d\xC2\xB0  Oil %d\xC2\xB0  Amb %d\xC2\xB0\nThr %d%%  MAF %.1f g/s\n\n" CARMIND_FW_STRING "\nBOOT: tap = page, 2 s = off, 8 s = forget",
+            "Wi-Fi: %s %s\nClock: %s\nSD: %s\n\nSession s%06lu  %lu rows  up %lu min\nIntake %d\xC2\xB0  Oil %d\xC2\xB0  Amb %d\xC2\xB0\nThr %d%%  MAF %.1f g/s\n\n" CARMIND_SCREEN_NAME " " CARMIND_VERSION "\nBOOT: tap = page, 2 s = off, 8 s = forget",
             st.adapter_name[0] ? st.adapter_name : "-", st.adapter_addr, st.adapter_saved ? " (saved)" : "", st.adapter_rssi,
             o->vin[0] ? o->vin : "-", o->protocol[0] ? o->protocol : "-",
             o->mil_on ? "ON" : "off", o->dtc_count, o->dtcs[0] ? o->dtcs : "none", o->pending_dtcs[0] ? o->pending_dtcs : "none",
