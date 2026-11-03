@@ -28,6 +28,7 @@ Put the file named in each row on the SD card at `obd/`, boot the board and read
 | Pair and receive | write the card from the app, boot the board near your Wi-Fi with the car off | the app lists the board within a minute and the Overview shows its drives | | | |
 | Resume | close the app during an upload, open it again | the upload continues and no row is repeated | | | |
 | Firewall prompt | first connection after installing | the system asks to allow incoming connections | | | |
+| Window tiling | snap the app to half the screen (Windows), split view (macOS), a tiling window manager (Linux) | it fills the tile and stays usable down to 480 by 360 | | | |
 | Clock after a power cut | let the clock sync, cut power, boot without Wi-Fi | the screen clock shows in amber and keeps running, and the session JSON says `resumed` | | | |
 
 ## How to report

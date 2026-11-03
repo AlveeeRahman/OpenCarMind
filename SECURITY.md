@@ -8,7 +8,7 @@ Please report privately through GitHub: open the repository's Security tab and c
 
 ## What the firmware does and does not do
 
-- Opens no listening sockets and runs no web server. It has two network clients, both optional: the clock sync (SNTP to `pool.ntp.org`) and the uploader, which sends session files to the desktop app you paired over TLS 1.2. The uploader trusts only the certificate that came with the pairing file, sends a token with each request, and never sends anything to the internet. The firmware has no update mechanism.
+- Opens no listening sockets and runs no web server. It has two network clients, both optional: the clock sync (SNTP to `pool.ntp.org`) and the uploader, which sends session files to the desktop app you paired over TLS 1.2. The uploader trusts only the certificate that came with the pairing file, sends a token with each request, and sends only to the address in the pairing file, which the desktop app sets to the computer's own address on your network. The firmware has no update mechanism.
 - Starts Wi-Fi only if you saved a network, and never scans or connects while the car's OBD link is up. Turn Wi-Fi off completely with `OCM_WIFI_CLOCK_SYNC=n`.
 - Runs Wi-Fi as a station only. The soft access point and enterprise Wi-Fi are compiled out, and the stack protector is on (`sdkconfig.defaults`).
 - Keeps saved Wi-Fi passwords in the board's flash (NVS) in plain text. Anyone with physical access to the board can read them. Use a phone hotspot or a guest network, not your main network.
@@ -26,7 +26,8 @@ Everything that arrives from outside is checked before it is used. `main/harden.
 - Wi-Fi entries, from `wifi.csv`, `config.json` or the build settings: the SSID must be 1 to 32 bytes, the password empty or 8 to 64 bytes, and neither may contain control characters. A `wifi.csv` line longer than the read buffer is dropped whole.
 - Wi-Fi connection: the board asks for WPA2 or better whenever a password is set, and uses protected management frames when the access point offers them.
 - Model input: a value the adapter reports as not-a-number or infinity is treated as a missing sample. Any other value is limited to 100 standard deviations.
-- `config.json`: files over 4 KB are ignored, numbers must fall in their documented range, and `rev` must fit in 32 bits.
+- `config.json`: files over 4 KB are ignored, numbers must fall in their documented range, `rev` must fit in 32 bits, and `timezone` may hold only letters, digits and `<>+-,.:/`.
+- `receiver.json`: the host, port, token and certificate are checked for length and characters before the board stores them, and the file is deleted afterwards.
 - Build: stack protector on every function, a TLS client only with renegotiation off, and no soft-AP or enterprise Wi-Fi code.
 
 These checks stop malformed or hostile data from corrupting logs, the clock or the model input. They do not make a stolen board or card safe.
@@ -59,7 +60,9 @@ They do not stop someone who has the board from querying it. See the first item 
 
 ## Supply chain
 
-Releases are built by the `release` workflow from a tagged commit and carry `SHA256SUMS`. Every GitHub Action used by the workflows is pinned to a commit, the ESP-IDF build image is pinned by digest, and the OpenSSF Scorecard workflow reviews the repository weekly. The firmware depends on ESP-IDF, ESP-DL, LVGL, led_strip and cJSON, fetched by the IDF component manager at build time. Their versions are in `main/idf_component.yml`.
+Releases are built by the `release` workflow from a tagged commit and carry `SHA256SUMS`. Every GitHub Action used by the workflows is pinned to a commit, the ESP-IDF build image is pinned by digest, and the OpenSSF Scorecard workflow reviews the repository weekly. The firmware depends on ESP-IDF, ESP-DL, LVGL, esp_lvgl_port, led_strip and cJSON, fetched by the IDF component manager at build time. Their versions are in `main/idf_component.yml`.
+
+The desktop app is built from pinned GitHub Actions and the npm lockfile for the Tauri command-line tool. Its Rust crates are resolved when it is built, because `Cargo.lock` is not committed yet.
 
 ## Supported versions
 

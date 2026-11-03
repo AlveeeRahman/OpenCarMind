@@ -13,7 +13,7 @@ Dashy is a start page with widgets, not a charting tool. It cannot plot a CSV fi
 
 Dashy runs wherever you start the Docker container. If that is your Mac, the dashboard is local to your Mac. If it is a Raspberry Pi in the hallway, it is local to your home network. It is only on the internet if you expose that machine yourself.
 
-The board does not talk to Dashy. Data travels by SD card:
+The board does not talk to Dashy. Data travels by SD card, or through the desktop app (see the last section):
 
 1. The board saves every session to the card (`/obd/sessions`), flushing at least every 10 seconds.
 2. You put the card in your computer. On a Mac it appears as `/Volumes/<card name>`.

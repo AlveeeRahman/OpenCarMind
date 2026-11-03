@@ -70,10 +70,10 @@ CONFIG_SYNC_TIMEZONE="UTC0"
 
 # Hardening: stack protector, no soft-AP or enterprise Wi-Fi (the board is a station only).
 CONFIG_COMPILER_STACK_CHECK_MODE_STRONG=y
-# Heap poisoning stays off, as in the private build: with light poisoning on, PSA ECDH fails during the TLS handshake
+# Heap poisoning stays off: with light poisoning on, PSA ECDH fails during the TLS handshake
 # (mbedtls_ssl_handshake -0x7F80), measured on this board with ESP-IDF 6.1.
 
-# TLS to the desktop app (uploader.c), settings taken from the private build that ran on this board: buffers in PSRAM and
+# TLS to the desktop app (uploader.c), measured on the test board: buffers in PSRAM and
 # sized per record, because ESP-DL leaves too little internal RAM for the fixed 16 KB record buffer (PSA error -0x008D,
 # insufficient memory, in mbedtls_ssl_setup). The board is a TLS client only, with renegotiation off.
 CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC=y

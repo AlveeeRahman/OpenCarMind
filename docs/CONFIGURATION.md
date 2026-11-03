@@ -17,6 +17,8 @@ The board writes everything under `/sdcard/obd/`.
 | `wifi.csv` | Wi-Fi networks to import (you create it) |
 | `config.json` | settings to import (you create it) |
 | `custom_pids.csv` | up to 8 custom PIDs (you create it) |
+| `clock.txt` | the time at the last save, so the clock can resume after a power cut |
+| `receiver.json` | pairing with the desktop app, written by the app and deleted by the board once stored |
 
 A new session starts at every power cycle. Everything is flushed to the card at least every 10 seconds (`SDLOG_SYNC_PERIOD_S`) and each time the event "Safe to turn off" appears on page 3.
 
@@ -31,7 +33,7 @@ My Home Wifi,my-wifi-password
 
 A line that starts with a minus sign forgets that network. The board imports the file at boot and then deletes it. It keeps up to 8 networks in flash (NVS), and the passwords are stored there in plain text. The ESP32-S3 has a 2.4 GHz radio only. If no network is known, the board writes `wifi.example.csv` as a template, and Wi-Fi stays off.
 
-The board connects only while parked. It scans, connects, reads the time, stays connected for 30 seconds, disconnects, and tries again every 6 hours. Until the clock has been set it scans every 20 seconds. It never scans or connects while the OBD link is up. All of these times are settings in the Wi-Fi clock sync menu.
+The board connects only while parked. It scans, connects, reads the time, stays connected for 30 seconds, disconnects, and tries again every 6 hours. Until the clock has been set it scans every 20 seconds. Once paired with the desktop app, it stays connected while parked and looks for the network again 20 seconds after losing it. It never scans or connects while the OBD link is up. All of these times are settings in the Wi-Fi clock sync menu.
 
 ## The clock
 

@@ -8,7 +8,7 @@
 <img src="https://img.shields.io/badge/chip-ESP32--S3-lightgrey.svg" alt="ESP32-S3">
 </p>
 
-OpenCarMind turns an ESP32-S3 board and a Bluetooth OBD-II adapter into a car data logger that runs a neural network on the board. It needs no phone, no account and no internet connection. Everything it records stays on an SD card in your car.
+OpenCarMind turns an ESP32-S3 board and a Bluetooth OBD-II adapter into a car data logger that runs a neural network on the board. It needs no phone, no account and no internet connection. Everything it records goes to an SD card in the car and, if you pair the board, to the desktop app on your own computer.
 
 Version 2.0.1. Licence: MIT.
 
@@ -20,14 +20,14 @@ Version 2.0.1. Licence: MIT.
 - A fault engine that ranks trouble codes by severity and groups codes that share a cause.
 - Dark and light screen themes, switched by time of day or fixed in a settings file.
 - A soft real-time scheduler that times every job against its deadline and restarts the board if a step hangs.
-- Optional Wi-Fi, used only to set the clock.
-- A local dashboard: a script turns the card's sessions into reports, and the open-source Dashy shows them.
+- Optional Wi-Fi: it sets the clock and, once paired, sends new drives to the desktop app on your computer.
+- A desktop app for Windows, macOS and Linux that receives the drives and charts them, and a local Dashy dashboard.
 
 ## Local-first
 
 <p align="center"><img src="docs/images/workflow/local-first.png" width="900" alt="Local-first: no account, no cloud, AI on the chip, your SD card, optional Wi-Fi, your choice of dashboard"></p>
 
-Most car loggers stream your driving to a server and do the thinking there. OpenCarMind does the thinking on the board. The model is 93 KB, runs in a few milliseconds and needs no network. Your data is plain CSV, JSON and text on a card you hold. Nothing leaves the car unless you copy it yourself.
+Most car loggers stream your driving to a server and do the thinking there. OpenCarMind does the thinking on the board. The model is 93 KB, runs in a few milliseconds and needs no network. Your data is plain CSV, JSON and text on a card you hold. Nothing leaves the car unless you copy the card or pair the board with your own computer.
 
 Wi-Fi is the only radio besides Bluetooth, and it is optional. It sets the clock from a public time server, and once you pair the board with the desktop app it sends new drive data to that app every 10 seconds while the car is parked at home. Nothing goes to a cloud. You can compile Wi-Fi out with one setting (`OCM_WIFI_CLOCK_SYNC`).
 
@@ -35,7 +35,7 @@ Wi-Fi is the only radio besides Bluetooth, and it is optional. It sets the clock
 
 <p align="center"><img src="docs/images/workflow/tool.png" width="900" alt="OpenCarMind workflow: car engine computer, BLE OBD-II adapter, ESP32-S3 board, on-chip model, SD card, your computer"></p>
 
-The board asks the engine computer for every field it supports, shows the live values on its screen and writes each drive to the SD card as its own session. The model runs on the chip while you drive. When you get home, take the card out and open the files on your computer.
+The board asks the engine computer for every field it supports, shows the live values on its screen and writes each drive to the SD card as its own session. The model runs on the chip while you drive. At home, a paired board sends the new data to the desktop app over Wi-Fi. Without pairing, take the card out and open the files on your computer.
 
 ### On-board inference
 
@@ -71,7 +71,7 @@ The same five pages in the light theme:
 <img src="docs/images/system-light.png" width="170" alt="Page 5 in the light theme: system">
 </p>
 
-By default the screen switches by time of day. It is light from 06:00 to 17:00 local time once the clock is set, and dark otherwise. Set `theme_mode` in `config.json` to 1 for always dark or 2 for always light, and `day_start_hour` and `day_end_hour` to change the hours (see [docs/CONFIGURATION.md](docs/CONFIGURATION.md)). The pictures are renders, not photographs of a panel. They come from `docs/screens/screens.html` with `sh docs/screens/render.sh`, which applies the same light colour table the firmware uses.
+By default the screen switches by time of day. It is light from 06:00 to 17:00 and dark otherwise, in the board's time zone. Set `timezone` in `config.json` (the desktop app fills it in from your computer), because the build default is UTC. Before the clock is known the screen stays dark. Set `theme_mode` in `config.json` to 1 for always dark or 2 for always light, and `day_start_hour` and `day_end_hour` to change the hours (see [docs/CONFIGURATION.md](docs/CONFIGURATION.md)). The pictures are renders, not photographs of a panel. They come from `docs/screens/screens.html` with `sh docs/screens/render.sh`, which applies the same light colour table the firmware uses.
 
 Tap BOOT to change page. Hold it for 2 seconds to power off, or for 8 seconds to forget the saved adapter.
 
@@ -90,7 +90,11 @@ python3 tools/ocm_report.py /Volumes/<card name>/obd dashboard/site
 cd dashboard && docker compose up -d      # Dashy on http://localhost:4000
 ```
 
-The board never talks to Dashy. The data reaches your computer by SD card or through the desktop app. [docs/DASHBOARD.md](docs/DASHBOARD.md) has the setup, the details of how the data reaches Dashy, and what has and has not been tested.
+The board never talks to Dashy. Data reaches your computer by SD card or through the desktop app.
+
+## Desktop app
+
+The app in [desktop/](desktop/README.md) runs on Windows, macOS and Linux. It writes the board's Wi-Fi networks, settings, time zone and a pairing file to the SD card. After that, the board sends new data to the app over TLS every 10 seconds while the car is parked at home, and the app shows the drives and their charts. GitHub Actions builds the installers. [docs/DASHBOARD.md](docs/DASHBOARD.md) has the setup, the details of how the data reaches Dashy, and what has and has not been tested.
 
 ## Hardware
 
@@ -109,7 +113,7 @@ idf.py build
 idf.py -p /dev/cu.usbmodemXXXX flash monitor
 ```
 
-The first build downloads ESP-DL, LVGL, led_strip and cJSON through the IDF component manager. The NimBLE helper comes from the `examples` folder of your ESP-IDF install, so keep that folder. If you built an earlier version in the same folder, delete `sdkconfig` first. If the board stays in download mode after flashing, reset it with `esptool.py --chip esp32s3 -p <port> --after watchdog_reset chip_id`.
+The first build downloads ESP-DL, LVGL, led_strip and cJSON through the IDF component manager. The NimBLE helper comes from the `examples` folder of your ESP-IDF install, so keep that folder. If you built an earlier version in the same folder, delete `sdkconfig` first. If the board stays in download mode after flashing, reset it with `python -m esptool --chip esp32s3 -p <port> --after watchdog-reset chip-id`.
 
 On first boot the board pairs with the first adapter whose name starts with one of the names in `OBD_BLE_NAME_PREFIXES` (the common ones are built in), or that advertises the configured service. It stores the address and uses only that adapter afterwards. If your adapter is not found, add its name to that list in `idf.py menuconfig` under OBD Logger Configuration. Only the LELink has been tested.
 
@@ -119,7 +123,7 @@ Settings, SD card files, the Wi-Fi list and the CSV columns are in [docs/CONFIGU
 
 <p align="center"><img src="docs/images/workflow/edge_architecture.png" width="640" alt="Model layers: 30 by 30 input, 1 by 1 stem to 48 channels, 6 residual depthwise-separable blocks, mean over 30 s and the last 10 s, dense 64, manoeuvre head and estimate head"></p>
 
-A 1-D convolutional network with 38,679 parameters, quantised to 8-bit weights and 16-bit activations (`w8a16`) and run by ESP-DL. It reads thirty one-second steps of seven channels (rpm, speed, load, throttle, both fuel trims and coolant temperature) and feeds two heads that share one trunk. On held-out drives, the version on the chip scores a manoeuvre macro-F1 of 0.912 and a mean estimator R² of 0.830 (brake pressure 0.56, flywheel torque 0.94, fuel rate 0.99). When the test windows are thinned to mimic a slow adapter, the refined model scores 0.874 and 0.792. [docs/MODEL.md](docs/MODEL.md) has the inputs, outputs, labels and limits. The shipped files are in [ml/onboard](ml/onboard).
+A 1-D convolutional network with 38,679 parameters, quantised to 8-bit weights and 16-bit activations (`w8a16`) and run by ESP-DL. It reads thirty one-second steps of seven channels (rpm, speed, load, throttle, both fuel trims and coolant temperature) and feeds two heads that share one trunk. On held-out drives, the version on the chip scores a manoeuvre macro-F1 of 0.912 and a mean estimator R² of 0.830 (brake pressure 0.56, flywheel torque 0.94, fuel rate 0.99). When the test windows are thinned to mimic a slow adapter, the refined model scored 0.874 and 0.792 in the training evaluation, which is not published here. The other scores are in `ml/onboard/export.json`. [docs/MODEL.md](docs/MODEL.md) has the inputs, outputs, labels and limits. The shipped files are in [ml/onboard](ml/onboard).
 
 ### From training to the board
 
@@ -136,7 +140,7 @@ What the model does not do yet:
 
 ## Status
 
-What has been checked, on the bench or in the code: the build (with Wi-Fi clock sync on and off), the model's identity hash, the host unit tests (101 checks), the 10-second save and the "Safe to turn off" event on a board with an SD card.
+What has been checked, on the bench or in the code: the build (with Wi-Fi clock sync on and off), the model's identity hash, the host unit tests (108 checks), the 10-second save and the "Safe to turn off" event on a board with an SD card, and the Wi-Fi upload to a stand-in receiver with resume after a cut-off pass. CI builds the desktop app and runs its unit tests on Windows, macOS and Linux. Nobody has opened the app on a real machine yet.
 
 Known security limits are listed in [SECURITY.md](SECURITY.md#known-limits).
 
@@ -145,7 +149,7 @@ What has not been checked: other boards, other adapters, a power-off test during
 ## Planned
 
 - Support for more boards, including one without a display.
-- The desktop app ([desktop/](desktop/README.md)) opens the card and charts your drives today. Managing the board's Wi-Fi over your home network and settings over USB need new firmware first.
+- Flashing the board from the desktop app, and code-signed installers.
 - More regularised models, released by this project, to fit more cars.
 - A faster version built on a Jetson.
 
@@ -159,6 +163,7 @@ What has not been checked: other boards, other adapters, a power-off test during
 | `schema/` | JSON schema of the session files |
 | `tests/host/` | unit tests that run on a computer |
 | `tools/` | `ocm_report.py` (SD card sessions to reports) and the generator for `main/ml_params.h` |
+| `desktop/` | the desktop app (Rust and Tauri), its icons and design previews |
 | `dashboard/` | Docker Compose file and Dashy configuration |
 | `docs/` | configuration, model notes, field checks, screen designs and figures |
 

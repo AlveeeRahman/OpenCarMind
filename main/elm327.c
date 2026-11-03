@@ -536,7 +536,7 @@ static void obd_task(void *arg)
         if (poll_job < 0) poll_job = sched_register("obd_poll", 1000, 30000, true);
         sched_set_expected(poll_job, true);
 
-        int slow_i = 0, raw_i = 0, custom_i = 0, slow_passes = 0;
+        int slow_i = 0, raw_i = 0, slow_passes = 0;
         int64_t last_dtc = 0, last_rv = 0;
         int consecutive_fail = 0;
         char resp[64];

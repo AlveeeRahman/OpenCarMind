@@ -48,7 +48,7 @@ All scores are on held-out data from the same source as the training data: the l
 | Test windows | Manoeuvre macro-F1 | Estimator mean R² |
 |---|---|---|
 | Complete 1 s windows | 0.911 | 0.830 |
-| Windows thinned to mimic a slow adapter | 0.874 | 0.792 |
+| Windows thinned to mimic a slow adapter (training evaluation, not in `export.json`) | 0.874 | 0.792 |
 
 The version on the chip (8-bit weights, 16-bit activations, exported with ESP-PPQ) scores 0.912 and 0.830 on the 1,878-window split, against 0.911 and 0.830 for the float network. Per target, brake pressure scores R² 0.56, flywheel torque 0.94 and fuel rate 0.99.
 
