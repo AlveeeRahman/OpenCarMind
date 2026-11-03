@@ -26,6 +26,18 @@ bool harden_wifi_cred_ok(const char *ssid, const char *password)
     return printable(ssid) && printable(password);
 }
 
+bool harden_timezone_ok(const char *tz)
+{
+    if (!tz) return false;
+    size_t n = strlen(tz);
+    if (n < 3 || n > 47) return false;
+    for (; *tz; tz++) {
+        unsigned char c = (unsigned char)*tz;
+        if (!((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || strchr("<>+-,.:/", c))) return false;
+    }
+    return true;
+}
+
 bool harden_model_input(float *v)
 {
     if (!isfinite(*v)) return false;

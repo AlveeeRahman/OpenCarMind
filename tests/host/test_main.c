@@ -210,6 +210,13 @@ static void test_harden(void)
     CHECK(harden_model_input(&c) && c == -100.0f);
     CHECK(!harden_model_input(&d));
     CHECK(!harden_model_input(&e));
+    CHECK(harden_timezone_ok("CST6CDT,M3.2.0,M11.1.0"));
+    CHECK(harden_timezone_ok("<+06>-6"));
+    CHECK(harden_timezone_ok("UTC0"));
+    CHECK(!harden_timezone_ok("UT"));
+    CHECK(!harden_timezone_ok("CST6;reboot"));
+    CHECK(!harden_timezone_ok("CST 6"));
+    CHECK(!harden_timezone_ok(NULL));
 }
 
 int main(void)

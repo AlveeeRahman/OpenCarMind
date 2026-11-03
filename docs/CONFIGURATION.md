@@ -52,7 +52,8 @@ Put a file called `config.json` in `/sdcard/obd/` and reboot. The board applies 
 | `dtc_interval_s` | read the warning light and trouble codes every N seconds | 10 to 3600 |
 | `backlight_pct` | screen brightness | 5 to 100 |
 | `theme_mode` | 0 by time of day, 1 dark, 2 light | 0 to 2 |
-| `day_start_hour`, `day_end_hour` | light theme hours, local time | 0 to 23 |
+| `day_start_hour`, `day_end_hour` | light theme from the start hour until the end hour, local time. The defaults, 6 and 17, give light from 06:00 to 16:59 and dark from 17:00 | 0 to 23 |
+| `timezone` | the board's local time zone as a POSIX string, for example `CST6CDT,M3.2.0,M11.1.0` (US Central) or `<+06>-6` (UTC+6). The desktop app fills it in from your computer. Without it the board uses `SYNC_TIMEZONE` from the build, which is UTC | text, 3 to 47 characters |
 | `wifi` | list of `{"ssid", "password"}`, or `{"ssid", "forget": true}` | |
 | `custom_pids` | the text of `custom_pids.csv` | |
 | `rev` | a number you can use to track versions | |

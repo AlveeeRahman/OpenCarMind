@@ -221,6 +221,11 @@ pub fn wifi_entry_ok(ssid: &str, password: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Same rule as the board (main/harden.c): a POSIX TZ string of 3 to 47 characters from letters, digits and <>+-,.:/
+pub fn timezone_ok(tz: &str) -> bool {
+    (3..=47).contains(&tz.len()) && tz.chars().all(|c| c.is_ascii_alphanumeric() || "<>+-,.:/".contains(c))
+}
+
 /// Writes wifi.csv, config.json and the pairing file onto the SD card. The board reads them at its next start and
 /// deletes wifi.csv and receiver.json once it has stored them.
 #[tauri::command]
@@ -229,6 +234,7 @@ fn write_card(
     folder: String,
     networks: Vec<(String, String)>,
     settings: std::collections::HashMap<String, f64>,
+    timezone: Option<String>,
     pair: bool,
 ) -> Result<String, String> {
     let root = PathBuf::from(&folder);
@@ -247,8 +253,17 @@ fn write_card(
         std::fs::write(obd.join("wifi.csv"), csv).map_err(|e| e.to_string())?;
         done.push(format!("{} Wi-Fi network(s)", networks.len()));
     }
-    if !settings.is_empty() {
+    let timezone = timezone.map(|t| t.trim().to_string()).filter(|t| !t.is_empty());
+    if let Some(tz) = &timezone {
+        if !timezone_ok(tz) {
+            return Err(format!("time zone '{tz}' is not a POSIX time zone such as CST6CDT,M3.2.0,M11.1.0"));
+        }
+    }
+    if !settings.is_empty() || timezone.is_some() {
         let mut map = serde_json::Map::new();
+        if let Some(tz) = &timezone {
+            map.insert("timezone".into(), serde_json::json!(tz));
+        }
         for (key, value) in &settings {
             let (_, lo, hi) = SETTINGS.iter().find(|(k, _, _)| *k == key.as_str()).ok_or_else(|| format!("unknown setting {key}"))?;
             if !(lo..=hi).contains(&value) || value.fract() != 0.0 {
@@ -257,7 +272,7 @@ fn write_card(
             map.insert(key.clone(), serde_json::json!(*value as i64));
         }
         std::fs::write(obd.join("config.json"), serde_json::Value::Object(map).to_string()).map_err(|e| e.to_string())?;
-        done.push(format!("{} setting(s)", settings.len()));
+        done.push(format!("{} setting(s)", settings.len() + timezone.iter().count()));
     }
     if pair {
         let host = receiver::local_address().ok_or("this computer has no network address. Connect it to the same Wi-Fi as the board")?;
@@ -393,6 +408,7 @@ mod tests {
         assert!(wifi_entry_ok("Ho,me", "12345678").is_err());
         assert!(wifi_entry_ok("-Home", "12345678").is_err());
         assert!(wifi_entry_ok("Home", "pass\nword1").is_err());
+        assert!(timezone_ok("CST6CDT,M3.2.0,M11.1.0") && timezone_ok("<+06>-6") && !timezone_ok("CST 6") && !timezone_ok("UT"));
     }
 
     #[test]

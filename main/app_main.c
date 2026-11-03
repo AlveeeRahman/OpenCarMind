@@ -161,8 +161,6 @@ void app_main(void)
     ESP_ERROR_CHECK(err);
 
     remote_config_init();
-    setenv("TZ", CONFIG_SYNC_TIMEZONE, 1);
-    tzset();
     status_init();
     {
         /* the RTC keeps running through deep sleep and software resets: reuse a clock set earlier */

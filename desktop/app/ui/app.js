@@ -167,10 +167,33 @@ $("#card-write").addEventListener("click", async () => {
   const settings = {};
   for (const k of Object.keys(SETTINGS)) { const v = document.getElementById("set-" + k).value; if (v !== "") settings[k] = Number(v); }
   try {
-    const done = await invoke("write_card", { folder: cardFolder, networks, settings, pair: $("#pair").checked });
+    const done = await invoke("write_card", { folder: cardFolder, networks, settings, timezone: $("#tz").value || null, pair: $("#pair").checked });
     msg("#card-msg", done); networks.length = 0; drawNetworks();
   } catch (e) { msg("#card-msg", String(e), true); }
 });
+
+/* The board's C library wants a POSIX TZ string, which browsers do not give. Common zones are listed with their daylight
+   saving rules; any other zone gets its current fixed offset. */
+const POSIX_TZ = {
+  "America/New_York": "EST5EDT,M3.2.0,M11.1.0", "America/Detroit": "EST5EDT,M3.2.0,M11.1.0", "America/Toronto": "EST5EDT,M3.2.0,M11.1.0",
+  "America/Chicago": "CST6CDT,M3.2.0,M11.1.0", "America/Winnipeg": "CST6CDT,M3.2.0,M11.1.0", "America/Mexico_City": "CST6",
+  "America/Denver": "MST7MDT,M3.2.0,M11.1.0", "America/Edmonton": "MST7MDT,M3.2.0,M11.1.0", "America/Phoenix": "MST7",
+  "America/Los_Angeles": "PST8PDT,M3.2.0,M11.1.0", "America/Vancouver": "PST8PDT,M3.2.0,M11.1.0", "America/Anchorage": "AKST9AKDT,M3.2.0,M11.1.0",
+  "Pacific/Honolulu": "HST10", "Europe/London": "GMT0BST,M3.5.0/1,M10.5.0", "Europe/Dublin": "IST-1GMT0,M10.5.0,M3.5.0/1",
+  "Europe/Lisbon": "WET0WEST,M3.5.0/1,M10.5.0", "Europe/Berlin": "CET-1CEST,M3.5.0,M10.5.0/3", "Europe/Paris": "CET-1CEST,M3.5.0,M10.5.0/3",
+  "Europe/Madrid": "CET-1CEST,M3.5.0,M10.5.0/3", "Europe/Rome": "CET-1CEST,M3.5.0,M10.5.0/3", "Europe/Amsterdam": "CET-1CEST,M3.5.0,M10.5.0/3",
+  "Europe/Athens": "EET-2EEST,M3.5.0/3,M10.5.0/4", "Asia/Dhaka": "<+06>-6", "Asia/Kolkata": "IST-5:30", "Asia/Dubai": "<+04>-4",
+  "Asia/Singapore": "<+08>-8", "Asia/Shanghai": "CST-8", "Asia/Tokyo": "JST-9", "Asia/Seoul": "KST-9",
+  "Australia/Sydney": "AEST-10AEDT,M10.1.0,M4.1.0/3", "Australia/Melbourne": "AEST-10AEDT,M10.1.0,M4.1.0/3", "Australia/Brisbane": "AEST-10",
+  "Pacific/Auckland": "NZST-12NZDT,M9.5.0,M4.1.0/3", "UTC": "UTC0", "Etc/UTC": "UTC0",
+};
+function guessTimezone() {
+  try { const z = Intl.DateTimeFormat().resolvedOptions().timeZone; if (POSIX_TZ[z]) return POSIX_TZ[z]; } catch (_) { /* fall through */ }
+  const east = -new Date().getTimezoneOffset(), a = Math.abs(east), hh = String(Math.floor(a / 60)).padStart(2, "0"), mm = a % 60;
+  const name = `<${east >= 0 ? "+" : "-"}${hh}${mm ? String(mm).padStart(2, "0") : ""}>`;
+  return `${name}${east >= 0 ? "-" : ""}${Math.floor(a / 60)}${mm ? ":" + String(mm).padStart(2, "0") : ""}`;
+}
+$("#tz").value = guessTimezone();
 
 /* ---- Where the Overview reads drives from ---- */
 async function refreshSources() {

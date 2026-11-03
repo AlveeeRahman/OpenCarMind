@@ -6,6 +6,9 @@
 #include "wifi_creds.h"
 #include "sdlog.h"
 #include "events.h"
+#include <stdlib.h>
+#include <time.h>
+#include "harden.h"
 
 static const char *TAG = "rconf";
 static remote_config_t s_cfg;
@@ -20,6 +23,14 @@ static void defaults(void)
     s_cfg.theme_mode = 0;
     s_cfg.day_start_hour = 6;
     s_cfg.day_end_hour = 17;
+    s_cfg.timezone[0] = 0;
+}
+
+/* Local time drives the light and dark theme (06:00 to 17:00 light by default) and the clock on screen. */
+static void apply_timezone(void)
+{
+    setenv("TZ", s_cfg.timezone[0] ? s_cfg.timezone : CONFIG_SYNC_TIMEZONE, 1);
+    tzset();
 }
 
 static void persist(void)
@@ -41,6 +52,9 @@ void remote_config_init(void)
         if (nvs_get_blob(h, "cfg", &t, &len) == ESP_OK && len == sizeof t) s_cfg = t;
         nvs_close(h);
     }
+    s_cfg.timezone[sizeof s_cfg.timezone - 1] = 0;
+    if (s_cfg.timezone[0] && !harden_timezone_ok(s_cfg.timezone)) s_cfg.timezone[0] = 0;
+    apply_timezone();
     ESP_LOGI(TAG, "rev %lu: poll %u ms, slow every %u, dtc %u s, backlight %u%%",
              (unsigned long)s_cfg.rev, s_cfg.poll_interval_ms, s_cfg.slow_group_every, s_cfg.dtc_interval_s, s_cfg.backlight_pct);
 }
@@ -68,6 +82,15 @@ int remote_config_apply(cJSON *root)
     if (num_in(root, "theme_mode", 0, 2, &d))            { s_cfg.theme_mode = (uint8_t)d; applied++; }
     if (num_in(root, "day_start_hour", 0, 23, &d))       { s_cfg.day_start_hour = (uint8_t)d; applied++; }
     if (num_in(root, "day_end_hour", 0, 23, &d))         { s_cfg.day_end_hour = (uint8_t)d; applied++; }
+
+    cJSON *tz = cJSON_GetObjectItem(root, "timezone");
+    if (cJSON_IsString(tz)) {
+        if (harden_timezone_ok(tz->valuestring)) {
+            strlcpy(s_cfg.timezone, tz->valuestring, sizeof s_cfg.timezone);
+            apply_timezone();
+            applied++;
+        } else ESP_LOGW(TAG, "timezone not valid: ignored");
+    }
 
     cJSON *wifi = cJSON_GetObjectItem(root, "wifi");
     if (cJSON_IsArray(wifi)) {

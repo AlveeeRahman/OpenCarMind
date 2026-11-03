@@ -12,6 +12,7 @@ typedef struct {
     uint8_t  theme_mode;        /* 0 auto by time of day, 1 dark, 2 light */
     uint8_t  day_start_hour;    /* light theme from this hour ... */
     uint8_t  day_end_hour;      /* ... until this hour (local time, 24 h) */
+    char     timezone[48];      /* POSIX TZ string; empty = the build default (CONFIG_SYNC_TIMEZONE) */
 } remote_config_t;
 
 void                  remote_config_init(void);           /* load from NVS, Kconfig defaults otherwise */

@@ -19,6 +19,10 @@ bool harden_wifi_cred_ok(const char *ssid, const char *password);
    treats the sample as missing. A finite value is limited to +-100, far outside anything seen in training. */
 bool harden_model_input(float *v);
 
+/* True when `tz` looks like a POSIX TZ string ("CST6CDT,M3.2.0,M11.1.0", "<+06>-6", "UTC0"): 3 to 47 characters from
+   letters, digits and <>+-,.:/ only. The C library parses it; this only keeps junk and control characters out. */
+bool harden_timezone_ok(const char *tz);
+
 #ifdef __cplusplus
 }
 #endif
