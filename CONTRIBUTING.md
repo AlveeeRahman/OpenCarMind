@@ -1,0 +1,33 @@
+# Contributing
+
+Thanks for helping. This page covers how to build, test and send a change.
+
+## Build and test
+
+You need ESP-IDF v6.1 for the firmware and Python 3.12 for the tools.
+
+```sh
+make -C tests/host                                   # fault engine, custom PIDs, pattern layer
+python3 -m unittest discover -s tests -v             # report tool
+python3 tools/check_docs.py                          # Markdown links and images
+idf.py set-target esp32s3 && idf.py build            # firmware
+```
+
+If you change a file in `ml/onboard/`, regenerate `main/ml_params.h` with `python3 tools/gen_ml_params.py ml/onboard main/ml_params.h`. CI fails if the two disagree.
+
+The training code in `ml/training` needs Apple silicon and MLX, so CI only compiles it. If you change it, say in the pull request what you ran and what you saw.
+
+## Sending a change
+
+1. Open an issue first for anything bigger than a fix, so we can agree on the approach.
+2. Keep a pull request to one change. Update the docs in the same pull request.
+3. Wait for CI. It builds the firmware with Wi-Fi clock sync on and off, runs the host tests and the Python tests, and checks the docs.
+4. Say what you tested on a real board, if anything. "Compiles" and "ran on a car" are different claims, and the README keeps them apart.
+
+## Style
+
+Firmware is C11 and C++17 in the existing style: short functions, comments only where the reason is not obvious. Python follows what is in `tools/` and `ml/training/train_onboard.py`: standard library first, small functions, no comment that repeats the code. Prose in the docs is plain: short sentences, a number or a name instead of an adjective, no hype.
+
+## Reporting a security problem
+
+Use the private route in [SECURITY.md](SECURITY.md), not a public issue.

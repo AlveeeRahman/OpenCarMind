@@ -1,5 +1,13 @@
 <p align="center"><img src="docs/images/banner.png" width="900" alt="OpenCarMind: an open-source OBD-II logger with a local AI model"></p>
 
+<p align="center">
+<a href="https://github.com/AlveeeRahman/OpenCarMind/actions/workflows/ci.yml"><img src="https://github.com/AlveeeRahman/OpenCarMind/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
+<a href="https://scorecard.dev/viewer/?uri=github.com/AlveeeRahman/OpenCarMind"><img src="https://api.scorecard.dev/projects/github.com/AlveeeRahman/OpenCarMind/badge" alt="OpenSSF Scorecard"></a>
+<a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
+<img src="https://img.shields.io/badge/ESP--IDF-v6.1-red.svg" alt="ESP-IDF v6.1">
+<img src="https://img.shields.io/badge/chip-ESP32--S3-lightgrey.svg" alt="ESP32-S3">
+</p>
+
 OpenCarMind turns an ESP32-S3 board and a Bluetooth OBD-II adapter into a car data logger that runs a neural network on the board. It needs no phone, no account and no internet connection. Everything it records stays on an SD card in your car.
 
 Version 2.0.1. Licence: MIT.
@@ -10,6 +18,7 @@ Version 2.0.1. Licence: MIT.
 - A small neural network on the chip. Each time a row arrives it classifies the last 30 seconds of driving as stopped, braking, accelerating or cruising. It also estimates three values the OBD port does not report: brake pressure, flywheel torque and fuel rate.
 - A save to the SD card every 10 seconds. Page 3 of the screen shows "Safe to turn off" each time, so you can pull the plug without losing the drive.
 - A fault engine that ranks trouble codes by severity and groups codes that share a cause.
+- Dark and light screen themes, switched by time of day or fixed in a settings file.
 - A soft real-time scheduler that times every job against its deadline and restarts the board if a step hangs.
 - Optional Wi-Fi, used only to set the clock.
 - A local dashboard: a script turns the card's sessions into reports, and the open-source Dashy shows them.
@@ -52,7 +61,19 @@ Open-source loggers usually treat timing as someone else's problem. Here every p
 <img src="docs/images/system.png" width="170" alt="Page 5: system, jobs and AI">
 </p>
 
-Tap BOOT to change page. Hold it for 2 seconds to power off, or for 8 seconds to forget the saved adapter. Between 06:00 and 17:00 local time, once the clock is set, the screen uses a light theme. The pictures in `docs/images` are rendered from `docs/screens/screens.html` with `sh docs/screens/render.sh`.
+The same five pages in the light theme:
+
+<p align="center">
+<img src="docs/images/dash-light.png" width="170" alt="Page 1 in the light theme: dashboard">
+<img src="docs/images/details-light.png" width="170" alt="Page 2 in the light theme: details">
+<img src="docs/images/internals-light.png" width="170" alt="Page 3 in the light theme: internals and recent events">
+<img src="docs/images/faults-light.png" width="170" alt="Page 4 in the light theme: faults">
+<img src="docs/images/system-light.png" width="170" alt="Page 5 in the light theme: system">
+</p>
+
+By default the screen switches by time of day. It is light from 06:00 to 17:00 local time once the clock is set, and dark otherwise. Set `theme_mode` in `config.json` to 1 for always dark or 2 for always light, and `day_start_hour` and `day_end_hour` to change the hours (see [docs/CONFIGURATION.md](docs/CONFIGURATION.md)). The pictures are renders, not photographs of a panel. They come from `docs/screens/screens.html` with `sh docs/screens/render.sh`, which applies the same light colour table the firmware uses.
+
+Tap BOOT to change page. Hold it for 2 seconds to power off, or for 8 seconds to forget the saved adapter.
 
 1. Dashboard: RPM, speed, coolant, battery, load and fuel, plus Bluetooth, SD and Wi-Fi icons.
 2. Details: adapter, VIN, protocol, trouble codes, clock and SD state, session counters.
