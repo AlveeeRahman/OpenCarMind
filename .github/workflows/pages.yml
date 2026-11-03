@@ -1,0 +1,73 @@
+name: pages
+
+# Publishes docs/ as the GitHub Pages site on every push to main that touches
+# it. The site is https://alveeerahman.github.io/OpenCarMind/.
+#
+# One click is needed once: Settings > Pages > Build and deployment > Source:
+# "GitHub Actions". The workflow token may deploy to an existing Pages site but
+# may not create one, so until that is done the `check` job reports that Pages
+# is off and the `deploy` job is skipped; every run after it deploys on its own.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/index.html"
+      - "docs/images/**"
+      - "docs/assets/**"
+      - "docs/sitemap.xml"
+      - "docs/robots.txt"
+      - "docs/.nojekyll"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: read
+    outputs:
+      enabled: ${{ steps.pages.outputs.enabled }}
+    steps:
+      - id: pages
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh api "repos/$GITHUB_REPOSITORY/pages" --jq .html_url >/dev/null 2>&1; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "Pages is enabled; deploying docs/." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Pages is not enabled::Settings > Pages > Build and deployment > Source: GitHub Actions. Nothing was deployed."
+            echo "Pages is not enabled for this repository, so nothing was deployed. Turn it on under Settings > Pages (Source: GitHub Actions) and re-run this workflow." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  deploy:
+    needs: check
+    if: needs.check.outputs.enabled == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: docs
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
