@@ -45,7 +45,6 @@ Prices are in US dollars, taken from US listings seen on 3 November 2026 and cha
 | Vgate vLinker FS | Classic and BLE, ships in MFi mode | Vgate E7810A71 or generic | Needs a setting: switch it to "BLE+BT" with the VgateFwUpdater app first | not found | [Amazon B0BZTXV6MZ](https://www.amazon.com/dp/B0BZTXV6MZ) |
 | Vgate vLinker MS | Classic and BLE, ships in MFi mode | Vgate E7810A71 or generic | Needs a setting: switch it to "BLE+BT" with the VgateFwUpdater app first | not found | [Amazon B0D6YQX4R8](https://www.amazon.com/dp/B0D6YQX4R8) |
 | Carista OBD2 / Carista EVO | BLE | FFF0 | Expected | not found | [Amazon B00YVHGTBM](https://www.amazon.com/dp/B00YVHGTBM), [EVO B0CM9W4MCW](https://www.amazon.com/dp/B0CM9W4MCW) |
-| PLX Kiwi 3 | BLE 4.x | generic | Expected. Listing showed "currently unavailable" on 3 Nov 2026 | no current Amazon offer | [Amazon B016X3L0O2](https://www.amazon.com/dp/B016X3L0O2) |
 | FIXD | Bluetooth | unknown | Unverified. One owner reports it works with other ELM327 apps | not found, first generation discontinued | [Amazon B013RIQMEO](https://www.amazon.com/dp/B013RIQMEO) |
 | Generic "ELM327 BLE 4.0" clones | BLE | usually FFF0 or FFE0 | Expected for most. Some fake v2.1 clones skip commands | varies | example: RODEDIO [B0GWQKLTMR](https://www.amazon.com/dp/B0GWQKLTMR), whose listing says Bluetooth LE on iOS |
 | Panlong PL-B04 | Bluetooth, iOS and Android | generic | Expected for the "For iOS Android" option: that listing says it works with Car Scanner on iOS, which needs BLE and ELM327. The "For Android Only" option is likely Classic. The page title does not name the model | not found | [Amazon B0C1GDJ9ZJ](https://www.amazon.com/dp/B0C1GDJ9ZJ) |
@@ -66,7 +65,6 @@ Not listed? Check your adapter with a BLE scanner app such as nRF Connect. A ser
 - Veepeak and Carista on FFF0: [Stack Overflow 61090365](https://stackoverflow.com/questions/61090365/what-ble-characteristic-should-i-use-in-a-ble-ios-device-for-obdii)
 - Vgate iCar Pro BLE on 18F0/2AF0/2AF1: [ABRP request](https://abrp.featurebase.app/p/add-odb-support-for-vgate-icar-pro-bluetooth-40-ble-2), SwiftOBD2 source
 - vLinker FS and MS MFi mode and the VgateFwUpdater switch: the Amazon listings linked above
-- Kiwi 3 on BLE: [HP Tuners forum, TrackAddict developer](https://forum.hptuners.com/showthread.php?p=433373)
 - BlueDriver app lock (secondary source): [OBDplanet](https://obdplanet.com/bluedriver-vs-obdlink)
 - DA200 spec sheet (V1.1, 15 April 2025): [Global Sources PDF](https://p.globalsources.com/IMAGES/PDT/SPEC/175/K1227182175.pdf)
 - Panlong PL-B04 and PL-V800 app support: the Amazon listings linked above
