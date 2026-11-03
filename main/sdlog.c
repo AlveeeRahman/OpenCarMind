@@ -29,6 +29,7 @@ static const char *TAG = "sdlog";
 static sdmmc_card_t *s_card;
 static bool     s_ok;
 static uint32_t s_session;
+static bool     s_open;           /* a session is open for rows; false after sdlog_end_drive() until the next drive */
 static FILE    *s_csv;
 static char     s_csv_path[96];
 static char     s_json_path[96];
@@ -182,6 +183,64 @@ static void sync_task(void *arg)
     }
 }
 
+/* Opens a new session: CSV with its header and a fresh JSON. Caller holds s_lock. */
+static esp_err_t open_session_locked(void)
+{
+    s_session = next_session_id();
+    snprintf(s_csv_path, sizeof s_csv_path, SDLOG_SESSIONS_DIR "/s%06lu.csv", (unsigned long)s_session);
+    snprintf(s_json_path, sizeof s_json_path, SDLOG_SESSIONS_DIR "/s%06lu.json", (unsigned long)s_session);
+
+    s_csv = fopen(s_csv_path, "w");
+    if (!s_csv) {
+        ESP_LOGE(TAG, "cannot create %s (errno %d)", s_csv_path, errno);
+        return ESP_FAIL;
+    }
+    /* Larger than the header and any row, so stdio always copies into internal RAM before FatFs. Without it the
+       header (a flash string) reached the card straight from flash: the SDMMC driver treats a 4-byte-aligned
+       non-PSRAM pointer as DMA-safe, DMA cannot read flash, and two whole sectors were written as zeros. */
+    setvbuf(s_csv, s_csv_iobuf, _IOFBF, sizeof s_csv_iobuf);
+    fputs(CSV_HEADER, s_csv);
+    fflush(s_csv);
+    fsync(fileno(s_csv));
+    s_rows = 0;
+    s_bytes = s_synced = strlen(CSV_HEADER);
+    s_raw_bytes = s_raw_synced = s_pat_bytes = s_pat_synced = s_ml_bytes = s_ml_synced = 0;
+    s_last_sync_ms = esp_timer_get_time() / 1000;
+
+    uint8_t mac[6] = {0};
+    esp_read_mac(mac, ESP_MAC_BASE);
+    char macs[18];
+    snprintf(macs, sizeof macs, "%02X%02X%02X%02X%02X%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+
+    if (s_meta) cJSON_Delete(s_meta);
+    s_meta = cJSON_CreateObject();
+    cJSON_AddNumberToObject(s_meta, "schema_version", 1);
+    cJSON_AddNumberToObject(s_meta, "session_id", s_session);
+    cJSON_AddStringToObject(s_meta, "device_mac", macs);
+    cJSON_AddStringToObject(s_meta, "firmware", CARMIND_FW_STRING);
+    cJSON_AddItemToObject(s_meta, "adapter", cJSON_CreateObject());
+    cJSON *veh = cJSON_AddObjectToObject(s_meta, "vehicle");
+    cJSON_AddItemToObject(veh, "supported_pids", cJSON_CreateObject());
+    cJSON *ts = cJSON_AddObjectToObject(s_meta, "time_sync");
+    cJSON_AddNumberToObject(ts, "epoch_ms", 0);
+    cJSON_AddNumberToObject(ts, "uptime_ms", 0);
+    cJSON_AddNumberToObject(s_meta, "started_epoch_ms", 0);
+    cJSON_AddNumberToObject(s_meta, "rows", 0);
+    cJSON_AddNumberToObject(s_meta, "meta_rev", 0);
+    cJSON_AddItemToObject(s_meta, "dtc_history", cJSON_CreateArray());
+    meta_flush_locked();
+
+    s_open = true;
+    s_unsaved = false;
+    STATUS_LOCK();
+    g_status.session_id = s_session;
+    g_status.rows_written = 0;
+    g_status.bytes_written = s_bytes;
+    STATUS_UNLOCK();
+    ESP_LOGI(TAG, "session %lu -> %s", (unsigned long)s_session, s_csv_path);
+    return ESP_OK;
+}
+
 /* ---------- public ---------- */
 esp_err_t sdlog_init(void)
 {
@@ -249,62 +308,48 @@ esp_err_t sdlog_init(void)
         if (pruned) ESP_LOGI(TAG, "pruned %d empty session(s)", pruned);
     }
 
-    s_session = next_session_id();
-    snprintf(s_csv_path, sizeof s_csv_path, SDLOG_SESSIONS_DIR "/s%06lu.csv", (unsigned long)s_session);
-    snprintf(s_json_path, sizeof s_json_path, SDLOG_SESSIONS_DIR "/s%06lu.json", (unsigned long)s_session);
-
-    s_csv = fopen(s_csv_path, "w");
-    if (!s_csv) {
-        ESP_LOGE(TAG, "cannot create %s (errno %d)", s_csv_path, errno);
-        return ESP_FAIL;
-    }
-    /* Larger than the header and any row, so stdio always copies into internal RAM before FatFs. Without it the
-       header (a flash string) reached the card straight from flash: the SDMMC driver treats a 4-byte-aligned
-       non-PSRAM pointer as DMA-safe, DMA cannot read flash, and two whole sectors were written as zeros. */
-    setvbuf(s_csv, s_csv_iobuf, _IOFBF, sizeof s_csv_iobuf);
-    fputs(CSV_HEADER, s_csv);
-    fflush(s_csv);
-    fsync(fileno(s_csv));
-    s_bytes = s_synced = strlen(CSV_HEADER);
-    s_last_sync_ms = esp_timer_get_time() / 1000;
-
-    uint8_t mac[6] = {0};
-    esp_read_mac(mac, ESP_MAC_BASE);
-    char macs[18];
-    snprintf(macs, sizeof macs, "%02X%02X%02X%02X%02X%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-
-    s_meta = cJSON_CreateObject();
-    cJSON_AddNumberToObject(s_meta, "schema_version", 1);
-    cJSON_AddNumberToObject(s_meta, "session_id", s_session);
-    cJSON_AddStringToObject(s_meta, "device_mac", macs);
-    cJSON_AddStringToObject(s_meta, "firmware", CARMIND_FW_STRING);
-    cJSON_AddItemToObject(s_meta, "adapter", cJSON_CreateObject());
-    cJSON *veh = cJSON_AddObjectToObject(s_meta, "vehicle");
-    cJSON_AddItemToObject(veh, "supported_pids", cJSON_CreateObject());
-    cJSON *ts = cJSON_AddObjectToObject(s_meta, "time_sync");
-    cJSON_AddNumberToObject(ts, "epoch_ms", 0);
-    cJSON_AddNumberToObject(ts, "uptime_ms", 0);
-    cJSON_AddNumberToObject(s_meta, "started_epoch_ms", 0);
-    cJSON_AddNumberToObject(s_meta, "rows", 0);
-    cJSON_AddNumberToObject(s_meta, "meta_rev", 0);
-    cJSON_AddItemToObject(s_meta, "dtc_history", cJSON_CreateArray());
-
     xSemaphoreTake(s_lock, portMAX_DELAY);
-    meta_flush_locked();
+    esp_err_t oerr = open_session_locked();
     xSemaphoreGive(s_lock);
+    if (oerr != ESP_OK) return oerr;
 
     s_ok = true;
     STATUS_LOCK();
     g_status.sd_mounted = true;
-    g_status.session_id = s_session;
     g_status.sd_error[0] = 0;
     STATUS_UNLOCK();
-    ESP_LOGI(TAG, "session %lu -> %s", (unsigned long)s_session, s_csv_path);
     xTaskCreateWithCaps(sync_task, "sdsync", 6144, NULL, 2, NULL, MALLOC_CAP_SPIRAM);
     return ESP_OK;
 }
 
 bool sdlog_ok(void) { return s_ok; }
+
+void sdlog_end_drive(void)
+{
+    if (!s_ok) return;
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    if (!s_open || s_rows == 0) { xSemaphoreGive(s_lock); return; }     /* nothing logged yet: keep the session for this drive */
+    if (cJSON_HasObjectItem(s_meta, "ended_uptime_ms"))
+        cJSON_ReplaceItemInObject(s_meta, "ended_uptime_ms", cJSON_CreateNumber((double)(esp_timer_get_time() / 1000)));
+    else cJSON_AddNumberToObject(s_meta, "ended_uptime_ms", (double)(esp_timer_get_time() / 1000));
+    sync_all_locked();
+    if (s_csv) { fclose(s_csv); s_csv = NULL; }
+    if (s_raw) { fclose(s_raw); s_raw = NULL; }
+    if (s_pat) { fclose(s_pat); s_pat = NULL; }
+    if (s_ml)  { fclose(s_ml);  s_ml = NULL; }
+    s_open = false;
+    uint32_t id = s_session, rows = s_rows;
+    xSemaphoreGive(s_lock);
+    sys_event(EV_INFO, "Drive s%06lu saved (%lu rows)", (unsigned long)id, (unsigned long)rows);
+}
+
+void sdlog_begin_drive(void)
+{
+    if (!s_ok) return;
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    if (!s_open) open_session_locked();
+    xSemaphoreGive(s_lock);
+}
 
 bool sdlog_saved(void) { return s_ok && !s_unsaved; }
 
@@ -327,6 +372,7 @@ void sdlog_write_row(const obd_values_t *v)
     EXT_RAM_BSS_ATTR static char line[1400];
     int n = 0;
     xSemaphoreTake(s_lock, portMAX_DELAY);
+    if (!s_open || !s_csv) { xSemaphoreGive(s_lock); return; }   /* the drive was closed meanwhile */
     s_rows++;
     n += snprintf(line + n, sizeof line - n, "%lu,%lld,%lld,", (unsigned long)s_rows,
                   (long long)(esp_timer_get_time() / 1000), (long long)now_epoch_ms());
@@ -368,6 +414,7 @@ void sdlog_write_raw(uint8_t pid, const char *hex)
 {
     if (!s_ok) return;
     xSemaphoreTake(s_lock, portMAX_DELAY);
+    if (!s_open) { xSemaphoreGive(s_lock); return; }
     if (!s_raw) {
         snprintf(s_raw_path, sizeof s_raw_path, SDLOG_SESSIONS_DIR "/s%06lu.raw", (unsigned long)s_session);
         s_raw = fopen(s_raw_path, "a");
@@ -388,6 +435,7 @@ void sdlog_write_pattern_window(uint32_t window_seq, int64_t start_ms, int64_t e
 {
     if (!s_ok) return;
     xSemaphoreTake(s_lock, portMAX_DELAY);
+    if (!s_open) { xSemaphoreGive(s_lock); return; }
     if (!s_pat) {
         snprintf(s_pat_path, sizeof s_pat_path, SDLOG_SESSIONS_DIR "/s%06lu.pat", (unsigned long)s_session);
         s_pat = fopen(s_pat_path, "a");
@@ -412,6 +460,7 @@ void sdlog_write_ml_line(const char *header, const char *line)
 {
     if (!s_ok) return;
     xSemaphoreTake(s_lock, portMAX_DELAY);
+    if (!s_open) { xSemaphoreGive(s_lock); return; }
     if (!s_ml) {
         snprintf(s_ml_path, sizeof s_ml_path, SDLOG_SESSIONS_DIR "/s%06lu.ml.csv", (unsigned long)s_session);
         s_ml = fopen(s_ml_path, "a");

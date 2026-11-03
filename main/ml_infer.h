@@ -21,6 +21,8 @@ void ml_feed(const obd_values_t *v, int64_t now_ms);
 void ml_window_closed(uint32_t window_seq, int64_t start_ms, int64_t end_ms);
 /* Resets the 1 s history, e.g. when a new adapter session starts. */
 void ml_reset_history(void);
+/* The drive ended: stop expecting model runs and drop the window history. */
+void ml_drive_ended(void);
 /* Free the model and load it back later (saves about 75 KB of PSRAM); safe while the task runs. Unused by default. */
 void ml_unload(void);
 bool ml_load(void);

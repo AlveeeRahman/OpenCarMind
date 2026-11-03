@@ -31,6 +31,9 @@ static const char *TAG = "elm";
 static StreamBufferHandle_t s_rx;
 static EventGroupHandle_t   s_ev;
 static volatile bool        s_link_up;
+static volatile bool        s_halt;        /* the user asked to stop (BOOT held for power-off): no polling, no new drive */
+static volatile bool        s_in_drive;    /* the poll loop is running */
+#define ECU_QUIET_US        (15 * 1000000LL)   /* no answer for this long ends the drive (ignition off) */
 static SemaphoreHandle_t    s_txn_lock;
 
 /* ------------------------------------------------------------------ field table */
@@ -480,7 +483,6 @@ static bool elm_initialise(void)
     if (elm_transact("ATI", resp, sizeof resp, CONFIG_OBD_ELM_TIMEOUT_MS) > 0) snprintf(ati, sizeof ati, "%.31s", resp);
     app_status_t st;
     status_get(&st);
-    sdlog_meta_set_adapter(st.adapter_name, st.adapter_addr, ati, batch);
 
     int tries = 0;
     do {
@@ -491,8 +493,11 @@ static bool elm_initialise(void)
         if (rc > 0 && (tries == 2 || tries == 10) && (strstr(resp, "UNABLE") || strstr(resp, "ERROR")) &&
             try_protocols(resp, sizeof resp)) break;
         vTaskDelay(pdMS_TO_TICKS(3000));
-    } while (++tries < 20 && s_link_up);
-    if (!s_link_up || tries >= 20) { if (s_link_up) sys_event(EV_WARN, "ECU not answering: ignition off?"); return false; }
+    } while (++tries < 20 && s_link_up && !s_halt);
+    if (!s_link_up || s_halt || tries >= 20) { if (s_link_up && !s_halt) sys_event(EV_WARN, "ECU not answering: ignition off?"); return false; }
+
+    sdlog_begin_drive();                   /* the ECU answered: a new session if the last drive was closed */
+    sdlog_meta_set_adapter(st.adapter_name, st.adapter_addr, ati, batch);
 
     char protocol[24] = "";
     if (elm_transact("ATDPN", resp, sizeof resp, CONFIG_OBD_ELM_TIMEOUT_MS) > 0) snprintf(protocol, sizeof protocol, "%.23s", resp);
@@ -535,11 +540,41 @@ static bool elm_initialise(void)
 }
 
 /* ------------------------------------------------------------------ main task */
+/* The drive is over (ignition off, link lost or the user is powering off): save and close the session, stop the jobs that
+   expect rows, and leave the logging state so the power line, the USB door and the upload see a parked car. */
+static void end_drive(sched_job_t poll_job)
+{
+    sched_set_expected(poll_job, false);
+    ml_drive_ended();
+    sdlog_end_drive();
+    STATUS_LOCK();
+    if (g_status.ble == BLE_ST_LOGGING) g_status.ble = BLE_ST_ELM_INIT;
+    memset(g_status.obd.valid, 0, sizeof g_status.obd.valid);
+    STATUS_UNLOCK();
+}
+
+void elm_request_stop(void) { s_halt = true; }
+
+bool elm_wait_stopped(uint32_t timeout_ms)
+{
+    s_halt = true;
+    for (uint32_t t = 0; s_in_drive && t < timeout_ms; t += 50) vTaskDelay(pdMS_TO_TICKS(50));
+    if (!s_in_drive) sdlog_end_drive();    /* also covers a stop before any drive started */
+    return !s_in_drive;
+}
+
+void elm_resume(void)
+{
+    s_halt = false;
+    if (s_link_up) xEventGroupSetBits(s_ev, LINK_UP_BIT);
+}
+
 static void obd_task(void *arg)
 {
     for (;;) {
         xEventGroupWaitBits(s_ev, LINK_UP_BIT, pdTRUE, pdFALSE, portMAX_DELAY);
         vTaskDelay(pdMS_TO_TICKS(300));
+        if (s_halt) continue;                                     /* stopped for power-off: wait for elm_resume() */
 
         if (!elm_initialise()) {
             if (s_link_up) {
@@ -572,15 +607,17 @@ static void obd_task(void *arg)
         int slow_i = 0, raw_i = 0, slow_passes = 0;
         int64_t last_dtc = 0, last_rv = 0;
         int consecutive_fail = 0;
+        int64_t last_ok = esp_timer_get_time();
         char resp[64];
+        s_in_drive = true;
 
-        while (s_link_up) {
+        while (s_link_up && !s_halt) {
             sched_begin(poll_job);
             bool any_ok = false;
-            for (int i = 0; i < nf && s_link_up; i++) any_ok |= poll_pid(fast[i]);
+            for (int i = 0; i < nf && s_link_up && !s_halt; i++) any_ok |= poll_pid(fast[i]);
             /* a few slow PIDs per cycle, round robin; custom PIDs share the rotation */
             int total_slow = ns + (int)s_custom_n;
-            for (int k = 0; k < SLOW_PER_CYCLE && total_slow > 0 && s_link_up; k++) {
+            for (int k = 0; k < SLOW_PER_CYCLE && total_slow > 0 && s_link_up && !s_halt; k++) {
                 int idx = (slow_i++) % total_slow;
                 if (idx < ns) any_ok |= poll_pid(slow[idx]);
                 else poll_custom(idx - ns);
@@ -594,7 +631,7 @@ static void obd_task(void *arg)
                 uint8_t pid = raw[(raw_i++) % nr];
                 if (query_pid(pid, b, sizeof b, hex, sizeof hex) > 0) sdlog_write_raw(pid, hex);
             }
-            if (!s_link_up) { sched_end(poll_job); break; }   /* every exit ends the run, or the watchdog stays subscribed */
+            if (!s_link_up || s_halt) { sched_end(poll_job); break; }   /* every exit ends the run, or the watchdog stays subscribed */
 
             int64_t now = esp_timer_get_time();
             if (now - last_rv > 10 * 1000000LL) {
@@ -611,25 +648,28 @@ static void obd_task(void *arg)
 
             if (any_ok) {
                 consecutive_fail = 0;
+                last_ok = esp_timer_get_time();
                 obd_values_t snap;
                 STATUS_LOCK(); snap = g_status.obd; STATUS_UNLOCK();
                 ml_feed(&snap, esp_timer_get_time() / 1000);   /* before pattern_step: the closing row is in its second */
                 pattern_step(&snap);
                 sdlog_write_row(&snap);
-            } else if (++consecutive_fail > 10) {
-                sys_event(EV_WARN, "ECU stopped answering; re-initialising");
+            } else if (++consecutive_fail > 10 || esp_timer_get_time() - last_ok > ECU_QUIET_US) {
+                sys_event(EV_WARN, "ECU stopped answering: drive ended");
                 sched_end(poll_job);
-                sdlog_sync_now();                                  /* ignition off is the usual reason: save before power goes */
-                break;
+                break;                                             /* ignition off is the usual reason: end_drive() saves */
             }
             sched_end(poll_job);
             uint32_t gap = remote_config_get()->poll_interval_ms;
             if (s_resp_count && gap > 50) gap = 50;      /* replies come back at once; nothing to wait for between cycles */
             vTaskDelay(pdMS_TO_TICKS(gap));
         }
-        sched_set_expected(poll_job, false);
-        sdlog_sync_now();                                          /* the link is gone: everything logged so far is on the card */
-        if (s_link_up) xEventGroupSetBits(s_ev, LINK_UP_BIT);
+        end_drive(poll_job);                                       /* everything logged so far is on the card, files closed */
+        s_in_drive = false;
+        if (s_link_up && !s_halt) {
+            vTaskDelay(pdMS_TO_TICKS(5000));                       /* engine off: retry calmly until the ECU answers again */
+            if (s_link_up && !s_halt) xEventGroupSetBits(s_ev, LINK_UP_BIT);
+        }
     }
 }
 

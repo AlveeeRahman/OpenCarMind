@@ -27,7 +27,9 @@ static void mode_task(void *arg)
     for (;;) {
         vTaskDelayUntil(&wake, pdMS_TO_TICKS(1000));
         STATUS_LOCK();
-        bool link = g_status.ble >= BLE_ST_CONNECTING && g_status.ble <= BLE_ST_LOCKED;   /* connecting counts: a car was found */
+        /* Connecting and discovering count (short, and Wi-Fi scans would slow them), and so does logging. Waiting for the
+           ECU does not: an adapter left powered with the ignition off must not keep the board in DRIVE. */
+        bool link = g_status.ble == BLE_ST_CONNECTING || g_status.ble == BLE_ST_DISCOVERING || g_status.ble == BLE_ST_LOGGING;
         STATUS_UNLOCK();
         sys_mode_t target = link ? MODE_DRIVE : MODE_SEEK;
         if (target != s_mode) {

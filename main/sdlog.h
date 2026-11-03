@@ -16,6 +16,10 @@ bool      sdlog_saved(void);
 int64_t   sdlog_ms_since_write(void);   /* since the last row or file write, INT64_MAX before any */
 /* Flush everything to the card now and raise "Safe to turn off" (the car link dropped, or a periodic save). */
 void      sdlog_sync_now(void);
+/* Ends the current drive: everything is saved and the session files are closed. No-op when nothing was logged yet. */
+void      sdlog_end_drive(void);
+/* Opens a new session if the last drive was ended. Called when the next drive starts without a reboot. */
+void      sdlog_begin_drive(void);
 uint32_t  sdlog_session_id(void);
 
 /* Append one CSV row built from the current OBD values. */

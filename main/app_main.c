@@ -21,6 +21,7 @@
 #include "display.h"
 #include "sdlog.h"
 #include "obd_ble.h"
+#include "elm327.h"
 #include "wifi_sync.h"
 #include "uploader.h"
 #include "usb_door.h"
@@ -49,6 +50,8 @@ void status_get(app_status_t *out)
  * hold 8 s = forget the saved adapter. RESET is wired to the chip enable pin and always reboots. */
 static void power_off(void)
 {
+    /* Logging already stopped when the hold passed 2 s; wait for the drive to be saved and closed, then sleep. */
+    if (!elm_wait_stopped(4000)) ESP_LOGW(TAG, "poll loop still busy after 4 s; saving what is logged");
     ESP_LOGW(TAG, "powering off (deep sleep); press BOOT to wake");
     status_led_set(0, 0, 0);
     display_sleep();
@@ -78,7 +81,10 @@ static void button_task(void *arg)
             if (held_ms == 0) status_led_set(255, 255, 255);              /* press acknowledged at once */
             held_ms += 20;
             if (held_ms < 2000)      set_hold((uint8_t)(held_ms * 100 / 2000), 0);
-            else if (held_ms < 8000) set_hold(100, 1);
+            else if (held_ms < 8000) {
+                if (held_ms == 2000) elm_request_stop();              /* power-off armed: stop logging now, not at release */
+                set_hold(100, 1);
+            }
             else                     set_hold(100, 2);
             continue;
         }
@@ -104,6 +110,7 @@ static void button_task(void *arg)
         } else if (held >= 2000 && held < 8000) {
             power_off();
         } else if (held >= 8000) {
+            elm_resume();                                             /* not a power-off after all: logging may continue */
             forget_prompt_until = now_ms + 5000;
             STATUS_LOCK();
             snprintf(g_status.prompt_text, sizeof g_status.prompt_text, "Forget paired adapter?  tap = forget, wait = cancel");

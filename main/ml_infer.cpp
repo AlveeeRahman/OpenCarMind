@@ -91,6 +91,12 @@ extern "C" void ml_reset_history(void)
     s_last_run_ms = 0;
 }
 
+extern "C" void ml_drive_ended(void)
+{
+    if (s_job >= 0) sched_set_expected(s_job, false);   /* no rows are coming: a quiet model is not a stall */
+    ml_reset_history();
+}
+
 extern "C" void ml_feed(const obd_values_t *v, int64_t now_ms)
 {
     if (!s_model || s_paused) return;

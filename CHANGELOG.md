@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- A drive ends when the ECU stops answering for 15 s (before: 11 failed poll cycles, about 2.5 minutes on a real car). The session is saved and closed, the model stops expecting rows, and the board leaves DRIVE, so the power line turns green and the USB door and the Wi-Fi upload work again. An adapter left powered with the ignition off no longer keeps the board in "Not safe: logging". If the ECU answers again without a reboot, a new session starts.
+- Power-off with BOOT: logging stops as soon as the hold reaches 2 s. On release the board waits for the drive to be saved and closed, then sleeps. Holding on to 8 s (forget adapter) resumes logging.
+- DRIVE now means connecting to the adapter or logging rows. Waiting for a quiet ECU counts as parked.
+
 ## 2.3.0
 
 - Wider adapter support (`main/adapter_match.c`, `main/obd_ble.c`), merged from what BetterDriver, SwiftOBD2, ha-obd-ble, EdiabasLib, LTSupportAutomotive and python-OBD do. Known layouts now include Vgate vLinker (E7810A71/BEF8D6C9) and Deep OBD (FFE1/FFE2). The serial line is picked by property and may use indicate. Adverts match by name words anywhere in the name and by the FFF0, 18F0, BEEF and Vgate services. The strongest candidate in a 1.5 s window wins.
