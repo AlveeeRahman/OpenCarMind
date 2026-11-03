@@ -77,4 +77,4 @@ On the author's car and adapter, one run took about 9 ms on average, with a wors
 
 ## Later models
 
-This project will release more regularised models to fit more cars. They will arrive as new releases with their own `ml/onboard/` files and `main/ml_params.h`. The training data and code are not part of this repository.
+This project will release more regularised models to fit more cars, each as a new release with its own `ml/onboard/` files and `main/ml_params.h`. The training data and code are not part of this repository.

@@ -4,7 +4,7 @@ OpenCarMind pairs with [Dashy](https://github.com/Lissy93/dashy), an open-source
 
 ## What Dashy does here
 
-Dashy is a start page with widgets, not a charting tool. It cannot plot a CSV file by itself. So the work is split in two:
+Dashy is a start page with widgets and cannot plot a CSV file by itself, so the work is split in two:
 
 - `tools/ocm_report.py` reads the sessions from the SD card and writes a small local website: one report per drive with charts of speed, engine speed, coolant and throttle, the model's manoeuvre classes underneath, an index page, and a `summary.json` file. The charts are inline SVG, so a report makes no requests to the internet.
 - Dashy reads `summary.json` with its `customapi` widget, embeds the latest report with its `iframe` widget, and links to the index.

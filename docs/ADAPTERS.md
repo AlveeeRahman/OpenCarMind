@@ -32,28 +32,28 @@ Only the LELink has been driven with this board. Every other row is based on the
 
 ## Adapters
 
-Prices are snapshots from US listings seen on 3 November 2026 and change often. "Not found" means no current price showed up. Amazon links are plain product pages with no affiliate tag.
+Prices are in US dollars, taken from US listings seen on 3 November 2026 and change often. "Not found" means no current price showed up. Amazon links are plain product pages with no affiliate tag.
 
 | Adapter | Radio | Layout | Status | Price seen | Buy |
 |---|---|---|---|---|---|
 | LELink² | BLE | FFE0 | Tested on this board | not found | [Amazon B0755N61PW](https://www.amazon.com/dp/B0755N61PW) |
-| Veepeak OBDCheck BLE+ | BLE (Classic too, for Android) | FFF0 | Expected | about $38 to $42 at US retailers | [Amazon B076XVQMVS](https://www.amazon.com/dp/B076XVQMVS) |
-| Veepeak OBDCheck BLE | BLE 4.0 | FFF0 | Expected | about $32 at a US retailer | [Amazon B073XKQQQW](https://www.amazon.com/dp/B073XKQQQW) |
-| OBDLink CX | BLE 5.1 | FFF0, always encrypted | Expected, pairs on demand. Bonding is open for the first 5 minutes after the adapter powers up | $79.95 | [Amazon B08NFLL3NT](https://www.amazon.com/dp/B08NFLL3NT) |
-| Vgate iCar Pro BLE 4.0 | BLE, shows up as IOS-Vlink | 18F0 | Expected | $31.49 | [Amazon B06XGB4873](https://www.amazon.com/dp/B06XGB4873) |
-| Vgate vLinker MC+ | BLE and Classic, BLE side named vLinker MC-IOS | Vgate E7810A71 or generic | Expected | about $55 | [Amazon B088LW211V](https://www.amazon.com/dp/B088LW211V) |
+| Veepeak OBDCheck BLE+ | BLE (Classic too, for Android) | FFF0 | Expected | about 38 to 42 USD at US retailers | [Amazon B076XVQMVS](https://www.amazon.com/dp/B076XVQMVS) |
+| Veepeak OBDCheck BLE | BLE 4.0 | FFF0 | Expected | about 32 USD at a US retailer | [Amazon B073XKQQQW](https://www.amazon.com/dp/B073XKQQQW) |
+| OBDLink CX | BLE 5.1 | FFF0, always encrypted | Expected, pairs on demand. Bonding is open for the first 5 minutes after the adapter powers up | 79.95 USD | [Amazon B08NFLL3NT](https://www.amazon.com/dp/B08NFLL3NT) |
+| Vgate iCar Pro BLE 4.0 | BLE, shows up as IOS-Vlink | 18F0 | Expected | 31.49 USD | [Amazon B06XGB4873](https://www.amazon.com/dp/B06XGB4873) |
+| Vgate vLinker MC+ | BLE and Classic, BLE side named vLinker MC-IOS | Vgate E7810A71 or generic | Expected | about 55 USD | [Amazon B088LW211V](https://www.amazon.com/dp/B088LW211V) |
 | Vgate vLinker FS | Classic and BLE, ships in MFi mode | Vgate E7810A71 or generic | Needs a setting: switch it to "BLE+BT" with the VgateFwUpdater app first | not found | [Amazon B0BZTXV6MZ](https://www.amazon.com/dp/B0BZTXV6MZ) |
 | Vgate vLinker MS | Classic and BLE, ships in MFi mode | Vgate E7810A71 or generic | Needs a setting: switch it to "BLE+BT" with the VgateFwUpdater app first | not found | [Amazon B0D6YQX4R8](https://www.amazon.com/dp/B0D6YQX4R8) |
 | Carista OBD2 / Carista EVO | BLE | FFF0 | Expected | not found | [Amazon B00YVHGTBM](https://www.amazon.com/dp/B00YVHGTBM), [EVO B0CM9W4MCW](https://www.amazon.com/dp/B0CM9W4MCW) |
 | PLX Kiwi 3 | BLE 4.x | generic | Expected | no current Amazon offer | [Amazon B016X3L0O2](https://www.amazon.com/dp/B016X3L0O2) |
 | FIXD | Bluetooth | unknown | Unverified. One owner reports it works with other ELM327 apps | not found, first generation discontinued | [Amazon B013RIQMEO](https://www.amazon.com/dp/B013RIQMEO) |
 | Generic "ELM327 BLE 4.0" clones | BLE | usually FFF0 or FFE0 | Expected for most. Some fake v2.1 clones skip commands | varies | [Amazon search](https://www.amazon.com/s?k=ELM327+Bluetooth+4.0+BLE+OBD2) |
-| BlueDriver Bluetooth Pro | Bluetooth | private protocol | Not expected: reported to work only with its own app | $79.95 | [Amazon search](https://www.amazon.com/s?k=BlueDriver+Bluetooth+Pro+OBDII) |
-| OBDLink MX+ | Classic Bluetooth 3.0 | SPP | Will not work, no Classic radio on the S3 | $139.95 | [Amazon B07JFRFJG6](https://www.amazon.com/dp/B07JFRFJG6) |
+| BlueDriver Bluetooth Pro | Bluetooth | private protocol | Not expected: reported to work only with its own app | 79.95 USD | [Amazon search](https://www.amazon.com/s?k=BlueDriver+Bluetooth+Pro+OBDII) |
+| OBDLink MX+ | Classic Bluetooth 3.0 | SPP | Will not work, no Classic radio on the S3 | 139.95 USD | [Amazon B07JFRFJG6](https://www.amazon.com/dp/B07JFRFJG6) |
 | OBDLink LX | Classic Bluetooth 3.0 | SPP | Will not work, no Classic radio on the S3 | not found | [Amazon search](https://www.amazon.com/s?k=OBDLink+LX+Bluetooth) |
 | KONNWEI KW902 | Classic, listed for Android and Windows only | SPP | Will not work, no Classic radio on the S3 | not found | [Amazon B073F57QT3](https://www.amazon.com/dp/B073F57QT3) |
 
-If your adapter is not listed, check it with a BLE scanner app such as nRF Connect. If it shows a service with one characteristic that notifies or indicates and one you can write, the generic fallback should find it. If its name has none of the words above and it does not advertise a known service, add its name to `OBD_BLE_NAME_PREFIXES` in `idf.py menuconfig`.
+Not listed? Check your adapter with a BLE scanner app such as nRF Connect. A service with one characteristic that notifies or indicates and one you can write is enough for the generic fallback. When the name has none of the words above and the adapter advertises no known service, add its name to `OBD_BLE_NAME_PREFIXES` in `idf.py menuconfig`.
 
 ## Sources for the adapter facts
 
