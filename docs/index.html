@@ -32,7 +32,7 @@
   "programmingLanguage": ["C", "C++", "Rust", "Python"],
   "runtimePlatform": "ESP32-S3 with ESP-IDF v6.1",
   "applicationCategory": "Automotive data logger",
-  "keywords": "OBD-II logger, OBD2 data logger, ESP32 OBD2, ESP32-S3, ELM327 BLE, Bluetooth LE OBD adapter, TinyML, edge AI, on-device inference, ESP-DL, car diagnostics, open source",
+  "keywords": "ESP32-S31, ESP-Mosaico, OBD-II logger, OBD2 data logger, ESP32 OBD2, ESP32-S3, ELM327 BLE, Bluetooth LE OBD adapter, TinyML, edge AI, on-device inference, ESP-DL, car diagnostics, open source",
   "license": "https://github.com/AlveeeRahman/OpenCarMind/blob/main/LICENSE",
   "version": "2.3.0",
   "dateModified": "2026-11-03",
@@ -70,6 +70,8 @@
      "acceptedAnswer": {"@type": "Answer", "text": "No. Drives are saved to an SD card in the car as CSV, JSON and text. Wi-Fi is optional: it sets the clock and, once you pair the board with the desktop app over USB, sends new drives to that app on your own computer every 10 seconds while the car is parked. Nothing goes to a cloud."}},
     {"@type": "Question", "name": "Which board does it run on?",
      "acceptedAnswer": {"@type": "Answer", "text": "The Waveshare ESP32-S3-LCD-1.47B, with a FAT-formatted SD card. Other ESP32-S3 boards need the pin map in main/board.h edited. The desktop app can flash the firmware with a bundled esptool, so no ESP-IDF install is needed."}},
+    {"@type": "Question", "name": "Will OpenCarMind run on the ESP32-S31 and ESP-Mosaico?",
+     "acceptedAnswer": {"@type": "Answer", "text": "That is the next port. The S31 runs different machine code from the S3, but both use ESP-IDF, and OpenCarMind already compiles and links for the S31 with only the pin map and one wakeup call changed. The model needs a fresh export for the S31. Nothing has run on a real Mosaico yet."}},
     {"@type": "Question", "name": "Is OpenCarMind free?",
      "acceptedAnswer": {"@type": "Answer", "text": "Yes. It is open source under the MIT licence, with no account and no paid tier."}}
   ]
@@ -135,6 +137,7 @@
       <a href="#how">How it works</a>
       <a href="#adapters">Adapters</a>
       <a href="#model">Model</a>
+      <a href="#next">Next board</a>
       <a href="#install">Install</a>
       <a href="#questions">Questions</a>
       <a href="https://github.com/AlveeeRahman/OpenCarMind">GitHub</a>
@@ -200,6 +203,15 @@
     <figure class="fig" style="max-width:30rem"><img src="images/workflow/edge_architecture.png" alt="Model layers: 30 by 30 input, stem to 48 channels, 6 residual depthwise-separable blocks, pooling, dense 64, manoeuvre head and estimate head" loading="lazy" width="2800" height="2920"></figure>
   </section>
 
+  <section id="next">
+    <h2>Next board: ESP-Mosaico with the ESP32-S31</h2>
+    <figure class="fig"><img src="images/mosaico-concept.png" alt="Concept: OpenCarMind on ESP-Mosaico, three 480 by 480 screens showing drive gauges, model estimates with an IMU check, and faults with the power-off line" loading="lazy" width="1600" height="713"></figure>
+    <div class="narrow">
+      <p>The author has an ESP-Mosaico on order <a href="#r13">[13]</a>. Its ESP32-S31 has two RISC-V cores at 320 MHz with a 128-bit SIMD path, Wi-Fi 6, and Bluetooth 5.4 with both LE and Classic <a href="#r15">[15]</a>. For a car logger that means a 2.16-inch 480 × 480 AMOLED touch screen, Classic adapters such as the OBDLink MX+ within reach, CAN through TWAI and a transceiver, an IMU and magnetometer, a 65 mAh battery to finish the last save, and 16 MB of PSRAM <a href="#r14">[14]</a>, <a href="#r16">[16]</a>. It has no microSD slot, so drives would go to its 128 MB NAND.</p>
+      <p>The S3 and S31 do not share machine code (Xtensa against RISC-V), but they share ESP-IDF. OpenCarMind was built for the S31 with ESP-IDF v6.1's preview target: every library compiled unchanged, and only the board pin map and one sleep-wakeup call needed changing before it linked. The model must be exported again for the S31, from the same weights. The full comparison is in the <a href="https://github.com/AlveeeRahman/OpenCarMind#next-board-esp-mosaico-with-the-esp32-s31">README</a>.</p>
+    </div>
+  </section>
+
   <section id="install" class="narrow">
     <h2>Install</h2>
     <h3>With the desktop app</h3>
@@ -219,6 +231,7 @@ idf.py -p /dev/cu.usbmodemXXXX flash</code></pre>
     <details><summary>What does the on-board AI model do?</summary><p>It classifies the last 30 seconds of driving as stopped, braking, accelerating or cruising, and estimates brake pressure, flywheel torque and fuel rate, which the OBD port does not report. It is 93 KB and runs in about 9 ms per row.</p></details>
     <details><summary>Does it need a phone, an account or the internet?</summary><p>No. Drives are saved to an SD card in the car. Wi-Fi is optional: it sets the clock and, once paired, sends new drives to the desktop app on your own computer while the car is parked. Nothing goes to a cloud.</p></details>
     <details><summary>Which board does it run on?</summary><p>The Waveshare ESP32-S3-LCD-1.47B. Other ESP32-S3 boards need the pin map in <code>main/board.h</code> edited.</p></details>
+    <details><summary>Will OpenCarMind run on the ESP32-S31 and ESP-Mosaico?</summary><p>That is the next port. The S31 runs different machine code from the S3, but both use ESP-IDF, and OpenCarMind already compiles and links for the S31 with only the pin map and one wakeup call changed. The model needs a fresh export for the S31. Nothing has run on a real Mosaico yet.</p></details>
     <details><summary>Is OpenCarMind free?</summary><p>Yes. It is open source under the MIT licence, with no account and no paid tier.</p></details>
   </section>
 
@@ -237,6 +250,10 @@ idf.py -p /dev/cu.usbmodemXXXX flash</code></pre>
       <li id="r10">B. Jacob et al., "Quantization and training of neural networks for efficient integer-arithmetic-only inference," CVPR, 2018. <a href="https://arxiv.org/abs/1712.05877">arXiv:1712.05877</a></li>
       <li id="r11">R. Krishnamoorthi, "Quantizing deep convolutional networks for efficient inference: A whitepaper," 2018. <a href="https://arxiv.org/abs/1806.08342">arXiv:1806.08342</a></li>
       <li id="r12">Espressif Systems, "ESP-PPQ: Quantization tool for ESP-DL." <a href="https://github.com/espressif/esp-ppq">github.com/espressif/esp-ppq</a></li>
+      <li id="r13">Espressif Systems, "ESP-Mosaico," esp-dev-kits documentation. <a href="https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32s31/esp-mosaico/index.html">docs.espressif.com</a></li>
+      <li id="r14">Espressif Systems, "ESP-Mosaico V1.0," ESP Board Manager guide. <a href="https://docs.espressif.com/projects/esp-board-manager/en/latest/references/boards/esp_mosaico.html">docs.espressif.com</a></li>
+      <li id="r15">Espressif Systems, "Espressif unveils ESP32-S31: a dual-core RISC-V SoC with Wi-Fi 6, Bluetooth 5.4, and advanced HMI capabilities," 26 March 2026. <a href="https://www.espressif.com/en/news/ESP32_S31_Release">espressif.com</a></li>
+      <li id="r16">Circuit Rocks, "ESP-Mosaico: ESP32-S31 board for AI-written firmware," 2026. <a href="https://blog.circuit.rocks/esp-mosaico-espressifs-59-board-where-ai-writes-the-firmware">blog.circuit.rocks</a></li>
     </ol>
   </section>
 

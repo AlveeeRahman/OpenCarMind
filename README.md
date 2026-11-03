@@ -167,9 +167,41 @@ Known security limits are listed in [SECURITY.md](SECURITY.md#known-limits).
 
 What has not been checked: other boards, any adapter other than the LELink, a power-off test during a real drive, and what the screens do on a board without a panel. The checks that need a car or a card are listed in [docs/FIELD_CHECKS.md](docs/FIELD_CHECKS.md), with empty result tables for users to fill in.
 
+## Next board: ESP-Mosaico with the ESP32-S31
+
+<p align="center"><img src="docs/images/mosaico-concept.png" width="900" alt="Concept: OpenCarMind on ESP-Mosaico, three 480 by 480 screens showing the drive gauges, the model's estimates with an IMU check, and faults with the power-off line"></p>
+
+The next board is Espressif's ESP-Mosaico [13], [14]. The author has one on order, and the concept above shows how the screens would look on its square display. It is built on the ESP32-S31 [15]: two 32-bit RISC-V cores at 320 MHz, one with a 128-bit SIMD data path, 512 KB of SRAM, Wi-Fi 6, and Bluetooth 5.4 with both LE and Classic (BR/EDR).
+
+What the Mosaico adds for a car logger:
+
+| | Waveshare ESP32-S3-LCD-1.47B (today) | ESP-Mosaico (next) |
+|---|---|---|
+| Chip | ESP32-S3, two Xtensa LX7 cores at 240 MHz | ESP32-S31, two RISC-V cores at 320 MHz, 128-bit SIMD path [15] |
+| Screen | 1.47 in, 172 × 320 LCD | 2.16 in, 480 × 480 AMOLED touch [14], [16] |
+| Bluetooth | LE only, so Classic adapters cannot connect | LE and Classic (BR/EDR) [15], so OBDLink MX+ and LX class adapters become possible |
+| CAN | TWAI on the S3, needs an external transceiver | TWAI, CAN 2.0 compatible [15], with a transceiver on the 2 × 10-pin module headers [13] |
+| Motion | 6-axis IMU on the board [17], not used by the firmware yet | BMI270 6-axis IMU and BMM150 magnetometer [14] |
+| Power cut | relies on the 10-second save | 65 mAh battery to finish the last save [16] |
+| Memory | 8 MB PSRAM, 16 MB flash [17] | 16 MB PSRAM, 16 MB NOR flash, 128 MB SPI NAND [16] |
+| Storage for drives | microSD | no microSD slot. Drives would go to the 128 MB NAND, or to a card on the expansion headers |
+| Price | about 15 EUR at one European shop [18] | 59 USD for the full kit [16] |
+
+For the model, the most useful step is motion data. An accelerometer measures braking and acceleration directly, so it can check the labels the network predicts from OBD data. The S3 board has an IMU the firmware does not read yet, and the Mosaico adds a magnetometer for heading. Bluetooth Classic matters for compatibility: the adapters that fail today because they only speak Classic SPP could work, once an SPP client is written. TWAI with a transceiver on the headers is the route to reading the CAN bus directly, for the faults OBD-II cannot see.
+
+### How the S3 and the S31 are compatible
+
+The two chips do not share machine code. The S3 uses Xtensa LX7 cores and the S31 uses RISC-V, so a binary built for one will not run on the other. Compatibility is at the source level, through ESP-IDF: FreeRTOS, NimBLE, LVGL, the Wi-Fi and TLS stacks, FAT and ESP-DL all build for both chips from the same code.
+
+This was tested, not assumed. ESP-IDF v6.1 lists `esp32s31` as a preview target, and OpenCarMind was built for it with `idf.py --preview set-target esp32s31`. All the libraries compiled unchanged. Two board-level lines needed changes. The S3 board's pin numbers do not exist on the S31 (GPIO41 is not a valid pin there), and `esp_sleep_enable_ext0_wakeup` is not available on the S31, so the power-off button has to use the ext1 wakeup. With placeholder pins and that one call changed, the firmware compiled and linked into an ESP32-S31 image of 4.27 MB. That is larger than the S3 image (3.0 MB) and slightly over the current 4 MB app partition. Both boards have 16 MB of flash, so a larger partition fits.
+
+The model also needs one step. ESP-PPQ quantises for the S3 with its first SIMD extension and for the S31 with the newer one shared with the ESP32-P4, so the shipped `.espdl` file must be exported again with the S31 as target. The trained weights stay the same. ESP-DL 3.3.14 lists `esp32s31` among its supported targets [9].
+
+Not done yet: the Mosaico pin map, a 480 × 480 screen layout in LVGL, storage on the NAND, a bigger partition table, the S31 model export, and any test on the real board.
+
 ## Planned
 
-- Support for more boards, including one without a display.
+- The ESP-Mosaico (ESP32-S31) port described above, and a build without a display.
 - Code-signed installers.
 - More regularised models, released by this project, to fit more cars.
 - A faster version built on a Jetson.
@@ -199,6 +231,18 @@ What has not been checked: other boards, any adapter other than the LELink, a po
 [11] R. Krishnamoorthi, "Quantizing deep convolutional networks for efficient inference: A whitepaper," 2018. [arXiv:1806.08342](https://arxiv.org/abs/1806.08342)
 
 [12] Espressif Systems, "ESP-PPQ: Quantization tool for ESP-DL." [github.com/espressif/esp-ppq](https://github.com/espressif/esp-ppq)
+
+[13] Espressif Systems, "ESP-Mosaico," esp-dev-kits documentation. [docs.espressif.com](https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32s31/esp-mosaico/index.html)
+
+[14] Espressif Systems, "ESP-Mosaico V1.0," ESP Board Manager guide. [docs.espressif.com](https://docs.espressif.com/projects/esp-board-manager/en/latest/references/boards/esp_mosaico.html)
+
+[15] Espressif Systems, "Espressif unveils ESP32-S31: a dual-core RISC-V SoC with Wi-Fi 6, Bluetooth 5.4, and advanced HMI capabilities," press release, 26 March 2026. [espressif.com](https://www.espressif.com/en/news/ESP32_S31_Release)
+
+[16] Circuit Rocks, "ESP-Mosaico: ESP32-S31 board for AI-written firmware," 2026. [blog.circuit.rocks](https://blog.circuit.rocks/esp-mosaico-espressifs-59-board-where-ai-writes-the-firmware)
+
+[17] Waveshare, "ESP32-S3-LCD-1.47B," product page. [waveshare.com](https://www.waveshare.com/ESP32-S3-LCD-1.47B.htm)
+
+[18] OpenELAB, "Waveshare ESP32-S3-LCD-1.47B," listing, price seen 3 November 2026. [openelab.io](https://openelab.io/pl/products/waveshare-esp32-s3-lcd-1-47b)
 
 ## Repository layout
 
