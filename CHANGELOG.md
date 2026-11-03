@@ -2,10 +2,14 @@
 
 ## Unreleased
 
-- USB settings console (`main/usb_console.c`, [docs/CONSOLE.md](docs/CONSOLE.md)): `status`, `wifi list|add|forget`, `adapter forget`, `config show|set` and `reboot` over the USB port. Changes are refused while the car link is up. USB Serial/JTAG is now the primary console.
+- Wi-Fi upload to the desktop app (`main/uploader.c`): while parked and paired, the board sends new session data every 10 seconds over TLS pinned to the app's certificate, with a token. The desktop keeps the offsets, so an upload that is cut off resumes and nothing is stored twice. Tried on the board against a stand-in receiver.
+- The clock keeps going through a power cut: every save writes the time to the card, the board resumes from it, shows it in amber, and Wi-Fi corrects it. Session JSON records the clock source.
+- Desktop app 0.3.0: a receiver for the board's uploads and a Card and Wi-Fi page that writes `wifi.csv`, `config.json` and the pairing file to the SD card.
+- mbedTLS uses PSRAM buffers and heap poisoning stays off, as in the private build. With light poisoning on, the TLS handshake failed in PSA ECDH on this board.
+
 - `docs/FIELD_CHECKS.md` and a Field check issue template list the checks that need a car, with empty result tables.
 
-- Input checks (`main/harden.c`): implausible SNTP times are refused, Wi-Fi entries are validated, over-long `wifi.csv` lines are dropped whole, NaN and infinite model inputs become missing samples, and `config.json` `rev` is range-checked. Protected management frames are used when offered, and light heap poisoning is on.
+- Input checks (`main/harden.c`): implausible SNTP times are refused, Wi-Fi entries are validated, over-long `wifi.csv` lines are dropped whole, NaN and infinite model inputs become missing samples, and `config.json` `rev` is range-checked. Protected management frames are used when offered.
 - `SECURITY.md` lists the known limits and the optional permanent hardening steps.
 
 - Adapter search matches a list of common Bluetooth LE adapter names (`OBD_BLE_NAME_PREFIXES`) instead of one prefix. Only the LELink has been tested.

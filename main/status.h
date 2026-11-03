@@ -67,6 +67,7 @@ typedef struct {
     int8_t       wifi_rssi;
     char         wifi_ssid[33];
     bool         time_synced;
+    bool         clock_estimated;     /* resumed from the last save on the card, not yet corrected over Wi-Fi */
 
     obd_values_t obd;
 

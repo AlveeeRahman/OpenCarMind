@@ -8,7 +8,7 @@ Please report privately through GitHub: open the repository's Security tab and c
 
 ## What the firmware does and does not do
 
-- Opens no listening sockets and runs no web server. The only network client is the optional clock sync: it connects to a Wi-Fi network you saved, asks a public time server (`pool.ntp.org`) for the time over SNTP, and disconnects. The firmware has no HTTP client, no TLS and no update mechanism.
+- Opens no listening sockets and runs no web server. It has two network clients, both optional: the clock sync (SNTP to `pool.ntp.org`) and the uploader, which sends session files to the desktop app you paired over TLS 1.2. The uploader trusts only the certificate that came with the pairing file, sends a token with each request, and never sends anything to the internet. The firmware has no update mechanism.
 - Starts Wi-Fi only if you saved a network, and never scans or connects while the car's OBD link is up. Turn Wi-Fi off completely with `OCM_WIFI_CLOCK_SYNC=n`.
 - Runs Wi-Fi as a station only. The soft access point and enterprise Wi-Fi are compiled out, and the stack protector is on (`sdkconfig.defaults`).
 - Keeps saved Wi-Fi passwords in the board's flash (NVS) in plain text. Anyone with physical access to the board can read them. Use a phone hotspot or a guest network, not your main network.
@@ -27,7 +27,7 @@ Everything that arrives from outside is checked before it is used. `main/harden.
 - Wi-Fi connection: the board asks for WPA2 or better whenever a password is set, and uses protected management frames when the access point offers them.
 - Model input: a value the adapter reports as not-a-number or infinity is treated as a missing sample. Any other value is limited to 100 standard deviations.
 - `config.json`: files over 4 KB are ignored, numbers must fall in their documented range, and `rev` must fit in 32 bits.
-- Build: stack protector on every function, light heap poisoning, and no soft-AP or enterprise Wi-Fi code.
+- Build: stack protector on every function, a TLS client only with renegotiation off, and no soft-AP or enterprise Wi-Fi code.
 
 These checks stop malformed or hostile data from corrupting logs, the clock or the model input. They do not make a stolen board or card safe.
 
@@ -37,7 +37,8 @@ These are accepted for this release and listed so nobody has to find them by tes
 
 - The model is not hidden. The board answers real OBD data, so anyone can feed it inputs and read the class and the three estimates. The weights ship inside the firmware image, and the image is not encrypted unless you encrypt your own board (next section).
 - The chip protections (flash encryption, Secure Boot, JTAG and ROM download off) are off in the default build. They burn eFuses, which are permanent, can leave a board unable to boot or flash, and would stop you reflashing over USB. You choose them per board.
-- Saved Wi-Fi passwords sit in flash as plain text until you turn on flash encryption and NVS encryption.
+- Saved Wi-Fi passwords and the pairing token sit in flash as plain text until you turn on flash encryption and NVS encryption. The token also sits on the SD card from the moment the desktop app writes `receiver.json` until the board imports and deletes it at its next start.
+- Anyone on your network who has the pairing token can send files to the desktop app as if they were the board. The app checks the token, the board ID format and every file name, stores files only in its own folder, and accepts at most 64 KB per request.
 - Whoever holds the board can reflash it over USB, and whoever holds the SD card can read every session.
 - The adapter is chosen by its Bluetooth name (`OBD_BLE_NAME_PREFIXES`). A device with a matching name is accepted, and ELM327-style adapters have no pairing security to check. The board reads from it and never sends mode 04.
 - The clock check rejects impossible times only. A server that lies by a few hours or days is not detected, because SNTP has no authentication.

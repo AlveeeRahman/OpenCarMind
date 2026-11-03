@@ -119,85 +119,68 @@ $("#open-card").addEventListener("click", async () => {
 const last = recall("folder");
 if (last) load(last);
 
-/* ---- Board page: the USB settings console (docs/CONSOLE.md) ---- */
-const CONFIG_RANGES = { poll_interval_ms: [50, 5000], slow_group_every: [1, 50], dtc_interval_s: [10, 3600], backlight_pct: [5, 100], theme_mode: [0, 2], day_start_hour: [0, 23], day_end_hour: [0, 23] };
-const LABELS = { firmware: "Firmware", model: "Model", uptime_s: "Running for (s)", mode: "Mode", sd: "SD card", session: "Session", clock: "Clock", wifi_networks: "Saved networks", adapter_saved: "Adapter saved", adapter_name: "Adapter" };
-let boardConfig = {};
+/* ---- Card and Wi-Fi page ---- */
+const SETTINGS = { poll_interval_ms: [50, 5000], slow_group_every: [1, 50], dtc_interval_s: [10, 3600], backlight_pct: [5, 100], theme_mode: [0, 2], day_start_hour: [0, 23], day_end_hour: [0, 23] };
+const networks = [];
+let cardFolder = null;
 
-function say(text, bad) { const m = $("#board-msg"); m.textContent = text; m.classList.toggle("bad", !!bad); }
-function busy(on) { for (const b of document.querySelectorAll("#page-board button")) b.disabled = on; }
-function kv(lines) { const o = {}; for (const l of lines) { const i = l.indexOf("="); if (i > 0) o[l.slice(0, i)] = l.slice(i + 1); } return o; }
+function msg(id, text, bad) { const m = $(id); m.textContent = text; m.classList.toggle("bad", !!bad); }
 
-async function board(...args) {
-  const port = $("#port").value;
-  if (!port) throw new Error("Choose the board's USB port first.");
-  const a = await invoke("board_command", { port, args });
-  if (!a.ok) throw new Error(a.error || "the board refused");
-  return a.lines;
+function ago(s) {
+  const d = Math.max(0, Math.round(Date.now() / 1000 - s));
+  return d < 60 ? `${d} s ago` : d < 3600 ? `${Math.round(d / 60)} min ago` : `${Math.round(d / 3600)} h ago`;
 }
 
-async function refreshPorts() {
+async function refreshReceiver() {
   try {
-    const ports = await invoke("board_ports");
-    const sel = $("#port"), keep = sel.value || recall("port");
-    sel.replaceChildren(...ports.map((p) => el("option", { value: p.name, textContent: `${p.name} (${p.label}${p.likely_board ? ", looks like the board" : ""})` })));
-    if (keep && ports.some((p) => p.name === keep)) sel.value = keep;
-    say(ports.length ? "" : "No serial ports found. Plug the board in and press Refresh.");
-  } catch (e) { say(String(e), true); }
+    const s = await invoke("receiver_status");
+    if (s.error) msg("#rx-status", `Not receiving: ${s.error}`, true);
+    else msg("#rx-status", s.running ? `Listening at ${s.address || "this computer"}, port ${s.port}. Drives are stored in ${s.folder}.` : "Starting...");
+    $("#rx-boards").replaceChildren(...s.boards.map((b) => el("li", {}, el("span", { textContent: `Board ${b.id} (firmware ${b.firmware || "?"})` }), el("span", { className: "sub", textContent: `last heard ${ago(b.last_seen_s)}` }))));
+  } catch (e) { msg("#rx-status", String(e), true); }
 }
 
-async function readBoard() {
-  busy(true); say("Reading the board...");
-  try {
-    const status = kv(await board("status"));
-    remember("port", $("#port").value);
-    $("#board-status tbody").replaceChildren(...Object.entries(status).map(([k, v]) => el("tr", {}, el("td", { textContent: LABELS[k] || k }), el("td", { textContent: v }))));
-    $("#board-status").hidden = false;
-    $("#adapter-text").textContent = status.adapter_saved === "yes" ? `The board connects to ${status.adapter_name} automatically. Forget it to pair a different adapter.` : "No adapter is saved. The board pairs with the first OBD adapter it finds.";
-    const nets = (await board("wifi", "list")).map((l) => l.replace(/^\d+ /, ""));
-    $("#wifi-list").replaceChildren(...(nets.length ? nets : [null]).map((n) => n === null ? el("li", { textContent: "No networks saved." }) :
-      el("li", {}, el("span", { textContent: n }), Object.assign(el("button", { textContent: "Forget" }), { onclick: () => change(["wifi", "forget", n], `Forgot ${n}.`) }))));
-    boardConfig = kv(await board("config", "show"));
-    $("#config tbody").replaceChildren(...Object.keys(CONFIG_RANGES).filter((k) => k in boardConfig).map((k) => {
-      const [lo, hi] = CONFIG_RANGES[k];
-      const input = el("input", { type: "number", min: lo, max: hi, step: 1, value: boardConfig[k], id: "cfg-" + k });
-      return el("tr", {}, el("td", {}, el("label", { htmlFor: "cfg-" + k, textContent: k.replaceAll("_", " ") })), el("td", {}, input), el("td", { className: "sub", textContent: `${lo} to ${hi}` }));
-    }));
-    $("#board-tools").hidden = false;
-    say(`Connected. Mode: ${status.mode}.`);
-  } catch (e) { say(String(e.message || e), true); }
-  busy(false);
+function drawNetworks() {
+  $("#net-list").replaceChildren(...networks.map(([ssid], i) => el("li", {}, el("span", { textContent: ssid }),
+    Object.assign(el("button", { textContent: "Remove" }), { onclick: () => { networks.splice(i, 1); drawNetworks(); } }))));
 }
 
-async function change(args, done) {
-  busy(true);
-  try { await board(...args); say(done); busy(false); await readBoard(); }
-  catch (e) { say(String(e.message || e), true); busy(false); }
-}
+$("#settings tbody").replaceChildren(...Object.entries(SETTINGS).map(([k, [lo, hi]]) => el("tr", {},
+  el("td", {}, el("label", { htmlFor: "set-" + k, textContent: k.replaceAll("_", " ") })),
+  el("td", {}, el("input", { type: "number", min: lo, max: hi, step: 1, id: "set-" + k, placeholder: "unchanged" })),
+  el("td", { className: "sub", textContent: `${lo} to ${hi}` }))));
 
-$("#refresh-ports").addEventListener("click", refreshPorts);
-$("#read-board").addEventListener("click", readBoard);
-$("#wifi-add").addEventListener("click", () => {
+$("#net-add").addEventListener("click", () => {
   const ssid = $("#ssid").value, pass = $("#wpass").value;
-  if (!ssid) return say("Type the network name.", true);
-  if (pass && (pass.length < 8 || pass.length > 64)) return say("A Wi-Fi password has 8 to 64 characters. Leave it empty for an open network.", true);
-  change(pass ? ["wifi", "add", ssid, pass] : ["wifi", "add", ssid], `Saved ${ssid}.`).then(() => { $("#wpass").value = ""; });
+  if (!ssid || ssid.length > 32 || ssid.includes(",")) return msg("#card-msg", "A network name has 1 to 32 characters and no comma.", true);
+  if (pass && (pass.length < 8 || pass.length > 64)) return msg("#card-msg", "A Wi-Fi password has 8 to 64 characters. Leave it empty for an open network.", true);
+  networks.push([ssid, pass]); $("#ssid").value = ""; $("#wpass").value = ""; msg("#card-msg", ""); drawNetworks();
 });
-$("#adapter-forget").addEventListener("click", () => {
-  if (confirm("Forget the saved adapter? The board will search for an adapter again.")) change(["adapter", "forget"], "Adapter forgotten. The board is searching.");
+
+$("#card-pick").addEventListener("click", async () => {
+  const picked = await open({ directory: true, multiple: false, title: "Choose the SD card" });
+  if (typeof picked === "string") { cardFolder = picked; $("#card-path").textContent = picked; }
 });
-$("#config-save").addEventListener("click", async () => {
-  busy(true);
+
+$("#card-write").addEventListener("click", async () => {
+  if (!cardFolder) return msg("#card-msg", "Choose the SD card first.", true);
+  const settings = {};
+  for (const k of Object.keys(SETTINGS)) { const v = document.getElementById("set-" + k).value; if (v !== "") settings[k] = Number(v); }
   try {
-    let n = 0;
-    for (const k of Object.keys(CONFIG_RANGES)) {
-      const input = document.getElementById("cfg-" + k);
-      if (input && input.value !== boardConfig[k]) { await board("config", "set", k, input.value); n++; }
-    }
-    if (!n) { say("Nothing changed."); busy(false); return; }
-    await board("reboot");
-    say(`Saved ${n} setting${n > 1 ? "s" : ""}. The board is restarting. Read it again in about 15 seconds.`);
-  } catch (e) { say(String(e.message || e), true); }
-  busy(false);
+    const done = await invoke("write_card", { folder: cardFolder, networks, settings, pair: $("#pair").checked });
+    msg("#card-msg", done); networks.length = 0; drawNetworks();
+  } catch (e) { msg("#card-msg", String(e), true); }
 });
-document.querySelector('.tab[data-page="board"]').addEventListener("click", () => { if (!$("#port").options.length) refreshPorts(); });
+
+/* ---- Where the Overview reads drives from ---- */
+async function refreshSources() {
+  const sel = $("#source"), keep = sel.value || recall("source");
+  const sources = await invoke("received_sources").catch(() => []);
+  sel.replaceChildren(el("option", { value: "", textContent: "Card folder" }), ...sources.map((s) => el("option", { value: s.path, textContent: `Received over Wi-Fi: board ${s.board}` })));
+  if (keep && [...sel.options].some((o) => o.value === keep)) sel.value = keep;
+  sel.hidden = sources.length === 0;
+}
+$("#source").addEventListener("change", () => { const v = $("#source").value; remember("source", v); if (v) load(v); });
+document.querySelector('.tab[data-page="board"]').addEventListener("click", refreshReceiver);
+refreshReceiver(); refreshSources();
+setInterval(() => { refreshReceiver(); refreshSources(); if (!$("#page-overview").hidden && $("#source").value && state.folder === $("#source").value) load(state.folder); }, 15000);

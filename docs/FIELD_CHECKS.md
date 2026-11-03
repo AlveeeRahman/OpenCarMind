@@ -21,16 +21,14 @@ Put the file named in each row on the SD card at `obd/`, boot the board and read
 | Another adapter | pair a different BLE OBD adapter | the board finds it, connects and logs rows | | | |
 | Adapter name not on the list | an adapter whose name is not in `OBD_BLE_NAME_PREFIXES` | it is not found until its name prefix is added | | | |
 
-## USB settings console
+## Wi-Fi upload to the desktop app
 
-Open a serial terminal on the board's USB port at 115200 baud. Parked means the OBD adapter is off or out of range.
-
-| Check | Do this | Expected | Firmware | Computer | Result |
+| Check | Do this | Expected | Firmware and app | Computer | Result |
 |---|---|---|---|---|---|
-| Status | type `status` | firmware, model, mode and card state, then `OK` | | | |
-| Add a network | `wifi add Guest "pass word 1"`, then `wifi list` | `OK`, and the list shows `Guest` | | | |
-| Reject a bad password | `wifi add Guest abc` | `ERR rejected` | | | |
-| Refused while driving | with the car connected, `wifi add Guest password1` | `ERR busy` | | | |
+| Pair and receive | write the card from the app, boot the board near your Wi-Fi with the car off | the app lists the board within a minute and the Overview shows its drives | | | |
+| Resume | close the app during an upload, open it again | the upload continues and no row is repeated | | | |
+| Firewall prompt | first connection after installing | the system asks to allow incoming connections | | | |
+| Clock after a power cut | let the clock sync, cut power, boot without Wi-Fi | the screen clock shows in amber and keeps running, and the session JSON says `resumed` | | | |
 
 ## How to report
 

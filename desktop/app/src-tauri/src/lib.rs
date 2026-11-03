@@ -1,7 +1,7 @@
 //! Reads OpenCarMind session files from a folder and returns summaries and chart data to the window.
 //! The arithmetic follows tools/ocm_report.py so the desktop app and the report tool agree.
 
-mod board;
+mod receiver;
 
 use serde::Serialize;
 use std::path::{Path, PathBuf};
@@ -168,16 +168,110 @@ fn summarise(id: &str, table: &Table, has_model_file: bool) -> Option<SessionInf
     })
 }
 
-#[tauri::command]
-async fn board_ports() -> Result<Vec<board::PortInfo>, String> {
-    board::list_ports()
+struct AppState {
+    rx: std::sync::Arc<receiver::Receiver>,
+}
+
+#[derive(Serialize)]
+pub struct Source {
+    pub board: String,
+    pub path: String,
 }
 
 #[tauri::command]
-async fn board_command(port: String, args: Vec<String>) -> Result<board::Answer, String> {
-    tauri::async_runtime::spawn_blocking(move || board::send(&port, &args))
-        .await
-        .map_err(|e| format!("board task failed: {e}"))?
+fn receiver_status(state: tauri::State<AppState>) -> receiver::Status {
+    state.rx.status()
+}
+
+/// Folders of drives received over Wi-Fi, one per board.
+#[tauri::command]
+fn received_sources(state: tauri::State<AppState>) -> Vec<Source> {
+    let mut out: Vec<Source> = std::fs::read_dir(&state.rx.dir)
+        .map(|it| {
+            it.flatten()
+                .filter(|e| e.path().join("sessions").is_dir())
+                .map(|e| Source { board: e.file_name().to_string_lossy().to_string(), path: e.path().display().to_string() })
+                .collect()
+        })
+        .unwrap_or_default();
+    out.sort_by(|a, b| a.board.cmp(&b.board));
+    out
+}
+
+const SETTINGS: [(&str, f64, f64); 7] = [
+    ("poll_interval_ms", 50.0, 5000.0),
+    ("slow_group_every", 1.0, 50.0),
+    ("dtc_interval_s", 10.0, 3600.0),
+    ("backlight_pct", 5.0, 100.0),
+    ("theme_mode", 0.0, 2.0),
+    ("day_start_hour", 0.0, 23.0),
+    ("day_end_hour", 0.0, 23.0),
+];
+
+/// Validates a Wi-Fi entry the way the board does (main/harden.c), plus no comma in the SSID because wifi.csv splits
+/// each line at the first comma.
+pub fn wifi_entry_ok(ssid: &str, password: &str) -> Result<(), String> {
+    let bad = |s: &str| s.chars().any(|c| c.is_control());
+    if ssid.is_empty() || ssid.len() > 32 || bad(ssid) || ssid.contains(',') || ssid.starts_with('#') || ssid.starts_with('-') {
+        return Err(format!("network name '{ssid}' needs 1 to 32 characters, no comma, and cannot start with # or -"));
+    }
+    if !password.is_empty() && (password.len() < 8 || password.len() > 64) || bad(password) {
+        return Err(format!("the password for '{ssid}' needs 8 to 64 characters, or leave it empty for an open network"));
+    }
+    Ok(())
+}
+
+/// Writes wifi.csv, config.json and the pairing file onto the SD card. The board reads them at its next start and
+/// deletes wifi.csv and receiver.json once it has stored them.
+#[tauri::command]
+fn write_card(
+    state: tauri::State<AppState>,
+    folder: String,
+    networks: Vec<(String, String)>,
+    settings: std::collections::HashMap<String, f64>,
+    pair: bool,
+) -> Result<String, String> {
+    let root = PathBuf::from(&folder);
+    if !root.is_dir() {
+        return Err(format!("{folder} is not a folder"));
+    }
+    let obd = if root.file_name().map_or(false, |n| n == "obd") { root.clone() } else { root.join("obd") };
+    std::fs::create_dir_all(&obd).map_err(|e| format!("cannot write to the card: {e}"))?;
+    let mut done = Vec::new();
+    if !networks.is_empty() {
+        let mut csv = String::from("# Written by the OpenCarMind desktop app. The board imports this file and deletes it.\n");
+        for (ssid, password) in &networks {
+            wifi_entry_ok(ssid, password)?;
+            csv.push_str(&format!("{ssid},{password}\n"));
+        }
+        std::fs::write(obd.join("wifi.csv"), csv).map_err(|e| e.to_string())?;
+        done.push(format!("{} Wi-Fi network(s)", networks.len()));
+    }
+    if !settings.is_empty() {
+        let mut map = serde_json::Map::new();
+        for (key, value) in &settings {
+            let (_, lo, hi) = SETTINGS.iter().find(|(k, _, _)| *k == key.as_str()).ok_or_else(|| format!("unknown setting {key}"))?;
+            if !(lo..=hi).contains(&value) || value.fract() != 0.0 {
+                return Err(format!("{key} must be a whole number from {lo} to {hi}"));
+            }
+            map.insert(key.clone(), serde_json::json!(*value as i64));
+        }
+        std::fs::write(obd.join("config.json"), serde_json::Value::Object(map).to_string()).map_err(|e| e.to_string())?;
+        done.push(format!("{} setting(s)", settings.len()));
+    }
+    if pair {
+        let host = receiver::local_address().ok_or("this computer has no network address. Connect it to the same Wi-Fi as the board")?;
+        if state.rx.token.is_empty() {
+            return Err("the receiver could not start, so there is nothing to pair with".into());
+        }
+        let j = serde_json::json!({ "host": host, "port": receiver::PORT, "token": state.rx.token, "cert": state.rx.cert_pem });
+        std::fs::write(obd.join("receiver.json"), j.to_string()).map_err(|e| e.to_string())?;
+        done.push(format!("pairing with this computer ({host}:{})", receiver::PORT));
+    }
+    if done.is_empty() {
+        return Err("nothing to write".into());
+    }
+    Ok(format!("Written to {}: {}. Put the card back in the board and switch it on.", obd.display(), done.join(", ")))
 }
 
 #[tauri::command]
@@ -239,7 +333,13 @@ pub fn run() {
     }));
     builder
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![read_sessions, session_series, board_ports, board_command])
+        .setup(|app| {
+            use tauri::Manager;
+            let dir = app.path().app_data_dir()?;
+            app.manage(AppState { rx: receiver::Receiver::start(dir) });
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![read_sessions, session_series, receiver_status, received_sources, write_card])
         .run(tauri::generate_context!())
         .expect("OpenCarMind could not start");
 }
@@ -283,6 +383,16 @@ mod tests {
         assert_eq!(s.max_speed_kph, Some(72.0));
         assert_eq!(s.row_interval_s, Some(10.0));
         assert_eq!(s.date, "2026-01-01 00:00 UTC");
+    }
+
+    #[test]
+    fn wifi_entries() {
+        assert!(wifi_entry_ok("Home", "").is_ok());
+        assert!(wifi_entry_ok("Home", "12345678").is_ok());
+        assert!(wifi_entry_ok("Home", "1234567").is_err());
+        assert!(wifi_entry_ok("Ho,me", "12345678").is_err());
+        assert!(wifi_entry_ok("-Home", "12345678").is_err());
+        assert!(wifi_entry_ok("Home", "pass\nword1").is_err());
     }
 
     #[test]

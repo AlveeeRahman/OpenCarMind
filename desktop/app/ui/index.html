@@ -14,7 +14,7 @@
 <nav class="tabs" aria-label="Pages">
   <button class="tab" data-page="overview" aria-current="page">Overview</button>
   <button class="tab" data-page="drives">Drives</button>
-  <button class="tab" data-page="board">Board</button>
+  <button class="tab" data-page="board">Card and Wi-Fi</button>
 </nav>
 <main>
   <section id="page-overview" class="page">
@@ -23,7 +23,7 @@
         <h1>Overview</h1>
         <p class="sub">Every drive read from the SD card, on this computer only. Distances are estimated from the OBD speed signal.</p>
       </div>
-      <button class="primary" id="open-card">Open card folder</button>
+      <div class="row"><select id="source" aria-label="Where the drives come from"></select><button class="primary" id="open-card">Open card folder</button></div>
     </div>
     <div id="empty" class="note">Put the SD card in this computer, then choose its <code>obd</code> folder, its <code>sessions</code> folder, or any folder of <code>sNNNNNN.csv</code> files.</div>
     <div id="error" class="note warn" hidden></div>
@@ -37,39 +37,32 @@
     <div id="detail"></div>
   </section>
   <section id="page-board" class="page" hidden>
-    <h1>Board</h1>
-    <p class="sub">Connect the board to this computer with a USB cable. Changes are refused while the car is connected, so do this parked.</p>
+    <h1>Card and Wi-Fi</h1>
+    <p class="sub">The board sends its drives to this app over your Wi-Fi every 10 seconds while the car is parked. Set it up once by writing a few files to the SD card.</p>
     <div class="panel">
-      <h2>Connection</h2>
-      <div class="row">
-        <label for="port">USB port</label>
-        <select id="port"></select>
-        <button id="refresh-ports">Refresh</button>
-        <button class="primary" id="read-board">Read the board</button>
-      </div>
-      <p id="board-msg" class="sub" role="status" aria-live="polite"></p>
-      <table id="board-status" class="kv" hidden><tbody></tbody></table>
+      <h2>Receiver on this computer</h2>
+      <p id="rx-status" class="sub" role="status" aria-live="polite">Checking...</p>
+      <ul id="rx-boards" class="list"></ul>
+      <p class="sub">Your firewall has to let this app accept connections. macOS and Windows ask the first time a board connects. Allow it for private networks only.</p>
     </div>
-    <div class="panel" id="board-tools" hidden>
+    <div class="panel">
+      <h2>Set up the card</h2>
+      <p class="sub">Take the SD card out of the board, put it in this computer and choose it here. The board reads these files when it starts, and deletes the Wi-Fi and pairing files once it has stored them.</p>
+      <div class="row"><button id="card-pick">Choose the SD card</button><span id="card-path" class="sub"></span></div>
       <h2>Wi-Fi networks</h2>
-      <p class="sub">The board uses Wi-Fi to set its clock. It joins 2.4 GHz networks only and keeps passwords in its flash as plain text, so a phone hotspot or a guest network is the better choice.</p>
-      <ul id="wifi-list" class="list"></ul>
+      <p class="sub">2.4 GHz only. The board keeps passwords in its flash as plain text, so a phone hotspot or a guest network is the better choice.</p>
+      <ul id="net-list" class="list"></ul>
       <div class="row">
         <label for="ssid">Network name</label><input id="ssid" maxlength="32" autocomplete="off">
         <label for="wpass">Password</label><input id="wpass" type="password" maxlength="64" autocomplete="new-password">
-        <button id="wifi-add">Add network</button>
+        <button id="net-add">Add</button>
       </div>
-      <h2>Adapter</h2>
-      <p class="sub" id="adapter-text"></p>
-      <button id="adapter-forget">Forget the saved adapter</button>
       <h2>Settings</h2>
-      <p class="sub">The board applies new settings after a restart.</p>
-      <table id="config" class="kv"><tbody></tbody></table>
-      <div class="row"><button class="primary" id="config-save">Save and restart the board</button></div>
-    </div>
-    <div class="panel">
-      <h2>Over Wi-Fi</h2>
-      <p>Reading the card over your home Wi-Fi needs the pairing service, which is not built yet. Until then, take the card out of the board and open it on the Overview page.</p>
+      <p class="sub">Leave a field empty to keep the board's current value.</p>
+      <table id="settings" class="kv"><tbody></tbody></table>
+      <div class="row"><input type="checkbox" id="pair" checked><label for="pair">Pair the board with this computer, so it sends its drives here</label></div>
+      <div class="row"><button class="primary" id="card-write">Write to the card</button></div>
+      <p id="card-msg" class="sub" role="status" aria-live="polite"></p>
     </div>
   </section>
 </main>

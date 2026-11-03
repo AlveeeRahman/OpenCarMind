@@ -51,4 +51,4 @@ Checked: `ocm_report.py` on the two replay sessions in `samples/replay` (it runs
 
 ## Automatic upload over Wi-Fi
 
-Today there is none, on purpose: the data path is the SD card. A push from the board to a receiver on your home network is possible, but it needs new firmware (a Wi-Fi client, a resume-after-failure queue and a shared secret) and a decision about security on your network. It is not built.
+Pair the board with the desktop app ([desktop/README.md](../desktop/README.md)). The board then sends new data to the app over TLS every 10 seconds while parked, and the app stores it per board in its data folder. Point `ocm_report.py` at that folder to feed Dashy: `python3 tools/ocm_report.py <app data>/received/<board>/sessions dashboard/site --watch 30`.

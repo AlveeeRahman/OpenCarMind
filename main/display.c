@@ -175,7 +175,7 @@ static void theme_tick(const app_status_t *st)
     const remote_config_t *rc = remote_config_get();
     const theme_t *want = &THEME_DARK;
     if (rc->theme_mode == 2) want = &THEME_LIGHT;
-    else if (rc->theme_mode == 0 && st->time_synced) {
+    else if (rc->theme_mode == 0 && (st->time_synced || st->clock_estimated)) {
         time_t now = time(NULL);
         struct tm tm;
         localtime_r(&now, &tm);
@@ -899,12 +899,12 @@ static void refresh_cb(lv_timer_t *t)
     lv_obj_set_style_text_color(lbl_wifi, lv_color_hex(st.wifi == WIFI_ST_CONNECTED ? C_OK :
                                                        st.wifi == WIFI_ST_CONNECTING ? C_WARN : C_MUTED), 0);
 
-    if (st.time_synced) {
+    if (st.time_synced || st.clock_estimated) {
         time_t now = time(NULL);
         struct tm tm;
         localtime_r(&now, &tm);
         lv_label_set_text_fmt(lbl_clock, "%02d:%02d", tm.tm_hour, tm.tm_min);
-        lv_obj_set_style_text_color(lbl_clock, lv_color_hex(C_TEXT), 0);
+        lv_obj_set_style_text_color(lbl_clock, lv_color_hex(st.time_synced ? C_TEXT : C_WARN), 0);   /* amber: estimated */
     } else {
         lv_label_set_text(lbl_clock, "--:--");            /* no clock until the first Wi-Fi time sync */
         lv_obj_set_style_text_color(lbl_clock, lv_color_hex(C_MUTED), 0);

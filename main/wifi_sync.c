@@ -25,6 +25,7 @@
 #include "esp_attr.h"
 #include "wifi_creds.h"
 #include "harden.h"
+#include "uploader.h"
 #include "events.h"
 
 static const char *TAG = "sync";
@@ -124,7 +125,7 @@ static bool sync_clock(void)
         int64_t epoch_ms = (int64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000;
         int64_t up_ms = esp_timer_get_time() / 1000;
         sdlog_meta_set_time_sync(epoch_ms, up_ms);
-        STATUS_LOCK(); g_status.time_synced = true; STATUS_UNLOCK();
+        STATUS_LOCK(); g_status.time_synced = true; g_status.clock_estimated = false; STATUS_UNLOCK();
         ESP_LOGI(TAG, "clock synced, epoch %lld", (long long)tv.tv_sec);
         sys_event(EV_INFO, "Clock synced over Wi-Fi");
         ok = true;
@@ -185,7 +186,19 @@ static bool sync_once(void)
     sys_event(EV_INFO, "Wi-Fi connected: %s", net->ssid);
     bool ok = false;
     for (int attempt = 0; attempt < 3 && !ok && s_connected && !driving(); attempt++) ok = sync_clock();
-    if (ok) stay_connected();
+    if (uploader_configured()) {
+        /* Paired with the desktop app: stay on Wi-Fi while parked and send new data every 10 s */
+        int64_t last_resync_ms = esp_timer_get_time() / 1000;
+        while (s_connected && !driving()) {
+            uploader_pass();
+            if (esp_timer_get_time() / 1000 - last_resync_ms > (int64_t)CONFIG_SYNC_RESYNC_INTERVAL_H * 3600000LL) {
+                ok = sync_clock() || ok;
+                last_resync_ms = esp_timer_get_time() / 1000;
+            }
+            EventBits_t w = xEventGroupWaitBits(s_ev, LOST_BIT, pdTRUE, pdFALSE, pdMS_TO_TICKS(10000));
+            if (w & LOST_BIT) { sys_event(EV_WARN, "Wi-Fi lost (reason %d)", s_last_reason); break; }
+        }
+    } else if (ok) stay_connected();
     esp_wifi_disconnect();
     vTaskDelay(pdMS_TO_TICKS(500));
     set_wifi_state(WIFI_ST_IDLE);
@@ -196,12 +209,13 @@ static void sync_task(void *arg)
 {
     /* A clock kept by the RTC through a software reset or deep sleep counts as set: the first drift correction is
        then a full resync interval away instead of a scan every few seconds. */
-    uint32_t wait_s = clock_is_set() ? CONFIG_SYNC_RESYNC_INTERVAL_H * 3600U : 0;
+    uint32_t wait_s = clock_is_set() && !uploader_configured() ? CONFIG_SYNC_RESYNC_INTERVAL_H * 3600U : 0;
     for (;;) {
         if (wait_s) vTaskDelay(pdMS_TO_TICKS(wait_s * 1000U));
         while (driving()) vTaskDelay(pdMS_TO_TICKS(2000));   /* never scan or connect while the car is being logged */
         bool ok = sync_once();
-        if (ok) wait_s = CONFIG_SYNC_RESYNC_INTERVAL_H * 3600U;
+        if (uploader_configured()) wait_s = CONFIG_SYNC_SCAN_INTERVAL_S;   /* paired: get back on Wi-Fi soon after parking */
+        else if (ok) wait_s = CONFIG_SYNC_RESYNC_INTERVAL_H * 3600U;
         else    wait_s = clock_is_set() ? 900U : CONFIG_SYNC_SCAN_INTERVAL_S;   /* due for drift, network not in reach: ask again in 15 min */
     }
 }

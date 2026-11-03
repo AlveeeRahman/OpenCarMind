@@ -22,7 +22,7 @@ A new session starts at every power cycle. Everything is flushed to the card at 
 
 ## Wi-Fi networks
 
-Wi-Fi only sets the clock. Put a file called `wifi.csv` in `/sdcard/obd/` with one network per line:
+Wi-Fi sets the clock and, once the board is paired with the desktop app, carries new drive data to it. The desktop app can write these files for you. To do it by hand, put a file called `wifi.csv` in `/sdcard/obd/` with one network per line:
 
 ```
 My Home Wifi,my-wifi-password
@@ -32,6 +32,14 @@ My Home Wifi,my-wifi-password
 A line that starts with a minus sign forgets that network. The board imports the file at boot and then deletes it. It keeps up to 8 networks in flash (NVS), and the passwords are stored there in plain text. The ESP32-S3 has a 2.4 GHz radio only. If no network is known, the board writes `wifi.example.csv` as a template, and Wi-Fi stays off.
 
 The board connects only while parked. It scans, connects, reads the time, stays connected for 30 seconds, disconnects, and tries again every 6 hours. Until the clock has been set it scans every 20 seconds. It never scans or connects while the OBD link is up. All of these times are settings in the Wi-Fi clock sync menu.
+
+## The clock
+
+The board has no battery for its clock. Every save writes the time to `/sdcard/obd/clock.txt`. After a power cut the clock resumes from that file, behind by the time the car was off, and the screen shows it in amber until the next Wi-Fi sync corrects it. Each session JSON says where its time came from in the `clock` field: `sntp` (set over Wi-Fi), `rtc` (kept through a reset), `resumed` (from the card, an estimate) or `unset`. Rows also carry `uptime_ms`, and `time_sync` in the JSON maps uptime to real time, so a session can be re-timed once the clock was corrected.
+
+## Pairing with the desktop app
+
+The desktop app writes `/sdcard/obd/receiver.json` with its address, port, certificate and a token. The board stores them in flash at its next start and deletes the file. While paired, the board stays on Wi-Fi when parked and sends new data every 10 seconds. Write a new pairing file to pair with another computer.
 
 ## config.json
 

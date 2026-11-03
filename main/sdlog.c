@@ -19,6 +19,7 @@
 #include "version.h"
 #include "esp_attr.h"
 #include "events.h"
+#include "harden.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/idf_additions.h"
@@ -58,6 +59,48 @@ static int64_t  s_last_sync_ms;        /* uptime of the last full flush to the c
 static WORD_ALIGNED_ATTR char s_csv_iobuf[2048];   /* internal DRAM, DMA-capable on the S3 */
 
 /* ---------- helpers ---------- */
+/* The board has no battery-backed clock. Every save writes the time to the card, so after a power cut the clock resumes
+   from the last save (behind by however long the car was off) until the next Wi-Fi sync corrects it. */
+#define CLOCK_PATH SDLOG_DIR "/clock.txt"
+static const char *s_clock_source = "unset";   /* unset, rtc (kept through a reset), resumed (from the card), sntp */
+
+static void save_clock_locked(void)
+{
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    if (!harden_epoch_plausible(tv.tv_sec)) return;
+    FILE *f = fopen(CLOCK_PATH, "w");
+    if (!f) return;
+    fprintf(f, "%lld\n", (long long)tv.tv_sec);
+    fflush(f);
+    fsync(fileno(f));
+    fclose(f);
+}
+
+static void restore_clock(void)
+{
+    struct timeval now;
+    gettimeofday(&now, NULL);
+    if (harden_epoch_plausible(now.tv_sec)) { s_clock_source = "rtc"; return; }
+    FILE *f = fopen(CLOCK_PATH, "r");
+    if (!f) return;
+    long long saved = 0;
+    int n = fscanf(f, "%lld", &saved);
+    fclose(f);
+    if (n != 1 || !harden_epoch_plausible(saved)) return;
+    struct timeval tv = { .tv_sec = (time_t)saved, .tv_usec = 0 };
+    settimeofday(&tv, NULL);
+    s_clock_source = "resumed";
+    STATUS_LOCK(); g_status.clock_estimated = true; STATUS_UNLOCK();
+    sys_event(EV_INFO, "Clock resumed from the card, Wi-Fi will correct it");
+}
+
+static void set_meta_string(cJSON *obj, const char *key, const char *value)
+{
+    if (cJSON_GetObjectItem(obj, key)) cJSON_ReplaceItemInObject(obj, key, cJSON_CreateString(value));
+    else cJSON_AddStringToObject(obj, key, value);
+}
+
 static int64_t now_epoch_ms(void)
 {
     struct timeval tv;
@@ -85,6 +128,7 @@ static void meta_flush_locked(void)
     if (!s_meta || !s_ok) return;
     cJSON_ReplaceItemInObject(s_meta, "rows", cJSON_CreateNumber(s_rows));
     cJSON_ReplaceItemInObject(s_meta, "meta_rev", cJSON_CreateNumber(++s_meta_rev));
+    set_meta_string(s_meta, "clock", s_clock_source);
     char *txt = cJSON_PrintUnformatted(s_meta);
     if (!txt) return;
     char tmp[104];
@@ -110,6 +154,7 @@ static void sync_all_locked(void)
     if (s_pat) { fflush(s_pat); fsync(fileno(s_pat)); s_pat_synced = s_pat_bytes; }
     if (s_ml)  { fflush(s_ml);  fsync(fileno(s_ml));  s_ml_synced = s_ml_bytes; }
     meta_flush_locked();                       /* keeps the JSON row count current */
+    save_clock_locked();
     s_last_sync_ms = esp_timer_get_time() / 1000;
 }
 
@@ -173,6 +218,7 @@ esp_err_t sdlog_init(void)
 
     mkdir(SDLOG_DIR, 0775);
     mkdir(SDLOG_SESSIONS_DIR, 0775);
+    restore_clock();                  /* before the session opens, so its start time is not 1970 */
 
     /* Remove sessions from earlier boots that never logged a row (header-only CSV, no raw file). */
     {
@@ -450,6 +496,7 @@ void sdlog_meta_set_time_sync(int64_t epoch_ms, int64_t uptime_ms)
 {
     if (!s_meta) return;
     xSemaphoreTake(s_lock, portMAX_DELAY);
+    s_clock_source = "sntp";
     cJSON *ts = cJSON_GetObjectItem(s_meta, "time_sync");
     cJSON_ReplaceItemInObject(ts, "epoch_ms", cJSON_CreateNumber((double)epoch_ms));
     cJSON_ReplaceItemInObject(ts, "uptime_ms", cJSON_CreateNumber((double)uptime_ms));

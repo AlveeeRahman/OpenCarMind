@@ -29,7 +29,7 @@ Version 2.0.1. Licence: MIT.
 
 Most car loggers stream your driving to a server and do the thinking there. OpenCarMind does the thinking on the board. The model is 93 KB, runs in a few milliseconds and needs no network. Your data is plain CSV, JSON and text on a card you hold. Nothing leaves the car unless you copy it yourself.
 
-Wi-Fi is the only radio besides Bluetooth. It reads the time from a public time server, so your sessions carry real timestamps. You can compile it out with one setting (`OCM_WIFI_CLOCK_SYNC`).
+Wi-Fi is the only radio besides Bluetooth, and it is optional. It sets the clock from a public time server, and once you pair the board with the desktop app it sends new drive data to that app every 10 seconds while the car is parked at home. Nothing goes to a cloud. You can compile Wi-Fi out with one setting (`OCM_WIFI_CLOCK_SYNC`).
 
 ## How it works
 
@@ -90,7 +90,7 @@ python3 tools/ocm_report.py /Volumes/<card name>/obd dashboard/site
 cd dashboard && docker compose up -d      # Dashy on http://localhost:4000
 ```
 
-The board never talks to Dashy. The data moves by SD card. [docs/DASHBOARD.md](docs/DASHBOARD.md) has the setup, the details of how the data reaches Dashy, and what has and has not been tested.
+The board never talks to Dashy. The data reaches your computer by SD card or through the desktop app. [docs/DASHBOARD.md](docs/DASHBOARD.md) has the setup, the details of how the data reaches Dashy, and what has and has not been tested.
 
 ## Hardware
 
@@ -160,7 +160,7 @@ What has not been checked: other boards, other adapters, a power-off test during
 | `tests/host/` | unit tests that run on a computer |
 | `tools/` | `ocm_report.py` (SD card sessions to reports) and the generator for `main/ml_params.h` |
 | `dashboard/` | Docker Compose file and Dashy configuration |
-| `docs/` | configuration, the USB console, model notes, field checks, screen designs and figures |
+| `docs/` | configuration, model notes, field checks, screen designs and figures |
 
 ## Credits and licence
 

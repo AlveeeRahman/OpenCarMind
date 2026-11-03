@@ -1,8 +1,8 @@
 # Desktop app
 
-Status: preview, version 0.2.0. It opens the SD card, shows your drives and charts them, and manages the board over a USB cable: Wi-Fi networks, the saved adapter and the settings.
+Status: preview, version 0.3.0. The board sends its drives to the app over your Wi-Fi every 10 seconds while the car is parked, and the app shows them. It can also open an SD card directly.
 
-Built with Rust and Tauri for Windows, macOS (Apple silicon and Intel) and Linux. Reading the card over Wi-Fi needs a pairing service in the firmware, which is not built yet. The Board page says so.
+Built with Rust and Tauri for Windows, macOS (Apple silicon and Intel) and Linux. All the setup lives in the app: it writes the board's Wi-Fi networks, settings and pairing file to the SD card. The board itself has no console and accepts no incoming connections.
 
 ## Get the installers
 
@@ -19,13 +19,20 @@ Each build runs the Rust unit tests on its own system first. They check the sess
 
 ## Use it
 
-Put the SD card in your computer, choose Open card folder, and pick the card's `obd` folder, its `sessions` folder, or any folder of `sNNNNNN.csv` files. The app reads files only and never writes to the card. The folder you chose is remembered for next time.
+1. Open the Card and Wi-Fi page. The receiver starts with the app and shows the address and port it listens on (8787).
+2. Take the SD card out of the board, put it in the computer, choose it, add your Wi-Fi network, keep "Pair the board with this computer" ticked, and choose Write to the card.
+3. Put the card back and switch the board on. It stores the Wi-Fi and pairing details, deletes those two files from the card, and from then on sends new data every 10 seconds whenever the car is parked within reach of that network.
+4. On the Overview page, pick "Received over Wi-Fi" in the source list. The page refreshes itself while new data arrives.
 
-## Board page
+To read a card without Wi-Fi, choose Open card folder and pick the card's `obd` folder, its `sessions` folder, or any folder of `sNNNNNN.csv` files.
 
-Plug the board in, open the Board page, pick the USB port (the app marks the one that looks like the board) and choose Read the board. The app talks to the board's settings console ([docs/CONSOLE.md](../docs/CONSOLE.md)). It can list, add and forget Wi-Fi networks, forget the saved adapter, and change the settings, which the board applies after a restart. The board refuses changes while the car is connected.
+## How the Wi-Fi link works
 
-The app opens the port with DTR on. Opening it with DTR off resets the ESP32-S3, which was measured on the Waveshare board. On Linux you need to be in the `dialout` group (`uucp` on Arch): run `sudo usermod -aG dialout $USER`, then log out and in. macOS needs no driver. On Windows the board should appear as a COM port without a driver, but that has not been checked.
+The board is the client and the app is the server, the same shape as the private build's upload to Azure. The app makes a self-signed certificate and a random token on first run and keeps them in its data folder. Pairing copies the certificate and the token to the board through the SD card, so they never cross the network in the clear. The board then trusts only that certificate (TLS 1.2), sends the token with every request, and appends each session file from the point the app already has. A pass that is cut off resumes where it stopped, and no byte is stored twice. Details and the protocol are in `main/uploader.h`.
+
+Your firewall must let the app accept connections on port 8787. macOS and Windows ask the first time a board connects: allow it for private networks only. On Linux, open the port if a firewall is active, for example `sudo ufw allow from 192.168.0.0/16 to any port 8787 proto tcp`.
+
+If the computer's address changes, pair again. A board paired with another computer, or with a reinstalled app, is refused until it is paired again.
 
 ## Window behaviour
 
@@ -57,11 +64,11 @@ The health screen uses six states so that a missing signal is never shown as a h
 
 ## Window management and tiling
 
-One Tauri codebase builds the Windows, macOS and Linux apps, so the same rules apply to all three. These are requirements. Once the app exists, CI will test what it can.
+One Tauri codebase builds the Windows, macOS and Linux apps, so the same rules apply to all three. The app follows these rules.
 
 - Use the operating system's own window frame, with no custom title bar. Windows snap layouts, macOS full screen and split view, and Linux tiling window managers (i3, sway, Hyprland, and the tiling modes of GNOME and KDE) then treat it as an ordinary window.
 - Make it resizable with a small minimum size (480 by 360 pixels), and reflow the layout. Below about 900 pixels wide the sidebar becomes tabs, the cards wrap two by two and the tables become lists.
-- Remember the window's size and whether it was maximised, but not its position. Wayland clients cannot place their own windows, and a tiling window manager decides position anyway.
+- Do not remember the window's position. Wayland clients cannot place their own windows, and a tiling window manager decides position anyway.
 - Give the app a stable identifier so tiling rules can target it.
 - Closing the window quits the app. The tray icon is optional, because some Linux desktops have no tray and a hidden window would be lost there.
 - Allow one instance. Starting the app again, or running a command that needs the window, focuses the one that is open.
@@ -69,22 +76,8 @@ One Tauri codebase builds the Windows, macOS and Linux apps, so the same rules a
 
 Test plan: CI starts the Linux build under a virtual display with a tiling window manager and checks that it opens, fills its tile and resizes down to the minimum. On the macOS and Windows runners it checks that the app builds and starts. Tiling on every desktop still needs a person with that desktop, so this page will list which combinations have been checked.
 
-## USB serial and drivers
-
-The dashboard talks to the board over Wi-Fi. Changes to the board itself use the USB cable: flashing, choosing the Bluetooth adapter, and entering Wi-Fi credentials.
-
-What each system needs, from Espressif's documentation and from this board on macOS:
-
-| System | Serial over the board's built-in USB | JTAG and debugging | Boards with a USB-to-UART chip |
-|---|---|---|---|
-| macOS | No driver needed (checked with this board) | Works with no extra steps according to Espressif | Drivers are normally part of the OS. If no `/dev/cu.*` port appears, install the vendor driver |
-| Windows | Not verified. Espressif's page on it does not say | Install Espressif's driver with `eim install-drivers` or `idf-env driver install --espressif` | Normally part of Windows |
-| Linux | Not verified. The user must be in the `dialout` group (`uucp` on Arch) and log in again | Needs Espressif's `60-openocd.rules` udev rule | Normally part of the kernel, with the same group rule |
-
-The app will include a first-run USB check. It lists the serial devices, says what is missing and offers to fix it with an explicit prompt. Windows gets Espressif's own driver installer, downloaded at that moment so the driver is current, with its checksum verified. Linux gets the udev rule and the serial group, added with `pkexec`. macOS only gets a pointer to the vendor driver, and only if a port is missing. It never installs a driver the connected device does not need. The Windows installer offers the same step as an optional page, the Linux `.deb` installs the udev rule, and the AppImage uses the first-run check.
-
-Flashing uses `espflash` or `esptool`. The full ESP-IDF is only needed to rebuild the firmware, not to flash a prebuilt release.
-
 ## Not built yet
 
-The pairing and Wi-Fi management need a TLS service on the board, which the firmware does not have. Until then, the supported way to see your drives is the report tool and Dashy described in [docs/DASHBOARD.md](../docs/DASHBOARD.md).
+- Flashing firmware from the app. Use `esptool` with the release files, as described in the main README.
+- Code signing for the installers.
+- Finding the computer again when its address changes. Today that needs a new pairing.
