@@ -1,6 +1,6 @@
 [package]
 name = "opencarmind-desktop"
-version = "2.2.0"
+version = "2.3.0"
 description = "Reads OpenCarMind sessions from the SD card and shows them in a dashboard."
 license = "MIT"
 edition = "2021"

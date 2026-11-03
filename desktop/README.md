@@ -1,6 +1,6 @@
 # Desktop app
 
-Status: preview, version 2.2.0, released together with the firmware of the same number. The board sends its drives to the app over your Wi-Fi every 10 seconds while the car is parked, and the app shows them. It can also open an SD card directly.
+Status: preview, version 2.3.0, released together with the firmware of the same number. The board sends its drives to the app over your Wi-Fi every 10 seconds while the car is parked, and the app shows them. It can also open an SD card directly.
 
 Built with Rust and Tauri for Windows, macOS (Apple silicon and Intel) and Linux. All the setup lives in the app: it writes the board's Wi-Fi networks, settings and pairing file to the SD card. The board itself has no console and accepts no incoming connections.
 
