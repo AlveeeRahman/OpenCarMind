@@ -14,7 +14,7 @@
 <nav class="tabs" aria-label="Pages">
   <button class="tab" data-page="overview" aria-current="page">Overview</button>
   <button class="tab" data-page="drives">Drives</button>
-  <button class="tab" data-page="board">Card and Wi-Fi</button>
+  <button class="tab" data-page="board">Board</button>
 </nav>
 <main>
   <section id="page-overview" class="page">
@@ -37,33 +37,61 @@
     <div id="detail"></div>
   </section>
   <section id="page-board" class="page" hidden>
-    <h1>Card and Wi-Fi</h1>
-    <p class="sub">The board sends its drives to this app over your Wi-Fi every 10 seconds while the car is parked. Set it up once by writing a few files to the SD card.</p>
+    <h1>Board</h1>
+    <p class="sub">Connect the board to this computer with its USB cable. Everything is set up from here, so the SD card stays in the board. Do it with the car parked: the board refuses changes while it is talking to the car.</p>
+    <div class="panel">
+      <h2>Connect</h2>
+      <div class="row">
+        <label for="port">USB port</label><select id="port"></select>
+        <button id="refresh-ports">Refresh</button>
+        <button class="primary" id="connect">Connect</button>
+      </div>
+      <p id="board-msg" class="sub" role="status" aria-live="polite"></p>
+      <div id="pair-box" hidden>
+        <h2>Pair this board with this app</h2>
+        <p class="sub">The board shows a 6-digit code on its screen for 2 minutes. Typing it here proves you have that board in front of you. You only do this once per board.</p>
+        <div class="row">
+          <button id="show-code">Show a code on the board</button>
+          <label for="code">Code</label><input id="code" inputmode="numeric" maxlength="6" size="8" autocomplete="one-time-code">
+          <button class="primary" id="pair">Pair</button>
+        </div>
+      </div>
+    </div>
+    <div id="board-tools" hidden>
+      <div class="panel">
+        <h2>Wi-Fi networks on the board</h2>
+        <p class="sub">The board uses Wi-Fi to set its clock and to send its drives to this app. It joins 2.4 GHz networks only and keeps passwords in its flash as plain text, so a phone hotspot or a guest network is the better choice.</p>
+        <ul id="wifi-list" class="list"></ul>
+        <div class="row">
+          <label for="ssid">Network name</label><input id="ssid" maxlength="32" autocomplete="off">
+          <label for="wpass">Password</label><input id="wpass" type="password" maxlength="64" autocomplete="new-password">
+          <button id="wifi-add">Add to the board</button>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>Time zone and settings</h2>
+        <div class="row"><label for="tz">Time zone</label><input id="tz" maxlength="47" size="28" autocomplete="off"><span class="sub">filled in from this computer. The board uses it for its clock and for light mode from 06:00 to 17:00</span></div>
+        <p class="sub">Leave a setting empty to keep the board's value. The board applies settings after a restart.</p>
+        <table id="settings" class="kv"><tbody></tbody></table>
+        <div class="row"><button class="primary" id="settings-save">Send to the board</button></div>
+      </div>
+      <div class="panel">
+        <h2>Drives on the card</h2>
+        <p class="sub">Copies new drives from the board's SD card over the cable into the same folder the Wi-Fi upload uses. About 15 KB/s, so a long drive takes a few minutes.</p>
+        <div class="row"><button class="primary" id="import">Import drives over USB</button><span id="import-progress" class="sub"></span></div>
+      </div>
+      <div class="panel">
+        <h2>Firmware</h2>
+        <p id="fw-text" class="sub"></p>
+        <div class="row"><button id="flash">Flash the firmware</button></div>
+        <pre id="flash-log" class="sub" hidden></pre>
+      </div>
+    </div>
     <div class="panel">
       <h2>Receiver on this computer</h2>
       <p id="rx-status" class="sub" role="status" aria-live="polite">Checking...</p>
       <ul id="rx-boards" class="list"></ul>
-      <p class="sub">Your firewall has to let this app accept connections. macOS and Windows ask the first time a board connects. Allow it for private networks only.</p>
-    </div>
-    <div class="panel">
-      <h2>Set up the card</h2>
-      <p class="sub">Take the SD card out of the board, put it in this computer and choose it here. The board reads these files when it starts, and deletes the Wi-Fi and pairing files once it has stored them.</p>
-      <div class="row"><button id="card-pick">Choose the SD card</button><span id="card-path" class="sub"></span></div>
-      <h2>Wi-Fi networks</h2>
-      <p class="sub">2.4 GHz only. The board keeps passwords in its flash as plain text, so a phone hotspot or a guest network is the better choice.</p>
-      <ul id="net-list" class="list"></ul>
-      <div class="row">
-        <label for="ssid">Network name</label><input id="ssid" maxlength="32" autocomplete="off">
-        <label for="wpass">Password</label><input id="wpass" type="password" maxlength="64" autocomplete="new-password">
-        <button id="net-add">Add</button>
-      </div>
-      <h2>Settings</h2>
-      <p class="sub">Leave a field empty to keep the board's current value.</p>
-      <div class="row"><label for="tz">Time zone</label><input id="tz" maxlength="47" size="28" autocomplete="off"><span class="sub">filled in from this computer, in POSIX form. The board uses it for its clock and for light mode from 06:00 to 17:00</span></div>
-      <table id="settings" class="kv"><tbody></tbody></table>
-      <div class="row"><input type="checkbox" id="pair" checked><label for="pair">Pair the board with this computer, so it sends its drives here</label></div>
-      <div class="row"><button class="primary" id="card-write">Write to the card</button></div>
-      <p id="card-msg" class="sub" role="status" aria-live="polite"></p>
+      <p class="sub">Your firewall has to let this app accept connections on port 8787 from your home network.</p>
     </div>
   </section>
 </main>

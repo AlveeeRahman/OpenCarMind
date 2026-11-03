@@ -119,17 +119,95 @@ $("#open-card").addEventListener("click", async () => {
 const last = recall("folder");
 if (last) load(last);
 
-/* ---- Card and Wi-Fi page ---- */
+/* ---- Board page: the authenticated USB door (main/usb_door.h). The app does the work, the board stores what it gets. ---- */
 const SETTINGS = { poll_interval_ms: [50, 5000], slow_group_every: [1, 50], dtc_interval_s: [10, 3600], backlight_pct: [5, 100], theme_mode: [0, 2], day_start_hour: [0, 23], day_end_hour: [0, 23] };
-const networks = [];
-let cardFolder = null;
+let current = null;
 
 function msg(id, text, bad) { const m = $(id); m.textContent = text; m.classList.toggle("bad", !!bad); }
-
+function busy(on) { for (const b of document.querySelectorAll("#page-board button")) b.disabled = on; }
+function port() { return $("#port").value; }
 function ago(s) {
   const d = Math.max(0, Math.round(Date.now() / 1000 - s));
   return d < 60 ? `${d} s ago` : d < 3600 ? `${Math.round(d / 60)} min ago` : `${Math.round(d / 3600)} h ago`;
 }
+async function step(text, fn) {
+  busy(true); msg("#board-msg", text);
+  try { return await fn(); } catch (e) { msg("#board-msg", String(e), true); return undefined; } finally { busy(false); }
+}
+
+async function refreshPorts() {
+  try {
+    const ports = await invoke("board_ports");
+    const sel = $("#port"), keep = sel.value || recall("port");
+    sel.replaceChildren(...ports.map((p) => el("option", { value: p.name, textContent: `${p.name} (${p.label}${p.likely_board ? ", looks like the board" : ""})` })));
+    if (keep && ports.some((p) => p.name === keep)) sel.value = keep;
+    if (!ports.length) msg("#board-msg", "No serial ports found. Plug the board in and press Refresh.");
+  } catch (e) { msg("#board-msg", String(e), true); }
+}
+
+async function loadWifi() {
+  const nets = await invoke("board_wifi_list", { port: port() });
+  $("#wifi-list").replaceChildren(...(nets.length ? nets.map((n) => el("li", {}, el("span", { textContent: n }),
+    Object.assign(el("button", { textContent: "Forget" }), { onclick: () => step(`Forgetting ${n}...`, async () => { await invoke("board_wifi_forget", { port: port(), ssid: n }); await loadWifi(); msg("#board-msg", `Forgot ${n}.`); }) }))) : [el("li", { textContent: "No networks saved yet." })]));
+}
+
+function showTools(on) { $("#board-tools").hidden = !on; $("#pair-box").hidden = on; }
+
+async function connect() {
+  const h = await step("Connecting...", () => invoke("board_connect", { port: port() }));
+  if (!h) return;
+  current = h; remember("port", port());
+  if (h.authed) {
+    msg("#board-msg", `Connected to board ${h.board}, firmware ${h.firmware}, paired with this app.`);
+    showTools(true); await step("Reading the board's networks...", loadWifi);
+    msg("#board-msg", `Connected to board ${h.board}, firmware ${h.firmware}, paired with this app.`);
+  } else {
+    showTools(false); $("#pair-box").hidden = false;
+    msg("#board-msg", `Board ${h.board}, firmware ${h.firmware}. ${h.paired ? "It is paired with another app or an older install." : "It is not paired yet."} Pair it below.`);
+  }
+}
+
+$("#refresh-ports").addEventListener("click", refreshPorts);
+$("#connect").addEventListener("click", connect);
+$("#show-code").addEventListener("click", () => step("Asking the board for a code...", async () => { await invoke("board_request_code", { port: port() }); msg("#board-msg", "Look at the board's screen and type the code."); $("#code").focus(); }));
+$("#pair").addEventListener("click", () => step("Pairing...", async () => {
+  const done = await invoke("board_pair", { port: port(), code: $("#code").value.trim() });
+  $("#code").value = ""; msg("#board-msg", done); await connect();
+}));
+$("#wifi-add").addEventListener("click", () => {
+  const ssid = $("#ssid").value, pass = $("#wpass").value;
+  if (!ssid || ssid.length > 32 || ssid.includes(",")) return msg("#board-msg", "A network name has 1 to 32 characters and no comma.", true);
+  if (pass && (pass.length < 8 || pass.length > 64)) return msg("#board-msg", "A Wi-Fi password has 8 to 64 characters. Leave it empty for an open network.", true);
+  step(`Adding ${ssid}...`, async () => { await invoke("board_setup", { port: port(), networks: [[ssid, pass]], settings: {}, timezone: null }); $("#ssid").value = ""; $("#wpass").value = ""; await loadWifi(); msg("#board-msg", `Saved ${ssid} on the board.`); });
+});
+
+$("#settings tbody").replaceChildren(...Object.entries(SETTINGS).map(([k, [lo, hi]]) => el("tr", {},
+  el("td", {}, el("label", { htmlFor: "set-" + k, textContent: k.replaceAll("_", " ") })),
+  el("td", {}, el("input", { type: "number", min: lo, max: hi, step: 1, id: "set-" + k, placeholder: "unchanged" })),
+  el("td", { className: "sub", textContent: `${lo} to ${hi}` }))));
+$("#settings-save").addEventListener("click", () => {
+  const settings = {};
+  for (const k of Object.keys(SETTINGS)) { const v = document.getElementById("set-" + k).value; if (v !== "") settings[k] = Number(v); }
+  step("Sending...", async () => msg("#board-msg", await invoke("board_setup", { port: port(), networks: [], settings, timezone: $("#tz").value || null })));
+});
+
+window.__TAURI__.event.listen("import-progress", (e) => { const p = e.payload; $("#import-progress").textContent = `${p.file}: ${Math.round(100 * p.done / Math.max(p.total, 1))} %`; });
+$("#import").addEventListener("click", () => step("Importing drives over USB...", async () => {
+  const done = await invoke("board_import", { port: port(), boardId: current.board });
+  $("#import-progress").textContent = ""; msg("#board-msg", done); await refreshSources();
+}));
+
+window.__TAURI__.event.listen("flash-progress", (e) => { const log = $("#flash-log"); log.hidden = false; log.textContent = (log.textContent + "\n" + e.payload).split("\n").slice(-8).join("\n"); });
+async function refreshFirmware() {
+  const f = await invoke("firmware_info").catch(() => ({ available: false, version: "" }));
+  $("#fw-text").textContent = f.available ? `This app carries firmware ${f.version || "(version unknown)"}. Flashing keeps the board's Wi-Fi networks and pairing.` : "This build of the app has no firmware image to flash.";
+  $("#flash").hidden = !f.available;
+}
+$("#flash").addEventListener("click", () => {
+  if (!confirm("Flash the firmware that came with this app? Keep the cable in until it finishes.")) return;
+  $("#flash-log").textContent = "";
+  step("Flashing... this takes about 30 seconds.", async () => msg("#board-msg", await invoke("board_flash", { port: port() })));
+});
 
 async function refreshReceiver() {
   try {
@@ -139,38 +217,6 @@ async function refreshReceiver() {
     $("#rx-boards").replaceChildren(...s.boards.map((b) => el("li", {}, el("span", { textContent: `Board ${b.id} (firmware ${b.firmware || "?"})` }), el("span", { className: "sub", textContent: `last heard ${ago(b.last_seen_s)}` }))));
   } catch (e) { msg("#rx-status", String(e), true); }
 }
-
-function drawNetworks() {
-  $("#net-list").replaceChildren(...networks.map(([ssid], i) => el("li", {}, el("span", { textContent: ssid }),
-    Object.assign(el("button", { textContent: "Remove" }), { onclick: () => { networks.splice(i, 1); drawNetworks(); } }))));
-}
-
-$("#settings tbody").replaceChildren(...Object.entries(SETTINGS).map(([k, [lo, hi]]) => el("tr", {},
-  el("td", {}, el("label", { htmlFor: "set-" + k, textContent: k.replaceAll("_", " ") })),
-  el("td", {}, el("input", { type: "number", min: lo, max: hi, step: 1, id: "set-" + k, placeholder: "unchanged" })),
-  el("td", { className: "sub", textContent: `${lo} to ${hi}` }))));
-
-$("#net-add").addEventListener("click", () => {
-  const ssid = $("#ssid").value, pass = $("#wpass").value;
-  if (!ssid || ssid.length > 32 || ssid.includes(",")) return msg("#card-msg", "A network name has 1 to 32 characters and no comma.", true);
-  if (pass && (pass.length < 8 || pass.length > 64)) return msg("#card-msg", "A Wi-Fi password has 8 to 64 characters. Leave it empty for an open network.", true);
-  networks.push([ssid, pass]); $("#ssid").value = ""; $("#wpass").value = ""; msg("#card-msg", ""); drawNetworks();
-});
-
-$("#card-pick").addEventListener("click", async () => {
-  const picked = await open({ directory: true, multiple: false, title: "Choose the SD card" });
-  if (typeof picked === "string") { cardFolder = picked; $("#card-path").textContent = picked; }
-});
-
-$("#card-write").addEventListener("click", async () => {
-  if (!cardFolder) return msg("#card-msg", "Choose the SD card first.", true);
-  const settings = {};
-  for (const k of Object.keys(SETTINGS)) { const v = document.getElementById("set-" + k).value; if (v !== "") settings[k] = Number(v); }
-  try {
-    const done = await invoke("write_card", { folder: cardFolder, networks, settings, timezone: $("#tz").value || null, pair: $("#pair").checked });
-    msg("#card-msg", done); networks.length = 0; drawNetworks();
-  } catch (e) { msg("#card-msg", String(e), true); }
-});
 
 /* The board's C library wants a POSIX TZ string, which browsers do not give. Common zones are listed with their daylight
    saving rules; any other zone gets its current fixed offset. */
@@ -204,6 +250,6 @@ async function refreshSources() {
   sel.hidden = sources.length === 0;
 }
 $("#source").addEventListener("change", () => { const v = $("#source").value; remember("source", v); if (v) load(v); });
-document.querySelector('.tab[data-page="board"]').addEventListener("click", refreshReceiver);
+document.querySelector('.tab[data-page="board"]').addEventListener("click", () => { refreshReceiver(); refreshFirmware(); if (!$("#port").options.length) refreshPorts(); });
 refreshReceiver(); refreshSources();
 setInterval(() => { refreshReceiver(); refreshSources(); if (!$("#page-overview").hidden && $("#source").value && state.folder === $("#source").value) load(state.folder); }, 15000);

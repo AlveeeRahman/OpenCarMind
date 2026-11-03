@@ -23,6 +23,7 @@
 #include "obd_ble.h"
 #include "wifi_sync.h"
 #include "uploader.h"
+#include "usb_door.h"
 #include "cpu_monitor.h"
 #include "remote_config.h"
 
@@ -174,7 +175,7 @@ void app_main(void)
     if (display_init() != ESP_OK) ESP_LOGE(TAG, "display init failed");
     if (sdlog_init() != ESP_OK) ESP_LOGE(TAG, "SD logging unavailable");
     remote_config_load_sd();          /* /sdcard/obd/config.json, if present */
-    uploader_init();                  /* /sdcard/obd/receiver.json from the desktop app, if present */
+    uploader_init();                  /* pairing with the desktop app, kept in NVS */
     sched_mon_start();                /* raises the "restarted after ..." event from sched_boot_check() */
 
     /* the model loads before BLE and Wi-Fi start, so the global small-allocation switch it needs (ml_infer.cpp)
@@ -186,6 +187,7 @@ void app_main(void)
     wifi_sync_start();
     ESP_LOGI(TAG, "internal heap after Wi-Fi: %u", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
     sys_mode_start();                  /* DRIVE / SEEK arbitration, see sys_mode.h */
+    usb_door_start();                  /* setup from the desktop app over the USB cable, see usb_door.h */
     ESP_LOGI(TAG, "internal heap after ML: %u (largest block %u)", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
              (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
 

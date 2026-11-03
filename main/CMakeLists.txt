@@ -4,6 +4,7 @@ idf_component_register(
          "adapter_match.c"
          "harden.c"
          "uploader.c"
+         "usb_door.c"
          "elm327.c"
          "sdlog.c"
          "display.c"
@@ -20,7 +21,7 @@ idf_component_register(
          "sys_mode.c"
          "ml_infer.cpp"
     INCLUDE_DIRS "."
-    REQUIRES bt nvs_flash driver esp_wifi esp_netif esp_event esp_http_client
+    REQUIRES bt nvs_flash driver esp_wifi esp_netif esp_event esp_http_client esp_driver_usb_serial_jtag
              esp_lcd fatfs sdmmc vfs esp_timer esp_driver_gpio
              esp_driver_spi esp_driver_sdmmc esp_driver_ledc
 )

@@ -1,7 +1,7 @@
 //! Receives session files from OpenCarMind boards on the same network (protocol in main/uploader.h).
 //!
-//! TLS with a self-signed certificate made on first run. The board trusts only that certificate, which reaches it inside
-//! receiver.json on the SD card, together with a random token. Files are stored per board under the app data folder.
+//! TLS with a self-signed certificate made on first run. The board trusts only that certificate, which reaches it over
+//! the authenticated USB door (board.rs), together with a random token. Files are stored per board under the app data folder.
 
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
 use serde::Serialize;
@@ -124,7 +124,7 @@ pub fn valid_name(n: &str) -> bool {
     matches!(&rest[6..], ".csv" | ".ml.csv" | ".pat" | ".raw" | ".json")
 }
 
-fn valid_board(b: &str) -> bool {
+pub fn valid_board(b: &str) -> bool {
     b.len() == 12 && b.bytes().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
 }
 

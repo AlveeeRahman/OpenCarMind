@@ -22,3 +22,7 @@ dashboard/site/
 /desktop/app/node_modules/
 /desktop/app/src-tauri/target/
 /desktop/app/src-tauri/gen/
+/desktop/app/src-tauri/binaries/esptool-*
+/desktop/app/src-tauri/resources/*.bin
+/desktop/app/src-tauri/resources/firmware-version.txt
+/desktop/app/src-tauri/resources/esptool-LICENSE.txt

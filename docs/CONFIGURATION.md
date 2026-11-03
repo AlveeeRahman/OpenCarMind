@@ -18,7 +18,6 @@ The board writes everything under `/sdcard/obd/`.
 | `config.json` | settings to import (you create it) |
 | `custom_pids.csv` | up to 8 custom PIDs (you create it) |
 | `clock.txt` | the time at the last save, so the clock can resume after a power cut |
-| `receiver.json` | pairing with the desktop app, written by the app and deleted by the board once stored |
 
 A new session starts at every power cycle. Everything is flushed to the card at least every 10 seconds (`SDLOG_SYNC_PERIOD_S`) and each time the event "Safe to turn off" appears on page 3.
 
@@ -39,9 +38,18 @@ The board connects only while parked. It scans, connects, reads the time, stays 
 
 The board has no battery for its clock. Every save writes the time to `/sdcard/obd/clock.txt`. After a power cut the clock resumes from that file, behind by the time the car was off, and the screen shows it in amber until the next Wi-Fi sync corrects it. Each session JSON says where its time came from in the `clock` field: `sntp` (set over Wi-Fi), `rtc` (kept through a reset), `resumed` (from the card, an estimate) or `unset`. Rows also carry `uptime_ms`, and `time_sync` in the JSON maps uptime to real time, so a session can be re-timed once the clock was corrected.
 
-## Pairing with the desktop app
+## Setup over USB with the desktop app
 
-The desktop app writes `/sdcard/obd/receiver.json` with its address, port, certificate and a token. The board stores them in flash at its next start and deletes the file. While paired, the board stays on Wi-Fi when parked and sends new data every 10 seconds. Write a new pairing file to pair with another computer.
+With the desktop app, the SD card can stay in the board. The app talks to it over the USB cable through an authenticated door (`main/usb_door.h`), prepares everything itself, and sends the board only finished values to store or apply:
+
+- Pairing: the first time, the board shows a 6-digit code on its screen and you type it into the app (3 tries per code, a new code at most every 5 seconds). The app then sends its address, port, certificate and token. Later connections prove themselves with an HMAC of a fresh random challenge, keyed with that token, so no code is needed.
+- Wi-Fi networks, the time zone and the settings in the table below.
+- Reading the session files from the card, so drives can be imported over the cable.
+- Flashing: the app carries the matching firmware image and Espressif's `esptool`. Flashing keeps the Wi-Fi networks and the pairing, which live in a separate flash partition.
+
+The board refuses all of this while the car link is up. While paired, the board stays on Wi-Fi when parked and sends new data to the app every 10 seconds.
+
+The card files below (`wifi.csv`, `config.json`, `custom_pids.csv`) still work for anyone who prefers them.
 
 ## config.json
 

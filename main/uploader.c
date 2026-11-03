@@ -18,7 +18,6 @@
 
 static const char *TAG = "upload";
 
-#define PAIR_PATH     SDLOG_DIR "/receiver.json"
 #define CERT_MAX      2048
 #define LIST_MAX      (64 * 1024)
 #define CHUNK         (8 * 1024)
@@ -58,41 +57,39 @@ static void load_nvs(void)
     nvs_close(h);
 }
 
-static void import_file(void)
+bool uploader_pair(const char *host, unsigned port, const char *token, const char *cert_pem)
 {
-    if (!sdlog_ok()) return;
-    char *txt = heap_caps_calloc(1, 4096, MALLOC_CAP_SPIRAM);
-    if (!txt) return;
-    if (!sdlog_load_text(PAIR_PATH, txt, 4096)) { free(txt); return; }
-    cJSON *j = cJSON_Parse(txt);
-    free(txt);
-    cJSON *host = cJSON_GetObjectItem(j, "host"), *port = cJSON_GetObjectItem(j, "port"),
-          *token = cJSON_GetObjectItem(j, "token"), *cert = cJSON_GetObjectItem(j, "cert");
-    bool valid = cJSON_IsString(host) && host_ok(host->valuestring) && cJSON_IsNumber(port) && port->valuedouble >= 1 &&
-                 port->valuedouble <= 65535 && cJSON_IsString(token) && token_ok(token->valuestring) && cJSON_IsString(cert) &&
-                 strncmp(cert->valuestring, "-----BEGIN CERTIFICATE-----", 27) == 0 && strlen(cert->valuestring) < CERT_MAX;
-    if (valid) {
-        nvs_handle_t h;
-        if (nvs_open("rcv", NVS_READWRITE, &h) == ESP_OK) {
-            nvs_set_str(h, "host", host->valuestring);
-            nvs_set_u16(h, "port", (uint16_t)port->valuedouble);
-            nvs_set_str(h, "token", token->valuestring);
-            nvs_set_str(h, "cert", cert->valuestring);
-            nvs_commit(h);
-            nvs_close(h);
-            sys_event(EV_INFO, "Paired with the desktop app at %s", host->valuestring);
-        }
-    } else sys_event(EV_WARN, "receiver.json is not valid: ignored");
-    cJSON_Delete(j);
-    remove(PAIR_PATH);                      /* the token should not stay on the card */
+    if (!host || !token || !cert_pem || !host_ok(host) || port < 1 || port > 65535 || !token_ok(token) ||
+        strncmp(cert_pem, "-----BEGIN CERTIFICATE-----", 27) != 0 || strlen(cert_pem) >= CERT_MAX) return false;
+    nvs_handle_t h;
+    if (nvs_open("rcv", NVS_READWRITE, &h) != ESP_OK) return false;
+    bool ok = nvs_set_str(h, "host", host) == ESP_OK && nvs_set_u16(h, "port", (uint16_t)port) == ESP_OK &&
+              nvs_set_str(h, "token", token) == ESP_OK && nvs_set_str(h, "cert", cert_pem) == ESP_OK && nvs_commit(h) == ESP_OK;
+    nvs_close(h);
+    if (ok) {
+        load_nvs();
+        sys_event(EV_INFO, "Paired with the desktop app at %s", host);
+    }
+    return ok && s_ok;
 }
+
+void uploader_unpair(void)
+{
+    nvs_handle_t h;
+    if (nvs_open("rcv", NVS_READWRITE, &h) == ESP_OK) { nvs_erase_all(h); nvs_commit(h); nvs_close(h); }
+    s_ok = false;
+    s_host[0] = s_token[0] = 0;
+    sys_event(EV_INFO, "Unpaired from the desktop app");
+}
+
+const char *uploader_token(void) { return s_ok ? s_token : ""; }
+const char *uploader_board_id(void) { return s_board; }
 
 void uploader_init(void)
 {
     uint8_t mac[6];
     esp_read_mac(mac, ESP_MAC_WIFI_STA);
     snprintf(s_board, sizeof s_board, "%02x%02x%02x%02x%02x%02x", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-    import_file();
     load_nvs();
     if (s_ok) ESP_LOGI(TAG, "uploads go to the desktop app at %s:%u", s_host, s_port);
 }

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 2.2.0
+
+- Setup over USB, so the SD card stays in the board. An authenticated door on the USB cable (`main/usb_door.c`) takes the pairing, Wi-Fi networks, time zone and settings from the desktop app, and lets the app read the session files. The first pairing needs the 6-digit code the board shows on its screen, and later connections answer an HMAC challenge. Pairing through `receiver.json` on the card is gone.
+- The desktop app does the setup: a Board page to pair, set Wi-Fi and settings, import drives over USB, and flash the firmware it carries with a bundled `esptool`, so no ESP-IDF install is needed.
+
 ## 2.1.0
 
 Installers for the desktop app and the firmware images are attached to the GitHub release, with SHA-256 sums and build provenance.

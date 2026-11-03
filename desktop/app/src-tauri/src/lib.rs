@@ -1,6 +1,7 @@
 //! Reads OpenCarMind session files from a folder and returns summaries and chart data to the window.
 //! The arithmetic follows tools/ocm_report.py so the desktop app and the report tool agree.
 
+mod board;
 mod receiver;
 
 use serde::Serialize;
@@ -226,67 +227,173 @@ pub fn timezone_ok(tz: &str) -> bool {
     (3..=47).contains(&tz.len()) && tz.chars().all(|c| c.is_ascii_alphanumeric() || "<>+-,.:/".contains(c))
 }
 
-/// Writes wifi.csv, config.json and the pairing file onto the SD card. The board reads them at its next start and
-/// deletes wifi.csv and receiver.json once it has stored them.
+/// Checks the settings and time zone the way the board does and turns them into a config.json object.
+fn config_object(settings: &std::collections::HashMap<String, f64>, timezone: Option<String>) -> Result<Option<serde_json::Value>, String> {
+    let mut map = serde_json::Map::new();
+    if let Some(tz) = timezone.map(|t| t.trim().to_string()).filter(|t| !t.is_empty()) {
+        if !timezone_ok(&tz) {
+            return Err(format!("time zone '{tz}' is not a POSIX time zone such as CST6CDT,M3.2.0,M11.1.0"));
+        }
+        map.insert("timezone".into(), serde_json::json!(tz));
+    }
+    for (key, value) in settings {
+        let (_, lo, hi) = SETTINGS.iter().find(|(k, _, _)| *k == key.as_str()).ok_or_else(|| format!("unknown setting {key}"))?;
+        if !(lo..=hi).contains(&value) || value.fract() != 0.0 {
+            return Err(format!("{key} must be a whole number from {lo} to {hi}"));
+        }
+        map.insert(key.clone(), serde_json::json!(*value as i64));
+    }
+    Ok((!map.is_empty()).then_some(serde_json::Value::Object(map)))
+}
+
+async fn blocking<T: Send + 'static>(f: impl FnOnce() -> Result<T, String> + Send + 'static) -> Result<T, String> {
+    tauri::async_runtime::spawn_blocking(f).await.map_err(|e| format!("background task failed: {e}"))?
+}
+
 #[tauri::command]
-fn write_card(
-    state: tauri::State<AppState>,
-    folder: String,
+async fn board_ports() -> Result<Vec<board::PortInfo>, String> {
+    blocking(board::list_ports).await
+}
+
+#[tauri::command]
+async fn board_connect(state: tauri::State<'_, AppState>, port: String) -> Result<board::Hello, String> {
+    let token = state.rx.token.clone();
+    blocking(move || board::connect(&port, &token)).await
+}
+
+#[tauri::command]
+async fn board_request_code(port: String) -> Result<(), String> {
+    blocking(move || board::request_code(&port)).await
+}
+
+#[tauri::command]
+async fn board_pair(state: tauri::State<'_, AppState>, port: String, code: String) -> Result<String, String> {
+    let host = receiver::local_address().ok_or("this computer has no network address. Connect it to the Wi-Fi the board will use")?;
+    if state.rx.token.is_empty() {
+        return Err("the receiver could not start, so there is nothing to pair with".into());
+    }
+    let (token, cert) = (state.rx.token.clone(), state.rx.cert_pem.clone());
+    let h = host.clone();
+    blocking(move || board::pair(&port, &code, &h, receiver::PORT, &token, &cert)).await?;
+    Ok(format!("Paired. The board will send its drives to {host}:{} when it is parked on Wi-Fi.", receiver::PORT))
+}
+
+#[tauri::command]
+async fn board_wifi_list(port: String) -> Result<Vec<String>, String> {
+    blocking(move || board::wifi_list(&port)).await
+}
+
+#[tauri::command]
+async fn board_wifi_forget(port: String, ssid: String) -> Result<(), String> {
+    blocking(move || board::wifi_forget(&port, &ssid)).await
+}
+
+#[tauri::command]
+async fn board_setup(
+    port: String,
     networks: Vec<(String, String)>,
     settings: std::collections::HashMap<String, f64>,
     timezone: Option<String>,
-    pair: bool,
 ) -> Result<String, String> {
-    let root = PathBuf::from(&folder);
-    if !root.is_dir() {
-        return Err(format!("{folder} is not a folder"));
+    for (ssid, password) in &networks {
+        wifi_entry_ok(ssid, password)?;
     }
-    let obd = if root.file_name().map_or(false, |n| n == "obd") { root.clone() } else { root.join("obd") };
-    std::fs::create_dir_all(&obd).map_err(|e| format!("cannot write to the card: {e}"))?;
-    let mut done = Vec::new();
-    if !networks.is_empty() {
-        let mut csv = String::from("# Written by the OpenCarMind desktop app. The board imports this file and deletes it.\n");
-        for (ssid, password) in &networks {
-            wifi_entry_ok(ssid, password)?;
-            csv.push_str(&format!("{ssid},{password}\n"));
-        }
-        std::fs::write(obd.join("wifi.csv"), csv).map_err(|e| e.to_string())?;
-        done.push(format!("{} Wi-Fi network(s)", networks.len()));
+    let config = config_object(&settings, timezone)?;
+    blocking(move || board::setup(&port, &networks, config.as_ref())).await
+}
+
+#[derive(Clone, Serialize)]
+struct Progress {
+    file: String,
+    done: u64,
+    total: u64,
+}
+
+#[tauri::command]
+async fn board_import(app: tauri::AppHandle, state: tauri::State<'_, AppState>, port: String, board_id: String) -> Result<String, String> {
+    use tauri::Emitter;
+    if !receiver::valid_board(&board_id) {
+        return Err("unknown board".into());
     }
-    let timezone = timezone.map(|t| t.trim().to_string()).filter(|t| !t.is_empty());
-    if let Some(tz) = &timezone {
-        if !timezone_ok(tz) {
-            return Err(format!("time zone '{tz}' is not a POSIX time zone such as CST6CDT,M3.2.0,M11.1.0"));
-        }
+    let dest = state.rx.dir.join(&board_id).join("sessions");
+    blocking(move || {
+        board::import(&port, &dest, |file, done, total| {
+            let _ = app.emit("import-progress", Progress { file: file.to_string(), done, total });
+        })
+    })
+    .await
+}
+
+#[derive(Serialize)]
+struct FirmwareInfo {
+    available: bool,
+    version: String,
+}
+
+fn firmware_path(app: &tauri::AppHandle) -> Option<PathBuf> {
+    use tauri::Manager;
+    let p = app.path().resolve("resources/opencarmind-firmware.bin", tauri::path::BaseDirectory::Resource).ok()?;
+    p.is_file().then_some(p)
+}
+
+#[tauri::command]
+fn firmware_info(app: tauri::AppHandle) -> FirmwareInfo {
+    use tauri::Manager;
+    let version = app
+        .path()
+        .resolve("resources/firmware-version.txt", tauri::path::BaseDirectory::Resource)
+        .ok()
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .map(|v| v.trim().to_string())
+        .unwrap_or_default();
+    FirmwareInfo { available: firmware_path(&app).is_some(), version }
+}
+
+/// Flashes the firmware that ships with this app, using the bundled esptool. The settings in the board's flash
+/// (Wi-Fi networks, pairing) are kept, because the image covers the bootloader, partition table and app only.
+#[tauri::command]
+async fn board_flash(app: tauri::AppHandle, port: String) -> Result<String, String> {
+    use tauri::Emitter;
+    use tauri_plugin_shell::process::CommandEvent;
+    use tauri_plugin_shell::ShellExt;
+    let image = firmware_path(&app).ok_or("this build of the app has no firmware image")?;
+    if port.is_empty() || port.contains(char::is_whitespace) {
+        return Err("choose the board's USB port first".into());
     }
-    if !settings.is_empty() || timezone.is_some() {
-        let mut map = serde_json::Map::new();
-        if let Some(tz) = &timezone {
-            map.insert("timezone".into(), serde_json::json!(tz));
-        }
-        for (key, value) in &settings {
-            let (_, lo, hi) = SETTINGS.iter().find(|(k, _, _)| *k == key.as_str()).ok_or_else(|| format!("unknown setting {key}"))?;
-            if !(lo..=hi).contains(&value) || value.fract() != 0.0 {
-                return Err(format!("{key} must be a whole number from {lo} to {hi}"));
+    let args = [
+        "--chip", "esp32s3", "-p", port.as_str(), "-b", "460800", "--before", "default-reset", "--after", "watchdog-reset",
+        "write-flash", "0x0",
+    ];
+    let (mut rx, _child) = app
+        .shell()
+        .sidecar("esptool")
+        .map_err(|e| format!("esptool is missing from this build: {e}"))?
+        .args(args)
+        .arg(image.as_os_str())
+        .spawn()
+        .map_err(|e| format!("could not start esptool: {e}"))?;
+    let mut tail: Vec<String> = Vec::new();
+    let mut code = None;
+    while let Some(event) = rx.recv().await {
+        match event {
+            CommandEvent::Stdout(b) | CommandEvent::Stderr(b) => {
+                for line in String::from_utf8_lossy(&b).split(['\n', '\r']).map(str::trim).filter(|l| !l.is_empty()) {
+                    let _ = app.emit("flash-progress", line.to_string());
+                    tail.push(line.to_string());
+                    if tail.len() > 6 {
+                        tail.remove(0);
+                    }
+                }
             }
-            map.insert(key.clone(), serde_json::json!(*value as i64));
+            CommandEvent::Terminated(p) => code = p.code,
+            _ => {}
         }
-        std::fs::write(obd.join("config.json"), serde_json::Value::Object(map).to_string()).map_err(|e| e.to_string())?;
-        done.push(format!("{} setting(s)", settings.len() + timezone.iter().count()));
     }
-    if pair {
-        let host = receiver::local_address().ok_or("this computer has no network address. Connect it to the same Wi-Fi as the board")?;
-        if state.rx.token.is_empty() {
-            return Err("the receiver could not start, so there is nothing to pair with".into());
-        }
-        let j = serde_json::json!({ "host": host, "port": receiver::PORT, "token": state.rx.token, "cert": state.rx.cert_pem });
-        std::fs::write(obd.join("receiver.json"), j.to_string()).map_err(|e| e.to_string())?;
-        done.push(format!("pairing with this computer ({host}:{})", receiver::PORT));
+    if code == Some(0) {
+        Ok("Flashed. The board restarts with the new firmware and keeps its Wi-Fi networks and pairing.".into())
+    } else {
+        Err(format!("flashing failed: {}", tail.join(" | ")))
     }
-    if done.is_empty() {
-        return Err("nothing to write".into());
-    }
-    Ok(format!("Written to {}: {}. Put the card back in the board and switch it on.", obd.display(), done.join(", ")))
 }
 
 #[tauri::command]
@@ -348,13 +455,29 @@ pub fn run() {
     }));
     builder
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_shell::init())
         .setup(|app| {
             use tauri::Manager;
             let dir = app.path().app_data_dir()?;
             app.manage(AppState { rx: receiver::Receiver::start(dir) });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![read_sessions, session_series, receiver_status, received_sources, write_card])
+        .invoke_handler(tauri::generate_handler![
+            read_sessions,
+            session_series,
+            receiver_status,
+            received_sources,
+            board_ports,
+            board_connect,
+            board_request_code,
+            board_pair,
+            board_wifi_list,
+            board_wifi_forget,
+            board_setup,
+            board_import,
+            firmware_info,
+            board_flash
+        ])
         .run(tauri::generate_context!())
         .expect("OpenCarMind could not start");
 }

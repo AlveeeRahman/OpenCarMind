@@ -10,7 +10,7 @@
 
 OpenCarMind turns an ESP32-S3 board and a Bluetooth OBD-II adapter into a car data logger that runs a neural network on the board. It needs no phone, no account and no internet connection. Everything it records goes to an SD card in the car and, if you pair the board, to the desktop app on your own computer.
 
-Version 2.1.0. Licence: MIT. Downloads for the firmware and the desktop app are on the [Releases page](https://github.com/AlveeeRahman/OpenCarMind/releases/latest).
+Version 2.2.0. Licence: MIT. Downloads for the firmware and the desktop app are on the [Releases page](https://github.com/AlveeeRahman/OpenCarMind/releases/latest).
 
 ## What you get
 
@@ -94,9 +94,9 @@ The board never talks to Dashy. Data reaches your computer by SD card or through
 
 ## Desktop app
 
-<p align="center"><img src="docs/images/workflow/wifi-link.png" width="900" alt="Wi-Fi link: pair once by card, the board stores it, joins your Wi-Fi when parked, sends over TLS to your app every 10 seconds, and the desktop app keeps and charts the drives"></p>
+<p align="center"><img src="docs/images/workflow/wifi-link.png" width="900" alt="Wi-Fi link: pair once over USB with a code from the board's screen, the board stores it, joins your Wi-Fi when parked, sends over TLS to your app every 10 seconds, and the desktop app keeps and charts the drives"></p>
 
-The app in [desktop/](desktop/README.md) runs on Windows, macOS and Linux. It writes the board's Wi-Fi networks, settings, time zone and a pairing file to the SD card. After that, the board sends new data to the app over TLS every 10 seconds while the car is parked at home, and the app shows the drives and their charts. GitHub Actions builds the installers. [docs/DASHBOARD.md](docs/DASHBOARD.md) has the setup, the details of how the data reaches Dashy, and what has and has not been tested.
+The app in [desktop/](desktop/README.md) runs on Windows, macOS and Linux. Over the board's USB cable it pairs with the board (you type a code from the board's screen once), sets its Wi-Fi networks, time zone and settings, imports drives from the card and flashes new firmware, so the SD card never has to come out. After that, the board sends new data to the app over TLS every 10 seconds while the car is parked at home, and the app shows the drives and their charts. GitHub Actions builds the installers. [docs/DASHBOARD.md](docs/DASHBOARD.md) has the setup, the details of how the data reaches Dashy, and what has and has not been tested.
 
 ## Hardware
 

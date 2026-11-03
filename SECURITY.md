@@ -16,7 +16,7 @@ Please report privately through GitHub: open the repository's Security tab and c
 - Talks to the car only through the paired Bluetooth LE adapter, by its saved address. It sends standard OBD-II read requests (modes 01, 03, 07, 09, 0A) and the custom PIDs you list in `custom_pids.csv`. It never sends mode 04 (clear codes). A custom PID sends exactly the command you put in the file, so list read requests only.
 - Keeps the model in the firmware image.
 
-The USB port only prints logs. The firmware reads nothing from it, so there is no command to send. It is also how you flash the board, and flashing needs no authentication: whoever can plug a cable in can reflash it.
+The USB port carries the logs and the authenticated setup door described under "Checks on outside input". It is also how you flash the board, and flashing needs no authentication: whoever can plug a cable in can reflash it, as on any ESP32 board without Secure Boot.
 
 ## Checks on outside input
 
@@ -27,7 +27,7 @@ Everything that arrives from outside is checked before it is used. `main/harden.
 - Wi-Fi connection: the board asks for WPA2 or better whenever a password is set, and uses protected management frames when the access point offers them.
 - Model input: a value the adapter reports as not-a-number or infinity is treated as a missing sample. Any other value is limited to 100 standard deviations.
 - `config.json`: files over 4 KB are ignored, numbers must fall in their documented range, `rev` must fit in 32 bits, and `timezone` may hold only letters, digits and `<>+-,.:/`.
-- `receiver.json`: the host, port, token and certificate are checked for length and characters before the board stores them, and the file is deleted afterwards.
+- USB door (`main/usb_door.c`): nothing changes on the board until the app has shown it either the 6-digit code from the board's screen (3 tries per code) or an HMAC-SHA256 of a fresh random challenge keyed with the paired app's token. Pairing values are checked for length and characters before they are stored, file names are checked before the card is read, and everything is refused while the car link is up.
 - Build: stack protector on every function, a TLS client only with renegotiation off, and no soft-AP or enterprise Wi-Fi code.
 
 These checks stop malformed or hostile data from corrupting logs, the clock or the model input. They do not make a stolen board or card safe.
@@ -38,7 +38,7 @@ These are accepted for this release and listed so nobody has to find them by tes
 
 - The model is not hidden. The board answers real OBD data, so anyone can feed it inputs and read the class and the three estimates. The weights ship inside the firmware image, and the image is not encrypted unless you encrypt your own board (next section).
 - The chip protections (flash encryption, Secure Boot, JTAG and ROM download off) are off in the default build. They burn eFuses, which are permanent, can leave a board unable to boot or flash, and would stop you reflashing over USB. You choose them per board.
-- Saved Wi-Fi passwords and the pairing token sit in flash as plain text until you turn on flash encryption and NVS encryption. The token also sits on the SD card from the moment the desktop app writes `receiver.json` until the board imports and deletes it at its next start.
+- Saved Wi-Fi passwords and the pairing token sit in flash as plain text until you turn on flash encryption and NVS encryption.
 - Anyone on your network who has the pairing token can send files to the desktop app as if they were the board. The app checks the token, the board ID format and every file name, stores files only in its own folder, and accepts at most 64 KB per request.
 - Whoever holds the board can reflash it over USB, and whoever holds the SD card can read every session.
 - The adapter is chosen by its Bluetooth name (`OBD_BLE_NAME_PREFIXES`). A device with a matching name is accepted, and ELM327-style adapters have no pairing security to check. The board reads from it and never sends mode 04.

@@ -61,7 +61,7 @@ jobs:
           path: out/
 
   desktop:
-    needs: notes
+    needs: [notes, firmware]
     name: desktop ${{ matrix.name }}
     runs-on: ${{ matrix.platform }}
     strategy:
@@ -71,15 +71,19 @@ jobs:
           - name: macos-apple-silicon
             platform: macos-latest
             args: --target aarch64-apple-darwin
+            triple: aarch64-apple-darwin
           - name: macos-intel
             platform: macos-latest
             args: --target x86_64-apple-darwin
+            triple: x86_64-apple-darwin
           - name: linux
             platform: ubuntu-22.04
             args: ""
+            triple: x86_64-unknown-linux-gnu
           - name: windows
             platform: windows-latest
             args: ""
+            triple: x86_64-pc-windows-msvc
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -87,7 +91,7 @@ jobs:
       - if: matrix.platform == 'ubuntu-22.04'
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libxdo-dev libssl-dev rpm
+          sudo apt-get install -y build-essential libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libxdo-dev libssl-dev libudev-dev rpm
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "22"
@@ -97,6 +101,21 @@ jobs:
         with:
           toolchain: stable
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+      - name: Bundle esptool (pinned by SHA-256)
+        shell: bash
+        run: |
+          bash desktop/app/scripts/fetch-esptool.sh "${{ matrix.triple }}"
+          # the unit tests build for the runner itself, which is Apple silicon on both macOS jobs
+          if [ "$RUNNER_OS" = "macOS" ]; then bash desktop/app/scripts/fetch-esptool.sh aarch64-apple-darwin; fi
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: firmware
+          path: fw
+      - name: Firmware image to bundle (built by this run)
+        shell: bash
+        run: |
+          cp fw/*-firmware-merged.bin desktop/app/src-tauri/resources/opencarmind-firmware.bin
+          cat version.txt > desktop/app/src-tauri/resources/firmware-version.txt
       - name: Unit tests
         run: cargo test --manifest-path desktop/app/src-tauri/Cargo.toml
       - name: Install the Tauri CLI
