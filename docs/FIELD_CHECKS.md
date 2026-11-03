@@ -17,6 +17,7 @@ Put the file named in each row on the SD card at `obd/`, boot the board and read
 
 | Check | Do this | Expected | Firmware | Car and adapter | Result |
 |---|---|---|---|---|---|
+| Power-off line | watch page 3 while driving, then switch the car off | red "Not safe: logging" while driving, green "Safe to turn off" about 10 s after the car stops | | | |
 | Power off while driving | cut power mid-drive, pull the card | the last rows of `sNNNNNN.csv` are intact, at most the final 10 seconds are missing | | | |
 | Another adapter | pair a different BLE OBD adapter | the board finds it, connects and logs rows | | | |
 | Adapter name not on the list | an adapter whose name is not in `OBD_BLE_NAME_PREFIXES` | it is not found until its name prefix is added | | | |

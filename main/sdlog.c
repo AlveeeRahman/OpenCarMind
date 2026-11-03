@@ -56,6 +56,8 @@ static char     s_ml_path[96];
 static uint64_t s_ml_bytes, s_ml_synced;
 static uint32_t s_window_seq;
 static int64_t  s_last_sync_ms;        /* uptime of the last full flush to the card */
+static volatile bool s_unsaved;        /* something was written since the last flush */
+static volatile int64_t s_last_write_ms = -1;   /* uptime of the last write to a session file */
 static WORD_ALIGNED_ATTR char s_csv_iobuf[2048];   /* internal DRAM, DMA-capable on the S3 */
 
 /* ---------- helpers ---------- */
@@ -155,6 +157,7 @@ static void sync_all_locked(void)
     if (s_ml)  { fflush(s_ml);  fsync(fileno(s_ml));  s_ml_synced = s_ml_bytes; }
     meta_flush_locked();                       /* keeps the JSON row count current */
     save_clock_locked();
+    s_unsaved = false;
     s_last_sync_ms = esp_timer_get_time() / 1000;
 }
 
@@ -302,6 +305,14 @@ esp_err_t sdlog_init(void)
 }
 
 bool sdlog_ok(void) { return s_ok; }
+
+bool sdlog_saved(void) { return s_ok && !s_unsaved; }
+
+int64_t sdlog_ms_since_write(void)
+{
+    int64_t t = s_last_write_ms;
+    return t < 0 ? INT64_MAX : esp_timer_get_time() / 1000 - t;
+}
 uint32_t sdlog_session_id(void) { return s_session; }
 
 static int fmt_num(char *dst, size_t n, float v)
@@ -336,7 +347,7 @@ void sdlog_write_row(const obd_values_t *v)
     line[n++] = '\n';
     line[n] = 0;
 
-    if (fputs(line, s_csv) >= 0) s_bytes += n;
+    if (fputs(line, s_csv) >= 0) { s_bytes += n; s_unsaved = true; s_last_write_ms = esp_timer_get_time() / 1000; }
     else { static int said; if (!said++) sys_event(EV_ERROR, "SD write failed: card full or removed?"); }
     bool saved = false;
     if (s_rows % CONFIG_SDLOG_FSYNC_EVERY_ROWS == 0 ||
@@ -364,7 +375,7 @@ void sdlog_write_raw(uint8_t pid, const char *hex)
     }
     if (s_raw) {
         int n = fprintf(s_raw, "%lld,01%02X,%s\n", (long long)(esp_timer_get_time() / 1000), pid, hex);
-        if (n > 0) s_raw_bytes += n;
+        if (n > 0) { s_raw_bytes += n; s_unsaved = true; }
     }
     xSemaphoreGive(s_lock);
 }
@@ -392,7 +403,7 @@ void sdlog_write_pattern_window(uint32_t window_seq, int64_t start_ms, int64_t e
                         (long long)end_ms, samples, pattern_id, dist, novelty, spawned ? 1 : 0, sax_rpm, sax_speed);
         for (int i = 0; i < nfeatures; i++) n += fprintf(s_pat, ",%.4g", features[i]);
         n += fprintf(s_pat, "\n");
-        if (n > 0) s_pat_bytes += n;
+        if (n > 0) { s_pat_bytes += n; s_unsaved = true; }
     }
     xSemaphoreGive(s_lock);
 }
@@ -408,6 +419,7 @@ void sdlog_write_ml_line(const char *header, const char *line)
     }
     if (s_ml && fputs(line, s_ml) >= 0) {
         s_ml_bytes += strlen(line);
+        s_unsaved = true;
         /* flushed with the CSV in sync_all_locked(): one fsync per save, not one per model line */
     }
     xSemaphoreGive(s_lock);

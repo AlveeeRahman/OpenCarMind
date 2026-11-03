@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Page 3 shows live whether the power can be cut: green "Safe to turn off" only when car data has stopped for 5 s, everything is on the card and no upload is running, red with the reason otherwise (`main/power_state.c`, with a simulated drive in the host tests). The line used to stay the same between saves.
+
 ## 2.2.0
 
 - Setup over USB, so the SD card stays in the board. An authenticated door on the USB cable (`main/usb_door.c`) takes the pairing, Wi-Fi networks, time zone and settings from the desktop app, and lets the app read the session files. The first pairing needs the 6-digit code the board shows on its screen, and later connections answer an HMAC challenge. Pairing through `receiver.json` on the card is gone.

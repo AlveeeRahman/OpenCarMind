@@ -10,6 +10,10 @@
 
 esp_err_t sdlog_init(void);
 bool      sdlog_ok(void);
+/* True when everything written so far is on the card, so the power can be cut now. False between a write and the next
+   save (at most SDLOG_SYNC_PERIOD_S seconds) and when there is no card. Reads one flag: safe to call from the display. */
+bool      sdlog_saved(void);
+int64_t   sdlog_ms_since_write(void);   /* since the last row or file write, INT64_MAX before any */
 /* Flush everything to the card now and raise "Safe to turn off" (the car link dropped, or a periodic save). */
 void      sdlog_sync_now(void);
 uint32_t  sdlog_session_id(void);

@@ -16,7 +16,7 @@ Version 2.2.0. Licence: MIT. Downloads for the firmware and the desktop app are 
 
 - Every standard Mode 01 field the car reports (70 are decoded), battery voltage, the VIN, and stored, pending and permanent trouble codes. One CSV row is written per poll cycle.
 - A small neural network on the chip. Each time a row arrives it classifies the last 30 seconds of driving as stopped, braking, accelerating or cruising. It also estimates three values the OBD port does not report: brake pressure, flywheel torque and fuel rate.
-- A save to the SD card every 10 seconds. Page 3 of the screen shows "Safe to turn off" each time, so you can pull the plug without losing the drive.
+- A save to the SD card every 10 seconds, and a live power-off line on page 3: green "Safe to turn off" only once car data has stopped, everything is on the card and nothing is uploading, red with the reason (logging, saving, upload) otherwise.
 - A fault engine that ranks trouble codes by severity and groups codes that share a cause.
 - Dark and light screen themes, switched by time of day or fixed in a settings file.
 - A soft real-time scheduler that times every job against its deadline and restarts the board if a step hangs.
@@ -69,6 +69,13 @@ The same five pages in the light theme:
 <img src="docs/images/internals-light.png" width="170" alt="Page 3 in the light theme: internals and recent events">
 <img src="docs/images/faults-light.png" width="170" alt="Page 4 in the light theme: faults">
 <img src="docs/images/system-light.png" width="170" alt="Page 5 in the light theme: system">
+</p>
+
+Page 3 says live whether the power can be cut. It turns green only when car data has stopped, everything is on the card and no upload is running:
+
+<p align="center">
+<img src="docs/images/internals.png" width="170" alt="Page 3 with the green line: Safe to turn off">
+<img src="docs/images/internals-logging.png" width="170" alt="Page 3 with the red line: Not safe, logging">
 </p>
 
 By default the screen switches by time of day. It is light from 06:00 to 17:00 and dark otherwise, in the board's time zone. Set `timezone` in `config.json` (the desktop app fills it in from your computer), because the build default is UTC. Before the clock is known the screen stays dark. Set `theme_mode` in `config.json` to 1 for always dark or 2 for always light, and `day_start_hour` and `day_end_hour` to change the hours (see [docs/CONFIGURATION.md](docs/CONFIGURATION.md)). The pictures are renders, not photographs of a panel. They come from `docs/screens/screens.html` with `sh docs/screens/render.sh`, which applies the same light colour table the firmware uses.
@@ -142,7 +149,7 @@ What the model does not do yet:
 
 ## Status
 
-What has been checked, on the bench or in the code: the build (with Wi-Fi clock sync on and off), the model's identity hash, the host unit tests (108 checks), the 10-second save and the "Safe to turn off" event on a board with an SD card, and the Wi-Fi upload to a stand-in receiver with resume after a cut-off pass. CI builds the desktop app and runs its unit tests on Windows, macOS and Linux. Nobody has opened the app on a real machine yet.
+What has been checked, on the bench or in the code: the build (with Wi-Fi clock sync on and off), the model's identity hash, the host unit tests (183 checks, including a simulated drive for the power-off line), the 10-second save and the "Safe to turn off" event on a board with an SD card, and the Wi-Fi upload to a stand-in receiver with resume after a cut-off pass. CI builds the desktop app and runs its unit tests on Windows, macOS and Linux. Nobody has opened the app on a real machine yet.
 
 Known security limits are listed in [SECURITY.md](SECURITY.md#known-limits).
 

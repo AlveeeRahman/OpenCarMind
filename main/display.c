@@ -19,6 +19,10 @@
 #include "board.h"
 #include "display.h"
 #include "status.h"
+#include "sdlog.h"
+#include "power_state.h"
+#include "uploader.h"
+#include "sys_mode.h"
 #include "version.h"
 #include <stdarg.h>
 
@@ -841,13 +845,31 @@ static void refresh_page2(const app_status_t *st)
     if (fit > P2_EVENTS) fit = P2_EVENTS;
     if (fit < 1) lv_obj_add_flag(p2_ev_cap, LV_OBJ_FLAG_HIDDEN);
     else { lv_obj_remove_flag(p2_ev_cap, LV_OBJ_FLAG_HIDDEN); lv_obj_set_pos(p2_ev_cap, 6, top); }
+    bool save_line_shown = false;
     for (int i = 0; i < P2_EVENTS; i++) {
         if (i >= fit) { lv_obj_add_flag(p2_ev_line[i], LV_OBJ_FLAG_HIDDEN); continue; }
         lv_obj_remove_flag(p2_ev_line[i], LV_OBJ_FLAG_HIDDEN);
         lv_obj_set_pos(p2_ev_line[i], 6, top + 16 + i * 15);
         if (i >= st->event_count) { lv_label_set_text(p2_ev_line[i], i == 0 ? "no events yet" : ""); lv_obj_set_style_text_color(p2_ev_line[i], lv_color_hex(C_MUTED), 0); continue; }
         const sys_event_t *e = &st->events[(st->event_head + EVENT_MAX - 1 - i) % EVENT_MAX];   /* newest first */
-        lv_label_set_text_fmt(p2_ev_line[i], "%lu:%02lu %s", (unsigned long)(e->uptime_ms / 60000), (unsigned long)((e->uptime_ms / 1000) % 60), e->text);
+        unsigned long mm = (unsigned long)(e->uptime_ms / 60000), ss = (unsigned long)((e->uptime_ms / 1000) % 60);
+        if (strcmp(e->text, "Safe to turn off") == 0) {
+            /* The newest save line shows the state now, not when it was written: green only when car data has stopped,
+               everything is on the card and nothing is uploading (power_state.c). Older copies are greyed. */
+            if (!save_line_shown) {
+                save_line_shown = true;
+                power_state_t ps = power_state(sdlog_ok(), sdlog_saved(), sdlog_ms_since_write(), sys_mode_get() == MODE_DRIVE,
+                                               uploader_busy());
+                lv_label_set_text_fmt(p2_ev_line[i], "%lu:%02lu %s %s", mm, ss, ps == POWER_SAFE ? LV_SYMBOL_OK : LV_SYMBOL_WARNING,
+                                      power_state_text(ps));
+                lv_obj_set_style_text_color(p2_ev_line[i], lv_color_hex(ps == POWER_SAFE ? C_OK : C_BAD), 0);
+            } else {
+                lv_label_set_text_fmt(p2_ev_line[i], "%lu:%02lu Saved", mm, ss);
+                lv_obj_set_style_text_color(p2_ev_line[i], lv_color_hex(C_MUTED), 0);
+            }
+            continue;
+        }
+        lv_label_set_text_fmt(p2_ev_line[i], "%lu:%02lu %s", mm, ss, e->text);
         lv_obj_set_style_text_color(p2_ev_line[i], lv_color_hex(e->level == EV_ERROR ? C_BAD : e->level == EV_WARN ? C_WARN : C_TEXT), 0);
     }
 }

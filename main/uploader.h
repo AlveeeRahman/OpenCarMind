@@ -21,3 +21,4 @@ const char *uploader_board_id(void);
 /* One pass: catch the desktop up on every session file, within a byte budget. Returns false if the desktop could not be
    reached. Call it from the Wi-Fi task only, while connected and parked. */
 bool uploader_pass(void);
+bool uploader_busy(void);        /* a pass is running */

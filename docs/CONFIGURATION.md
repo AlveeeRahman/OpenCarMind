@@ -19,7 +19,7 @@ The board writes everything under `/sdcard/obd/`.
 | `custom_pids.csv` | up to 8 custom PIDs (you create it) |
 | `clock.txt` | the time at the last save, so the clock can resume after a power cut |
 
-A new session starts at every power cycle. Everything is flushed to the card at least every 10 seconds (`SDLOG_SYNC_PERIOD_S`) and each time the event "Safe to turn off" appears on page 3.
+A new session starts at every power cycle. Everything is flushed to the card at least every 10 seconds (`SDLOG_SYNC_PERIOD_S`). The newest save line on page 3 shows live whether you can cut the power (`main/power_state.c`): green "Safe to turn off" once no car data has arrived for 5 seconds, the last of it is on the card and no upload is running, and red "Not safe: logging", "Not safe: saving" or "Not safe: upload" until then. The AI model runs once per row of car data, so it has stopped by the time the line turns green.
 
 ## Wi-Fi networks
 

@@ -27,6 +27,7 @@ static char s_host[64], s_token[72], s_board[13];
 static uint16_t s_port;
 static char *s_cert;                    /* PEM, PSRAM */
 static bool s_ok;
+static volatile bool s_busy;
 
 typedef struct { char *buf; size_t len, cap; } body_t;
 
@@ -143,9 +144,21 @@ static long long remote_size(const char *list, const char *name)
     return 0;
 }
 
+bool uploader_busy(void) { return s_busy; }
+
+static bool pass_inner(void);
+
 bool uploader_pass(void)
 {
     if (!s_ok) return false;
+    s_busy = true;
+    bool reached = pass_inner();
+    s_busy = false;
+    return reached;
+}
+
+static bool pass_inner(void)
+{
     static body_t list, small;
     if (!list.buf) { list.cap = LIST_MAX; list.buf = heap_caps_malloc(LIST_MAX, MALLOC_CAP_SPIRAM); }
     if (!small.buf) { small.cap = 64; small.buf = heap_caps_malloc(64, MALLOC_CAP_SPIRAM); }

@@ -3,6 +3,7 @@ idf_component_register(
          "obd_ble.c"
          "adapter_match.c"
          "harden.c"
+         "power_state.c"
          "uploader.c"
          "usb_door.c"
          "elm327.c"

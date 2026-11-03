@@ -24,6 +24,7 @@ void sys_event(event_level_t level, const char *fmt, ...)
 static int fails, checks;
 #include "adapter_match.h"
 #include "harden.h"
+#include "power_state.h"
 #define CHECK(cond) do { checks++; if (!(cond)) { fails++; fprintf(stderr, "FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond); } } while (0)
 #define NEAR(a, b) (fabsf((a) - (b)) < 1e-3f)
 
@@ -219,8 +220,33 @@ static void test_harden(void)
     CHECK(!harden_timezone_ok(NULL));
 }
 
+/* Simulates a drive from start to switch-off: the screen may say "Safe to turn off" only at the end. */
+static void test_power_state(void)
+{
+    CHECK(power_state(false, true, 99999, false, false) == POWER_NO_CARD);
+    CHECK(power_state(true, true, 99999, true, false) == POWER_LOGGING);          /* car link up */
+    CHECK(power_state(true, true, 1200, false, false) == POWER_LOGGING);          /* rows still fresh, model still running */
+    CHECK(power_state(true, true, 4999, false, false) == POWER_LOGGING);
+    CHECK(power_state(true, false, 5000, false, false) == POWER_SAVING);          /* data stopped, last save pending */
+    CHECK(power_state(true, true, 5000, false, true) == POWER_UPLOADING);
+    CHECK(power_state(true, true, 5000, false, false) == POWER_SAFE);             /* stale data, saved, idle */
+    CHECK(power_state(true, true, INT64_MAX, false, false) == POWER_SAFE);        /* parked since boot */
+    /* a timeline: rows every 1.5 s, then the car stops at 30 s; saves every 10 s */
+    int safe_at = -1;
+    for (int ms = 0; ms <= 60000; ms += 500) {
+        int64_t last_row = ms <= 30000 ? (ms / 1500) * 1500 : 30000;
+        bool saved = (ms >= 40000);                                   /* first save after the last row */
+        power_state_t s = power_state(true, saved, ms - last_row, ms <= 30000, false);
+        if (s == POWER_SAFE && safe_at < 0) safe_at = ms;
+        if (ms <= 30000) CHECK(s != POWER_SAFE);
+    }
+    CHECK(safe_at == 40000);
+    for (int s = POWER_SAFE; s <= POWER_UPLOADING; s++) CHECK(strlen(power_state_text((power_state_t)s)) <= 18);   /* fits page 3 */
+}
+
 int main(void)
 {
+    test_power_state();
     test_harden();
     test_adapter_names();
     test_pattern();
