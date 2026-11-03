@@ -48,6 +48,10 @@ Prices are in US dollars, taken from US listings seen on 3 November 2026 and cha
 | PLX Kiwi 3 | BLE 4.x | generic | Expected | no current Amazon offer | [Amazon B016X3L0O2](https://www.amazon.com/dp/B016X3L0O2) |
 | FIXD | Bluetooth | unknown | Unverified. One owner reports it works with other ELM327 apps | not found, first generation discontinued | [Amazon B013RIQMEO](https://www.amazon.com/dp/B013RIQMEO) |
 | Generic "ELM327 BLE 4.0" clones | BLE | usually FFF0 or FFE0 | Expected for most. Some fake v2.1 clones skip commands | varies | [Amazon search](https://www.amazon.com/s?k=ELM327+Bluetooth+4.0+BLE+OBD2) |
+| Panlong PL-B04 | Bluetooth, iOS and Android | generic | Expected: the listing says it works with Torque and Car Scanner on iOS, which needs BLE and ELM327 | not found | [Amazon B0C1GDJ9ZJ](https://www.amazon.com/dp/B0C1GDJ9ZJ) |
+| DA200 (sold as "OBD2 Scanner Bluetooth 5.4 with AI Repair Tips") | BLE 4.0 / 5.4 | generic | Expected: the maker's spec sheet lists BLE, a PIC18F25K80 main chip (the chip most ELM327 v1.5 clones use) and all 9 OBD-II protocols | not found | [Amazon B0FH2GJTP8](https://www.amazon.com/dp/B0FH2GJTP8) |
+| V800 full-system scanners (Panlong PL-V800, white-label copies such as VQQEFF) | Bluetooth | private app | Not expected: the Panlong listing says it uses the INNOOBD+ app and does not support third-party apps | not found | [Amazon B0GQ3D57PK](https://www.amazon.com/dp/B0GQ3D57PK) |
+| "OBD2 Scanner AI Diagnostic Tool" with an exclusive app | Bluetooth | unknown | Unverified: the listing names no chip, no Bluetooth type and no third-party apps | not found | [Amazon B0H3F4WYXN](https://www.amazon.com/dp/B0H3F4WYXN) |
 | BlueDriver Bluetooth Pro | Bluetooth | private protocol | Not expected: reported to work only with its own app | 79.95 USD | [Amazon search](https://www.amazon.com/s?k=BlueDriver+Bluetooth+Pro+OBDII) |
 | OBDLink MX+ | Classic Bluetooth 3.0 | SPP | Will not work, no Classic radio on the S3 | 139.95 USD | [Amazon B07JFRFJG6](https://www.amazon.com/dp/B07JFRFJG6) |
 | OBDLink LX | Classic Bluetooth 3.0 | SPP | Will not work, no Classic radio on the S3 | not found | [Amazon search](https://www.amazon.com/s?k=OBDLink+LX+Bluetooth) |
@@ -64,6 +68,8 @@ Not listed? Check your adapter with a BLE scanner app such as nRF Connect. A ser
 - vLinker FS and MS MFi mode and the VgateFwUpdater switch: the Amazon listings linked above
 - Kiwi 3 on BLE: [HP Tuners forum, TrackAddict developer](https://forum.hptuners.com/showthread.php?p=433373)
 - BlueDriver app lock (secondary source): [OBDplanet](https://obdplanet.com/bluedriver-vs-obdlink)
+- DA200 spec sheet (V1.1, 15 April 2025): [Global Sources PDF](https://p.globalsources.com/IMAGES/PDT/SPEC/175/K1227182175.pdf)
+- Panlong PL-B04 and PL-V800 app support: the Amazon listings linked above
 - FIXD with other apps (one owner): [iamcarhacker](https://iamcarhacker.com/?p=15082)
 - Name words and fallback rules: [BetterDriver](https://github.com/FlappedEar/BetterDriver), [ha-obd-ble](https://github.com/Jmann235/ha-obd-ble), [SwiftOBD2](https://github.com/kkonteh97/SwiftOBD2)
 - Protocol order after a failed auto search: [python-OBD](https://github.com/brendan-w/python-OBD)
