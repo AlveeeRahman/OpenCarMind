@@ -24,7 +24,7 @@ Only the LELink has been driven with this board. Every other row is based on the
 |---|---|---|---|---|---|
 | FFF0 | FFF0 | FFF1 (notify) | FFF2 (write) | OBDLink CX, Veepeak, Carista, most clones | [OBDLink CX developer notes](https://support.obdlink.com/support/solutions/articles/43000746707-obdlink-cx-adapter-notes), [Stack Overflow](https://stackoverflow.com/questions/61090365/what-ble-characteristic-should-i-use-in-a-ble-ios-device-for-obdii) |
 | FFE0 | FFE0 | FFE1 | FFE1 (same characteristic) | LELink, HM-10 style clones | tested on this board |
-| FFE0 split | FFE0 | FFE1 | FFE2 | Deep OBD | [EdiabasLib](https://github.com/uholeschak/ediabaslib) |
+| FFE0 split | FFE0 | FFE1 | FFE2 | adapters with the Deep OBD firmware | [EdiabasLib BtLeGattSppAndroid.cs](https://github.com/uholeschak/ediabaslib/blob/master/EdiabasLib/EdiabasLib/BtLeGattSppAndroid.cs) |
 | Vgate E7810A71 | E7810A71-73AE-499D-8C15-FAA9AEF0C3F2 | BEF8D6C9-9C21-4C9E-B632-BD58C1009F9F | same characteristic | Vgate vLinker | [EdiabasLib](https://github.com/uholeschak/ediabaslib), [LTSupportAutomotive](https://github.com/mickeyl/LTSupportAutomotive), [ha-obd-ble](https://github.com/Jmann235/ha-obd-ble) |
 | Vgate 18F0 | 18F0 | 2AF0 | 2AF1 | Vgate iCar Pro BLE | [SwiftOBD2](https://github.com/kkonteh97/SwiftOBD2) |
 | BEEF | BEEF | picked by property | picked by property | listed by LTSupportAutomotive | [LTSupportAutomotive](https://github.com/mickeyl/LTSupportAutomotive) |
@@ -32,30 +32,30 @@ Only the LELink has been driven with this board. Every other row is based on the
 
 ## Adapters
 
-Prices are in US dollars, taken from US listings seen on 3 November 2026 and change often. "Not found" means no current price showed up. Amazon links are plain product pages with no affiliate tag. Each one was opened on 3 November 2026 and showed the named product.
+Prices are in US dollars, taken from US listings seen on 3 November 2026 and change often. "Not found" means no current price showed up. Amazon links are plain product pages with no affiliate tag. Each one was opened on 3 November 2026 and showed the named product. Where the title does not name the model or the page showed the item unavailable, the Status column says so.
 
 | Adapter | Radio | Layout | Status | Price seen | Buy |
 |---|---|---|---|---|---|
 | LELink² | BLE | FFE0 | Tested on this board | not found | [Amazon B0755N61PW](https://www.amazon.com/dp/B0755N61PW), original LELink [B00QJRYMFC](https://www.amazon.com/dp/B00QJRYMFC) |
 | Veepeak OBDCheck BLE+ | BLE (Classic too, for Android) | FFF0 | Expected | about 38 to 42 USD at US retailers | [Amazon B076XVQMVS](https://www.amazon.com/dp/B076XVQMVS) |
 | Veepeak OBDCheck BLE | BLE 4.0 | FFF0 | Expected | about 32 USD at a US retailer | [Amazon B073XKQQQW](https://www.amazon.com/dp/B073XKQQQW) |
-| OBDLink CX | BLE 5.1 | FFF0, always encrypted | Expected, pairs on demand. Bonding is open for the first 5 minutes after the adapter powers up | 79.95 USD | [Amazon B08NFLL3NT](https://www.amazon.com/dp/B08NFLL3NT) |
+| OBDLink CX (Amazon lists it as the Bimmercode edition, the only CX model) | BLE 5.1 | FFF0, always encrypted | Expected, pairs on demand. Bonding is open for the first 5 minutes after the adapter powers up | 79.95 USD | [Amazon B08NFLL3NT](https://www.amazon.com/dp/B08NFLL3NT) |
 | Vgate iCar Pro BLE 4.0 | BLE, shows up as IOS-Vlink | 18F0 | Expected | 31.49 USD | [Amazon B06XGB4873](https://www.amazon.com/dp/B06XGB4873) |
 | Vgate vLinker MC+ | BLE and Classic, BLE side named vLinker MC-IOS | Vgate E7810A71 or generic | Expected | about 55 USD | [Amazon B088LW211V](https://www.amazon.com/dp/B088LW211V) |
 | Vgate vLinker FS | Classic and BLE, ships in MFi mode | Vgate E7810A71 or generic | Needs a setting: switch it to "BLE+BT" with the VgateFwUpdater app first | not found | [Amazon B0BZTXV6MZ](https://www.amazon.com/dp/B0BZTXV6MZ) |
 | Vgate vLinker MS | Classic and BLE, ships in MFi mode | Vgate E7810A71 or generic | Needs a setting: switch it to "BLE+BT" with the VgateFwUpdater app first | not found | [Amazon B0D6YQX4R8](https://www.amazon.com/dp/B0D6YQX4R8) |
 | Carista OBD2 / Carista EVO | BLE | FFF0 | Expected | not found | [Amazon B00YVHGTBM](https://www.amazon.com/dp/B00YVHGTBM), [EVO B0CM9W4MCW](https://www.amazon.com/dp/B0CM9W4MCW) |
-| PLX Kiwi 3 | BLE 4.x | generic | Expected | no current Amazon offer | [Amazon B016X3L0O2](https://www.amazon.com/dp/B016X3L0O2) |
+| PLX Kiwi 3 | BLE 4.x | generic | Expected. Listing showed "currently unavailable" on 3 Nov 2026 | no current Amazon offer | [Amazon B016X3L0O2](https://www.amazon.com/dp/B016X3L0O2) |
 | FIXD | Bluetooth | unknown | Unverified. One owner reports it works with other ELM327 apps | not found, first generation discontinued | [Amazon B013RIQMEO](https://www.amazon.com/dp/B013RIQMEO) |
-| Generic "ELM327 BLE 4.0" clones | BLE | usually FFF0 or FFE0 | Expected for most. Some fake v2.1 clones skip commands | varies | examples: RODEDIO [B0GWQKLTMR](https://www.amazon.com/dp/B0GWQKLTMR) (BLE only on iOS), AUCARAUTO [B0BVLZ27TL](https://www.amazon.com/dp/B0BVLZ27TL) |
-| Panlong PL-B04 | Bluetooth, iOS and Android | generic | Expected: the listing says it works with Torque and Car Scanner on iOS, which needs BLE and ELM327 | not found | [Amazon B0C1GDJ9ZJ](https://www.amazon.com/dp/B0C1GDJ9ZJ) |
-| DA200 (sold as "OBD2 Scanner Bluetooth 5.4 with AI Repair Tips") | BLE 4.0 / 5.4 | generic | Expected: the maker's spec sheet lists BLE, a PIC18F25K80 main chip (the chip most ELM327 v1.5 clones use) and all 9 OBD-II protocols | not found | [Amazon B0FH2GJTP8](https://www.amazon.com/dp/B0FH2GJTP8) |
-| V800 full-system scanners (Panlong PL-V800, white-label copies such as VQQEFF) | Bluetooth | private app | Not expected: the Panlong listing says it uses the INNOOBD+ app and does not support third-party apps | not found | [Amazon B0GQ3D57PK](https://www.amazon.com/dp/B0GQ3D57PK) |
+| Generic "ELM327 BLE 4.0" clones | BLE | usually FFF0 or FFE0 | Expected for most. Some fake v2.1 clones skip commands | varies | example: RODEDIO [B0GWQKLTMR](https://www.amazon.com/dp/B0GWQKLTMR), whose listing says Bluetooth LE on iOS |
+| Panlong PL-B04 | Bluetooth, iOS and Android | generic | Expected for the "For iOS Android" option: that listing says it works with Car Scanner on iOS, which needs BLE and ELM327. The "For Android Only" option is likely Classic. The page title does not name the model | not found | [Amazon B0C1GDJ9ZJ](https://www.amazon.com/dp/B0C1GDJ9ZJ) |
+| DA200 (sold as "OBD2 Scanner Bluetooth 5.4 with AI Repair Tips") | BLE 4.0 / 5.4 | generic | Expected: the maker's spec sheet lists BLE, a PIC18F25K80 main chip (the chip most ELM327 v1.5 clones use) and all 9 OBD-II protocols. The Amazon title does not name the model, so check for DA200 on the box | not found | [Amazon B0FH2GJTP8](https://www.amazon.com/dp/B0FH2GJTP8) |
+| V800 full-system scanners (Panlong PL-V800, white-label copies such as VQQEFF) | Bluetooth | private app | Not expected: the Panlong listing says it uses the INNOOBD+ app and does not support third-party apps. Its title says "Engine Transmission ABS SRS" and does not say V800 | not found | [Amazon B0GQ3D57PK](https://www.amazon.com/dp/B0GQ3D57PK) |
 | "OBD2 Scanner AI Diagnostic Tool" with an exclusive app | Bluetooth | unknown | Unverified: the listing names no chip, no Bluetooth type and no third-party apps | not found | [Amazon B0H3F4WYXN](https://www.amazon.com/dp/B0H3F4WYXN) |
 | BlueDriver Bluetooth Pro | Bluetooth | private protocol | Not expected: reported to work only with its own app | 79.95 USD | [Amazon B00652G4TS](https://www.amazon.com/dp/B00652G4TS) |
 | OBDLink MX+ | Classic Bluetooth 3.0 | SPP | Will not work, no Classic radio on the S3 | 139.95 USD | [Amazon B07JFRFJG6](https://www.amazon.com/dp/B07JFRFJG6) |
 | OBDLink LX | Classic Bluetooth 3.0 | SPP | Will not work, no Classic radio on the S3 | not found | [Amazon B00H9S71LW](https://www.amazon.com/dp/B00H9S71LW) |
-| KONNWEI KW902 | Classic, listed for Android and Windows only | SPP | Will not work, no Classic radio on the S3 | not found | [Amazon B073F57QT3](https://www.amazon.com/dp/B073F57QT3) |
+| KONNWEI KW902 | Classic, listed for Android and Windows only | SPP | Will not work, no Classic radio on the S3. Listing showed "currently unavailable" on 3 Nov 2026 | not found | [Amazon B073F57QT3](https://www.amazon.com/dp/B073F57QT3) |
 
 Not listed? Check your adapter with a BLE scanner app such as nRF Connect. A service with one characteristic that notifies or indicates and one you can write is enough for the generic fallback. When the name has none of the words above and the adapter advertises no known service, add its name to `OBD_BLE_NAME_PREFIXES` in `idf.py menuconfig`.
 
