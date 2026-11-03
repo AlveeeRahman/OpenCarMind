@@ -1,0 +1,10 @@
+# Mac (Apple silicon) environment for the small model: ~/Desktop/dev/metal_env
+torch>=2.3
+mlx>=0.32
+numpy>=1.26
+pandas>=2.2
+scikit-learn>=1.4
+onnx>=1.16
+safetensors>=0.4
+esp-ppq>=1.3
+optuna==5.0.0

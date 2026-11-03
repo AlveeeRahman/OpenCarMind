@@ -1,0 +1,81 @@
+{
+ "export": "export/onboard_s3_mt_a16",
+ "target": "esp32s3",
+ "quant_type": "w8a16",
+ "sessions": {
+  "s900001": {
+   "vehicle": "KIA Soul (HCRL Driving Dataset)",
+   "windows": 165,
+   "device_vs_sim_manoeuvre_agreement": 0.9879,
+   "device_vs_float_manoeuvre_agreement": 0.9879,
+   "device_vs_sim_estimate_mean_abs_diff_z": [
+    0.0131,
+    0.0151,
+    0.0124
+   ],
+   "speed_decidable_windows": 47,
+   "speed_decidable_accuracy": 0.9362,
+   "class_counts": {
+    "stopped": 39,
+    "braking": 37,
+    "accelerating": 11,
+    "cruising": 78
+   }
+  },
+  "s900002": {
+   "vehicle": "Toyota Etios 2014 1.5 L",
+   "windows": 264,
+   "device_vs_sim_manoeuvre_agreement": 0.9848,
+   "device_vs_float_manoeuvre_agreement": 0.3674,
+   "device_vs_sim_estimate_mean_abs_diff_z": [
+    0.0177,
+    0.0147,
+    0.011
+   ],
+   "speed_decidable_windows": 53,
+   "speed_decidable_accuracy": 0.6981,
+   "class_counts": {
+    "stopped": 59,
+    "braking": 59,
+    "accelerating": 0,
+    "cruising": 146
+   }
+  },
+  "s900003": {
+   "vehicle": "Toyota Etios 2014 1.5 L",
+   "windows": 149,
+   "device_vs_sim_manoeuvre_agreement": 0.9732,
+   "device_vs_float_manoeuvre_agreement": 0.604,
+   "device_vs_sim_estimate_mean_abs_diff_z": [
+    0.0254,
+    0.0129,
+    0.0091
+   ],
+   "speed_decidable_windows": 18,
+   "speed_decidable_accuracy": 0.7778,
+   "class_counts": {
+    "stopped": 33,
+    "braking": 84,
+    "accelerating": 0,
+    "cruising": 32
+   }
+  }
+ },
+ "latency_us": {
+  "median": 15292.0,
+  "p95": 15307.0,
+  "max": 15320
+ },
+ "iron_law": {
+  "macs": 3693792,
+  "ops": 7387584,
+  "weights_bytes": 54912,
+  "act_bytes_int8": 80460,
+  "cpu_mhz_measured": 240.0,
+  "effective_gops": 0.483,
+  "predicted_compute_ms_s31_model": 2.405,
+  "measured_ms": 15.292,
+  "deadline_ms": 10000,
+  "share_of_window_budget": 0.001529
+ }
+}

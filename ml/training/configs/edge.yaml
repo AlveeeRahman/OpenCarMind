@@ -1,0 +1,14 @@
+# CarMind-Edge, the on-device autoencoder (Kind 1 only). ~60k parameters, int8 after ESP-PPQ.
+model:
+  window: 64
+  n_channels: 10
+  width: 24
+  embed: 16
+  patch: 8
+train:
+  epochs: 20
+  steps_per_epoch: 300
+  batch_size: 128
+  lr: 0.001
+  weight_decay: 0.01
+  workers: 2

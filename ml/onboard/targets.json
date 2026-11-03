@@ -1,0 +1,28 @@
+{
+ "targets": [
+  "brake_pressure_bar",
+  "flywheel_torque_nm",
+  "fuel_rate_lph"
+ ],
+ "mean": [
+  6.548885345458984,
+  22.352052688598633,
+  2.669785737991333
+ ],
+ "std": [
+  9.542607307434082,
+  24.586856842041016,
+  2.115802526473999
+ ],
+ "units": [
+  "bar",
+  "N m",
+  "L/h"
+ ],
+ "classes": [
+  "stopped",
+  "braking",
+  "accelerating",
+  "cruising"
+ ]
+}

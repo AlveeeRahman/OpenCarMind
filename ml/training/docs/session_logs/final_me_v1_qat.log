@@ -1,0 +1,8 @@
+[I 2026-10-30 12:29:24,293] Using an existing study with `study_name='edge_kind1_me_v1'` instead of creating a new one.
+#50: 3-seed val mean 0.881 ± 0.004  {'man': 0.9061254955634211, 'est': 0.8551636735598246}
+#64: 3-seed val mean 0.882 ± 0.005  {'man': 0.9049690231098793, 'est': 0.8599688609441122}
+#94: 3-seed val mean 0.887 ± 0.001  {'man': 0.9087459624101976, 'est': 0.8645239273707072}
+#91: 3-seed val mean 0.881 ± 0.001  {'man': 0.9046837797159638, 'est': 0.8578763405481974}
+#79: 3-seed val mean 0.884 ± 0.005  {'man': 0.9035353814284868, 'est': 0.8638387521107992}
+WINNER #94 (38,679 params, qat=True): TEST manoeuvre 0.895, estimator 0.775 [0.4099, 0.9331, 0.982], mean 0.835
+single-task TEST: manoeuvre 0.896, estimator 0.768

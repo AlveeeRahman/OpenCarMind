@@ -1,0 +1,13 @@
+.venv/
+data/
+runs/
+export/
+__pycache__/
+*.pyc
+
+# third-party ESP-DL components, fetched by tools/espdl_bench/fetch_components.sh
+tools/espdl_bench/components/
+tools/espdl_bench/build/
+tools/espdl_bench/sdkconfig
+tools/espdl_bench/managed_components/
+.aider*
