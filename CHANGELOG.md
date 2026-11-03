@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Wider adapter support (`main/adapter_match.c`, `main/obd_ble.c`), merged from what BetterDriver, SwiftOBD2, ha-obd-ble, EdiabasLib, LTSupportAutomotive and python-OBD do. Known layouts now include Vgate vLinker (E7810A71/BEF8D6C9) and Deep OBD (FFE1/FFE2). The serial line is picked by property and may use indicate. Adverts match by name words anywhere in the name and by the FFF0, 18F0, BEEF and Vgate services. The strongest candidate in a 1.5 s window wins.
+- Pairing on demand: when an adapter refuses an unencrypted subscribe, the board pairs with Just Works and bonds, then retries once with the fixed PIN 123456 (OBDLink CX). Forgetting the adapter also clears the bonds.
+- The adapter address is saved only after it answers `ATZ`. A device with no serial line, or one that never answers, is skipped for 10 minutes. Before this, the first matching device was saved even if it was not an adapter.
+- Writes are cut to the ATT MTU and wait for each acknowledgement. If automatic protocol search fails, each OBD-II protocol is tried in turn.
+- `docs/ADAPTERS.md` lists adapters with radio, layout, status, a price snapshot and an Amazon link.
+
 - Page 3 shows live whether the power can be cut: green "Safe to turn off" only when car data has stopped for 5 s, everything is on the card and no upload is running, red with the reason otherwise (`main/power_state.c`, with a simulated drive in the host tests). The line used to stay the same between saves.
 
 ## 2.2.0

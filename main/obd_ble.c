@@ -1,15 +1,20 @@
-/* NimBLE central for an ELM327-style BLE adapter (LELink / LELink2 and clones).
+/* NimBLE central for ELM327-style Bluetooth LE OBD-II adapters.
  *
- * First run: scan for an advertiser whose name starts with an entry of CONFIG_OBD_BLE_NAME_PREFIXES
- * or that advertises the configured service UUID, connect, and store its address in NVS.
- * Later runs: connect only to the stored address (auto-connect). Long-press BOOT clears it.
+ * First run: scan for adapters (by advertised name, by advertised serial service, or by the configured prefixes),
+ * collect candidates for a short window, connect to the strongest, find its serial line, and keep its address only
+ * after it answers the ELM327 reset. Devices that turn out not to be adapters are skipped for a while.
+ * Later runs: connect only to the stored address. Long-press BOOT clears it.
+ * Pairing (Just Works) and bonding happen only when the adapter asks for them.
  */
 #include <string.h>
 #include <strings.h>
 #include <stdlib.h>
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "nvs_flash.h"
 #include "nvs.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "nimble/nimble_port.h"
 #include "nimble/nimble_port_freertos.h"
 #include "host/ble_hs.h"
@@ -25,16 +30,36 @@ static const char *TAG = "obd_ble";
 
 void ble_store_config_init(void);
 
+#define CANDIDATE_WINDOW_US  (1500 * 1000LL)   /* how long to collect candidates before picking the strongest */
+#define REJECT_TTL_US        (10 * 60 * 1000000LL)
+#define N_REJECT             8
+#define MAX_CHRS             48
+
 static uint8_t   s_own_addr_type;
 static uint16_t  s_conn = BLE_HS_CONN_HANDLE_NONE;
 static uint16_t  s_write_handle, s_notify_handle, s_cccd_handle;
-static bool      s_write_no_rsp;
+static bool      s_write_no_rsp, s_use_indicate;
 static bool      s_ready;
+static bool      s_sec_tried;
+static bool      s_pin_valid;          /* this address refused Just Works: pair it with the fixed PIN */
+static ble_addr_t s_pin_addr;
+static SemaphoreHandle_t s_write_done;
 
 static ble_addr_t s_saved_addr;
 static bool       s_have_saved;
 static char       s_cur_name[32];
 static ble_addr_t s_cur_addr;
+
+/* best candidate seen in the current scan window */
+static bool       s_best_valid;
+static ble_addr_t s_best_addr;
+static char       s_best_name[32];
+static int8_t     s_best_rssi;
+static int64_t    s_window_start;
+
+static portMUX_TYPE s_reject_mux = portMUX_INITIALIZER_UNLOCKED;
+static struct { ble_addr_t addr; int64_t until; } s_reject[N_REJECT];
+static int s_reject_next;
 
 /* ------------------------------------------------------------------ NVS */
 static void load_saved(void)
@@ -72,94 +97,118 @@ void obd_ble_forget_adapter(void)
         nvs_close(h);
     }
     s_have_saved = false;
+    ble_store_clear();                     /* drop bonds too, so a new adapter pairs from scratch */
     ESP_LOGW(TAG, "saved adapter forgotten");
     if (s_conn != BLE_HS_CONN_HANDLE_NONE) ble_gap_terminate(s_conn, BLE_ERR_REM_USER_CONN_TERM);
 }
 
-/* ------------------------------------------------------------------ UUID helpers */
-static bool parse_uuid(const char *s, ble_uuid_any_t *out)
+/* ------------------------------------------------------------------ skip list */
+static bool is_rejected(const ble_addr_t *a)
 {
-    char hex[40];
-    size_t n = 0;
-    for (; *s && n + 1 < sizeof hex; s++) if (*s != '-' && *s != ' ') hex[n++] = *s;
-    hex[n] = 0;
-    if (n == 4) {
-        memset(out, 0, sizeof *out);
-        out->u16.u.type = BLE_UUID_TYPE_16;
-        out->u16.value = (uint16_t)strtoul(hex, NULL, 16);
-        return true;
-    }
-    if (n == 32) {
-        uint8_t raw[16];
-        for (int i = 0; i < 16; i++) {
-            char b[3] = {hex[i * 2], hex[i * 2 + 1], 0};
-            raw[15 - i] = (uint8_t)strtoul(b, NULL, 16);   /* NimBLE stores 128-bit UUIDs little-endian */
-        }
-        return ble_uuid_init_from_buf(out, raw, 16) == 0;
-    }
-    return false;
+    int64_t now = esp_timer_get_time();
+    bool hit = false;
+    portENTER_CRITICAL(&s_reject_mux);
+    for (int i = 0; i < N_REJECT; i++)
+        if (s_reject[i].until > now && ble_addr_cmp(&s_reject[i].addr, a) == 0) { hit = true; break; }
+    portEXIT_CRITICAL(&s_reject_mux);
+    return hit;
 }
 
-typedef struct { const char *svc, *ntf, *wr; } profile_t;
-static const profile_t PROFILES[] = {
-    {CONFIG_OBD_BLE_SVC_UUID, CONFIG_OBD_BLE_NOTIFY_UUID, CONFIG_OBD_BLE_WRITE_UUID},  /* configured (LELink: FFE0/FFE1/FFE1) */
-    {"FFE0", "FFE1", "FFE1"},
-    {"FFF0", "FFF1", "FFF2"},
-    {"18F0", "2AF0", "2AF1"},
-    {"6E400001-B5A3-F393-E0A9-E50E24DCCA9E", "6E400003-B5A3-F393-E0A9-E50E24DCCA9E", "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"},
-};
+static void reject(const ble_addr_t *a)
+{
+    portENTER_CRITICAL(&s_reject_mux);
+    s_reject[s_reject_next].addr = *a;
+    s_reject[s_reject_next].until = esp_timer_get_time() + REJECT_TTL_US;
+    s_reject_next = (s_reject_next + 1) % N_REJECT;
+    portEXIT_CRITICAL(&s_reject_mux);
+}
 
-static const struct peer_chr *find_cccd_chr(const struct peer *peer, const struct peer_chr *chr, uint16_t *cccd)
+/* Drops the current link; an unsaved device is also skipped for REJECT_TTL_US so the scan moves on. */
+static void drop_current(const char *why)
+{
+    bool saved = s_have_saved && ble_addr_cmp(&s_cur_addr, &s_saved_addr) == 0;
+    if (!saved) {
+        reject(&s_cur_addr);
+        sys_event(EV_WARN, "Skipping %s: %s", s_cur_name[0] ? s_cur_name : addr_str(s_cur_addr.val), why);
+    }
+    if (s_conn != BLE_HS_CONN_HANDLE_NONE) ble_gap_terminate(s_conn, BLE_ERR_REM_USER_CONN_TERM);
+}
+
+void obd_ble_adapter_confirmed(void)
+{
+    if (s_conn == BLE_HS_CONN_HANDLE_NONE) return;
+    if (!s_have_saved || ble_addr_cmp(&s_cur_addr, &s_saved_addr) != 0) save_current();
+    STATUS_LOCK(); g_status.adapter_saved = s_have_saved; STATUS_UNLOCK();
+}
+
+void obd_ble_adapter_rejected(const char *why) { drop_current(why); }
+
+/* ------------------------------------------------------------------ discovery */
+static adapter_uuid_t to_adapter_uuid(const ble_uuid_any_t *u)
+{
+    adapter_uuid_t a = adapter_uuid16(0);
+    switch (u->u.type) {
+    case BLE_UUID_TYPE_16:
+        a = adapter_uuid16(u->u16.value);
+        break;
+    case BLE_UUID_TYPE_32:
+        a.b[0] = (uint8_t)(u->u32.value >> 24);
+        a.b[1] = (uint8_t)(u->u32.value >> 16);
+        a.b[2] = (uint8_t)(u->u32.value >> 8);
+        a.b[3] = (uint8_t)u->u32.value;
+        break;
+    default:
+        for (int i = 0; i < 16; i++) a.b[i] = u->u128.value[15 - i];   /* NimBLE stores 128-bit UUIDs little-endian */
+        break;
+    }
+    return a;
+}
+
+static bool find_cccd(const struct peer_chr *chr, uint16_t *cccd)
 {
     const struct peer_dsc *d;
     SLIST_FOREACH(d, &chr->dscs, next) {
         if (ble_uuid_cmp(&d->dsc.uuid.u, BLE_UUID16_DECLARE(BLE_GATT_DSC_CLT_CFG_UUID16)) == 0) {
             *cccd = d->dsc.handle;
-            return chr;
-        }
-    }
-    return NULL;
-}
-
-static bool resolve_handles(const struct peer *peer)
-{
-    /* 1. known profiles */
-    for (size_t i = 0; i < sizeof PROFILES / sizeof PROFILES[0]; i++) {
-        ble_uuid_any_t su, nu, wu;
-        if (!PROFILES[i].svc[0] || !parse_uuid(PROFILES[i].svc, &su) ||
-            !parse_uuid(PROFILES[i].ntf, &nu) || !parse_uuid(PROFILES[i].wr, &wu)) continue;
-        const struct peer_chr *n = peer_chr_find_uuid(peer, &su.u, &nu.u);
-        const struct peer_chr *w = peer_chr_find_uuid(peer, &su.u, &wu.u);
-        if (!n || !w) continue;
-        if (!(n->chr.properties & BLE_GATT_CHR_PROP_NOTIFY)) continue;
-        if (!find_cccd_chr(peer, n, &s_cccd_handle)) continue;
-        s_notify_handle = n->chr.val_handle;
-        s_write_handle  = w->chr.val_handle;
-        s_write_no_rsp  = !(w->chr.properties & BLE_GATT_CHR_PROP_WRITE) && (w->chr.properties & BLE_GATT_CHR_PROP_WRITE_NO_RSP);
-        ESP_LOGI(TAG, "profile %s matched: notify=0x%04x write=0x%04x cccd=0x%04x (%s)", PROFILES[i].svc,
-                 s_notify_handle, s_write_handle, s_cccd_handle, s_write_no_rsp ? "write-no-rsp" : "write-with-rsp");
-        return true;
-    }
-    /* 2. heuristic: first vendor service that has a NOTIFY chr and a WRITE chr */
-    const struct peer_svc *svc;
-    SLIST_FOREACH(svc, &peer->svcs, next) {
-        if (svc->svc.uuid.u.type == BLE_UUID_TYPE_16 && svc->svc.uuid.u16.value >= 0x1800 && svc->svc.uuid.u16.value <= 0x18FF) continue;
-        const struct peer_chr *n = NULL, *w = NULL, *c;
-        SLIST_FOREACH(c, &svc->chrs, next) {
-            if (!n && (c->chr.properties & BLE_GATT_CHR_PROP_NOTIFY)) n = c;
-            if (!w && (c->chr.properties & (BLE_GATT_CHR_PROP_WRITE | BLE_GATT_CHR_PROP_WRITE_NO_RSP))) w = c;
-        }
-        if (n && w && find_cccd_chr(peer, n, &s_cccd_handle)) {
-            s_notify_handle = n->chr.val_handle;
-            s_write_handle  = w->chr.val_handle;
-            s_write_no_rsp  = !(w->chr.properties & BLE_GATT_CHR_PROP_WRITE);
-            char buf[BLE_UUID_STR_LEN];
-            ESP_LOGW(TAG, "no known profile; using service %s notify=0x%04x write=0x%04x",
-                     ble_uuid_to_str(&svc->svc.uuid.u, buf), s_notify_handle, s_write_handle);
             return true;
         }
     }
     return false;
+}
+
+static bool resolve_handles(const struct peer *peer)
+{
+    static adapter_chr_t flat[MAX_CHRS];
+    static const struct peer_chr *refs[MAX_CHRS];
+    size_t n = 0;
+    const struct peer_svc *svc;
+    SLIST_FOREACH(svc, &peer->svcs, next) {
+        adapter_uuid_t su = to_adapter_uuid(&svc->svc.uuid);
+        const struct peer_chr *c;
+        SLIST_FOREACH(c, &svc->chrs, next) {
+            if (n >= MAX_CHRS) break;
+            uint16_t cccd;
+            uint8_t props = c->chr.properties;
+            if (!find_cccd(c, &cccd)) props &= (uint8_t)~(ADAPTER_PROP_NOTIFY | ADAPTER_PROP_INDICATE);
+            flat[n] = (adapter_chr_t){.svc = su, .chr = to_adapter_uuid(&c->chr.uuid), .props = props};
+            refs[n++] = c;
+        }
+    }
+
+    int ni, wi, profile;
+    if (!adapter_choose(flat, n, CONFIG_OBD_BLE_SVC_UUID, CONFIG_OBD_BLE_NOTIFY_UUID, CONFIG_OBD_BLE_WRITE_UUID,
+                        &ni, &wi, &profile)) return false;
+    const struct peer_chr *nc = refs[ni], *wc = refs[wi];
+    find_cccd(nc, &s_cccd_handle);
+    s_notify_handle = nc->chr.val_handle;
+    s_write_handle  = wc->chr.val_handle;
+    s_use_indicate  = !(nc->chr.properties & BLE_GATT_CHR_PROP_NOTIFY);
+    s_write_no_rsp  = !(wc->chr.properties & BLE_GATT_CHR_PROP_WRITE);
+    char sb[BLE_UUID_STR_LEN];
+    ESP_LOGI(TAG, "serial line via %s profile, rx chr %s: rx=0x%04x (%s) tx=0x%04x (%s)", adapter_profile_name(profile),
+             ble_uuid_to_str(&nc->chr.uuid.u, sb), s_notify_handle, s_use_indicate ? "indicate" : "notify",
+             s_write_handle, s_write_no_rsp ? "write-no-rsp" : "write");
+    return true;
 }
 
 /* ------------------------------------------------------------------ GAP */
@@ -171,6 +220,7 @@ static volatile bool s_paused;
 
 static void start_scan(void)
 {
+    s_best_valid = false;
     if (s_paused) { STATUS_LOCK(); g_status.ble = BLE_ST_IDLE; STATUS_UNLOCK(); return; }
     struct ble_gap_disc_params p = {0};
     p.filter_duplicates = 0;   /* keep reporting so a weak adapter is retried once it gets closer */
@@ -182,32 +232,83 @@ static void start_scan(void)
     STATUS_LOCK(); g_status.ble = BLE_ST_SCANNING; STATUS_UNLOCK();
 }
 
-static bool should_connect(const struct ble_gap_disc_desc *d, const struct ble_hs_adv_fields *f)
+static bool advertises_serial(const struct ble_hs_adv_fields *f)
+{
+    adapter_uuid_t cfg_a;
+    bool have_cfg = CONFIG_OBD_BLE_SVC_UUID[0] && adapter_uuid_parse(CONFIG_OBD_BLE_SVC_UUID, &cfg_a);
+    for (int i = 0; i < f->num_uuids16; i++) {
+        adapter_uuid_t u = adapter_uuid16(f->uuids16[i].value);
+        if (adapter_service_is_obd(&u) || (have_cfg && adapter_uuid_eq(&u, &cfg_a))) return true;
+    }
+    for (int i = 0; i < f->num_uuids128; i++) {
+        ble_uuid_any_t any = {.u128 = f->uuids128[i]};
+        adapter_uuid_t u = to_adapter_uuid(&any);
+        if (adapter_service_is_obd(&u) || (have_cfg && adapter_uuid_eq(&u, &cfg_a))) return true;
+    }
+    return false;
+}
+
+static bool is_candidate(const struct ble_gap_disc_desc *d, const struct ble_hs_adv_fields *f)
 {
     if (d->event_type != BLE_HCI_ADV_RPT_EVTYPE_ADV_IND && d->event_type != BLE_HCI_ADV_RPT_EVTYPE_DIR_IND &&
         d->event_type != BLE_HCI_ADV_RPT_EVTYPE_SCAN_RSP) return false;
     if (d->rssi < CONFIG_OBD_BLE_MIN_RSSI) return false;
 
     if (s_have_saved) return ble_addr_cmp(&d->addr, &s_saved_addr) == 0;
+    if (is_rejected(&d->addr)) return false;
 
-    if (f->name && adapter_name_matches((const char *)f->name, f->name_len, CONFIG_OBD_BLE_NAME_PREFIXES)) return true;
+    if (f->name && f->name_len &&
+        (adapter_name_matches((const char *)f->name, f->name_len, CONFIG_OBD_BLE_NAME_PREFIXES) ||
+         adapter_name_looks_obd((const char *)f->name, f->name_len))) return true;
+    return advertises_serial(f);
+}
 
-    ble_uuid_any_t su;
-    if (parse_uuid(CONFIG_OBD_BLE_SVC_UUID, &su) && su.u.type == BLE_UUID_TYPE_16) {
-        for (int i = 0; i < f->num_uuids16; i++) if (f->uuids16[i].value == su.u16.value) return true;
+static void connect_to(const ble_addr_t *addr, const char *name, int8_t rssi)
+{
+    s_cur_addr = *addr;
+    snprintf(s_cur_name, sizeof s_cur_name, "%s", name);
+    ESP_LOGI(TAG, "adapter found %s '%s' rssi=%d; connecting", addr_str(s_cur_addr.val), s_cur_name, rssi);
+    STATUS_LOCK();
+    g_status.ble = BLE_ST_CONNECTING;
+    g_status.adapter_rssi = rssi;
+    snprintf(g_status.adapter_name, sizeof g_status.adapter_name, "%s", s_cur_name);
+    snprintf(g_status.adapter_addr, sizeof g_status.adapter_addr, "%s", addr_str(s_cur_addr.val));
+    STATUS_UNLOCK();
+
+    s_best_valid = false;
+    ble_gap_disc_cancel();
+    int rc = ble_gap_connect(s_own_addr_type, &s_cur_addr, 10000, NULL, gap_event, NULL);
+    if (rc != 0) {
+        ESP_LOGE(TAG, "ble_gap_connect rc=%d", rc);
+        start_scan();
     }
-    return false;
+}
+
+static void subscribe(uint16_t conn);
+
+static bool needs_security(int status)
+{
+    return status == BLE_HS_ATT_ERR(BLE_ATT_ERR_INSUFFICIENT_AUTHEN) ||
+           status == BLE_HS_ATT_ERR(BLE_ATT_ERR_INSUFFICIENT_ENC) ||
+           status == BLE_HS_ATT_ERR(BLE_ATT_ERR_INSUFFICIENT_KEY_SZ);
 }
 
 static int on_subscribe(uint16_t conn_handle, const struct ble_gatt_error *error, struct ble_gatt_attr *attr, void *arg)
 {
     if (error->status != 0) {
+        if (needs_security(error->status) && !s_sec_tried) {
+            /* the adapter wants an encrypted link: pair (Just Works) and subscribe again on ENC_CHANGE */
+            s_sec_tried = true;
+            ESP_LOGI(TAG, "adapter asks for pairing (status=%d); starting security", error->status);
+            int rc = ble_gap_security_initiate(conn_handle);
+            if (rc == 0) return 0;
+            ESP_LOGE(TAG, "security initiate rc=%d", rc);
+        }
         ESP_LOGE(TAG, "CCCD write failed status=%d", error->status);
-        ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+        drop_current("could not subscribe to its serial line");
         return 0;
     }
     sys_event(EV_INFO, "Adapter linked: %s", s_cur_name[0] ? s_cur_name : addr_str(s_cur_addr.val));
-    if (!s_have_saved) save_current();
     s_ready = true;
     STATUS_LOCK();
     g_status.ble = BLE_ST_ELM_INIT;
@@ -217,19 +318,24 @@ static int on_subscribe(uint16_t conn_handle, const struct ble_gatt_error *error
     return 0;
 }
 
+static void subscribe(uint16_t conn)
+{
+    uint8_t v[2] = {s_use_indicate ? 2 : 1, 0};
+    int rc = ble_gattc_write_flat(conn, s_cccd_handle, v, sizeof v, on_subscribe, NULL);
+    if (rc != 0) {
+        ESP_LOGE(TAG, "CCCD write rc=%d", rc);
+        ble_gap_terminate(conn, BLE_ERR_REM_USER_CONN_TERM);
+    }
+}
+
 static void on_disc_complete(const struct peer *peer, int status, void *arg)
 {
     if (status != 0 || !resolve_handles(peer)) {
-        sys_event(EV_ERROR, "Adapter has no serial service (status %d)", status);
-        ble_gap_terminate(peer->conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+        ESP_LOGW(TAG, "no serial service (discovery status %d)", status);
+        drop_current("no serial service");
         return;
     }
-    uint8_t v[2] = {1, 0};
-    int rc = ble_gattc_write_flat(peer->conn_handle, s_cccd_handle, v, sizeof v, on_subscribe, NULL);
-    if (rc != 0) {
-        ESP_LOGE(TAG, "CCCD write rc=%d", rc);
-        ble_gap_terminate(peer->conn_handle, BLE_ERR_REM_USER_CONN_TERM);
-    }
+    subscribe(peer->conn_handle);
 }
 
 static int gap_event(struct ble_gap_event *event, void *arg)
@@ -238,32 +344,35 @@ static int gap_event(struct ble_gap_event *event, void *arg)
     int rc;
 
     switch (event->type) {
-    case BLE_GAP_EVENT_DISC:
+    case BLE_GAP_EVENT_DISC: {
         if (ble_gap_conn_active()) return 0;   /* already connecting */
-        if (ble_hs_adv_parse_fields(&f, event->disc.data, event->disc.length_data) != 0) return 0;
-        if (!should_connect(&event->disc, &f)) return 0;
-
-        s_cur_addr = event->disc.addr;
-        if (f.name && f.name_len) {
-            size_t n = f.name_len < sizeof s_cur_name - 1 ? f.name_len : sizeof s_cur_name - 1;
-            memcpy(s_cur_name, f.name, n);
-            s_cur_name[n] = 0;
+        const struct ble_gap_disc_desc *d = &event->disc;
+        int64_t now = esp_timer_get_time();
+        if (ble_hs_adv_parse_fields(&f, d->data, d->length_data) == 0 && is_candidate(d, &f)) {
+            char name[32] = "";
+            if (f.name && f.name_len) snprintf(name, sizeof name, "%.*s", (int)f.name_len, (const char *)f.name);
+            if (s_have_saved) {
+                if (!name[0]) snprintf(name, sizeof name, "%s", s_cur_name);
+                connect_to(&d->addr, name, d->rssi);
+                return 0;
+            }
+            if (!s_best_valid) { s_window_start = now; s_best_rssi = INT8_MIN; }
+            bool same = s_best_valid && ble_addr_cmp(&s_best_addr, &d->addr) == 0;
+            if (!s_best_valid || d->rssi > s_best_rssi || same) {
+                if (!same || name[0]) snprintf(s_best_name, sizeof s_best_name, "%s", name);
+                s_best_addr = d->addr;
+                s_best_rssi = d->rssi;
+                s_best_valid = true;
+            }
         }
-        ESP_LOGI(TAG, "adapter found %s '%s' rssi=%d; connecting", addr_str(s_cur_addr.val), s_cur_name, event->disc.rssi);
-        STATUS_LOCK();
-        g_status.ble = BLE_ST_CONNECTING;
-        g_status.adapter_rssi = event->disc.rssi;
-        snprintf(g_status.adapter_name, sizeof g_status.adapter_name, "%s", s_cur_name);
-        snprintf(g_status.adapter_addr, sizeof g_status.adapter_addr, "%s", addr_str(s_cur_addr.val));
-        STATUS_UNLOCK();
-
-        ble_gap_disc_cancel();
-        rc = ble_gap_connect(s_own_addr_type, &s_cur_addr, 10000, NULL, gap_event, NULL);
-        if (rc != 0) {
-            ESP_LOGE(TAG, "ble_gap_connect rc=%d", rc);
-            start_scan();
+        if (s_best_valid && now - s_window_start >= CANDIDATE_WINDOW_US) {
+            ble_addr_t a = s_best_addr;
+            char n[32];
+            snprintf(n, sizeof n, "%s", s_best_name);
+            connect_to(&a, n, s_best_rssi);
         }
         return 0;
+    }
 
     case BLE_GAP_EVENT_CONNECT:
         if (event->connect.status != 0) {
@@ -272,6 +381,9 @@ static int gap_event(struct ble_gap_event *event, void *arg)
             return 0;
         }
         s_conn = event->connect.conn_handle;
+        s_sec_tried = false;
+        ble_hs_cfg.sm_io_cap = (s_pin_valid && ble_addr_cmp(&s_pin_addr, &s_cur_addr) == 0) ? BLE_SM_IO_CAP_KEYBOARD_ONLY
+                                                                                          : BLE_SM_IO_CAP_NO_IO;
         ESP_LOGI(TAG, "connected handle=%d", s_conn);
         STATUS_LOCK(); g_status.ble = BLE_ST_DISCOVERING; STATUS_UNLOCK();
         peer_add(s_conn);
@@ -291,6 +403,44 @@ static int gap_event(struct ble_gap_event *event, void *arg)
         elm_link_changed(false);
         STATUS_LOCK(); memset(g_status.obd.valid, 0, sizeof g_status.obd.valid); STATUS_UNLOCK();
         start_scan();
+        return 0;
+
+    case BLE_GAP_EVENT_ENC_CHANGE:
+        ESP_LOGI(TAG, "encryption %s (status %d)", event->enc_change.status == 0 ? "on" : "failed", event->enc_change.status);
+        if (s_sec_tried && !s_ready && event->enc_change.conn_handle == s_conn) {
+            if (event->enc_change.status == 0) {
+                subscribe(s_conn);
+            } else if (ble_hs_cfg.sm_io_cap == BLE_SM_IO_CAP_NO_IO) {
+                /* Just Works refused: try once more as a keyboard with the fixed PIN some adapters use
+                   (OBDLink CX: "PIN for older BLE standards is 123456") */
+                ble_hs_cfg.sm_io_cap = BLE_SM_IO_CAP_KEYBOARD_ONLY;
+                s_pin_addr = s_cur_addr;      /* remembered, in case the adapter drops the link after a failed pairing */
+                s_pin_valid = true;
+                if (ble_gap_security_initiate(s_conn) != 0) drop_current("pairing failed");
+            } else {
+                drop_current("pairing failed");
+            }
+        }
+        return 0;
+
+    case BLE_GAP_EVENT_REPEAT_PAIRING: {
+        /* the adapter lost its bond (reset or re-paired elsewhere): drop ours and pair again */
+        struct ble_gap_conn_desc desc;
+        if (ble_gap_conn_find(event->repeat_pairing.conn_handle, &desc) == 0) ble_store_util_delete_peer(&desc.peer_id_addr);
+        return BLE_GAP_REPEAT_PAIRING_RETRY;
+    }
+
+    case BLE_GAP_EVENT_PASSKEY_ACTION:
+        /* Just Works first; a numeric comparison is accepted, and a passkey request gets the fixed adapter PIN */
+        if (event->passkey.params.action == BLE_SM_IOACT_NUMCMP) {
+            struct ble_sm_io io = {.action = BLE_SM_IOACT_NUMCMP, .numcmp_accept = 1};
+            ble_sm_inject_io(event->passkey.conn_handle, &io);
+        } else if (event->passkey.params.action == BLE_SM_IOACT_INPUT) {
+            struct ble_sm_io io = {.action = BLE_SM_IOACT_INPUT, .passkey = 123456};
+            ble_sm_inject_io(event->passkey.conn_handle, &io);
+        } else {
+            ESP_LOGW(TAG, "adapter wants passkey entry (action %d); not supported", event->passkey.params.action);
+        }
         return 0;
 
     case BLE_GAP_EVENT_NOTIFY_RX:
@@ -319,16 +469,33 @@ static int gap_event(struct ble_gap_event *event, void *arg)
 static int on_write_done(uint16_t conn_handle, const struct ble_gatt_error *error, struct ble_gatt_attr *attr, void *arg)
 {
     if (error->status != 0) ESP_LOGW(TAG, "write status=%d", error->status);
+    if (s_write_done) xSemaphoreGive(s_write_done);
     return 0;
 }
 
 int obd_ble_write(const uint8_t *data, size_t len)
 {
     if (!s_ready || s_conn == BLE_HS_CONN_HANDLE_NONE) return -1;
-    int rc = s_write_no_rsp ? ble_gattc_write_no_rsp_flat(s_conn, s_write_handle, data, len)
-                            : ble_gattc_write_flat(s_conn, s_write_handle, data, len, on_write_done, NULL);
-    if (rc != 0) ESP_LOGW(TAG, "write rc=%d", rc);
-    return rc;
+    uint16_t mtu = ble_att_mtu(s_conn);
+    size_t chunk = mtu > 23 ? mtu - 3 : 20;   /* ATT payload is MTU minus the 3-byte header */
+    for (size_t off = 0; off < len; off += chunk) {
+        size_t n = len - off < chunk ? len - off : chunk;
+        bool more = off + n < len;
+        int rc;
+        if (s_write_no_rsp) {
+            rc = ble_gattc_write_no_rsp_flat(s_conn, s_write_handle, data + off, n);
+        } else {
+            if (s_write_done) xSemaphoreTake(s_write_done, 0);
+            rc = ble_gattc_write_flat(s_conn, s_write_handle, data + off, n, on_write_done, NULL);
+            /* one ATT request at a time: wait for this piece before sending the next */
+            if (rc == 0 && more && s_write_done && xSemaphoreTake(s_write_done, pdMS_TO_TICKS(1000)) != pdTRUE) rc = -1;
+        }
+        if (rc != 0) {
+            ESP_LOGW(TAG, "write rc=%d", rc);
+            return rc;
+        }
+    }
+    return 0;
 }
 
 bool obd_ble_connected(void) { return s_ready; }
@@ -382,6 +549,7 @@ esp_err_t obd_ble_start(void)
     }
     STATUS_UNLOCK();
 
+    s_write_done = xSemaphoreCreateBinary();
     elm_init();
 
     esp_err_t err = nimble_port_init();
@@ -389,8 +557,13 @@ esp_err_t obd_ble_start(void)
     ble_hs_cfg.reset_cb = on_reset;
     ble_hs_cfg.sync_cb = on_sync;
     ble_hs_cfg.store_status_cb = ble_store_util_status_rr;
-    ble_hs_cfg.sm_bonding = 0;
+    /* Just Works pairing with bonding, used only when an adapter rejects an unencrypted subscribe */
+    ble_hs_cfg.sm_io_cap = BLE_SM_IO_CAP_NO_IO;
+    ble_hs_cfg.sm_bonding = 1;
     ble_hs_cfg.sm_mitm = 0;
+    ble_hs_cfg.sm_sc = 1;
+    ble_hs_cfg.sm_our_key_dist = BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID;
+    ble_hs_cfg.sm_their_key_dist = BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID;
 
 #if MYNEWT_VAL(BLE_INCL_SVC_DISCOVERY) || MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES)
     peer_init(MYNEWT_VAL(BLE_MAX_CONNECTIONS), 32, 32, 64, 64);

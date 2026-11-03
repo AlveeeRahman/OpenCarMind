@@ -6,12 +6,13 @@ menu "OBD Logger Configuration"
             default "OBDBLE,OBDII,OBD2,OBDLink,ELM327,VEEPEAK,vLinker,V-LINK,IOS-Vlink,Vgate,iCar,Viecar,KONNWEI"
             help
                 Case-insensitive prefixes matched against the advertised device name
-                when no adapter address has been saved yet. The list holds names
-                that common Bluetooth LE ELM327-style adapters advertise, and only
-                the LELink one has been tested. A device that matches but is not an
-                adapter is dropped when it has no serial service or does not answer
-                the ELM327 reset. Add your adapter's name here if it is not found.
-                Once a connection succeeds the adapter's address is stored in NVS
+                when no adapter address has been saved yet. Names that contain a
+                common adapter word (OBD, ELM327, Vgate, vLink, Veepeak, Carista,
+                Kiwi, LELink, ...) and adverts with an OBD serial service are found
+                without this list. A device that matches but is not an adapter is
+                skipped for 10 minutes when it has no serial service or does not
+                answer the ELM327 reset. Add your adapter's name here if it is not
+                found. The adapter's address is stored in NVS once it answers ATZ,
                 and later boots connect to that address only.
 
         config OBD_BLE_SVC_UUID

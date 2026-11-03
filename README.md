@@ -108,7 +108,7 @@ The app in [desktop/](desktop/README.md) runs on Windows, macOS and Linux. Over 
 ## Hardware
 
 - Board: Waveshare ESP32-S3-LCD-1.47B (the pin map in `main/board.h` matches it). Other ESP32-S3 boards need that file edited. There is no build without the display yet.
-- Adapter: a Bluetooth LE ELM327-style adapter. It was tested with a LELink only, and the pairing list includes the names other common adapters advertise (unverified). The firmware tries these GATT profiles in turn: FFE0/FFE1, FFF0/FFF1/FFF2, 18F0/2AF0/2AF1 and the Nordic UART service, then falls back to the first service that has a notify and a write characteristic. Classic Bluetooth adapters will not work, because the S3 has no classic radio.
+- Adapter: a Bluetooth LE ELM327-style adapter. It was tested with a LELink only. The firmware knows the serial layouts of OBDLink CX, Veepeak, Carista, Vgate iCar Pro and vLinker, Deep OBD and the Nordic UART service, falls back to any service it can subscribe to and write, and pairs only when the adapter asks. Classic Bluetooth adapters will not work, because the S3 has no classic radio. [docs/ADAPTERS.md](docs/ADAPTERS.md) lists adapters with their status, prices and links.
 - A FAT-formatted SD card.
 
 ## Build and flash
@@ -124,7 +124,7 @@ idf.py -p /dev/cu.usbmodemXXXX flash monitor
 
 The first build downloads ESP-DL, LVGL, led_strip and cJSON through the IDF component manager. The NimBLE helper comes from the `examples` folder of your ESP-IDF install, so keep that folder. If you built an earlier version in the same folder, delete `sdkconfig` first. If the board stays in download mode after flashing, reset it with `python -m esptool --chip esp32s3 -p <port> --after watchdog-reset chip-id`.
 
-On first boot the board pairs with the first adapter whose name starts with one of the names in `OBD_BLE_NAME_PREFIXES` (the common ones are built in), or that advertises the configured service. It stores the address and uses only that adapter afterwards. If your adapter is not found, add its name to that list in `idf.py menuconfig` under OBD Logger Configuration. Only the LELink has been tested.
+On first boot the board looks for adapters for 1.5 seconds and connects to the strongest one whose name looks like an OBD adapter, starts with an entry of `OBD_BLE_NAME_PREFIXES`, or that advertises a service OBD adapters use. It stores the address once the adapter answers the ELM327 reset and uses only that adapter afterwards. Devices that turn out not to be adapters are skipped for 10 minutes. If your adapter is not found, add its name to that list in `idf.py menuconfig` under OBD Logger Configuration. Only the LELink has been tested.
 
 Settings, SD card files, the Wi-Fi list and the CSV columns are in [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 

@@ -12,6 +12,7 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "elm327.h"
+#include "obd_ble.h"
 #include "status.h"
 #include "sdlog.h"
 #include "custom_pids.h"
@@ -414,6 +415,29 @@ static void poll_dtcs(void)
 }
 
 /* ------------------------------------------------------------------ init sequence */
+/* Tries each OBD-II protocol explicitly after ATSP0 failed, in python-OBD's order (CAN first). ATTP keeps the
+   auto-search fallback; clones that do not know ATTP get ATSP. Restores ATSP0 when none answers. */
+static bool try_protocols(char *resp, size_t sz)
+{
+    static const char order[] = "681792345";
+    for (const char *p = order; *p && s_link_up; p++) {
+        char cmd[8];
+        snprintf(cmd, sizeof cmd, "ATTP%c", *p);
+        if (elm_transact(cmd, resp, sz, CONFIG_OBD_ELM_TIMEOUT_MS) < 0) return false;
+        if (strchr(resp, '?')) {
+            snprintf(cmd, sizeof cmd, "ATSP%c", *p);
+            if (elm_transact(cmd, resp, sz, CONFIG_OBD_ELM_TIMEOUT_MS) < 0) return false;
+        }
+        int rc = elm_transact("0100", resp, sz, 8000);
+        if (rc > 0 && strstr(resp, "4100")) {
+            ESP_LOGI(TAG, "ECU answered on protocol %c", *p);
+            return true;
+        }
+    }
+    elm_transact("ATSP0", resp, sz, CONFIG_OBD_ELM_TIMEOUT_MS);
+    return false;
+}
+
 static bool elm_initialise(void)
 {
     char resp[256];
@@ -427,7 +451,13 @@ static bool elm_initialise(void)
     if (elm_transact("!?", resp, sizeof resp, 1500) > 0 && strncmp(resp, "VER", 3) == 0) snprintf(batch, sizeof batch, "%.8s", resp);
 
     rc = elm_transact("ATZ", resp, sizeof resp, 4000);
-    if (rc < 0) { sys_event(EV_ERROR, "OBD adapter not responding (ATZ)"); return false; }
+    if (rc == -1) rc = elm_transact("ATZ", resp, sizeof resp, 6000);   /* slow clones need a second, longer reset */
+    if (rc < 0) {
+        sys_event(EV_ERROR, "OBD adapter not responding (ATZ)");
+        if (rc == -1) obd_ble_adapter_rejected("no ELM327 reply");
+        return false;
+    }
+    obd_ble_adapter_confirmed();           /* it answered with a prompt: an ELM327-style adapter, keep it */
     {
         const char *t = resp;
         while (*t == ' ' || *t == '\n') t++;
@@ -457,6 +487,9 @@ static bool elm_initialise(void)
         rc = elm_transact("0100", resp, sizeof resp, 12000);
         if (rc > 0 && strstr(resp, "4100")) break;
         ESP_LOGW(TAG, "0100 -> '%s' (ignition off?)", resp);
+        /* auto search gave up although the adapter answers: try each protocol in turn, as python-OBD does */
+        if (rc > 0 && (tries == 2 || tries == 10) && (strstr(resp, "UNABLE") || strstr(resp, "ERROR")) &&
+            try_protocols(resp, sizeof resp)) break;
         vTaskDelay(pdMS_TO_TICKS(3000));
     } while (++tries < 20 && s_link_up);
     if (!s_link_up || tries >= 20) { if (s_link_up) sys_event(EV_WARN, "ECU not answering: ignition off?"); return false; }

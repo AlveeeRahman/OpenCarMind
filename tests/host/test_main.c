@@ -187,6 +187,89 @@ static void test_adapter_names(void)
     CHECK(!adapter_name_matches("abc", 3, ""));
     CHECK(!adapter_name_matches(NULL, 0, list));
     CHECK(!adapter_name_matches("abc", 3, NULL));
+
+    const char *obd[] = {"OBDBLE", "OBDLink CX", "Veepeak OBDCheck BLE+", "IOS-Vlink", "vLinker MC-IOS", "Carista",
+                         "KIWI 3", "LELink2", "Android-Vlink", "KW902", "my ELM327 v2.1", "Viecar VP11"};
+    for (size_t i = 0; i < sizeof obd / sizeof *obd; i++) CHECK(adapter_name_looks_obd(obd[i], strlen(obd[i])));
+    const char *other[] = {"JBL Flip 5", "Galaxy Watch", "Mi Band 6", "", "HMSoft"};
+    for (size_t i = 0; i < sizeof other / sizeof *other; i++) CHECK(!adapter_name_looks_obd(other[i], strlen(other[i])));
+    CHECK(!adapter_name_looks_obd("xxOBD", 3));                          /* only `len` bytes count */
+    CHECK(!adapter_name_looks_obd(NULL, 0));
+}
+
+static adapter_chr_t chr_of(const char *svc, const char *chr, uint8_t props)
+{
+    adapter_chr_t c;
+    CHECK(adapter_uuid_parse(svc, &c.svc));
+    CHECK(adapter_uuid_parse(chr, &c.chr));
+    c.props = props;
+    return c;
+}
+
+static void test_adapter_profiles(void)
+{
+    adapter_uuid_t a, b;
+    CHECK(adapter_uuid_parse("fff0", &a));
+    b = adapter_uuid16(0xFFF0);
+    CHECK(adapter_uuid_eq(&a, &b));
+    CHECK(adapter_uuid_parse("0000FFF0-0000-1000-8000-00805F9B34FB", &a) && adapter_uuid_eq(&a, &b));
+    CHECK(!adapter_uuid_parse("FFF", &a));
+    CHECK(!adapter_uuid_parse("FFFG", &a));
+    CHECK(adapter_uuid_parse("E7810A71-73AE-499D-8C15-FAA9AEF0C3F2", &a) && a.b[0] == 0xE7 && a.b[15] == 0xF2);
+
+    /* which advertised services count as an OBD serial line */
+    const char *adv_yes[] = {"FFF0", "18F0", "BEEF", "E7810A71-73AE-499D-8C15-FAA9AEF0C3F2"};
+    for (size_t i = 0; i < sizeof adv_yes / sizeof *adv_yes; i++) CHECK(adapter_uuid_parse(adv_yes[i], &a) && adapter_service_is_obd(&a));
+    const char *adv_no[] = {"FFE0", "180F", "1800", "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"};
+    for (size_t i = 0; i < sizeof adv_no / sizeof *adv_no; i++) CHECK(adapter_uuid_parse(adv_no[i], &a) && !adapter_service_is_obd(&a));
+
+    const uint8_t N = ADAPTER_PROP_NOTIFY, I = ADAPTER_PROP_INDICATE, W = ADAPTER_PROP_WRITE, WN = ADAPTER_PROP_WRITE_NR,
+                  R = 0x02;
+    int ni, wi, prof;
+
+    /* Veepeak / OBDLink CX / Carista: FFF1 notify, FFF2 write */
+    adapter_chr_t fff[] = {chr_of("180A", "2A29", R), chr_of("FFF0", "FFF1", N), chr_of("FFF0", "FFF2", W | WN)};
+    CHECK(adapter_choose(fff, 3, "FFE0", "FFE1", "FFE1", &ni, &wi, &prof) && ni == 1 && wi == 2);
+    CHECK(strcmp(adapter_profile_name(prof), "FFF0") == 0);
+
+    /* LELink: one characteristic does both; the configured profile wins */
+    adapter_chr_t ffe[] = {chr_of("FFE0", "FFE1", N | W | WN)};
+    CHECK(adapter_choose(ffe, 1, "FFE0", "FFE1", "FFE1", &ni, &wi, &prof) && ni == 0 && wi == 0 && prof == -2);
+
+    /* Deep OBD: FFE1 notify, FFE2 write */
+    adapter_chr_t deep[] = {chr_of("FFE0", "FFE1", N), chr_of("FFE0", "FFE2", W)};
+    CHECK(adapter_choose(deep, 2, "", "", "", &ni, &wi, &prof) && ni == 0 && wi == 1);
+    CHECK(strcmp(adapter_profile_name(prof), "FFE0 split") == 0);
+
+    /* Vgate vLinker: one 128-bit characteristic */
+    adapter_chr_t vl[] = {chr_of("1801", "2A05", I), chr_of("E7810A71-73AE-499D-8C15-FAA9AEF0C3F2",
+                                                           "BEF8D6C9-9C21-4C9E-B632-BD58C1009F9F", N | W)};
+    CHECK(adapter_choose(vl, 2, "FFE0", "FFE1", "FFE1", &ni, &wi, &prof) && ni == 1 && wi == 1);
+    CHECK(strcmp(adapter_profile_name(prof), "Vgate E7810A71") == 0);
+
+    /* Vgate iCar Pro BLE: 18F0 must not be mistaken for a SIG service */
+    adapter_chr_t icar[] = {chr_of("18F0", "2AF0", N), chr_of("18F0", "2AF1", WN)};
+    CHECK(adapter_choose(icar, 2, "FFE0", "FFE1", "FFE1", &ni, &wi, &prof) && ni == 0 && wi == 1);
+
+    /* unknown vendor service with indicate only: generic fallback, standard services skipped */
+    adapter_chr_t gen[] = {chr_of("180F", "2A19", N | R), chr_of("1801", "2A05", I),
+                           chr_of("49535343-FE7D-4AE5-8FA9-9FAFD205E455", "49535343-1E4D-4BD9-BA61-23C647249616", I),
+                           chr_of("49535343-FE7D-4AE5-8FA9-9FAFD205E455", "49535343-8841-43F4-A8D4-ECBE34729BB3", W)};
+    CHECK(adapter_choose(gen, 4, "FFE0", "FFE1", "FFE1", &ni, &wi, &prof) && ni == 2 && wi == 3 && prof == -1);
+
+    /* BEEF is preferred over another vendor service that comes first */
+    adapter_chr_t beef[] = {chr_of("AE30", "AE01", W), chr_of("AE30", "AE02", N),
+                            chr_of("BEEF", "BEE1", N), chr_of("BEEF", "BEE2", W)};
+    CHECK(adapter_choose(beef, 4, "", "", "", &ni, &wi, &prof) && ni == 2 && wi == 3);
+
+    /* a known profile whose notify characteristic lost its CCCD (props cleared) falls through */
+    adapter_chr_t nocccd[] = {chr_of("FFF0", "FFF1", 0), chr_of("FFF0", "FFF2", W)};
+    CHECK(!adapter_choose(nocccd, 2, "", "", "", &ni, &wi, &prof));
+
+    /* nothing usable */
+    adapter_chr_t none[] = {chr_of("180A", "2A29", R), chr_of("180F", "2A19", N)};
+    CHECK(!adapter_choose(none, 2, "FFE0", "FFE1", "FFE1", &ni, &wi, &prof));
+    CHECK(!adapter_choose(NULL, 0, "", "", "", &ni, &wi, &prof));
 }
 
 static void test_harden(void)
@@ -249,6 +332,7 @@ int main(void)
     test_power_state();
     test_harden();
     test_adapter_names();
+    test_adapter_profiles();
     test_pattern();
     test_formula();
     test_custom_csv();
