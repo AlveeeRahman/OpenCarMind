@@ -94,6 +94,8 @@ The board never talks to Dashy. Data reaches your computer by SD card or through
 
 ## Desktop app
 
+<p align="center"><img src="docs/images/workflow/wifi-link.png" width="900" alt="Wi-Fi link: pair once by card, the board stores it, joins your Wi-Fi when parked, sends over TLS to your app every 10 seconds, and the desktop app keeps and charts the drives"></p>
+
 The app in [desktop/](desktop/README.md) runs on Windows, macOS and Linux. It writes the board's Wi-Fi networks, settings, time zone and a pairing file to the SD card. After that, the board sends new data to the app over TLS every 10 seconds while the car is parked at home, and the app shows the drives and their charts. GitHub Actions builds the installers. [docs/DASHBOARD.md](docs/DASHBOARD.md) has the setup, the details of how the data reaches Dashy, and what has and has not been tested.
 
 ## Hardware
