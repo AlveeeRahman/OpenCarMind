@@ -1,0 +1,24 @@
+[package]
+name = "opencarmind-desktop"
+version = "0.1.0"
+description = "Reads OpenCarMind sessions from the SD card and shows them in a dashboard."
+license = "MIT"
+edition = "2021"
+rust-version = "1.77"
+
+[lib]
+name = "opencarmind_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+csv = "1"
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-single-instance = "2"

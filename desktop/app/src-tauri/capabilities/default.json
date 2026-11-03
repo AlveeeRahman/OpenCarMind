@@ -1,0 +1,6 @@
+{
+  "identifier": "default",
+  "description": "The main window can use the core API and the folder picker.",
+  "windows": ["main"],
+  "permissions": ["core:default", "dialog:default"]
+}

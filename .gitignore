@@ -19,3 +19,6 @@ config.json
 __pycache__/
 *.pyc
 dashboard/site/
+/desktop/app/node_modules/
+/desktop/app/src-tauri/target/
+/desktop/app/src-tauri/gen/

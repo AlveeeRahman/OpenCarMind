@@ -145,7 +145,7 @@ What has not been checked: other boards, other adapters, a power-off test during
 ## Planned
 
 - Support for more boards, including one without a display.
-- A desktop app for Windows, macOS and Linux that reads the card and manages the board's Wi-Fi over your home network. The design is in [desktop/](desktop/README.md), and nothing runs yet.
+- The desktop app ([desktop/](desktop/README.md)) opens the card and charts your drives today. Managing the board's Wi-Fi over your home network and settings over USB need new firmware first.
 - More regularised models, released by this project, to fit more cars.
 - A faster version built on a Jetson.
 

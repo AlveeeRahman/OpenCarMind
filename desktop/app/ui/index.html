@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpenCarMind</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="mark" aria-hidden="true"></span><span><b>Open</b>CarMind</span></div>
+  <div class="status" id="status">No card folder open</div>
+</header>
+<nav class="tabs" aria-label="Pages">
+  <button class="tab" data-page="overview" aria-current="page">Overview</button>
+  <button class="tab" data-page="drives">Drives</button>
+  <button class="tab" data-page="board">Board</button>
+</nav>
+<main>
+  <section id="page-overview" class="page">
+    <div class="head">
+      <div>
+        <h1>Overview</h1>
+        <p class="sub">Every drive read from the SD card, on this computer only. Distances are estimated from the OBD speed signal.</p>
+      </div>
+      <button class="primary" id="open-card">Open card folder</button>
+    </div>
+    <div id="empty" class="note">Put the SD card in this computer, then choose its <code>obd</code> folder, its <code>sessions</code> folder, or any folder of <code>sNNNNNN.csv</code> files.</div>
+    <div id="error" class="note warn" hidden></div>
+    <div class="cards" id="cards" hidden></div>
+    <div class="bars" id="bars" hidden></div>
+  </section>
+  <section id="page-drives" class="page" hidden>
+    <h1>Drives</h1>
+    <p class="sub">Choose a drive to see its charts.</p>
+    <div class="table-wrap"><table id="drives"><thead><tr><th>Drive</th><th>Start</th><th class="n">Rows</th><th class="n">Minutes</th><th class="n">Max km/h</th><th class="n">Km (est.)</th></tr></thead><tbody></tbody></table></div>
+    <div id="detail"></div>
+  </section>
+  <section id="page-board" class="page" hidden>
+    <h1>Board</h1>
+    <p class="sub">This version reads the SD card only. It cannot talk to the board yet.</p>
+    <div class="panel">
+      <h2>What is not built</h2>
+      <p>Connecting to the board over Wi-Fi needs a pairing service in the firmware, and the firmware does not have one. Changing the board's settings over USB needs a settings console in the firmware, and that does not exist either. Until both exist, take the card out of the board and open it here.</p>
+      <h2>Flashing the board</h2>
+      <p>Flash the firmware from the release page with <code>esptool</code>. The steps are in the project's README.</p>
+    </div>
+  </section>
+</main>
+<script src="app.js"></script>
+</body>
+</html>

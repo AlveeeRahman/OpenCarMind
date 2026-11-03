@@ -1,12 +1,34 @@
 # Desktop app
 
-Status: design only. Nothing in this folder runs yet. The app is planned for version 2.9.0.
+Status: first preview, version 0.1.0. It opens the SD card, shows your drives and charts them. It does not talk to the board yet.
 
-The plan is a Rust and Tauri app for Windows, macOS and Linux that does what the board's screen and SD card cannot: read your drives, show them in one place, and manage the board's Wi-Fi from your computer. It talks to the board over your own Wi-Fi network only, with TLS and a one-time pairing code, and it never writes to the SD card. A command-line tool, `ocm`, does the same things for PowerShell, Terminal and scripts.
+Built with Rust and Tauri for Windows, macOS (Apple silicon and Intel) and Linux. The Board page in the app says what is missing: pairing over Wi-Fi and a settings console over USB need new firmware, and the firmware has neither.
+
+## Get the installers
+
+Open the Actions tab on GitHub, choose the `desktop` workflow, open the latest successful run and download the artifact for your system. The installers are not code-signed, so macOS asks you to confirm the first launch (right-click the app and choose Open) and Windows SmartScreen shows a warning (choose More info, then Run anyway).
+
+| System | File |
+|---|---|
+| Mac with Apple silicon | `opencarmind-desktop-macos-apple-silicon`: a `.dmg` |
+| Mac with an Intel chip | `opencarmind-desktop-macos-intel`: a `.dmg` |
+| Windows | `opencarmind-desktop-windows`: a `-setup.exe` and a `.msi` |
+| Linux | `opencarmind-desktop-linux`: a `.deb`, an `.rpm` and an `.AppImage` (needs FUSE) |
+
+Each build runs the Rust unit tests on its own system first. They check the session summary maths against the rules in `tools/ocm_report.py`.
+
+## Use it
+
+Put the SD card in your computer, choose Open card folder, and pick the card's `obd` folder, its `sessions` folder, or any folder of `sNNNNNN.csv` files. The app reads files only and never writes to the card. The folder you chose is remembered for next time.
+
+## Window behaviour
+
+One window, native frame, resizable down to 480 by 360. The layout reflows below 640 px. A second launch focuses the running window instead of opening another. Closing the window quits the app. Every control is reachable from the keyboard.
 
 ## Contents
 
-- `icons/`: the app icon in the sizes Tauri expects (`32x32.png`, `128x128.png`, `128x128@2x.png`, `icon.png`, `icon.icns`, `icon.ico`), the 1024 px master and its SVG source, and the tray glyphs (`tray-template` is black on transparent so macOS can tint it, `tray-light` is white for dark panels).
+- `app/`: the Tauri app (`src-tauri` for Rust, `ui` for the window).
+- `icons/`: the app icon in the sizes Tauri expects (`32x32.png`, `128x128.png`, `128x128@2x.png`, `icon.png`, `icon.icns`, `icon.ico`), the 1024 px master, and the tray glyphs (`tray-template` is black on transparent so macOS can tint it, `tray-light` is white for dark panels).
 - `design/`: five preview screens. They are mockups. The numbers on the overview come from the replay sessions in `samples/replay`, and the statuses on the health screen illustrate the possible states. They are not results from any car.
 
 ## Design previews
