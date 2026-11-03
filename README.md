@@ -103,23 +103,26 @@ The app in [desktop/](desktop/README.md) runs on Windows, macOS and Linux. Over 
 
 ### Adapter compatibility
 
-The firmware has built-in profiles for the serial layouts below. Other BLE adapters are found by name or advertised service, and the board falls back to any service it can subscribe to and write. It pairs only when the adapter asks. Only the LELink has been driven with this board. The other rows come from vendor documents and other open-source OBD projects. [docs/ADAPTERS.md](docs/ADAPTERS.md) has prices, buying links and sources.
+The firmware has built-in profiles for the serial layouts below. Other BLE adapters are found by name or advertised service, and the board falls back to any service it can subscribe to and write. It pairs only when the adapter asks. Only the LELink has been driven with this board. The other rows come from vendor documents and other open-source OBD projects. [docs/ADAPTERS.md](docs/ADAPTERS.md) has prices and sources. Every Amazon link below was opened on 3 November 2026 and showed the named product. The links carry no affiliate tag.
 
-| Adapter | Bluetooth | Built-in profile | Status |
-|---|---|---|---|
-| LELink, LELink² | LE | FFE0 / FFE1 | tested |
-| Veepeak OBDCheck BLE, BLE+ | LE | FFF0 / FFF1 / FFF2 | expected |
-| OBDLink CX | LE 5.1, encrypted | FFF0 / FFF1 / FFF2, pairs on demand | expected |
-| Carista OBD2, Carista EVO | LE | FFF0 / FFF1 / FFF2 | expected |
-| Vgate iCar Pro BLE 4.0 | LE | 18F0 / 2AF0 / 2AF1 | expected |
-| Vgate vLinker MC+ | LE and Classic | E7810A71 / BEF8D6C9 | expected |
-| Vgate vLinker FS, MS | LE and Classic | E7810A71 / BEF8D6C9 | switch to "BLE+BT" in the VgateFwUpdater app first |
-| Deep OBD | LE | FFE0 / FFE1 / FFE2 | expected |
-| PLX Kiwi 3 | LE | generic fallback | expected |
-| Generic ELM327 "BLE 4.0" clones | LE | FFF0 or FFE0 | expected for most |
-| FIXD | Bluetooth | unknown | unverified |
-| BlueDriver | Bluetooth | private protocol | not expected |
-| OBDLink MX+, OBDLink LX, KONNWEI KW902 | Classic only | none | will not work |
+| Adapter | Bluetooth | Built-in profile | Status | Amazon |
+|---|---|---|---|---|
+| LELink², LELink | LE | FFE0 / FFE1 | tested | [B0755N61PW](https://www.amazon.com/dp/B0755N61PW), [B00QJRYMFC](https://www.amazon.com/dp/B00QJRYMFC) |
+| Veepeak OBDCheck BLE+, BLE | LE | FFF0 / FFF1 / FFF2 | expected | [B076XVQMVS](https://www.amazon.com/dp/B076XVQMVS), [B073XKQQQW](https://www.amazon.com/dp/B073XKQQQW) |
+| OBDLink CX | LE 5.1, encrypted | FFF0 / FFF1 / FFF2, pairs on demand | expected | [B08NFLL3NT](https://www.amazon.com/dp/B08NFLL3NT) |
+| Carista OBD2, Carista EVO | LE | FFF0 / FFF1 / FFF2 | expected | [B00YVHGTBM](https://www.amazon.com/dp/B00YVHGTBM), [B0CM9W4MCW](https://www.amazon.com/dp/B0CM9W4MCW) |
+| Vgate iCar Pro BLE 4.0 | LE | 18F0 / 2AF0 / 2AF1 | expected | [B06XGB4873](https://www.amazon.com/dp/B06XGB4873) |
+| Vgate vLinker MC+ | LE and Classic | E7810A71 / BEF8D6C9 | expected | [B088LW211V](https://www.amazon.com/dp/B088LW211V) |
+| Vgate vLinker FS, MS | LE and Classic | E7810A71 / BEF8D6C9 | switch to "BLE+BT" in the VgateFwUpdater app first | [B0BZTXV6MZ](https://www.amazon.com/dp/B0BZTXV6MZ), [B0D6YQX4R8](https://www.amazon.com/dp/B0D6YQX4R8) |
+| PLX Kiwi 3 | LE | generic fallback | expected | [B016X3L0O2](https://www.amazon.com/dp/B016X3L0O2) |
+| Panlong PL-B04 | LE, works with Car Scanner on iOS | generic fallback | expected | [B0C1GDJ9ZJ](https://www.amazon.com/dp/B0C1GDJ9ZJ) |
+| DA200 (Bluetooth 5.4, "AI Repair Tips") | LE, PIC18F25K80 ELM327-type chip | generic fallback | expected | [B0FH2GJTP8](https://www.amazon.com/dp/B0FH2GJTP8) |
+| ELM327 BLE clones (RODEDIO, AUCARAUTO and similar) | LE on iOS | FFF0 or FFE0 | expected for most | [B0GWQKLTMR](https://www.amazon.com/dp/B0GWQKLTMR), [B0BVLZ27TL](https://www.amazon.com/dp/B0BVLZ27TL) |
+| Deep OBD | LE | FFE0 / FFE1 / FFE2 | expected | not sold on Amazon, see [Deep OBD](https://github.com/uholeschak/ediabaslib) |
+| FIXD | Bluetooth | unknown | unverified | [B013RIQMEO](https://www.amazon.com/dp/B013RIQMEO) |
+| BlueDriver | Bluetooth | private protocol | not expected | [B00652G4TS](https://www.amazon.com/dp/B00652G4TS) |
+| V800 full-system scanners (Panlong PL-V800 and white-label copies) | Bluetooth | private app | not expected | [B0GQ3D57PK](https://www.amazon.com/dp/B0GQ3D57PK) |
+| OBDLink MX+, OBDLink LX, KONNWEI KW902 | Classic only | none | will not work | [B07JFRFJG6](https://www.amazon.com/dp/B07JFRFJG6), [B00H9S71LW](https://www.amazon.com/dp/B00H9S71LW), [B073F57QT3](https://www.amazon.com/dp/B073F57QT3) |
 
 ## Build and flash
 
