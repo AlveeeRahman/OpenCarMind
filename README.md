@@ -27,7 +27,7 @@ Version 2.3.0. Licence: MIT. Downloads for the firmware and the desktop app are 
 
 <p align="center"><img src="docs/images/workflow/local-first.png" width="900" alt="Local-first: no account, no cloud, AI on the chip, your SD card, optional Wi-Fi, your choice of dashboard"></p>
 
-Most car loggers stream your driving to a server and do the thinking there. OpenCarMind does the thinking on the board. The model is 93 KB, runs in a few milliseconds and needs no network. Your data is plain CSV, JSON and text on a card you hold. Nothing leaves the car unless you copy the card or pair the board with your own computer.
+Most car loggers stream your driving to a server and do the thinking there. OpenCarMind does the thinking on the board, in the way TinyML work runs networks on microcontrollers [1]–[3]. The model is 93 KB, runs in a few milliseconds and needs no network. Your data is plain CSV, JSON and text on a card you hold. Nothing leaves the car unless you copy the card or pair the board with your own computer.
 
 Wi-Fi is the only radio besides Bluetooth, and it is optional. It sets the clock from a public time server, and once you pair the board with the desktop app it sends new drive data to that app every 10 seconds while the car is parked at home. Nothing goes to a cloud. You can compile Wi-Fi out with one setting (`OCM_WIFI_CLOCK_SYNC`).
 
@@ -49,7 +49,7 @@ On the author's car, a row arrived every 1.35 to 1.65 seconds and one model run 
 
 <p align="center"><img src="docs/images/workflow/scheduler.png" width="900" alt="Scheduler: deadlines, timing, load check, watchdog, safe mode, save every 10 s"></p>
 
-Open-source loggers usually treat timing as someone else's problem. Here every periodic job (the OBD poll and the model) has a period and a deadline. The scheduler in `main/sched_mon.c` records each run's response time and CPU time, counts misses and stalls, and once a minute checks per-core load against the rate-monotonic bound (Liu and Layland, 1973) and the worst-case response time of each job (Joseph and Pandya, 1986). Steps that talk to the adapter feed the task watchdog, so a step that never returns resets the board. After three abnormal resets in a row the board starts in safe mode: the model stays off and logging keeps going.
+Open-source loggers usually treat timing as someone else's problem. Here every periodic job (the OBD poll and the model) has a period and a deadline. The scheduler in `main/sched_mon.c` records each run's response time and CPU time, counts misses and stalls, and once a minute checks per-core load against the rate-monotonic bound of Liu and Layland [4] and the worst-case response time of each job from the analysis of Joseph and Pandya [5]. Steps that talk to the adapter feed the task watchdog, so a step that never returns resets the board. After three abnormal resets in a row the board starts in safe mode: the model stays off and logging keeps going.
 
 ## The screens
 
@@ -144,15 +144,15 @@ Settings, SD card files, the Wi-Fi list and the CSV columns are in [docs/CONFIGU
 
 <p align="center"><img src="docs/images/workflow/edge_architecture.png" width="640" alt="Model layers: 30 by 30 input, 1 by 1 stem to 48 channels, 6 residual depthwise-separable blocks, mean over 30 s and the last 10 s, dense 64, manoeuvre head and estimate head"></p>
 
-A 1-D convolutional network with 38,679 parameters, quantised to 8-bit weights and 16-bit activations (`w8a16`) and run by ESP-DL. It reads thirty one-second steps of seven channels (rpm, speed, load, throttle, both fuel trims and coolant temperature) and feeds two heads that share one trunk. On held-out drives, the version on the chip scores a manoeuvre macro-F1 of 0.912 and a mean estimator R² of 0.830 (brake pressure 0.56, flywheel torque 0.94, fuel rate 0.99). When the test windows are thinned to mimic a slow adapter, the refined model scored 0.874 and 0.792 in the training evaluation, which is not published here. The other scores are in `ml/onboard/export.json`. [docs/MODEL.md](docs/MODEL.md) has the inputs, outputs, labels and limits. The shipped files are in [ml/onboard](ml/onboard).
+A 1-D convolutional network [6] with 38,679 parameters, built from residual depthwise-separable blocks [7], [8], quantised to 8-bit weights and 16-bit activations (`w8a16`) and run by ESP-DL [9]. It reads thirty one-second steps of seven channels (rpm, speed, load, throttle, both fuel trims and coolant temperature) and feeds two heads that share one trunk. On held-out drives, the version on the chip scores a manoeuvre macro-F1 of 0.912 and a mean estimator R² of 0.830 (brake pressure 0.56, flywheel torque 0.94, fuel rate 0.99). When the test windows are thinned to mimic a slow adapter, the refined model scored 0.874 and 0.792 in the training evaluation, which is not published here. The other scores are in `ml/onboard/export.json`. [docs/MODEL.md](docs/MODEL.md) has the inputs, outputs, labels and limits. The shipped files are in [ml/onboard](ml/onboard).
 
 ### From training to the board
 
 <p align="center"><img src="docs/images/workflow/train-to-deploy.png" width="900" alt="From training to the board: your drives, windows and labels, architecture search, QAT, refine and test, then ONNX export, ESP-PPQ quantisation, int8 check, parameter generation, firmware build and a check on the board, with feedback loops"></p>
 
-The network is trained quantisation-aware (QAT) from the start: in every forward pass its weights and activations are rounded to the int8 grid with power-of-two scales. ESP-DL uses the same scheme, so the float network that reaches the converter already lives on that grid. A second training stage continues from those weights, still with QAT, on dense one-second windows that mimic a slow adapter. The test split is read once.
+The network is trained quantisation-aware (QAT) from the start [10], [11]: in every forward pass its weights and activations are rounded to the int8 grid with power-of-two scales. ESP-DL uses the same scheme, so the float network that reaches the converter already lives on that grid. A second training stage continues from those weights, still with QAT, on dense one-second windows that mimic a slow adapter. The test split is read once.
 
-Deployment is a chain with two checks. The trained network is exported to ONNX and quantised by ESP-PPQ (`w8a16`, calibrated on 256 windows). The exporter scores the int8 graph on the same test windows, and if the score drops you go back to refinement. `tools/gen_ml_params.py` then writes `main/ml_params.h` with the channel order, normalisation, class names and the model's hash, the firmware embeds the model, and the board runs its own self-test at boot. The training code and data are not part of this repository.
+Deployment is a chain with two checks. The trained network is exported to ONNX and quantised by ESP-PPQ [12] (`w8a16`, calibrated on 256 windows). The exporter scores the int8 graph on the same test windows, and if the score drops you go back to refinement. `tools/gen_ml_params.py` then writes `main/ml_params.h` with the channel order, normalisation, class names and the model's hash, the firmware embeds the model, and the board runs its own self-test at boot. The training code and data are not part of this repository.
 
 What the model does not do yet:
 
@@ -176,19 +176,29 @@ What has not been checked: other boards, any adapter other than the LELink, a po
 
 ## References
 
-The model and its deployment follow published work on small networks and integer inference:
+[1] J. Lin, W.-M. Chen, Y. Lin, J. Cohn, C. Gan and S. Han, "MCUNet: Tiny deep learning on IoT devices," in *Advances in Neural Information Processing Systems (NeurIPS)*, 2020. [arXiv:2007.10319](https://arxiv.org/abs/2007.10319)
 
-- Jacob, B. et al. (2018). Quantization and training of neural networks for efficient integer-arithmetic-only inference. CVPR 2018. [arXiv:1712.05877](https://arxiv.org/abs/1712.05877). The basis of quantisation-aware training.
-- Krishnamoorthi, R. (2018). Quantizing deep convolutional networks for efficient inference: a whitepaper. [arXiv:1806.08342](https://arxiv.org/abs/1806.08342). A practical guide to post-training quantisation and quantisation-aware training.
-- Howard, A. G. et al. (2017). MobileNets: efficient convolutional neural networks for mobile vision applications. [arXiv:1704.04861](https://arxiv.org/abs/1704.04861). Depthwise-separable convolutions, used in every block of the trunk.
-- Sandler, M. et al. (2018). MobileNetV2: inverted residuals and linear bottlenecks. CVPR 2018. [arXiv:1801.04381](https://arxiv.org/abs/1801.04381). Residual depthwise blocks.
-- Wang, Z., Yan, W. and Oates, T. (2017). Time series classification from scratch with deep neural networks: a strong baseline. IJCNN 2017. [arXiv:1611.06455](https://arxiv.org/abs/1611.06455). 1-D convolution with global pooling for sensor sequences.
-- Lin, J. et al. (2020). MCUNet: tiny deep learning on IoT devices. NeurIPS 2020. [arXiv:2007.10319](https://arxiv.org/abs/2007.10319). Fitting networks to microcontroller memory.
-- David, R. et al. (2021). TensorFlow Lite Micro: embedded machine learning on TinyML systems. MLSys 2021. [arXiv:2010.08678](https://arxiv.org/abs/2010.08678). Interpreter design for microcontrollers.
-- Banbury, C. et al. (2021). MLPerf Tiny benchmark. NeurIPS 2021 Datasets and Benchmarks. [arXiv:2106.07597](https://arxiv.org/abs/2106.07597). How tiny models are measured.
-- Liu, C. L. and Layland, J. W. (1973). Scheduling algorithms for multiprogramming in a hard-real-time environment. Journal of the ACM 20(1). The rate-monotonic bound in `main/sched_mon.c`.
-- Joseph, M. and Pandya, P. (1986). Finding response times in a real-time system. The Computer Journal 29(5). The response-time check in `main/sched_mon.c`.
-- Espressif [ESP-DL](https://github.com/espressif/esp-dl) runs the model, and [ESP-PPQ](https://github.com/espressif/esp-ppq) quantises it.
+[2] R. David *et al.*, "TensorFlow Lite Micro: Embedded machine learning on TinyML systems," in *Proc. Machine Learning and Systems (MLSys)*, 2021. [arXiv:2010.08678](https://arxiv.org/abs/2010.08678)
+
+[3] C. Banbury *et al.*, "MLPerf Tiny benchmark," in *Proc. NeurIPS Datasets and Benchmarks Track*, 2021. [arXiv:2106.07597](https://arxiv.org/abs/2106.07597)
+
+[4] C. L. Liu and J. W. Layland, "Scheduling algorithms for multiprogramming in a hard-real-time environment," *Journal of the ACM*, vol. 20, no. 1, pp. 46–61, 1973.
+
+[5] M. Joseph and P. Pandya, "Finding response times in a real-time system," *The Computer Journal*, vol. 29, no. 5, pp. 390–395, 1986.
+
+[6] Z. Wang, W. Yan and T. Oates, "Time series classification from scratch with deep neural networks: A strong baseline," in *Proc. Int. Joint Conf. Neural Networks (IJCNN)*, 2017. [arXiv:1611.06455](https://arxiv.org/abs/1611.06455)
+
+[7] A. G. Howard *et al.*, "MobileNets: Efficient convolutional neural networks for mobile vision applications," 2017. [arXiv:1704.04861](https://arxiv.org/abs/1704.04861)
+
+[8] M. Sandler, A. Howard, M. Zhu, A. Zhmoginov and L.-C. Chen, "MobileNetV2: Inverted residuals and linear bottlenecks," in *Proc. IEEE/CVF Conf. Computer Vision and Pattern Recognition (CVPR)*, 2018, pp. 4510–4520. [arXiv:1801.04381](https://arxiv.org/abs/1801.04381)
+
+[9] Espressif Systems, "ESP-DL: Espressif deep-learning library for AIoT applications." [github.com/espressif/esp-dl](https://github.com/espressif/esp-dl)
+
+[10] B. Jacob *et al.*, "Quantization and training of neural networks for efficient integer-arithmetic-only inference," in *Proc. IEEE/CVF Conf. Computer Vision and Pattern Recognition (CVPR)*, 2018. [arXiv:1712.05877](https://arxiv.org/abs/1712.05877)
+
+[11] R. Krishnamoorthi, "Quantizing deep convolutional networks for efficient inference: A whitepaper," 2018. [arXiv:1806.08342](https://arxiv.org/abs/1806.08342)
+
+[12] Espressif Systems, "ESP-PPQ: Quantization tool for ESP-DL." [github.com/espressif/esp-ppq](https://github.com/espressif/esp-ppq)
 
 ## Repository layout
 
