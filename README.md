@@ -179,15 +179,17 @@ What the Mosaico adds for a car logger:
 
 | | Waveshare ESP32-S3-LCD-1.47B (today) | ESP-Mosaico (next) |
 |---|---|---|
-| Chip | ESP32-S3, two Xtensa LX7 cores at 240 MHz | ESP32-S31, two RISC-V cores at 320 MHz, 128-bit SIMD path<sup>[[15]](#ref-15)</sup> |
-| Screen | 1.47 in, 172 × 320 LCD | 2.16 in, 480 × 480 AMOLED touch<sup>[[14]](#ref-14),[[16]](#ref-16)</sup> |
-| Bluetooth | LE only, so Classic adapters cannot connect | LE and Classic (BR/EDR)<sup>[[15]](#ref-15)</sup>, so OBDLink MX+ and LX class adapters become possible |
-| CAN | TWAI on the S3, needs an external transceiver | TWAI, CAN 2.0 compatible<sup>[[15]](#ref-15)</sup>, with a transceiver on the 2 × 10-pin module headers<sup>[[13]](#ref-13)</sup> |
-| Motion | 6-axis IMU on the board<sup>[[17]](#ref-17)</sup>, not used by the firmware yet | BMI270 6-axis IMU and BMM150 magnetometer<sup>[[14]](#ref-14)</sup> |
-| Power cut | relies on the 10-second save | 65 mAh battery to finish the last save<sup>[[16]](#ref-16)</sup> |
-| Memory | 8 MB PSRAM, 16 MB flash<sup>[[17]](#ref-17)</sup> | 16 MB PSRAM, 16 MB NOR flash, 128 MB SPI NAND<sup>[[16]](#ref-16)</sup> |
+| Chip | ESP32-S3, two Xtensa LX7 cores at 240 MHz | ESP32-S31, two RISC-V cores at 320 MHz, 128-bit SIMD path |
+| Screen | 1.47 in, 172 × 320 LCD | 2.16 in, 480 × 480 AMOLED touch |
+| Bluetooth | LE only, so Classic adapters cannot connect | LE and Classic (BR/EDR), so OBDLink MX+ and LX class adapters become possible |
+| CAN | TWAI on the S3, needs an external transceiver | TWAI, CAN 2.0 compatible, with a transceiver on the 2 × 10-pin module headers |
+| Motion | 6-axis IMU on the board, not used by the firmware yet | BMI270 6-axis IMU and BMM150 magnetometer |
+| Power cut | relies on the 10-second save | 65 mAh battery to finish the last save |
+| Memory | 8 MB PSRAM, 16 MB flash | 16 MB PSRAM, 16 MB NOR flash, 128 MB SPI NAND |
 | Storage for drives | microSD | no microSD slot. Drives would go to the 128 MB NAND, or to a card on the expansion headers |
-| Price | about 15 EUR at one European shop<sup>[[18]](#ref-18)</sup> | 59 USD for the Vision Combo Kit, [ESP-Mosaico Store](https://store.mosaico.ai/products/esp-mosaico) |
+| Price | about 15 EUR at one European shop | 59 USD for the Vision Combo Kit, [ESP-Mosaico Store](https://store.mosaico.ai/products/esp-mosaico) |
+
+Sources for this table: Espressif and Waveshare documentation, the Circuit Rocks review and one retailer listing<sup>[[13]](#ref-13)–[[18]](#ref-18)</sup>.
 
 For the model, the most useful step is motion data. An accelerometer measures braking and acceleration directly, so it can check the labels the network predicts from OBD data. The S3 board has an IMU the firmware does not read yet, and the Mosaico adds a magnetometer for heading. Bluetooth Classic matters for compatibility: the adapters that fail today because they only speak Classic SPP could work, once an SPP client is written. TWAI with a transceiver on the headers is the route to reading the CAN bus directly, for the faults OBD-II cannot see.
 
