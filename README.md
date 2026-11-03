@@ -187,9 +187,9 @@ What the Mosaico adds for a car logger:
 | Power cut | relies on the 10-second save | 65 mAh battery to finish the last save |
 | Memory | 8 MB PSRAM, 16 MB flash | 16 MB PSRAM, 16 MB NOR flash, 128 MB SPI NAND |
 | Storage for drives | microSD | no microSD slot. Drives would go to the 128 MB NAND, or to a card on the expansion headers |
-| Price | about 15 EUR at one European shop | 59 USD for the Vision Combo Kit, [ESP-Mosaico Store](https://store.mosaico.ai/products/esp-mosaico) |
+| Price | 12.99 to 13.99 USD from [Waveshare](https://www.waveshare.com/esp32-s3-lcd-1.47b.htm), about 15 EUR in the EU from [OpenELAB](https://openelab.io/pl/products/waveshare-esp32-s3-lcd-1-47b) | 59 USD for the Vision Combo Kit from the [ESP-Mosaico Store](https://store.mosaico.ai/products/esp-mosaico) |
 
-Sources for this table: Espressif and Waveshare documentation, the Circuit Rocks review and one retailer listing<sup>[[13]](#ref-13)–[[18]](#ref-18)</sup>.
+Sources for this table: Espressif and Waveshare documentation, the Circuit Rocks review and the store pages, prices seen on 3 November 2026<sup>[[13]](#ref-13)–[[18]](#ref-18)</sup>.
 
 For the model, the most useful step is motion data. An accelerometer measures braking and acceleration directly, so it can check the labels the network predicts from OBD data. The S3 board has an IMU the firmware does not read yet, and the Mosaico adds a magnetometer for heading. Bluetooth Classic matters for compatibility: the adapters that fail today because they only speak Classic SPP could work, once an SPP client is written. TWAI with a transceiver on the headers is the route to reading the CAN bus directly, for the faults OBD-II cannot see.
 
@@ -203,7 +203,7 @@ The model also needs one step. ESP-PPQ quantises for the S3 with its first SIMD 
 
 ### Continual learning on the S31
 
-The network on the board today is fixed. It was trained on a laptop, quantised, and never changes in the car. Learning on the board needs two things the car rarely gives you: a label for each window, and room to keep past windows so that new drives do not erase what the model knew (catastrophic forgetting<sup>[[22]](#ref-22)</sup>).
+The network on the board today is fixed. It was trained on a laptop, quantised, and never changes in the car. Learning on the board needs two things the car rarely gives you: a label for each window, and room to keep past windows so that new drives do not erase what the model knew (catastrophic forgetting<sup>[[19]](#ref-19)</sup>).
 
 The private CarMind line already learns on the board, in a narrow way. A small linear forecaster predicts the next OBD row. When that row arrives, the error is its own label. It keeps only running statistics with forgetting, never the raw data, stays close to a factory prior, and swaps in new weights only while parked, and only if they beat the current weights on recent rows. That code is plain C with no chip-specific parts, built the same way as the public firmware, so it should move to the S31 unchanged. The same work found that the two heads of the CNN have no ground truth in the car, so they stay as trained. That is the gap the S31 board could close.
 
@@ -211,7 +211,7 @@ How the two heads could learn on a Mosaico:
 
 - Labels for the manoeuvre head. An accelerometer measures braking and acceleration directly, so stopped, braking, accelerating and cruising can be labelled in the car. The Mosaico has a BMI270<sup>[[14]](#ref-14)</sup>. The S3 board has an IMU too<sup>[[17]](#ref-17)</sup>, which the firmware does not read yet, so this part could start on today's board.
 - Labels for two of the three estimates, on some cars. The firmware already reads PID 0x5E (fuel rate) and PIDs 0x62 and 0x63 (torque) when the car reports them. Brake pressure has no label in any car, so that head stays fixed.
-- Only the heads would train. ESP-DL runs inference only, so the int8 trunk stays frozen, and the heads (a 64-wide feature into 4 classes and 3 estimates, a few hundred weights) are updated in plain C on the CPU. That is the approach of TinyOL<sup>[[19]](#ref-19)</sup> and TinyTL<sup>[[20]](#ref-20)</sup>. Updating parts of the trunk as well, as in<sup>[[21]](#ref-21)</sup>, is where the S31's extra speed and memory would count.
+- Only the heads would train. ESP-DL runs inference only, so the int8 trunk stays frozen, and the heads (a 64-wide feature into 4 classes and 3 estimates, a few hundred weights) are updated in plain C on the CPU. That is the approach of TinyOL<sup>[[20]](#ref-20)</sup> and TinyTL<sup>[[21]](#ref-21)</sup>. Updating parts of the trunk as well, as in<sup>[[22]](#ref-22)</sup>, is where the S31's extra speed and memory would count.
 - A replay buffer against forgetting. One 30-step window of 30 features is 3.6 KB in float. The S31's 16 MB of PSRAM (8 MB on the S3 board) holds thousands of past windows to mix into each update, and its 128 MB NAND keeps them between drives.
 - Time to finish. The 65 mAh battery lets an update and its save complete after the ignition is off.
 
@@ -238,9 +238,9 @@ The Mosaico also changes how you use the logger. The adapter lives in the car. T
 
 <a id="ref-3"></a>[3] C. Banbury *et al.*, "MLPerf Tiny benchmark," in *Proc. NeurIPS Datasets and Benchmarks Track*, 2021. [arXiv:2106.07597](https://arxiv.org/abs/2106.07597)
 
-<a id="ref-4"></a>[4] C. L. Liu and J. W. Layland, "Scheduling algorithms for multiprogramming in a hard-real-time environment," *Journal of the ACM*, vol. 20, no. 1, pp. 46–61, 1973.
+<a id="ref-4"></a>[4] C. L. Liu and J. W. Layland, "Scheduling algorithms for multiprogramming in a hard-real-time environment," *Journal of the ACM*, vol. 20, no. 1, pp. 46–61, 1973. [doi:10.1145/321738.321743](https://doi.org/10.1145/321738.321743)
 
-<a id="ref-5"></a>[5] M. Joseph and P. Pandya, "Finding response times in a real-time system," *The Computer Journal*, vol. 29, no. 5, pp. 390–395, 1986.
+<a id="ref-5"></a>[5] M. Joseph and P. Pandya, "Finding response times in a real-time system," *The Computer Journal*, vol. 29, no. 5, pp. 390–395, 1986. [doi:10.1093/comjnl/29.5.390](https://doi.org/10.1093/comjnl/29.5.390)
 
 <a id="ref-6"></a>[6] Z. Wang, W. Yan and T. Oates, "Time series classification from scratch with deep neural networks: A strong baseline," in *Proc. Int. Joint Conf. Neural Networks (IJCNN)*, 2017. [arXiv:1611.06455](https://arxiv.org/abs/1611.06455)
 
@@ -268,13 +268,13 @@ The Mosaico also changes how you use the logger. The adapter lives in the car. T
 
 <a id="ref-18"></a>[18] OpenELAB, "Waveshare ESP32-S3-LCD-1.47B," listing, price seen 3 November 2026. [openelab.io](https://openelab.io/pl/products/waveshare-esp32-s3-lcd-1-47b)
 
-<a id="ref-19"></a>[19] H. Ren, D. Anicic and T. A. Runkler, "TinyOL: TinyML with online-learning on microcontrollers," in *Proc. Int. Joint Conf. Neural Networks (IJCNN)*, 2021. [arXiv:2103.08295](https://arxiv.org/abs/2103.08295)
+<a id="ref-19"></a>[19] J. Kirkpatrick *et al.*, "Overcoming catastrophic forgetting in neural networks," *Proc. National Academy of Sciences*, vol. 114, no. 13, pp. 3521–3526, 2017. [arXiv:1612.00796](https://arxiv.org/abs/1612.00796)
 
-<a id="ref-20"></a>[20] H. Cai, C. Gan, L. Zhu and S. Han, "TinyTL: Reduce activations, not trainable parameters for efficient on-device learning," in *Advances in Neural Information Processing Systems (NeurIPS)*, 2020. [arXiv:2007.11622](https://arxiv.org/abs/2007.11622)
+<a id="ref-20"></a>[20] H. Ren, D. Anicic and T. A. Runkler, "TinyOL: TinyML with online-learning on microcontrollers," in *Proc. Int. Joint Conf. Neural Networks (IJCNN)*, 2021. [arXiv:2103.08295](https://arxiv.org/abs/2103.08295)
 
-<a id="ref-21"></a>[21] J. Lin, L. Zhu, W.-M. Chen, W.-C. Wang, C. Gan and S. Han, "On-device training under 256KB memory," in *Advances in Neural Information Processing Systems (NeurIPS)*, 2022. [arXiv:2206.15472](https://arxiv.org/abs/2206.15472)
+<a id="ref-21"></a>[21] H. Cai, C. Gan, L. Zhu and S. Han, "TinyTL: Reduce activations, not trainable parameters for efficient on-device learning," in *Advances in Neural Information Processing Systems (NeurIPS)*, 2020. [arXiv:2007.11622](https://arxiv.org/abs/2007.11622)
 
-<a id="ref-22"></a>[22] J. Kirkpatrick *et al.*, "Overcoming catastrophic forgetting in neural networks," *Proc. National Academy of Sciences*, vol. 114, no. 13, pp. 3521–3526, 2017. [arXiv:1612.00796](https://arxiv.org/abs/1612.00796)
+<a id="ref-22"></a>[22] J. Lin, L. Zhu, W.-M. Chen, W.-C. Wang, C. Gan and S. Han, "On-device training under 256KB memory," in *Advances in Neural Information Processing Systems (NeurIPS)*, 2022. [arXiv:2206.15472](https://arxiv.org/abs/2206.15472)
 
 ## Repository layout
 
