@@ -219,20 +219,9 @@ Both chips have hardware single-precision floating point and emulate double prec
 
 ### A release for the Mosaico
 
-OpenCarMind will ship a release for the ESP-Mosaico. Work starts when the author's board arrives, and every challenge above has a planned fix:
+OpenCarMind will ship a release for the ESP-Mosaico. It will build from the same source tree as the S3 version, which stays supported, and it will handle the board differences covered above. Work starts when the author's board arrives.
 
-| Challenge | Fix in the Mosaico release |
-|---|---|
-| The S3 pin numbers do not exist on the S31 | a separate board file for the Mosaico, chosen at build time |
-| `esp_sleep_enable_ext0_wakeup` is missing on the S31 | the ext1 wakeup on the S31, ext0 kept on the S3 |
-| The 4.27 MB image overflows the 4 MB app partition | a larger partition table, which the 16 MB flash allows |
-| The model file is built for the S3's SIMD extension | an ESP-PPQ export for the S31 from the same weights, checked against the S3 scores before release |
-| The 1.47-inch screen layout | a 480 × 480 touch layout in LVGL, as in the concept above |
-| No microSD slot | drives saved to the 128 MB NAND and sent to the desktop app as today |
-| Classic-only OBD adapters | an SPP client on the S31's Classic Bluetooth |
-| Fixed model heads | head updates in the car, in a later release, after the rest is tested on the road |
-
-The S3 build stays supported, and both boards will build from the same source tree. Until the release is out, nothing here has run on a real Mosaico.
+The Mosaico also changes how you use the logger. The adapter lives in the car. The Mosaico rides in your pocket. Get in, and it finds the adapter it already paired with and starts logging. Walk back inside, and it sends the drive to the desktop app over your Wi-Fi. For a long drive, power it from the car's USB port or add the Mosaico Battery Module, because the built-in 65 mAh cell is sized for finishing a save, not for a whole trip.
 
 ## Planned
 
