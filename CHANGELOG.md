@@ -2,10 +2,14 @@
 
 ## Unreleased
 
+## 2.1.0
+
+Installers for the desktop app and the firmware images are attached to the GitHub release, with SHA-256 sums and build provenance.
+
 - Wi-Fi upload to the desktop app (`main/uploader.c`): while parked and paired, the board sends new session data every 10 seconds over TLS pinned to the app's certificate, with a token. The desktop keeps the offsets, so an upload that is cut off resumes and nothing is stored twice. Tried on the board against a stand-in receiver.
 - The clock keeps going through a power cut: every save writes the time to the card, the board resumes from it, shows it in amber, and Wi-Fi corrects it. Session JSON records the clock source.
 - `timezone` in `config.json` sets local time for the clock and for the light theme (06:00 to 17:00 by default, dark the rest of the day). The desktop app fills it in from the computer. Before this, the hours were read in UTC.
-- Desktop app 0.3.0: a receiver for the board's uploads and a Card and Wi-Fi page that writes `wifi.csv`, `config.json` and the pairing file to the SD card.
+- Desktop app for Windows, macOS and Linux: a receiver for the board's uploads and a Card and Wi-Fi page that writes `wifi.csv`, `config.json` and the pairing file to the SD card.
 - mbedTLS uses PSRAM buffers sized per record, and heap poisoning stays off. With light poisoning on, the TLS handshake failed in PSA ECDH on the test board.
 - `docs/FIELD_CHECKS.md` and a Field check issue template list the checks that need a car, with empty result tables.
 - Input checks (`main/harden.c`): implausible SNTP times are refused, Wi-Fi entries are validated, over-long `wifi.csv` lines are dropped whole, NaN and infinite model inputs become missing samples, and `config.json` `rev` is range-checked. Protected management frames are used when offered.

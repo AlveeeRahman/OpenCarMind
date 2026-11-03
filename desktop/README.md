@@ -1,19 +1,23 @@
 # Desktop app
 
-Status: preview, version 0.3.0. The board sends its drives to the app over your Wi-Fi every 10 seconds while the car is parked, and the app shows them. It can also open an SD card directly.
+Status: preview, version 2.1.0, released together with the firmware of the same number. The board sends its drives to the app over your Wi-Fi every 10 seconds while the car is parked, and the app shows them. It can also open an SD card directly.
 
 Built with Rust and Tauri for Windows, macOS (Apple silicon and Intel) and Linux. All the setup lives in the app: it writes the board's Wi-Fi networks, settings and pairing file to the SD card. The board itself has no console and accepts no incoming connections.
 
 ## Get the installers
 
-Open the Actions tab on GitHub, choose the `desktop` workflow, open the latest successful run and download the artifact for your system. The installers are not code-signed, so macOS asks you to confirm the first launch (right-click the app and choose Open) and Windows SmartScreen shows a warning (choose More info, then Run anyway).
+Download them from the [Releases page](https://github.com/AlveeeRahman/OpenCarMind/releases/latest). `SHA256SUMS` lists a checksum for every file, and each file has build provenance from GitHub (`gh attestation verify <file> --repo AlveeeRahman/OpenCarMind`).
 
 | System | File |
 |---|---|
-| Mac with Apple silicon | `opencarmind-desktop-macos-apple-silicon`: a `.dmg` |
-| Mac with an Intel chip | `opencarmind-desktop-macos-intel`: a `.dmg` |
-| Windows | `opencarmind-desktop-windows`: a `-setup.exe` and a `.msi` |
-| Linux | `opencarmind-desktop-linux`: a `.deb`, an `.rpm` and an `.AppImage` (needs FUSE) |
+| Mac with Apple silicon | `OpenCarMind_<version>_aarch64.dmg` |
+| Mac with an Intel chip | `OpenCarMind_<version>_x64.dmg` |
+| Windows | `OpenCarMind_<version>_x64-setup.exe` or `OpenCarMind_<version>_x64_en-US.msi` |
+| Debian, Ubuntu, Mint | `OpenCarMind_<version>_amd64.deb` |
+| Fedora, RHEL | `OpenCarMind-<version>-1.x86_64.rpm` |
+| Other Linux | `OpenCarMind_<version>_amd64.AppImage` (needs FUSE) |
+
+The installers are not code-signed. macOS asks you to confirm the first launch: right-click the app and choose Open. Windows SmartScreen shows a warning: choose More info, then Run anyway. Builds of every change to `desktop/` are also kept for 90 days under the `desktop` workflow in the Actions tab.
 
 Each build runs the Rust unit tests on its own system first. They check the session summary maths against `tools/ocm_report.py`, the receiver's resume-by-offset rules, and the Wi-Fi and time zone checks.
 
