@@ -205,10 +205,13 @@
 
   <section id="next">
     <h2>Next board: ESP-Mosaico with the ESP32-S31</h2>
-    <figure class="fig"><img src="images/mosaico-concept.png" alt="Concept: OpenCarMind on ESP-Mosaico, three 480 by 480 screens showing drive gauges, model estimates with an IMU check, and faults with the power-off line" loading="lazy" width="1600" height="713"></figure>
+    <figure class="fig"><img src="images/mosaico-concept.png" alt="Concept: OpenCarMind on ESP-Mosaico, three 480 by 480 screens showing drive gauges, what the model sees and its estimates with 30-second patterns, and faults with the power-off line" loading="lazy" width="1600" height="713"></figure>
     <div class="narrow">
       <p>The author has an ESP-Mosaico on order <a href="#r13">[13]</a>. Its ESP32-S31 has two RISC-V cores at 320 MHz with a 128-bit SIMD path, Wi-Fi 6, and Bluetooth 5.4 with both LE and Classic <a href="#r15">[15]</a>. For a car logger that means a 2.16-inch 480 × 480 AMOLED touch screen, Classic adapters such as the OBDLink MX+ within reach, CAN through TWAI and a transceiver, an IMU and magnetometer, a 65 mAh battery to finish the last save, and 16 MB of PSRAM <a href="#r14">[14]</a>, <a href="#r16">[16]</a>. It has no microSD slot, so drives would go to its 128 MB NAND.</p>
       <p>The S3 and S31 do not share machine code (Xtensa against RISC-V), but they share ESP-IDF. OpenCarMind was built for the S31 with ESP-IDF v6.1's preview target: every library compiled unchanged, and only the board pin map and one sleep-wakeup call needed changing before it linked. The model must be exported again for the S31, from the same weights. The full comparison is in the <a href="https://github.com/AlveeeRahman/OpenCarMind#next-board-esp-mosaico-with-the-esp32-s31">README</a>.</p>
+      <h3>Continual learning on the S31</h3>
+      <p>The network on today's board is fixed. A private CarMind line already learns on the board in a narrow way: a small linear forecaster predicts the next OBD row and uses the error as its own label, keeping only running statistics and swapping weights only while parked. That code is plain C and should move to the S31 unchanged. The two heads of the CNN have no labels in the car, so they stay fixed today.</p>
+      <p>On a Mosaico they could learn. The accelerometer labels stopped, braking, accelerating and cruising, and PIDs 0x5E, 0x62 and 0x63 label fuel rate and torque on cars that report them. ESP-DL runs inference only, so the int8 trunk stays frozen and the heads, a few hundred weights, update in plain C <a href="#r19">[19]</a>, <a href="#r20">[20]</a>. The 16 MB of PSRAM and the 128 MB NAND hold a replay buffer of past windows against forgetting <a href="#r22">[22]</a>, and the battery lets an update finish after the ignition is off. Both chips have single-precision float hardware only, so the S31's gains are clock, memory, battery and the motion sensor. None of this is built or measured yet.</p>
     </div>
   </section>
 
@@ -254,6 +257,12 @@ idf.py -p /dev/cu.usbmodemXXXX flash</code></pre>
       <li id="r14">Espressif Systems, "ESP-Mosaico V1.0," ESP Board Manager guide. <a href="https://docs.espressif.com/projects/esp-board-manager/en/latest/references/boards/esp_mosaico.html">docs.espressif.com</a></li>
       <li id="r15">Espressif Systems, "Espressif unveils ESP32-S31: a dual-core RISC-V SoC with Wi-Fi 6, Bluetooth 5.4, and advanced HMI capabilities," 26 March 2026. <a href="https://www.espressif.com/en/news/ESP32_S31_Release">espressif.com</a></li>
       <li id="r16">Circuit Rocks, "ESP-Mosaico: ESP32-S31 board for AI-written firmware," 2026. <a href="https://blog.circuit.rocks/esp-mosaico-espressifs-59-board-where-ai-writes-the-firmware">blog.circuit.rocks</a></li>
+      <li id="r17">Waveshare, "ESP32-S3-LCD-1.47B," product page. <a href="https://www.waveshare.com/ESP32-S3-LCD-1.47B.htm">waveshare.com</a></li>
+      <li id="r18">OpenELAB, "Waveshare ESP32-S3-LCD-1.47B," listing, price seen 3 November 2026. <a href="https://openelab.io/pl/products/waveshare-esp32-s3-lcd-1-47b">openelab.io</a></li>
+      <li id="r19">H. Ren, D. Anicic and T. A. Runkler, "TinyOL: TinyML with online-learning on microcontrollers," IJCNN, 2021. <a href="https://arxiv.org/abs/2103.08295">arXiv:2103.08295</a></li>
+      <li id="r20">H. Cai, C. Gan, L. Zhu and S. Han, "TinyTL: Reduce activations, not trainable parameters for efficient on-device learning," NeurIPS, 2020. <a href="https://arxiv.org/abs/2007.11622">arXiv:2007.11622</a></li>
+      <li id="r21">J. Lin, L. Zhu, W.-M. Chen, W.-C. Wang, C. Gan and S. Han, "On-device training under 256KB memory," NeurIPS, 2022. <a href="https://arxiv.org/abs/2206.15472">arXiv:2206.15472</a></li>
+      <li id="r22">J. Kirkpatrick et al., "Overcoming catastrophic forgetting in neural networks," Proc. National Academy of Sciences, vol. 114, no. 13, pp. 3521–3526, 2017. <a href="https://arxiv.org/abs/1612.00796">arXiv:1612.00796</a></li>
     </ol>
   </section>
 
