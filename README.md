@@ -171,7 +171,9 @@ What has not been checked: other boards, any adapter other than the LELink, a po
 
 <p align="center"><img src="docs/images/mosaico-concept.png" width="900" alt="Concept: OpenCarMind on ESP-Mosaico, three 480 by 480 screens showing the drive gauges, the model's two heads (what it sees, and each estimate over the last 30 s), and faults with the power-off line"></p>
 
-The next board is Espressif's ESP-Mosaico<sup>[[13]](#ref-13),[[14]](#ref-14)</sup>. The author has one on order, and the concept above shows how the screens would look on its square display. It is built on the ESP32-S31<sup>[[15]](#ref-15)</sup>: two 32-bit RISC-V cores at 320 MHz, one with a 128-bit SIMD data path, 512 KB of SRAM, Wi-Fi 6, and Bluetooth 5.4 with both LE and Classic (BR/EDR).
+The next board is Espressif's ESP-Mosaico<sup>[[13]](#ref-13),[[14]](#ref-14)</sup>. The author has one on order, and the concept above shows how the screens would look on its square display.
+
+If you build things with the ESP32, this is a good board to get, and the port will be easier with more people testing it. The Vision Combo Kit (Core Unit v1.2, camera module and interaction module) is 59 USD on the [ESP-Mosaico Store](https://store.mosaico.ai/products/esp-mosaico). It was on pre-order with an estimated 15-day dispatch on 3 November 2026. If you have one, open an issue or a pull request with what you find: pin maps, screen layouts, NAND logging and S31 model exports are all open. It is built on the ESP32-S31<sup>[[15]](#ref-15)</sup>: two 32-bit RISC-V cores at 320 MHz, one with a 128-bit SIMD data path, 512 KB of SRAM, Wi-Fi 6, and Bluetooth 5.4 with both LE and Classic (BR/EDR).
 
 What the Mosaico adds for a car logger:
 
@@ -185,7 +187,7 @@ What the Mosaico adds for a car logger:
 | Power cut | relies on the 10-second save | 65 mAh battery to finish the last save<sup>[[16]](#ref-16)</sup> |
 | Memory | 8 MB PSRAM, 16 MB flash<sup>[[17]](#ref-17)</sup> | 16 MB PSRAM, 16 MB NOR flash, 128 MB SPI NAND<sup>[[16]](#ref-16)</sup> |
 | Storage for drives | microSD | no microSD slot. Drives would go to the 128 MB NAND, or to a card on the expansion headers |
-| Price | about 15 EUR at one European shop<sup>[[18]](#ref-18)</sup> | 59 USD for the full kit<sup>[[16]](#ref-16)</sup> |
+| Price | about 15 EUR at one European shop<sup>[[18]](#ref-18)</sup> | 59 USD for the Vision Combo Kit, [ESP-Mosaico Store](https://store.mosaico.ai/products/esp-mosaico) |
 
 For the model, the most useful step is motion data. An accelerometer measures braking and acceleration directly, so it can check the labels the network predicts from OBD data. The S3 board has an IMU the firmware does not read yet, and the Mosaico adds a magnetometer for heading. Bluetooth Classic matters for compatibility: the adapters that fail today because they only speak Classic SPP could work, once an SPP client is written. TWAI with a transceiver on the headers is the route to reading the CAN bus directly, for the faults OBD-II cannot see.
 
