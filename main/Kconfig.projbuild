@@ -1,0 +1,182 @@
+menu "OBD Logger Configuration"
+
+    menu "LELink / OBD adapter"
+        config OBD_BLE_NAME_PREFIXES
+            string "Adapter name prefixes used for first-time discovery (comma separated)"
+            default "OBDBLE,OBDII,OBD2,OBDLink,ELM327,VEEPEAK,vLinker,V-LINK,IOS-Vlink,Vgate,iCar,Viecar,KONNWEI"
+            help
+                Case-insensitive prefixes matched against the advertised device name
+                when no adapter address has been saved yet. The list holds names
+                that common Bluetooth LE ELM327-style adapters advertise, and only
+                the LELink one has been tested. A device that matches but is not an
+                adapter is dropped when it has no serial service or does not answer
+                the ELM327 reset. Add your adapter's name here if it is not found.
+                Once a connection succeeds the adapter's address is stored in NVS
+                and later boots connect to that address only.
+
+        config OBD_BLE_SVC_UUID
+            string "GATT service UUID (hex, 16-bit or 128-bit, empty = auto-detect)"
+            default "FFE0"
+        config OBD_BLE_NOTIFY_UUID
+            string "Notify characteristic UUID (hex, empty = auto-detect)"
+            default "FFE1"
+        config OBD_BLE_WRITE_UUID
+            string "Write characteristic UUID (hex, empty = auto-detect)"
+            default "FFE1"
+        config OBD_BLE_MIN_RSSI
+            int "Minimum RSSI (dBm) to attempt a connection"
+            default -90
+
+        config OBD_POLL_INTERVAL_MS
+            int "Delay between PID polling cycles (ms)"
+            default 200
+        config OBD_SLOW_GROUP_EVERY
+            int "Poll slow-changing PIDs every N cycles"
+            default 5
+        config OBD_DTC_INTERVAL_S
+            int "Read MIL status and DTCs every N seconds"
+            default 60
+        config OBD_RAW_EVERY_PASSES
+            int "Sample PIDs without a decoder every N passes through the slow list"
+            range 1 100
+            default 10
+            help
+                Supported PIDs that the firmware cannot decode are logged raw
+                (uptime, PID, hex) in the session's .raw file. Raw sampling takes
+                one request per polling cycle during every Nth pass, so a lower
+                number samples more often and slows the main rows a little.
+                Newer cars report many PIDs without a decoder, so lower this if
+                you want more of them.
+        config OBD_ELM_TIMEOUT_MS
+            int "Per-command response timeout (ms)"
+            default 2500
+    endmenu
+
+    menu "SD card logging"
+        config SDLOG_MOUNT_POINT
+            string "Mount point"
+            default "/sdcard"
+        config SDLOG_FSYNC_EVERY_ROWS
+            int "fsync() the CSV after at most N rows"
+            default 25
+        config SDLOG_SYNC_PERIOD_S
+            int "Save everything to the card at least every N seconds"
+            default 10
+            range 1 60
+            help
+                Every N seconds, and when the car link drops, the CSV, raw, pattern and model files and the session JSON
+                are flushed to the card and the board raises the event "Safe to turn off". Power cut at a random moment
+                loses at most N seconds of the drive.
+        config SDLOG_FORMAT_IF_MOUNT_FAILED
+            bool "Format the card if it cannot be mounted (DESTRUCTIVE)"
+            default n
+    endmenu
+
+    menu "Wi-Fi clock sync"
+        config OCM_WIFI_CLOCK_SYNC
+            bool "Set the clock over Wi-Fi (SNTP) when a known network is in reach"
+            default y
+            help
+                Compiles the Wi-Fi module in. When off, Wi-Fi is never started and the clock stays unset (session files
+                carry epoch 0) unless the RTC kept a time through a reset.
+        config SYNC_WIFI_SSID
+            string "Fallback Wi-Fi SSID (optional; networks normally come from wifi.csv on the SD card)"
+            depends on OCM_WIFI_CLOCK_SYNC
+            default ""
+            help
+                Anything you type here is stored in plain text in sdkconfig and in the firmware image. Prefer wifi.csv.
+        config SYNC_WIFI_PASSWORD
+            string "Fallback Wi-Fi password (optional)"
+            depends on OCM_WIFI_CLOCK_SYNC
+            default ""
+        config SYNC_WIFI_MIN_RSSI
+            int "Only connect when the AP RSSI is above this (dBm)"
+            depends on OCM_WIFI_CLOCK_SYNC
+            default -75
+        config SYNC_SCAN_INTERVAL_S
+            int "Seconds between scans while the clock has never been set"
+            depends on OCM_WIFI_CLOCK_SYNC
+            default 20
+            help
+                The board only uses Wi-Fi to set its clock over SNTP. Until the clock is set it looks for a known network
+                this often (never while the car is being logged).
+        config SYNC_STAY_CONNECTED_S
+            int "Seconds to stay connected after a successful clock sync"
+            depends on OCM_WIFI_CLOCK_SYNC
+            range 5 600
+            default 30
+            help
+                After the clock is set the board disconnects so the radio stops competing with BLE.
+        config SYNC_RESYNC_INTERVAL_H
+            int "Hours between clock re-syncs once the clock is set"
+            depends on OCM_WIFI_CLOCK_SYNC
+            range 1 168
+            default 6
+            help
+                Corrects crystal drift. If no known network is in reach when a re-sync is due, the board tries again every
+                15 minutes.
+        config SYNC_TIMEZONE
+            string "POSIX timezone string for the clock"
+            default "UTC0"
+            help
+                Examples: "CST6CDT,M3.2.0,M11.1.0" (US Central), "EST5EDT,M3.2.0,M11.1.0" (US Eastern), "PST8PDT,M3.2.0,M11.1.0" (US Pacific),
+                "CET-1CEST,M3.5.0,M10.5.0/3" (central Europe), "UTC0".
+    endmenu
+
+    menu "Display"
+        config LCD_INVERT_COLORS
+            bool "Invert panel colors"
+            default y
+            help
+                Toggle if the dashboard shows inverted colors on your panel revision.
+        config LCD_BACKLIGHT_PCT
+            int "Backlight brightness (0-100)"
+            range 0 100
+            default 80
+    endmenu
+    menu "Diagnostics"
+        config CARMIND_TASK_STATS_S
+            int "Log per-task CPU, stack and heap every N seconds (0 = off)"
+            range 0 3600
+            default 0
+            help
+                For finding a task that hogs a core, a stack close to overflow, or memory that leaks. Off in normal
+                builds: it adds about 30 log lines per dump.
+    endmenu
+
+    menu "On-board model"
+        config CARMIND_ML_ENABLE
+            bool "Run the manoeuvre and estimator model on a sliding 30 s window"
+            default y
+            help
+                Loads ml/onboard/onboard.espdl (ESP-DL) at boot and writes one line per pattern window to
+                sNNNNNN.ml.csv. Regenerate main/ml_params.h with tools/gen_ml_params.py when the model changes.
+        config CARMIND_ML_SELFTEST
+            bool "Run the model's embedded self-test and one timed inference at boot"
+            depends on CARMIND_ML_ENABLE
+            default y
+        config CARMIND_ML_STRIDE_S
+            int "Run the model every N seconds on a sliding 30 s window (0 = once per 10 s pattern window)"
+            depends on CARMIND_ML_ENABLE
+            range 0 10
+            default 1
+            help
+                Soft real-time: the model needs about 6 to 16 ms, so one inference per second costs about 1 to 2 percent of a
+                core. With N > 0 the rows in sNNNNNN.ml.csv are keyed by an inference counter in window_seq; join to the .pat
+                windows by start_ms and end_ms.
+        config CARMIND_ML_HOLD_S
+            int "Keep a channel's last value for up to N seconds when no new sample arrived (0 = off)"
+            depends on CARMIND_ML_ENABLE
+            range 0 10
+            default 3
+            help
+                The training loader resamples to 1 Hz with last-value-carried-forward, so a slow channel (coolant, fuel trims)
+                that was read a few seconds ago is still valid input. Older than N seconds counts as missing.
+        config CARMIND_ML_SYNTH_TEST
+            bool "Bench test: feed a synthetic 100 s drive through the inference path at boot"
+            depends on CARMIND_ML_ENABLE
+            default n
+            help
+                Writes 10 windows (window_seq 990000+) to the current session's .ml.csv. Never enable in a car build.
+    endmenu
+endmenu

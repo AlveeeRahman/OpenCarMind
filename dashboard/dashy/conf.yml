@@ -1,0 +1,50 @@
+pageInfo:
+  title: OpenCarMind
+  description: Drives read from the SD card, on your own machine
+
+appConfig:
+  statusCheck: true
+
+sections:
+  - name: Latest drive
+    icon: fas fa-car
+    widgets:
+      - type: customapi
+        useProxy: true
+        updateInterval: 60
+        options:
+          url: http://reports/summary.json
+          mappings:
+            - field: latest.date
+              label: Started
+            - field: latest.minutes
+              label: Minutes
+              format: number
+            - field: latest.distance_km
+              label: Distance (km, estimated)
+              format: number
+            - field: latest.max_speed_kph
+              label: Max speed (km/h)
+              format: number
+            - field: latest.cruising_pct
+              label: Cruising (%)
+              format: number
+            - field: latest.braking_pct
+              label: Braking (%)
+              format: number
+      - type: iframe
+        options:
+          url: http://localhost:4001/latest.html
+          frameHeight: 900
+
+  - name: Drives
+    icon: fas fa-route
+    items:
+      - title: All drives
+        description: Every session read from the card
+        url: http://localhost:4001/
+        icon: fas fa-list
+        statusCheckUrl: http://reports/
+      - title: OpenCarMind on GitHub
+        url: https://github.com/AlveeeRahman/OpenCarMind
+        icon: fab fa-github

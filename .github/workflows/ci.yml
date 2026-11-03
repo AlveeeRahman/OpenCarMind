@@ -1,0 +1,91 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  host-tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The fault engine, custom PID parser and pattern layer build and run on a computer.
+      - run: make -C tests/host
+
+  python:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Compile the Python tools and the training script
+        run: python -m py_compile tools/ocm_report.py tools/gen_ml_params.py tools/check_docs.py
+      - name: Unit tests
+        run: python -m unittest discover -s tests -p "test_*.py" -v
+      - name: main/ml_params.h matches the shipped model files
+        run: |
+          python tools/gen_ml_params.py ml/onboard "$RUNNER_TEMP/ml_params.h"
+          diff main/ml_params.h "$RUNNER_TEMP/ml_params.h"
+      - name: Report tool on the replay sessions
+        run: |
+          python tools/ocm_report.py samples/replay/obd dashboard/site
+          test -s dashboard/site/summary.json
+      - name: Replay checksums
+        run: cd samples/replay && sha256sum --check SHA256SUMS
+      - name: Markdown links and images
+        run: python tools/check_docs.py
+      - name: Dashboard configuration parses
+        run: |
+          pip install pyyaml==6.0.2
+          python -c "import yaml; [yaml.safe_load(open(f)) for f in ('dashboard/docker-compose.yml', 'dashboard/dashy/conf.yml')]"
+
+  firmware:
+    runs-on: ubuntu-24.04
+    container:
+      image: espressif/idf:v6.1@sha256:81893c71bb5e570088901f21def8684c25cd2a9020281bd01b843a7655edb18c
+    strategy:
+      fail-fast: false
+      matrix:
+        wifi_clock_sync: ["y", "n"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build for the ESP32-S3
+        shell: bash
+        env:
+          WIFI_CLOCK_SYNC: ${{ matrix.wifi_clock_sync }}
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          . "$IDF_PATH/export.sh"
+          idf.py set-target esp32s3
+          echo "CONFIG_OCM_WIFI_CLOCK_SYNC=$WIFI_CLOCK_SYNC" >> sdkconfig
+          idf.py build
+          idf.py size
+      - name: One image that flashes at offset 0
+        if: matrix.wifi_clock_sync == 'y'
+        shell: bash
+        run: |
+          . "$IDF_PATH/export.sh"
+          cd build
+          python -m esptool --chip esp32s3 merge_bin -o opencarmind-merged.bin @flash_args
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: matrix.wifi_clock_sync == 'y'
+        with:
+          name: opencarmind-firmware
+          path: build/opencarmind-merged.bin
+          retention-days: 14

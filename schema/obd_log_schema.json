@@ -1,0 +1,751 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "OpenCarMind OBD-II log, schema version 2",
+  "description": "One session = one power cycle. Files: sNNNNNN.csv (decoded time series, one row per poll cycle), sNNNNNN.raw (hex of supported PIDs the firmware does not decode), sNNNNNN.json (metadata). Only PIDs the ECU reports as supported are polled; cells stay empty until first read. Fast-group PIDs are polled every cycle, slow-group PIDs round-robin 3 per cycle. Rows may repeat across an upload boundary after power loss: de-duplicate on (session_id, seq).",
+  "csv": {
+    "file": "sNNNNNN.csv",
+    "delimiter": ",",
+    "header": true,
+    "columns": [
+      {
+        "name": "seq",
+        "type": "integer",
+        "desc": "Row counter within the session, starts at 1"
+      },
+      {
+        "name": "uptime_ms",
+        "type": "integer",
+        "unit": "ms",
+        "desc": "Milliseconds since boot (monotonic)"
+      },
+      {
+        "name": "epoch_ms",
+        "type": "integer",
+        "unit": "ms",
+        "desc": "Unix time in ms, 0 until SNTP synced; derive earlier rows from json.time_sync"
+      },
+      {
+        "name": "fuel_sys1_status",
+        "type": "number",
+        "unit": "enum",
+        "pid": "0103",
+        "formula": "A",
+        "group": "slow"
+      },
+      {
+        "name": "fuel_sys2_status",
+        "type": "number",
+        "unit": "enum",
+        "pid": "0103",
+        "formula": "byte1",
+        "group": "slow"
+      },
+      {
+        "name": "engine_load_pct",
+        "type": "number",
+        "unit": "%",
+        "pid": "0104",
+        "formula": "A*0.39215686",
+        "group": "fast"
+      },
+      {
+        "name": "coolant_c",
+        "type": "number",
+        "unit": "degC",
+        "pid": "0105",
+        "formula": "A - 40.0",
+        "group": "slow"
+      },
+      {
+        "name": "stft_b1_pct",
+        "type": "number",
+        "unit": "%",
+        "pid": "0106",
+        "formula": "A*0.78125 - 100.0",
+        "group": "slow"
+      },
+      {
+        "name": "ltft_b1_pct",
+        "type": "number",
+        "unit": "%",
+        "pid": "0107",
+        "formula": "A*0.78125 - 100.0",
+        "group": "slow"
+      },
+      {
+        "name": "stft_b2_pct",
+        "type": "number",
+        "unit": "%",
+        "pid": "0108",
+        "formula": "A*0.78125 - 100.0",
+        "group": "slow"
+      },
+      {
+        "name": "ltft_b2_pct",
+        "type": "number",
+        "unit": "%",
+        "pid": "0109",
+        "formula": "A*0.78125 - 100.0",
+        "group": "slow"
+      },
+      {
+        "name": "fuel_pressure_kpa",
+        "type": "number",
+        "unit": "kPa",
+        "pid": "010A",
+        "formula": "A*3.0",
+        "group": "slow"
+      },
+      {
+        "name": "map_kpa",
+        "type": "number",
+        "unit": "kPa",
+        "pid": "010B",
+        "formula": "A",
+        "group": "fast"
+      },
+      {
+        "name": "rpm",
+        "type": "number",
+        "unit": "rpm",
+        "pid": "010C",
+        "formula": "(A*256+B)*0.25",
+        "group": "fast"
+      },
+      {
+        "name": "speed_kph",
+        "type": "number",
+        "unit": "km/h",
+        "pid": "010D",
+        "formula": "A",
+        "group": "fast"
+      },
+      {
+        "name": "timing_adv_deg",
+        "type": "number",
+        "unit": "deg",
+        "pid": "010E",
+        "formula": "A*0.5 - 64.0",
+        "group": "fast"
+      },
+      {
+        "name": "intake_temp_c",
+        "type": "number",
+        "unit": "degC",
+        "pid": "010F",
+        "formula": "A - 40.0",
+        "group": "slow"
+      },
+      {
+        "name": "maf_gps",
+        "type": "number",
+        "unit": "g/s",
+        "pid": "0110",
+        "formula": "(A*256+B)*0.01",
+        "group": "fast"
+      },
+      {
+        "name": "throttle_pct",
+        "type": "number",
+        "unit": "%",
+        "pid": "0111",
+        "formula": "A*0.39215686",
+        "group": "fast"
+      },
+      {
+        "name": "secondary_air_status",
+        "type": "number",
+        "unit": "enum",
+        "pid": "0112",
+        "formula": "A",
+        "group": "slow"
+      },
+      {
+        "name": "o2_s1_v",
+        "type": "number",
+        "unit": "V",
+        "pid": "0114",
+        "formula": "A*0.005",
+        "group": "slow"
+      },
+      {
+        "name": "o2_s2_v",
+        "type": "number",
+        "unit": "V",
+        "pid": "0115",
+        "formula": "A*0.005",
+        "group": "slow"
+      },
+      {
+        "name": "o2_s3_v",
+        "type": "number",
+        "unit": "V",
+        "pid": "0116",
+        "formula": "A*0.005",
+        "group": "slow"
+      },
+      {
+        "name": "o2_s4_v",
+        "type": "number",
+        "unit": "V",
+        "pid": "0117",
+        "formula": "A*0.005",
+        "group": "slow"
+      },
+      {
+        "name": "o2_s5_v",
+        "type": "number",
+        "unit": "V",
+        "pid": "0118",
+        "formula": "A*0.005",
+        "group": "slow"
+      },
+      {
+        "name": "o2_s6_v",
+        "type": "number",
+        "unit": "V",
+        "pid": "0119",
+        "formula": "A*0.005",
+        "group": "slow"
+      },
+      {
+        "name": "o2_s7_v",
+        "type": "number",
+        "unit": "V",
+        "pid": "011A",
+        "formula": "A*0.005",
+        "group": "slow"
+      },
+      {
+        "name": "o2_s8_v",
+        "type": "number",
+        "unit": "V",
+        "pid": "011B",
+        "formula": "A*0.005",
+        "group": "slow"
+      },
+      {
+        "name": "run_time_s",
+        "type": "number",
+        "unit": "s",
+        "pid": "011F",
+        "formula": "(A*256+B)",
+        "group": "slow"
+      },
+      {
+        "name": "dist_mil_km",
+        "type": "number",
+        "unit": "km",
+        "pid": "0121",
+        "formula": "(A*256+B)",
+        "group": "slow"
+      },
+      {
+        "name": "fuel_rail_rel_kpa",
+        "type": "number",
+        "unit": "kPa",
+        "pid": "0122",
+        "formula": "(A*256+B)*0.079",
+        "group": "slow"
+      },
+      {
+        "name": "fuel_rail_kpa",
+        "type": "number",
+        "unit": "kPa",
+        "pid": "0123",
+        "formula": "(A*256+B)*10.0",
+        "group": "slow"
+      },
+      {
+        "name": "lambda_s1",
+        "type": "number",
+        "unit": "",
+        "pid": "0124",
+        "formula": "(A*256+B)*3.0517578e-5",
+        "group": "slow"
+      },
+      {
+        "name": "lambda_s2",
+        "type": "number",
+        "unit": "",
+        "pid": "0125",
+        "formula": "(A*256+B)*3.0517578e-5",
+        "group": "slow"
+      },
+      {
+        "name": "lambda_s3",
+        "type": "number",
+        "unit": "",
+        "pid": "0126",
+        "formula": "(A*256+B)*3.0517578e-5",
+        "group": "slow"
+      },
+      {
+        "name": "lambda_s4",
+        "type": "number",
+        "unit": "",
+        "pid": "0127",
+        "formula": "(A*256+B)*3.0517578e-5",
+        "group": "slow"
+      },
+      {
+        "name": "egr_commanded_pct",
+        "type": "number",
+        "unit": "%",
+        "pid": "012C",
+        "formula": "A*0.39215686",
+        "group": "slow"
+      },
+      {
+        "name": "egr_error_pct",
+        "type": "number",
+        "unit": "%",
+        "pid": "012D",
+        "formula": "A*0.78125 - 100.0",
+        "group": "slow"
+      },
+      {
+        "name": "evap_purge_pct",
+        "type": "number",
+        "unit": "%",
+        "pid": "012E",
+        "formula": "A*0.39215686",
+        "group": "slow"
+      },
+      {
+        "name": "fuel_level_pct",
+        "type": "number",
+        "unit": "%",
+        "pid": "012F",
+        "formula": "A*0.39215686",
+        "group": "slow"
+      },
+      {
+        "name": "warmups_since_clear",
+        "type": "number",
+        "unit": "",
+        "pid": "0130",
+        "formula": "A",
+        "group": "slow"
+      },
+      {
+        "name": "dist_since_clear_km",
+        "type": "number",
+        "unit": "km",
+        "pid": "0131",
+        "formula": "(A*256+B)",
+        "group": "slow"
+      },
+      {
+        "name": "evap_vapor_pa",
+        "type": "number",
+        "unit": "Pa",
+        "pid": "0132",
+        "formula": "signed16(A,B)*0.25",
+        "group": "slow"
+      },
+      {
+        "name": "baro_kpa",
+        "type": "number",
+        "unit": "kPa",
+        "pid": "0133",
+        "formula": "A",
+        "group": "slow"
+      },
+      {
+        "name": "cat_temp_b1s1_c",
+        "type": "number",
+        "unit": "degC",
+        "pid": "013C",
+        "formula": "(A*256+B)*0.1 - 40.0",
+        "group": "slow"
+      },
+      {
+        "name": "cat_temp_b2s1_c",
+        "type": "number",
+        "unit": "degC",
+        "pid": "013D",
+        "formula": "(A*256+B)*0.1 - 40.0",
+        "group": "slow"
+      },
+      {
+        "name": "cat_temp_b1s2_c",
+        "type": "number",
+        "unit": "degC",
+        "pid": "013E",
+        "formula": "(A*256+B)*0.1 - 40.0",
+        "group": "slow"
+      },
+      {
+        "name": "cat_temp_b2s2_c",
+        "type": "number",
+        "unit": "degC",
+        "pid": "013F",
+        "formula": "(A*256+B)*0.1 - 40.0",
+        "group": "slow"
+      },
+      {
+        "name": "module_voltage_v",
+        "type": "number",
+        "unit": "V",
+        "pid": "0142",
+        "formula": "(A*256+B)*0.001",
+        "group": "slow"
+      },
+      {
+        "name": "abs_load_pct",
+        "type": "number",
+        "unit": "%",
+        "pid": "0143",
+        "formula": "(A*256+B)*0.39215686",
+        "group": "slow"
+      },
+      {
+        "name": "equiv_ratio_cmd",
+        "type": "number",
+        "unit": "",
+        "pid": "0144",
+        "formula": "(A*256+B)*3.0517578e-5",
+        "group": "slow"
+      },
+      {
+        "name": "rel_throttle_pct",
+        "type": "number",
+        "unit": "%",
+        "pid": "0145",
+        "formula": "A*0.39215686",
+        "group": "slow"
+      },
+      {
+        "name": "ambient_c",
+        "type": "number",
+        "unit": "degC",
+        "pid": "0146",
+        "formula": "A - 40.0",
+        "group": "slow"
+      },
+      {
+        "name": "abs_throttle_b_pct",
+        "type": "number",
+        "unit": "%",
+        "pid": "0147",
+        "formula": "A*0.39215686",
+        "group": "slow"
+      },
+      {
+        "name": "abs_throttle_c_pct",
+        "type": "number",
+        "unit": "%",
+        "pid": "0148",
+        "formula": "A*0.39215686",
+        "group": "slow"
+      },
+      {
+        "name": "pedal_d_pct",
+        "type": "number",
+        "unit": "%",
+        "pid": "0149",
+        "formula": "A*0.39215686",
+        "group": "fast"
+      },
+      {
+        "name": "pedal_e_pct",
+        "type": "number",
+        "unit": "%",
+        "pid": "014A",
+        "formula": "A*0.39215686",
+        "group": "slow"
+      },
+      {
+        "name": "throttle_actuator_pct",
+        "type": "number",
+        "unit": "%",
+        "pid": "014C",
+        "formula": "A*0.39215686",
+        "group": "slow"
+      },
+      {
+        "name": "time_mil_min",
+        "type": "number",
+        "unit": "min",
+        "pid": "014D",
+        "formula": "(A*256+B)",
+        "group": "slow"
+      },
+      {
+        "name": "time_since_clear_min",
+        "type": "number",
+        "unit": "min",
+        "pid": "014E",
+        "formula": "(A*256+B)",
+        "group": "slow"
+      },
+      {
+        "name": "fuel_type",
+        "type": "number",
+        "unit": "enum",
+        "pid": "0151",
+        "formula": "A",
+        "group": "slow"
+      },
+      {
+        "name": "ethanol_pct",
+        "type": "number",
+        "unit": "%",
+        "pid": "0152",
+        "formula": "A*0.39215686",
+        "group": "slow"
+      },
+      {
+        "name": "evap_abs_kpa",
+        "type": "number",
+        "unit": "kPa",
+        "pid": "0153",
+        "formula": "(A*256+B)*0.005",
+        "group": "slow"
+      },
+      {
+        "name": "fuel_rail_abs_kpa",
+        "type": "number",
+        "unit": "kPa",
+        "pid": "0159",
+        "formula": "(A*256+B)*10.0",
+        "group": "slow"
+      },
+      {
+        "name": "rel_pedal_pct",
+        "type": "number",
+        "unit": "%",
+        "pid": "015A",
+        "formula": "A*0.39215686",
+        "group": "slow"
+      },
+      {
+        "name": "hybrid_batt_pct",
+        "type": "number",
+        "unit": "%",
+        "pid": "015B",
+        "formula": "A*0.39215686",
+        "group": "slow"
+      },
+      {
+        "name": "oil_temp_c",
+        "type": "number",
+        "unit": "degC",
+        "pid": "015C",
+        "formula": "A - 40.0",
+        "group": "slow"
+      },
+      {
+        "name": "fuel_inj_timing_deg",
+        "type": "number",
+        "unit": "deg",
+        "pid": "015D",
+        "formula": "(A*256+B)*0.0078125 - 210.0",
+        "group": "slow"
+      },
+      {
+        "name": "fuel_rate_lph",
+        "type": "number",
+        "unit": "L/h",
+        "pid": "015E",
+        "formula": "(A*256+B)*0.05",
+        "group": "fast"
+      },
+      {
+        "name": "driver_torque_pct",
+        "type": "number",
+        "unit": "%",
+        "pid": "0161",
+        "formula": "A - 125.0",
+        "group": "slow"
+      },
+      {
+        "name": "actual_torque_pct",
+        "type": "number",
+        "unit": "%",
+        "pid": "0162",
+        "formula": "A - 125.0",
+        "group": "fast"
+      },
+      {
+        "name": "ref_torque_nm",
+        "type": "number",
+        "unit": "Nm",
+        "pid": "0163",
+        "formula": "(A*256+B)",
+        "group": "slow"
+      },
+      {
+        "name": "odometer_km",
+        "type": "number",
+        "unit": "km",
+        "pid": "01A6",
+        "formula": "(A<<24|B<<16|C<<8|D)*0.1",
+        "group": "slow"
+      },
+      {
+        "name": "adapter_voltage_v",
+        "type": "number",
+        "unit": "V",
+        "pid": "ATRV",
+        "desc": "Battery voltage measured by the adapter"
+      },
+      {
+        "name": "mil_on",
+        "type": "integer",
+        "unit": "bool",
+        "pid": "0101",
+        "formula": "{A:7}"
+      },
+      {
+        "name": "dtc_count",
+        "type": "integer",
+        "pid": "0101",
+        "formula": "A & 0x7F"
+      },
+      {
+        "name": "dtcs",
+        "type": "string",
+        "pid": "03",
+        "desc": "Stored DTCs, space separated"
+      },
+      {
+        "name": "pending_dtcs",
+        "type": "string",
+        "pid": "07",
+        "desc": "Pending DTCs"
+      },
+      {
+        "name": "permanent_dtcs",
+        "type": "string",
+        "pid": "0A",
+        "desc": "Permanent DTCs"
+      },
+      {
+        "name": "custom_1",
+        "type": "number",
+        "desc": "User PID 1 from custom_pids.csv; definition in json.custom_pids[column=1]"
+      },
+      {
+        "name": "custom_2",
+        "type": "number",
+        "desc": "User PID 2 from custom_pids.csv; definition in json.custom_pids[column=2]"
+      },
+      {
+        "name": "custom_3",
+        "type": "number",
+        "desc": "User PID 3 from custom_pids.csv; definition in json.custom_pids[column=3]"
+      },
+      {
+        "name": "custom_4",
+        "type": "number",
+        "desc": "User PID 4 from custom_pids.csv; definition in json.custom_pids[column=4]"
+      },
+      {
+        "name": "custom_5",
+        "type": "number",
+        "desc": "User PID 5 from custom_pids.csv; definition in json.custom_pids[column=5]"
+      },
+      {
+        "name": "custom_6",
+        "type": "number",
+        "desc": "User PID 6 from custom_pids.csv; definition in json.custom_pids[column=6]"
+      },
+      {
+        "name": "custom_7",
+        "type": "number",
+        "desc": "User PID 7 from custom_pids.csv; definition in json.custom_pids[column=7]"
+      },
+      {
+        "name": "custom_8",
+        "type": "number",
+        "desc": "User PID 8 from custom_pids.csv; definition in json.custom_pids[column=8]"
+      },
+      {
+        "name": "window_seq",
+        "type": "integer",
+        "desc": "Pattern window this row belongs to; joins sNNNNNN.pat (0 before the first window closes)"
+      }
+    ]
+  },
+  "raw": {
+    "file": "sNNNNNN.raw",
+    "columns": [
+      "uptime_ms",
+      "pid (e.g. 011C)",
+      "hex data bytes after the 41xx prefix"
+    ],
+    "desc": "Supported PIDs with no decoder in obd_fields.h, sampled slowly"
+  },
+  "json": {
+    "file": "sNNNNNN.json",
+    "fields": {
+      "schema_version": "integer",
+      "session_id": "integer",
+      "device_mac": "string",
+      "firmware": "string (CarMind x.y.z)",
+      "adapter": {
+        "name": "string",
+        "addr": "string",
+        "firmware_id": "ATI reply",
+        "batch_mode": "!? reply or empty"
+      },
+      "vehicle": {
+        "vin": "0902",
+        "protocol": "ATDPN",
+        "supported_pids": {
+          "0100": "hex bitmap",
+          "0120": "...",
+          "0140": "..."
+        }
+      },
+      "custom_pids": [
+        {
+          "column": "1..8",
+          "cmd": "ModePID",
+          "name": "",
+          "unit": "",
+          "formula": "",
+          "header": ""
+        }
+      ],
+      "time_sync": {
+        "epoch_ms": "0 if never synced",
+        "uptime_ms": "uptime at sync"
+      },
+      "started_epoch_ms": "time_sync.epoch_ms - time_sync.uptime_ms, 0 if unknown",
+      "rows": "rows written at last update",
+      "meta_rev": "increments on every change",
+      "dtc_history": [
+        {
+          "uptime_ms": 0,
+          "dtcs": ""
+        }
+      ],
+      "fault_analysis": {
+        "insight": "one-line summary",
+        "ranked": "codes most important first",
+        "max_severity": "1 low .. 4 critical",
+        "uptime_ms": "when analysed"
+      }
+    }
+  },
+  "pat": {
+    "file": "sNNNNNN.pat",
+    "columns": [
+      "window_seq",
+      "start_ms",
+      "end_ms",
+      "samples",
+      "pattern_id (0..23, k-means centroid)",
+      "dist (standardised euclidean)",
+      "novelty (dist / running mean dist, 1 = typical)",
+      "spawned (1 = this window created a centroid)",
+      "sax_rpm",
+      "sax_speed",
+      "f0..f29 raw features: for each signal rpm,speed,load,maf,throttle,stft,ltft,coolant,iat,map -> mean,std,slope"
+    ],
+    "model": "/sdcard/obd/patterns.json holds centroids (standardised space), counts, feature mean/m2 and spawn threshold"
+  }
+}

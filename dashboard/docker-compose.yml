@@ -1,0 +1,18 @@
+# Dashy plus a small web server for the reports. Start with: docker compose up -d
+# Dashy:   http://localhost:4000      Reports: http://localhost:4001
+services:
+  dashy:
+    image: lissy93/dashy:latest
+    ports:
+      - "4000:8080"
+    volumes:
+      - ./dashy:/app/user-data
+    restart: unless-stopped
+
+  reports:
+    image: nginx:alpine
+    ports:
+      - "4001:80"
+    volumes:
+      - ./site:/usr/share/nginx/html:ro
+    restart: unless-stopped

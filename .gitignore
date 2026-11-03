@@ -1,0 +1,21 @@
+# ESP-IDF build output and local configuration
+build*/
+sdkconfig_*
+managed_components/
+dependencies.lock
+sdkconfig
+sdkconfig.old
+# host unit-test binary
+tests/host/carmind_tests
+# editor / OS
+.vscode/
+.DS_Store
+
+# clangd index
+.cache/
+wifi.csv
+config.json
+!samples/**/config.json
+__pycache__/
+*.pyc
+dashboard/site/

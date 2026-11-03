@@ -1,0 +1,64 @@
+{
+ "target": "esp32s3",
+ "quant_type": "w8a16",
+ "arch": {
+  "W": 30,
+  "block": "dws",
+  "layers": 6,
+  "width": 48,
+  "kernel": 3,
+  "dil_growth": 1,
+  "deltas": true,
+  "local": 64,
+  "dropout": 0.2760232022127776,
+  "lr": 0.0038839643452628298,
+  "wd": 0.0002500283976094523,
+  "w_man": 0.44394809148703884,
+  "w_est": 0.5084333041590338,
+  "class_pow": 0.5
+ },
+ "params": 38679,
+ "test_windows": 1878,
+ "float": {
+  "manoeuvre_macro_f1": 0.9112,
+  "estimator_r2": 0.8302,
+  "estimator_r2_each": [
+   0.563,
+   0.9425,
+   0.9852
+  ]
+ },
+ "int8": {
+  "manoeuvre_macro_f1": 0.9118,
+  "estimator_r2": 0.8301,
+  "estimator_r2_each": [
+   0.5625,
+   0.9425,
+   0.9853
+  ]
+ },
+ "files": {
+  "onboard.espdl": {
+   "bytes": 93088,
+   "sha256": "85d63ec33020a8a66e910d83bfc95484dcaf4236989c5e7e41ed2ab3f043769f"
+  },
+  "onboard.onnx": {
+   "bytes": 173458,
+   "sha256": "216336f741cf2df4bb45633ee846531f1cfcc4ac2fb3b89e52d2ae7e6a930bf7"
+  },
+  "norm.json": {
+   "bytes": 859,
+   "sha256": "f565fcd974ce2ce50e580dec42a73c1b4bbab3c559d7758a119d5d14a217b411"
+  },
+  "targets.json": {
+   "bytes": 358,
+   "sha256": "5ed6862f6b903ec8ea5896be722df2123b8652b7e7387119e260200d93fa72e6"
+  }
+ },
+ "versions": {
+  "torch": "2.8.0",
+  "esp_ppq": "?"
+ },
+ "source_weights": "runs/refine/refine_v1/refine_v1_winner_qat.safetensors",
+ "data": "private driving data, chronological holdout"
+}
