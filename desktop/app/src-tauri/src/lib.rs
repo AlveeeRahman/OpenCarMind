@@ -1,6 +1,8 @@
 //! Reads OpenCarMind session files from a folder and returns summaries and chart data to the window.
 //! The arithmetic follows tools/ocm_report.py so the desktop app and the report tool agree.
 
+mod board;
+
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 
@@ -167,6 +169,18 @@ fn summarise(id: &str, table: &Table, has_model_file: bool) -> Option<SessionInf
 }
 
 #[tauri::command]
+async fn board_ports() -> Result<Vec<board::PortInfo>, String> {
+    board::list_ports()
+}
+
+#[tauri::command]
+async fn board_command(port: String, args: Vec<String>) -> Result<board::Answer, String> {
+    tauri::async_runtime::spawn_blocking(move || board::send(&port, &args))
+        .await
+        .map_err(|e| format!("board task failed: {e}"))?
+}
+
+#[tauri::command]
 async fn read_sessions(folder: String) -> Result<Vec<SessionInfo>, String> {
     let root = PathBuf::from(&folder);
     if !root.is_dir() {
@@ -225,7 +239,7 @@ pub fn run() {
     }));
     builder
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![read_sessions, session_series])
+        .invoke_handler(tauri::generate_handler![read_sessions, session_series, board_ports, board_command])
         .run(tauri::generate_context!())
         .expect("OpenCarMind could not start");
 }

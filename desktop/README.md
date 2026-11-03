@@ -1,8 +1,8 @@
 # Desktop app
 
-Status: first preview, version 0.1.0. It opens the SD card, shows your drives and charts them. It does not talk to the board yet.
+Status: preview, version 0.2.0. It opens the SD card, shows your drives and charts them, and manages the board over a USB cable: Wi-Fi networks, the saved adapter and the settings.
 
-Built with Rust and Tauri for Windows, macOS (Apple silicon and Intel) and Linux. The Board page in the app says what is missing: pairing over Wi-Fi and a settings console over USB need new firmware, and the firmware has neither.
+Built with Rust and Tauri for Windows, macOS (Apple silicon and Intel) and Linux. Reading the card over Wi-Fi needs a pairing service in the firmware, which is not built yet. The Board page says so.
 
 ## Get the installers
 
@@ -20,6 +20,12 @@ Each build runs the Rust unit tests on its own system first. They check the sess
 ## Use it
 
 Put the SD card in your computer, choose Open card folder, and pick the card's `obd` folder, its `sessions` folder, or any folder of `sNNNNNN.csv` files. The app reads files only and never writes to the card. The folder you chose is remembered for next time.
+
+## Board page
+
+Plug the board in, open the Board page, pick the USB port (the app marks the one that looks like the board) and choose Read the board. The app talks to the board's settings console ([docs/CONSOLE.md](../docs/CONSOLE.md)). It can list, add and forget Wi-Fi networks, forget the saved adapter, and change the settings, which the board applies after a restart. The board refuses changes while the car is connected.
+
+The app opens the port with DTR on. Opening it with DTR off resets the ESP32-S3, which was measured on the Waveshare board. On Linux you need to be in the `dialout` group (`uucp` on Arch): run `sudo usermod -aG dialout $USER`, then log out and in. macOS needs no driver. On Windows the board should appear as a COM port without a driver, but that has not been checked.
 
 ## Window behaviour
 

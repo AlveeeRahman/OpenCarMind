@@ -38,12 +38,38 @@
   </section>
   <section id="page-board" class="page" hidden>
     <h1>Board</h1>
-    <p class="sub">This version reads the SD card only. It cannot talk to the board yet.</p>
+    <p class="sub">Connect the board to this computer with a USB cable. Changes are refused while the car is connected, so do this parked.</p>
     <div class="panel">
-      <h2>What is not built</h2>
-      <p>Connecting to the board over Wi-Fi needs a pairing service in the firmware, and the firmware does not have one. Changing the board's settings over USB needs a settings console in the firmware, and that does not exist either. Until both exist, take the card out of the board and open it here.</p>
-      <h2>Flashing the board</h2>
-      <p>Flash the firmware from the release page with <code>esptool</code>. The steps are in the project's README.</p>
+      <h2>Connection</h2>
+      <div class="row">
+        <label for="port">USB port</label>
+        <select id="port"></select>
+        <button id="refresh-ports">Refresh</button>
+        <button class="primary" id="read-board">Read the board</button>
+      </div>
+      <p id="board-msg" class="sub" role="status" aria-live="polite"></p>
+      <table id="board-status" class="kv" hidden><tbody></tbody></table>
+    </div>
+    <div class="panel" id="board-tools" hidden>
+      <h2>Wi-Fi networks</h2>
+      <p class="sub">The board uses Wi-Fi to set its clock. It joins 2.4 GHz networks only and keeps passwords in its flash as plain text, so a phone hotspot or a guest network is the better choice.</p>
+      <ul id="wifi-list" class="list"></ul>
+      <div class="row">
+        <label for="ssid">Network name</label><input id="ssid" maxlength="32" autocomplete="off">
+        <label for="wpass">Password</label><input id="wpass" type="password" maxlength="64" autocomplete="new-password">
+        <button id="wifi-add">Add network</button>
+      </div>
+      <h2>Adapter</h2>
+      <p class="sub" id="adapter-text"></p>
+      <button id="adapter-forget">Forget the saved adapter</button>
+      <h2>Settings</h2>
+      <p class="sub">The board applies new settings after a restart.</p>
+      <table id="config" class="kv"><tbody></tbody></table>
+      <div class="row"><button class="primary" id="config-save">Save and restart the board</button></div>
+    </div>
+    <div class="panel">
+      <h2>Over Wi-Fi</h2>
+      <p>Reading the card over your home Wi-Fi needs the pairing service, which is not built yet. Until then, take the card out of the board and open it on the Overview page.</p>
     </div>
   </section>
 </main>
