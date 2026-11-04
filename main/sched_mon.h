@@ -69,6 +69,8 @@ void        sched_end(sched_job_t job);
 void        sched_kick(void);
 /* Whether the job should currently be running periodically (e.g. the OBD poll only while an adapter is logging). */
 void        sched_set_expected(sched_job_t job, bool expected);
+/* Override the stall limit (default STALL_PERIODS periods). For jobs paced by something slower than their period. */
+void        sched_set_stall_ms(sched_job_t job, uint32_t stall_ms);
 int         sched_get_stats(sched_stats_t *out, int max);
 /* CPU reservation, a token bucket over CPU time in the spirit of a constant bandwidth server: the calling task earns
    share_permille/1000 us of CPU per us of wall time, up to burst_ms, and spends the CPU it actually uses (its FreeRTOS

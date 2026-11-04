@@ -39,6 +39,7 @@ typedef struct {
     sched_stats_t s;
     bool          watchdog, running, miss_flagged, stall_flagged;
     int64_t       start_us, last_end_us;
+    uint32_t      stall_ms;      /* no run for this long while expected = a stall; 0 = STALL_PERIODS periods */
     uint32_t      cpu_start;
     TaskHandle_t  runner;
     /* CPU reservation bucket, in microseconds */
@@ -119,6 +120,14 @@ sched_job_t sched_register(const char *name, uint32_t period_ms, uint32_t deadli
     }
     taskEXIT_CRITICAL(&s_mux);
     return id;
+}
+
+void sched_set_stall_ms(sched_job_t job, uint32_t stall_ms)
+{
+    if (job < 0 || job >= s_n) return;
+    taskENTER_CRITICAL(&s_mux);
+    s_jobs[job].stall_ms = stall_ms;
+    taskEXIT_CRITICAL(&s_mux);
 }
 
 void sched_set_expected(sched_job_t job, bool expected)
@@ -319,7 +328,7 @@ static void monitor_task(void *arg)
             if (j->running && !j->watchdog && run_us > (int64_t)SCHED_RESTART_FACTOR * j->s.deadline_ms * 1000)
                 hung = j->s.name;
             if (!j->running && j->s.expected && !j->stall_flagged &&
-                now - j->last_end_us > (int64_t)STALL_PERIODS * j->s.period_ms * 1000) {
+                now - j->last_end_us > (j->stall_ms ? (int64_t)j->stall_ms : (int64_t)STALL_PERIODS * j->s.period_ms) * 1000) {
                 j->stall_flagged = true;
                 j->s.stalls++;
                 stall[i] = true;

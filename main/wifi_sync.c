@@ -17,6 +17,8 @@
 #include "esp_netif.h"
 #include "esp_event.h"
 #include "esp_netif_sntp.h"
+#include "units.h"
+#include "remote_config.h"
 #include "esp_timer.h"
 #include "wifi_sync.h"
 #include "sdlog.h"
@@ -184,6 +186,13 @@ static bool sync_once(void)
 
     set_wifi_state(WIFI_ST_CONNECTED);
     sys_event(EV_INFO, "Wi-Fi connected: %s", net->ssid);
+    {
+        /* first connect decides the display units from the country the access point broadcasts (802.11d) */
+        wifi_ap_record_t ap = {0};
+        char cc[3] = "";
+        if (esp_wifi_sta_get_ap_info(&ap) == ESP_OK) { cc[0] = ap.country.cc[0]; cc[1] = ap.country.cc[1]; cc[2] = 0; }
+        units_detect(cc, remote_config_get()->timezone);
+    }
     bool ok = false;
     for (int attempt = 0; attempt < 3 && !ok && s_connected && !driving(); attempt++) ok = sync_clock();
     if (uploader_configured()) {

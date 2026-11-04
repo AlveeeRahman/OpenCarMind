@@ -24,15 +24,34 @@ for (const t of document.querySelectorAll(".tab")) t.addEventListener("click", (
 
 function fmt(v, digits) { return v === null || v === undefined ? "n/a" : Number(v).toFixed(digits); }
 
+/* Units: each drive carries the units the board used ("metric", "us", "uk"); totals follow the most recent drive. */
+const MI = 1.609344, USGAL = 3.785411784, UKGAL = 4.54609;
+const U = {
+  dist: (km, u) => u === "metric" ? km : km / MI,
+  distLabel: (u) => u === "metric" ? "km" : "mi",
+  speedLabel: (u) => u === "metric" ? "km/h" : "mph",
+  econ: (kpl, u) => kpl == null ? null : u === "us" ? kpl * USGAL / MI : u === "uk" ? kpl * UKGAL / MI : kpl,
+  econLabel: (u) => u === "metric" ? "km/L" : u === "uk" ? "mpg (UK)" : "mpg",
+  fuel: (l, u) => l == null ? null : u === "us" ? l / USGAL : u === "uk" ? l / UKGAL : l,
+  fuelLabel: (u) => u === "metric" ? "L" : "gal",
+};
+const SOURCE = { pid: "from the car", maf: "from airflow", model: "model estimate" };
+
 function renderOverview() {
   const s = state.sessions;
   $("#empty").hidden = s.length > 0;
   $("#cards").hidden = $("#bars").hidden = s.length === 0;
   if (!s.length) return;
+  const u = s[s.length - 1].units || "metric";
   const km = s.reduce((a, x) => a + x.distance_km, 0);
   const min = s.reduce((a, x) => a + x.minutes, 0);
   const top = Math.max(...s.map((x) => x.max_speed_kph ?? 0));
-  const cards = [["Number of drives", String(s.length)], ["Km driven", km.toFixed(1)], ["Drive time (h)", (min / 60).toFixed(1)], ["Highest speed (km/h)", top.toFixed(0)]];
+  const withFuel = s.filter((x) => x.fuel_l != null && x.economy_kpl != null);
+  const fuelKm = withFuel.reduce((a, x) => a + x.economy_kpl * x.fuel_l, 0), fuelL = withFuel.reduce((a, x) => a + x.fuel_l, 0);
+  const avg = fuelL >= 0.02 ? U.econ(fuelKm / fuelL, u) : null;
+  const cards = [["Number of drives", String(s.length)], [`${U.distLabel(u) === "km" ? "Km" : "Miles"} driven`, U.dist(km, u).toFixed(1)],
+    ["Drive time (h)", (min / 60).toFixed(1)], [`Highest speed (${U.speedLabel(u)})`, U.dist(top, u).toFixed(0)],
+    [`Average economy (${U.econLabel(u)})`, avg == null ? "n/a" : avg.toFixed(1)]];
   $("#cards").replaceChildren(...cards.map(([k, v]) => el("div", { className: "card" }, el("div", { className: "k", textContent: k }), el("div", { className: "v", textContent: v }))));
   const bars = (title, pick, digits) => {
     const max = Math.max(...s.map(pick), 1e-9);
@@ -42,7 +61,9 @@ function renderOverview() {
         return el("div", { className: "bar" }, el("span", { textContent: x.id }), el("div", { className: "track" }, fill), el("span", { className: "num", textContent: pick(x).toFixed(digits) }));
       }));
   };
-  $("#bars").replaceChildren(bars("Kilometres per drive", (x) => x.distance_km, 1), bars("Minutes per drive", (x) => x.minutes, 1), bars("Top speed per drive (km/h)", (x) => x.max_speed_kph ?? 0, 0));
+  $("#bars").replaceChildren(bars(`${U.distLabel(u) === "km" ? "Kilometres" : "Miles"} per drive`, (x) => U.dist(x.distance_km, u), 1), bars("Minutes per drive", (x) => x.minutes, 1),
+    bars(`Top speed per drive (${U.speedLabel(u)})`, (x) => U.dist(x.max_speed_kph ?? 0, u), 0),
+    bars(`Economy per drive (${U.econLabel(u)})`, (x) => U.econ(x.economy_kpl, u) ?? 0, 1));
 }
 
 function renderDrives() {
@@ -51,7 +72,10 @@ function renderDrives() {
     const tr = el("tr", { tabIndex: 0 },
       el("td", { textContent: x.id }), el("td", { textContent: x.date }),
       el("td", { className: "n", textContent: x.rows.toLocaleString() }), el("td", { className: "n", textContent: fmt(x.minutes, 1) }),
-      el("td", { className: "n", textContent: fmt(x.max_speed_kph, 0) }), el("td", { className: "n", textContent: fmt(x.distance_km, 1) }));
+      el("td", { className: "n", textContent: x.max_speed_kph == null ? "n/a" : `${U.dist(x.max_speed_kph, x.units).toFixed(0)} ${U.speedLabel(x.units)}` }),
+      el("td", { className: "n", textContent: `${U.dist(x.distance_km, x.units).toFixed(1)} ${U.distLabel(x.units)}` }),
+      el("td", { className: "n", textContent: x.fuel_l == null ? "n/a" : `${U.fuel(x.fuel_l, x.units).toFixed(2)} ${U.fuelLabel(x.units)}` }),
+      el("td", { className: "n", title: SOURCE[x.fuel_source] || "", textContent: x.economy_kpl == null ? "n/a" : `${U.econ(x.economy_kpl, x.units).toFixed(1)} ${U.econLabel(x.units)}${x.fuel_source === "model" ? " (est.)" : ""}` }));
     const choose = () => showDetail(x, tr);
     tr.addEventListener("click", choose);
     tr.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); choose(); } });
@@ -87,8 +111,17 @@ async function showDetail(info, row) {
   try {
     const series = await invoke("session_series", { folder: state.folder, id: info.id });
     const charts = series.channels.map((c) => chart(c.name.replaceAll("_", " "), c.unit, series.minutes, c.values)).filter(Boolean);
-    box.replaceChildren(el("h2", { textContent: `${info.id}, ${info.date}` }),
+    const stats = series.stats.length ? el("div", { className: "table-wrap" }, el("table", {},
+      el("thead", {}, el("tr", {}, ...["What the car reported", "Unit", "Samples", "Min", "Mean", "Max", "Last"].map((h, i) => el("th", { className: i > 1 ? "n" : "", textContent: h })))),
+      el("tbody", {}, ...series.stats.map((c) => el("tr", {}, el("td", { textContent: c.name.replaceAll("_", " ") }), el("td", { textContent: c.unit }),
+        el("td", { className: "n", textContent: c.count.toLocaleString() }),
+        ...[c.min, c.mean, c.max, c.last].map((v) => el("td", { className: "n", textContent: Math.abs(v) >= 100 ? v.toFixed(0) : v.toFixed(2) }))))))) : null;
+    const econ = info.economy_kpl == null ? "Economy: n/a (this car reports no fuel rate or airflow)"
+      : `Economy: ${U.econ(info.economy_kpl, info.units).toFixed(1)} ${U.econLabel(info.units)}, fuel ${SOURCE[info.fuel_source] || "unknown"}`;
+    box.replaceChildren(el("h2", { textContent: `${info.id}, ${info.date}` }), el("p", { className: "sub", textContent: econ }),
       ...(charts.length ? charts : [el("p", { className: "sub", textContent: "This drive has no chartable columns." })]),
+      ...(stats ? [el("h2", { textContent: "Everything this car reported" }),
+        el("p", { className: "sub", textContent: "Columns the car never filled are left out. Older cars report fewer." }), stats] : []),
       ...(info.has_model_file ? [] : [el("p", { className: "sub", textContent: "No model results file (.ml.csv) for this drive." })]));
   } catch (e) {
     box.replaceChildren(el("div", { className: "note warn", textContent: String(e) }));

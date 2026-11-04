@@ -22,6 +22,7 @@
 #include "sdlog.h"
 #include "obd_ble.h"
 #include "elm327.h"
+#include "units.h"
 #include "wifi_sync.h"
 #include "uploader.h"
 #include "usb_door.h"
@@ -37,6 +38,7 @@ void status_init(void)
 {
     g_status_mutex = xSemaphoreCreateMutex();
     memset(&g_status, 0, sizeof g_status);
+    g_status.obd.fuel_lph_calc = g_status.obd.econ_trip_kpl = g_status.obd.econ_inst_kpl = -1;   /* unknown until a row */
 }
 
 void status_get(app_status_t *out)
@@ -170,6 +172,7 @@ void app_main(void)
 
     remote_config_init();
     status_init();
+    units_init();                     /* after the status lock exists, before config.json may override the units */
     {
         /* the RTC keeps running through deep sleep and software resets: reuse a clock set earlier */
         struct timeval tv;

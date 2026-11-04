@@ -23,6 +23,7 @@ void sys_event(event_level_t level, const char *fmt, ...)
 
 static int fails, checks;
 #include "adapter_match.h"
+#include "econ.h"
 #include "harden.h"
 #include "power_state.h"
 #define CHECK(cond) do { checks++; if (!(cond)) { fails++; fprintf(stderr, "FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond); } } while (0)
@@ -272,6 +273,67 @@ static void test_adapter_profiles(void)
     CHECK(!adapter_choose(NULL, 0, "", "", "", &ni, &wi, &prof));
 }
 
+
+static bool near(double a, double b, double tol) { return a > b - tol && a < b + tol; }
+
+static void test_econ(void)
+{
+    /* units from where the board is: Wi-Fi country first, time zone only for the unambiguous UK */
+    CHECK(units_from_country("US") == UNITS_US);
+    CHECK(units_from_country("us") == UNITS_US);
+    CHECK(units_from_country("PR") == UNITS_US);
+    CHECK(units_from_country("GB") == UNITS_UK);
+    CHECK(units_from_country("DE") == UNITS_METRIC);
+    CHECK(units_from_country("CA") == UNITS_METRIC);
+    CHECK(units_from_country("01") == -1);                 /* world-safe code: says nothing */
+    CHECK(units_from_country("") == -1);
+    CHECK(units_from_country(NULL) == -1);
+    CHECK(units_from_timezone("GMT0BST,M3.5.0/1,M10.5.0") == UNITS_UK);
+    CHECK(units_from_timezone("EST5EDT,M3.2.0,M11.1.0") == -1);   /* shared by the US and Canada */
+    CHECK(units_from_timezone("") == -1);
+    CHECK(units_parse("us") == UNITS_US && units_parse("metric") == UNITS_METRIC && units_parse("uk") == UNITS_UK);
+    CHECK(units_parse("auto") == -1 && units_parse(NULL) == -1);
+    CHECK(!strcmp(units_econ_label(UNITS_METRIC), "km/L") && !strcmp(units_econ_label(UNITS_US), "mpg"));
+    CHECK(!strcmp(units_dist_label(UNITS_UK), "mi"));
+
+    /* fuel rate: car PID, then MAF with the commanded ratio, then the model, then nothing */
+    fuel_src_t src;
+    CHECK(near(econ_fuel_lph(true, 2.5f, true, 9.0f, true, 1.0f, 1, true, 3.0f, &src), 2.5, 1e-6) && src == FUEL_PID);
+    CHECK(near(econ_fuel_lph(false, 0, true, 4.44f, true, 1.0f, 1, true, 3.0f, &src), 1.4595, 0.001) && src == FUEL_MAF);
+    CHECK(near(econ_fuel_lph(false, 0, true, 4.44f, false, 0, 0, false, 0, &src), 1.4595, 0.001) && src == FUEL_MAF);
+    CHECK(econ_fuel_lph(false, 0, true, 4.44f, true, 0.0f, 1, false, 0, &src) == 0 && src == FUEL_MAF);   /* fuel cut */
+    CHECK(near(econ_fuel_lph(false, 0, true, 4.44f, true, 0.912f, 1, false, 0, &src), 1.4595 / 0.912, 0.002));   /* enriched */
+    CHECK(near(econ_fuel_lph(false, 0, true, 4.44f, true, 7.0f, 1, false, 0, &src), 1.4595, 0.001));   /* nonsense ratio: 1.0 */
+    CHECK(near(econ_fuel_lph(false, 0, true, 10.0f, false, 0, 4, false, 0, &src), 10.0 / 14.5 * 3600 / 832, 0.001));  /* diesel */
+    CHECK(near(econ_fuel_lph(false, 0, false, 0, false, 0, 0, true, 1.3f, &src), 1.3, 1e-6) && src == FUEL_MODEL);
+    CHECK(econ_fuel_lph(false, 0, false, 0, false, 0, 0, false, 0, &src) < 0 && src == FUEL_NONE);   /* old car, no MAF */
+    CHECK(econ_fuel_lph(true, -1, false, 0, false, 0, 0, false, 0, &src) < 0 && src == FUEL_NONE);
+    CHECK(econ_fuel_lph(false, 0, false, 0, false, 0, 0, true, 250.0f, &src) < 0);                    /* absurd model value */
+    CHECK(!strcmp(fuel_src_name(FUEL_MAF), "maf") && !strcmp(fuel_src_name(FUEL_NONE), ""));
+
+    /* trip: 30 km/h for an hour at 2.5 L/h is 30 km on 2.5 L = 12 km/L = 28.2 mpg US = 33.9 mpg UK */
+    econ_trip_t t; econ_reset(&t);
+    CHECK(econ_trip_kpl(&t) < 0);
+    for (int i = 0; i < 3600; i++) econ_step(&t, 30, 2.5f, 1.0f);
+    CHECK(near(t.km, 30, 1e-6) && near(t.litres, 2.5, 1e-6));
+    CHECK(near(econ_trip_kpl(&t), 12, 1e-4));
+    CHECK(near(econ_to_unit(12, UNITS_US), 28.225, 0.01));
+    CHECK(near(econ_to_unit(12, UNITS_UK), 33.896, 0.01));
+    CHECK(near(econ_to_unit(12, UNITS_METRIC), 12, 1e-6));
+    CHECK(econ_to_unit(-1, UNITS_US) < 0);
+    CHECK(near(econ_dist_to_unit(16.09344, UNITS_US), 10, 1e-6));
+    econ_step(&t, 30, -1, 1.0f);   CHECK(near(t.km, 30, 1e-6));   /* unknown fuel: the row does not count */
+    econ_step(&t, 30, 2.5f, 60);   CHECK(near(t.km, 30, 1e-6));   /* a long gap is not driving */
+    econ_step(&t, -1, 2.5f, 1);    CHECK(near(t.km, 30, 1e-6));
+
+    /* instant economy */
+    CHECK(econ_instant_kpl(0, 1.0f) < 0);
+    CHECK(econ_instant_kpl(4, 1.0f) < 0);
+    CHECK(near(econ_instant_kpl(50, 2.5f), 20, 1e-4));
+    CHECK(near(econ_instant_kpl(50, 0.0f), 99.9, 1e-3));          /* coasting on fuel cut */
+    CHECK(econ_instant_kpl(50, -1) < 0);
+}
+
 static void test_harden(void)
 {
     CHECK(!harden_epoch_plausible(0));
@@ -333,6 +395,7 @@ int main(void)
     test_harden();
     test_adapter_names();
     test_adapter_profiles();
+    test_econ();
     test_pattern();
     test_formula();
     test_custom_csv();

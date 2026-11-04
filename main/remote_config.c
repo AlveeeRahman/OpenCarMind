@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include "harden.h"
+#include "units.h"
 
 static const char *TAG = "rconf";
 static remote_config_t s_cfg;
@@ -90,6 +91,14 @@ int remote_config_apply(cJSON *root)
             apply_timezone();
             applied++;
         } else ESP_LOGW(TAG, "timezone not valid: ignored");
+    }
+
+    cJSON *units = cJSON_GetObjectItem(root, "units");
+    if (cJSON_IsString(units)) {
+        if (!strcmp(units->valuestring, "auto") || units_parse(units->valuestring) >= 0) {
+            units_set_override(units_parse(units->valuestring));
+            applied++;
+        } else ESP_LOGW(TAG, "units not valid: use metric, us, uk or auto");
     }
 
     cJSON *wifi = cJSON_GetObjectItem(root, "wifi");

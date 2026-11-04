@@ -17,6 +17,26 @@ pub struct SessionInfo {
     pub max_speed_kph: Option<f64>,
     pub distance_km: f64,
     pub has_model_file: bool,
+    /// Fuel used, from the board's trip columns (or its per-row fuel rate). None when the car gave nothing to work it out.
+    pub fuel_l: Option<f64>,
+    /// km per litre over the drive; None until 0.5 km and 0.02 L are counted.
+    pub economy_kpl: Option<f64>,
+    /// Where the fuel figure came from: "pid", "maf", "model", or None.
+    pub fuel_source: Option<String>,
+    /// How the board showed this drive: "metric", "us" or "uk" (from the session JSON; "metric" when absent).
+    pub units: String,
+    pub odometer_km: Option<f64>,
+}
+
+#[derive(Serialize)]
+pub struct ChannelStat {
+    pub name: String,
+    pub unit: String,
+    pub count: usize,
+    pub min: f64,
+    pub mean: f64,
+    pub max: f64,
+    pub last: f64,
 }
 
 #[derive(Serialize)]
@@ -30,15 +50,97 @@ pub struct Channel {
 pub struct Series {
     pub minutes: Vec<f64>,
     pub channels: Vec<Channel>,
+    /// Every numeric column this car reported in this drive, with its range. Columns the car never filled are left out.
+    pub stats: Vec<ChannelStat>,
 }
 
-const CHANNELS: [(&str, &str); 5] = [
+const CHANNELS: [(&str, &str); 6] = [
     ("speed_kph", "km/h"),
     ("rpm", "rpm"),
+    ("fuel_lph_calc", "L/h"),
     ("coolant_c", "°C"),
     ("engine_load_pct", "%"),
     ("throttle_pct", "%"),
 ];
+/// Columns that are bookkeeping, not car data.
+const NOT_DATA: [&str; 4] = ["seq", "uptime_ms", "epoch_ms", "window_seq"];
+const KNOWN_UNITS: [(&str, &str); 71] = [
+    ("engine_load_pct", "%"),
+    ("coolant_c", "°C"),
+    ("stft_b1_pct", "%"),
+    ("ltft_b1_pct", "%"),
+    ("stft_b2_pct", "%"),
+    ("ltft_b2_pct", "%"),
+    ("fuel_pressure_kpa", "kPa"),
+    ("map_kpa", "kPa"),
+    ("rpm", "rpm"),
+    ("speed_kph", "km/h"),
+    ("timing_adv_deg", "°"),
+    ("intake_temp_c", "°C"),
+    ("maf_gps", "g/s"),
+    ("throttle_pct", "%"),
+    ("o2_s1_v", "V"),
+    ("o2_s2_v", "V"),
+    ("o2_s3_v", "V"),
+    ("o2_s4_v", "V"),
+    ("o2_s5_v", "V"),
+    ("o2_s6_v", "V"),
+    ("o2_s7_v", "V"),
+    ("o2_s8_v", "V"),
+    ("run_time_s", "s"),
+    ("dist_mil_km", "km"),
+    ("fuel_rail_rel_kpa", "kPa"),
+    ("fuel_rail_kpa", "kPa"),
+    ("lambda_s1", ""),
+    ("lambda_s2", ""),
+    ("lambda_s3", ""),
+    ("lambda_s4", ""),
+    ("egr_commanded_pct", "%"),
+    ("egr_error_pct", "%"),
+    ("evap_purge_pct", "%"),
+    ("fuel_level_pct", "%"),
+    ("warmups_since_clear", ""),
+    ("dist_since_clear_km", "km"),
+    ("evap_vapor_pa", "Pa"),
+    ("baro_kpa", "kPa"),
+    ("cat_temp_b1s1_c", "°C"),
+    ("cat_temp_b2s1_c", "°C"),
+    ("cat_temp_b1s2_c", "°C"),
+    ("cat_temp_b2s2_c", "°C"),
+    ("module_voltage_v", "V"),
+    ("abs_load_pct", "%"),
+    ("equiv_ratio_cmd", ""),
+    ("rel_throttle_pct", "%"),
+    ("ambient_c", "°C"),
+    ("abs_throttle_b_pct", "%"),
+    ("abs_throttle_c_pct", "%"),
+    ("pedal_d_pct", "%"),
+    ("pedal_e_pct", "%"),
+    ("throttle_actuator_pct", "%"),
+    ("time_mil_min", "min"),
+    ("time_since_clear_min", "min"),
+    ("ethanol_pct", "%"),
+    ("evap_abs_kpa", "kPa"),
+    ("fuel_rail_abs_kpa", "kPa"),
+    ("rel_pedal_pct", "%"),
+    ("hybrid_batt_pct", "%"),
+    ("oil_temp_c", "°C"),
+    ("fuel_inj_timing_deg", "°"),
+    ("fuel_rate_lph", "L/h"),
+    ("driver_torque_pct", "%"),
+    ("actual_torque_pct", "%"),
+    ("ref_torque_nm", "Nm"),
+    ("odometer_km", "km"),
+    ("adapter_voltage_v", "V"),
+    ("dtc_count", ""),
+    ("fuel_lph_calc", "L/h"),
+    ("trip_km", "km"),
+    ("trip_fuel_l", "L"),
+];
+
+fn unit_of(name: &str) -> &'static str {
+    KNOWN_UNITS.iter().find(|(n, _)| *n == name).map_or("", |(_, u)| u)
+}
 const MAX_POINTS: usize = 800;
 
 fn number(s: &str) -> Option<f64> {
@@ -157,6 +259,43 @@ fn summarise(id: &str, table: &Table, has_model_file: bool) -> Option<SessionInf
     let epoch_ms = table.column("epoch_ms").first().copied().flatten().unwrap_or(0.0);
     let date = if epoch_ms > 0.0 { format_utc((epoch_ms / 1000.0) as i64) } else { "clock not set".to_string() };
     let max_speed = speed.iter().flatten().copied().fold(None, |m: Option<f64>, v| Some(m.map_or(v, |x| x.max(v))));
+    // Fuel: the board's running trip totals when present (firmware 2.3.1 and later), else integrate its fuel rate.
+    let last_of = |name: &str| table.column(name).into_iter().flatten().last();
+    let (mut fuel_l, mut fuel_km) = (last_of("trip_fuel_l"), last_of("trip_km"));
+    if fuel_l.is_none() {
+        let rate = table.column("fuel_lph_calc");
+        let (mut l, mut k, mut any) = (0.0, 0.0, false);
+        for i in 0..uptime.len().saturating_sub(1) {
+            if let (Some(a), Some(b), Some(r)) = (uptime[i], uptime[i + 1], rate[i]) {
+                let dt = (b - a) / 1000.0;
+                if dt > 0.0 && dt <= 10.0 {
+                    l += r * dt / 3600.0;
+                    k += speed[i].unwrap_or(0.0) * dt / 3600.0;
+                    any = true;
+                }
+            }
+        }
+        if any { fuel_l = Some(l); fuel_km = Some(k); }
+    }
+    let economy_kpl = match (fuel_km, fuel_l) {
+        (Some(k), Some(l)) if k >= 0.5 && l >= 0.02 => Some(((k / l) * 10.0).round() / 10.0),
+        _ => None,
+    };
+    let fuel_source = {
+        let i = table.headers.iter().position(|h| h == "fuel_src");
+        let mut counts: Vec<(String, usize)> = Vec::new();
+        if let Some(i) = i {
+            for r in &table.rows {
+                if let Some(v) = r.get(i).filter(|v| !v.is_empty()) {
+                    match counts.iter().position(|(k, _)| k == v) {
+                        Some(j) => counts[j].1 += 1,
+                        None => counts.push((v.clone(), 1)),
+                    }
+                }
+            }
+        }
+        counts.into_iter().max_by_key(|c| c.1).map(|c| c.0)
+    };
     Some(SessionInfo {
         id: id.to_string(),
         date,
@@ -166,6 +305,11 @@ fn summarise(id: &str, table: &Table, has_model_file: bool) -> Option<SessionInf
         max_speed_kph: max_speed,
         distance_km: round1(km),
         has_model_file,
+        fuel_l: fuel_l.map(|l| (l * 100.0).round() / 100.0),
+        economy_kpl,
+        fuel_source,
+        units: "metric".to_string(),
+        odometer_km: last_of("odometer_km"),
     })
 }
 
@@ -407,7 +551,12 @@ async fn read_sessions(folder: String) -> Result<Vec<SessionInfo>, String> {
         let id = path.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_string();
         let table = read_table(&path)?;
         let has_model = path.with_extension("ml.csv").exists();
-        if let Some(info) = summarise(&id, &table, has_model) {
+        if let Some(mut info) = summarise(&id, &table, has_model) {
+            let json = std::fs::read_to_string(path.with_extension("json")).ok();
+            if let Some(u) = json.and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+                .and_then(|v| v.get("units").and_then(|u| u.as_str()).map(str::to_string)) {
+                if ["metric", "us", "uk"].contains(&u.as_str()) { info.units = u; }
+            }
             out.push(info);
         }
     }
@@ -439,7 +588,23 @@ async fn session_series(folder: String, id: String) -> Result<Series, String> {
             values: table.column(name).into_iter().enumerate().filter(|(i, _)| pick(*i)).map(|(_, v)| v).collect(),
         })
         .collect();
-    Ok(Series { minutes, channels })
+    let mut stats = Vec::new();
+    for name in &table.headers {
+        if NOT_DATA.contains(&name.as_str()) { continue; }
+        let vals: Vec<f64> = table.column(name).into_iter().flatten().collect();
+        if vals.is_empty() { continue; }                          // the car never reported it: not shown, not zero
+        let sum: f64 = vals.iter().sum();
+        stats.push(ChannelStat {
+            name: name.clone(),
+            unit: unit_of(name).to_string(),
+            count: vals.len(),
+            min: vals.iter().copied().fold(f64::INFINITY, f64::min),
+            mean: sum / vals.len() as f64,
+            max: vals.iter().copied().fold(f64::NEG_INFINITY, f64::max),
+            last: *vals.last().unwrap(),
+        });
+    }
+    Ok(Series { minutes, channels, stats })
 }
 
 pub fn run() {
@@ -521,6 +686,26 @@ mod tests {
         assert_eq!(s.max_speed_kph, Some(72.0));
         assert_eq!(s.row_interval_s, Some(10.0));
         assert_eq!(s.date, "2026-01-01 00:00 UTC");
+        assert_eq!(s.fuel_l, None);                // an old log with no fuel columns: unknown, not zero
+        assert_eq!(s.economy_kpl, None);
+    }
+
+    #[test]
+    fn fuel_and_economy() {
+        // trip totals from the board win: 12 km on 1 L = 12 km/L
+        let t = table("uptime_ms,speed_kph,fuel_lph_calc,fuel_src,trip_km,trip_fuel_l\n0,30,2,maf,0,0\n1000,30,2,maf,6,0.5\n2000,30,,,12,1\n");
+        let s = summarise("s3", &t, false).unwrap();
+        assert_eq!(s.fuel_l, Some(1.0));
+        assert_eq!(s.economy_kpl, Some(12.0));
+        assert_eq!(s.fuel_source.as_deref(), Some("maf"));
+        // no trip columns: integrate the rate; 36 km/h for 100 s at 3.6 L/h = 1 km on 0.1 L = 10 km/L
+        let mut csv = String::from("uptime_ms,speed_kph,fuel_lph_calc\n");
+        for i in 0..=100 { csv.push_str(&format!("{},36,3.6\n", i * 1000)); }
+        let s = summarise("s4", &table(&csv), false).unwrap();
+        assert_eq!(s.economy_kpl, Some(10.0));
+        assert_eq!(s.fuel_source, None);
+        assert_eq!(unit_of("odometer_km"), "km");
+        assert_eq!(unit_of("not_a_column"), "");
     }
 
     #[test]

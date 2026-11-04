@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Fuel economy: the first screen's LOAD tile now shows the drive's economy in km/L, or mpg in the US and the UK (LOAD moved to page 3, replacing BARO). The fuel rate comes from PID 0x5E when the car has it, else from MAF with the commanded equivalence ratio (PID 0x44, where 0 means decel fuel cut), else from the on-board model's estimate, shown in amber. New CSV columns `fuel_lph_calc`, `fuel_src`, `trip_km`, `trip_fuel_l` (`main/econ.c`, host-tested).
+- Units: metric by default; on the first Wi-Fi connection the access point's country code (802.11d) sets miles and mpg for the US and the UK, once, stored in NVS (`main/units.c`). A UK time zone is the fallback. `units` in `config.json` (`metric`, `us`, `uk`, `auto`) overrides it. Speed, odometer and MIL distance follow the units on screen; the session JSON records them.
+- Desktop app: fuel used and economy per drive in each drive's units, an average-economy card, and a table of every value the car reported in a drive (columns the car never filled are left out).
+- Scheduler: the model job's stall limit is one 10 s label window instead of three 1 s periods, which the car's own row gaps (up to 3.6 s) could trip.
+
 - A drive ends when the ECU stops answering for 15 s (before: 11 failed poll cycles, about 2.5 minutes on a real car). The session is saved and closed, the model stops expecting rows, and the board leaves DRIVE, so the power line turns green and the USB door and the Wi-Fi upload work again. An adapter left powered with the ignition off no longer keeps the board in "Not safe: logging". If the ECU answers again without a reboot, a new session starts.
 - Power-off with BOOT: logging stops as soon as the hold reaches 2 s. On release the board waits for the drive to be saved and closed, then sleeps. Holding on to 8 s (forget adapter) resumes logging.
 - DRIVE now means connecting to the adapter or logging rows. Waiting for a quiet ECU counts as parked.

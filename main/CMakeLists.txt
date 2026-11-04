@@ -2,6 +2,8 @@ idf_component_register(
     SRCS "app_main.c"
          "obd_ble.c"
          "adapter_match.c"
+         "econ.c"
+         "units.c"
          "harden.c"
          "power_state.c"
          "uploader.c"

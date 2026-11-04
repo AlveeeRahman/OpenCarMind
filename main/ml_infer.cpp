@@ -373,6 +373,9 @@ extern "C" void ml_init(void)
              esp_timer_get_time() - t1);
 #endif
     s_job = sched_register("ml", (ML_STRIDE_S > 0 ? ML_STRIDE_S : 10) * 1000, (ML_STRIDE_S > 0 ? ML_STRIDE_S : 10) * 1000, true);
+    /* The model runs once per OBD row, which the car paces: about 1.4 s on a real car with gaps over 3 s, so three 1 s
+       periods is too tight. A stall is no run for a whole 10 s label window while rows are expected. */
+    sched_set_stall_ms(s_job, 10000);
     sched_set_expected(s_job, false);              /* runs only while windows arrive */
     /* stack in PSRAM: the task only computes and never runs while the flash cache is disabled */
     if (xTaskCreatePinnedToCoreWithCaps(ml_task, "ml", 6144, NULL, 3, NULL, 1, MALLOC_CAP_SPIRAM) != pdPASS) {

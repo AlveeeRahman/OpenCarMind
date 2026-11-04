@@ -64,6 +64,7 @@ Put a file called `config.json` in `/sdcard/obd/` and reboot. The board applies 
 | `theme_mode` | 0 by time of day, 1 dark, 2 light | 0 to 2 |
 | `day_start_hour`, `day_end_hour` | light theme from the start hour until the end hour, local time. The defaults, 6 and 17, give light from 06:00 to 16:59 and dark from 17:00 | 0 to 23 |
 | `timezone` | the board's local time zone as a POSIX string, for example `CST6CDT,M3.2.0,M11.1.0` (US Central) or `<+06>-6` (UTC+6). The desktop app fills it in from your computer. Without it the board uses `SYNC_TIMEZONE` from the build, which is UTC | text, 3 to 47 characters |
+| `units` | `auto` (default), `metric`, `us` or `uk`. Auto starts in km and km/L. The first time the board joins Wi-Fi it reads the country code the access point broadcasts and switches to miles and mpg in the US or the UK, then keeps that choice. Without a country code, a UK time zone (`GMT0BST`) also counts. Set a value to override the detection | text |
 | `wifi` | list of `{"ssid", "password"}`, or `{"ssid", "forget": true}` | |
 | `custom_pids` | the text of `custom_pids.csv` | |
 | `rev` | a number you can use to track versions | |
@@ -80,13 +81,14 @@ BOOT is on GPIO0. A tap shows the next page. Holding it for 2 seconds powers the
 
 ## Session CSV columns
 
-The header is the `CSV_HEADER` string in `main/sdlog.c`, 88 columns in this order:
+The header is the `CSV_HEADER` string in `main/sdlog.c`, 92 columns in this order:
 
 1. `seq`, `uptime_ms`, `epoch_ms`
 2. 70 PID columns, from `fuel_sys1_status` to `odometer_km`, in the order of `OBD_FIELDS` in `main/obd_fields.h`
 3. `adapter_voltage_v`, `mil_on`, `dtc_count`, `dtcs`, `pending_dtcs`, `permanent_dtcs`
 4. `custom_1` to `custom_8`
-5. `window_seq`, the number of the pattern window the row belongs to
+5. `fuel_lph_calc`, `fuel_src`, `trip_km`, `trip_fuel_l`: the fuel rate in L/h, where it came from (`pid`, `maf`, `model` or empty), and the drive's distance and fuel so far. Economy is `trip_km / trip_fuel_l` in km/L
+6. `window_seq`, the number of the pattern window the row belongs to
 
 Fields the car does not support stay empty. `epoch_ms` is 0 until the clock has been set. `schema/obd_log_schema.json` describes the same columns.
 

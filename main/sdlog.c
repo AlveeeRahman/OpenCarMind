@@ -20,6 +20,8 @@
 #include "esp_attr.h"
 #include "events.h"
 #include "harden.h"
+#include "econ.h"
+#include "units.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/idf_additions.h"
@@ -44,7 +46,8 @@ static uint32_t s_meta_rev;
 static const char CSV_HEADER[] =
     "seq,uptime_ms,epoch_ms," OBD_FIELDS(OBD_NAME)
     "adapter_voltage_v,mil_on,dtc_count,dtcs,pending_dtcs,permanent_dtcs,"
-    "custom_1,custom_2,custom_3,custom_4,custom_5,custom_6,custom_7,custom_8,window_seq\n";
+    "custom_1,custom_2,custom_3,custom_4,custom_5,custom_6,custom_7,custom_8,"
+    "fuel_lph_calc,fuel_src,trip_km,trip_fuel_l,window_seq\n";
 #undef OBD_NAME
 static FILE    *s_raw;
 static char     s_raw_path[96];
@@ -228,6 +231,7 @@ static esp_err_t open_session_locked(void)
     cJSON_AddNumberToObject(s_meta, "rows", 0);
     cJSON_AddNumberToObject(s_meta, "meta_rev", 0);
     cJSON_AddItemToObject(s_meta, "dtc_history", cJSON_CreateArray());
+    cJSON_AddStringToObject(s_meta, "units", units_name(units_current()));   /* how the board showed this drive */
     meta_flush_locked();
 
     s_open = true;
@@ -389,6 +393,10 @@ void sdlog_write_row(const obd_values_t *v)
         if (v->custom_valid & (1 << i)) n += fmt_num(line + n, sizeof line - n, v->custom[i]);
         else line[n++] = ',';
     }
+    /* fuel and economy (econ.h): empty when the car gives nothing to work it out from */
+    if (v->fuel_lph_calc >= 0) n += snprintf(line + n, sizeof line - n, "%.3f,%s,%.4f,%.4f,", v->fuel_lph_calc,
+                                             fuel_src_name((fuel_src_t)v->fuel_src), v->trip_km, v->trip_fuel_l);
+    else n += snprintf(line + n, sizeof line - n, ",,%.4f,%.4f,", v->trip_km, v->trip_fuel_l);
     n += snprintf(line + n, sizeof line - n, "%lu", (unsigned long)s_window_seq);
     line[n++] = '\n';
     line[n] = 0;

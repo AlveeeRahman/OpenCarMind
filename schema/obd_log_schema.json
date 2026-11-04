@@ -663,6 +663,26 @@
         "desc": "User PID 8 from custom_pids.csv; definition in json.custom_pids[column=8]"
       },
       {
+        "name": "fuel_lph_calc",
+        "type": "number",
+        "desc": "Fuel rate in L/h from the best source the car has (see fuel_src); empty when none"
+      },
+      {
+        "name": "fuel_src",
+        "type": "string",
+        "desc": "Where fuel_lph_calc came from: pid (PID 0x5E), maf (MAF and the commanded equivalence ratio, PID 0x44, 0 = fuel cut), model (the on-board estimate), empty = none"
+      },
+      {
+        "name": "trip_km",
+        "type": "number",
+        "desc": "Distance this drive, km, counted while the fuel rate was known"
+      },
+      {
+        "name": "trip_fuel_l",
+        "type": "number",
+        "desc": "Fuel used over trip_km, litres. Economy = trip_km / trip_fuel_l (km/L)"
+      },
+      {
         "name": "window_seq",
         "type": "integer",
         "desc": "Pattern window this row belongs to; joins sNNNNNN.pat (0 before the first window closes)"
@@ -684,7 +704,8 @@
       "schema_version": "integer",
       "session_id": "integer",
       "device_mac": "string",
-      "firmware": "string (CarMind x.y.z)",
+      "firmware": "string (OpenCarMind x.y.z)",
+      "units": "metric, us or uk: how the board showed distance, speed and economy for this drive",
       "adapter": {
         "name": "string",
         "addr": "string",

@@ -45,6 +45,13 @@ typedef struct {
     char     custom_name[8][16];
     char     custom_unit[8][8];
     uint8_t  custom_count;
+    /* fuel and economy, worked out per row by elm327.c (econ.h); negative = unknown */
+    float    fuel_lph_calc;     /* best available fuel rate, L/h */
+    uint8_t  fuel_src;          /* fuel_src_t: none, car PID, MAF, model estimate */
+    double   trip_km;           /* this drive, counted while the fuel rate was known */
+    float    trip_fuel_l;
+    float    econ_trip_kpl;     /* km/L over the drive so far */
+    float    econ_inst_kpl;     /* km/L at this row */
 } obd_values_t;
 
 #define OBD_HAS(v, field) (((v)->valid[(field) / 64] >> ((field) % 64)) & 1ULL)
@@ -92,6 +99,7 @@ typedef struct {
     uint8_t      pattern_used;
     uint8_t      hold_pct;      /* 0..100 ring while BOOT is held, 0 = hidden */
     uint8_t      hold_stage;    /* 0 none, 1 power-off armed, 2 forget armed */
+    uint8_t      units;         /* units_t: display units, see units.h */
 } app_status_t;
 
 extern app_status_t g_status;

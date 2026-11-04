@@ -13,6 +13,7 @@
 #include "esp_timer.h"
 #include "elm327.h"
 #include "obd_ble.h"
+#include "econ.h"
 #include "status.h"
 #include "sdlog.h"
 #include "custom_pids.h"
@@ -608,6 +609,9 @@ static void obd_task(void *arg)
         int64_t last_dtc = 0, last_rv = 0;
         int consecutive_fail = 0;
         int64_t last_ok = esp_timer_get_time();
+        econ_trip_t trip;
+        econ_reset(&trip);
+        int64_t last_row_us = 0;
         char resp[64];
         s_in_drive = true;
 
@@ -651,6 +655,31 @@ static void obd_task(void *arg)
                 last_ok = esp_timer_get_time();
                 obd_values_t snap;
                 STATUS_LOCK(); snap = g_status.obd; STATUS_UNLOCK();
+                {
+                    /* fuel and economy from the best source this car has; older cars fall back, missing stays missing */
+                    ml_stats_t ms;
+                    ml_get_stats(&ms);
+                    int64_t t_us = esp_timer_get_time();
+                    bool model_ok = ms.windows > 0 && ms.last_at_ms > 0 && t_us / 1000 - ms.last_at_ms < 15000;
+                    fuel_src_t src;
+                    float lph = econ_fuel_lph(OBD_HAS(&snap, F_fuel_rate), snap.f[F_fuel_rate], OBD_HAS(&snap, F_maf), snap.f[F_maf],
+                                              OBD_HAS(&snap, F_equiv), snap.f[F_equiv],
+                                              OBD_HAS(&snap, F_fuel_type) ? (int)snap.f[F_fuel_type] : 0, model_ok, ms.last_est[2], &src);
+                    float kph = OBD_HAS(&snap, F_speed) ? snap.f[F_speed] : -1;
+                    if (last_row_us) econ_step(&trip, kph, lph, (float)(t_us - last_row_us) / 1e6f);
+                    last_row_us = t_us;
+                    snap.fuel_lph_calc = lph;
+                    snap.fuel_src = (uint8_t)src;
+                    snap.trip_km = trip.km;
+                    snap.trip_fuel_l = (float)trip.litres;
+                    snap.econ_trip_kpl = econ_trip_kpl(&trip);
+                    snap.econ_inst_kpl = econ_instant_kpl(kph, lph);
+                    STATUS_LOCK();
+                    g_status.obd.fuel_lph_calc = snap.fuel_lph_calc;   g_status.obd.fuel_src = snap.fuel_src;
+                    g_status.obd.trip_km = snap.trip_km;               g_status.obd.trip_fuel_l = snap.trip_fuel_l;
+                    g_status.obd.econ_trip_kpl = snap.econ_trip_kpl;   g_status.obd.econ_inst_kpl = snap.econ_inst_kpl;
+                    STATUS_UNLOCK();
+                }
                 ml_feed(&snap, esp_timer_get_time() / 1000);   /* before pattern_step: the closing row is in its second */
                 pattern_step(&snap);
                 sdlog_write_row(&snap);
