@@ -72,6 +72,7 @@ static void dc_remove_flag(lv_obj_t *o, lv_obj_flag_t f) { if (lv_obj_has_flag_a
 #include "ml_infer.h"
 #include "ml_params.h"
 #include "sched_mon.h"
+#include "rev_task.h"
 #include "esp_timer.h"
 
 static const char *TAG = "display";
@@ -634,6 +635,7 @@ static const char *job_label(const char *name)
 {
     if (strcmp(name, "obd_poll") == 0) return "Car data";
     if (strcmp(name, "ml") == 0) return "AI model";
+    if (strcmp(name, "rev") == 0) return "Learning";
     return name;
 }
 
@@ -747,6 +749,12 @@ static void refresh_est(void)
     char info[32];
     if (!m.ready) snprintf(info, sizeof info, "model off");
     else if (!have) snprintf(info, sizeof info, "waiting");
+    else if (fresh && m.model == ML_MODEL_REV && (age_ms / 3000 + esp_timer_get_time() / 3000000) % 2) {
+        /* R.E.V: every other 3 s, the fuel learning: commits / resets, and the fill-up factor */
+        rev_status_t rs;
+        rev_get_status(&rs);
+        snprintf(info, sizeof info, "learn %lu/%lu x%.2f", (unsigned long)rs.commits, (unsigned long)rs.resets, (double)rs.cal);
+    }
     else if (fresh) snprintf(info, sizeof info, "#%lu  %.1f s", (unsigned long)m.windows, (double)age_ms / 1000.0);
     else snprintf(info, sizeof info, "paused %lu s", (unsigned long)(age_ms / 1000));
     lv_label_set_text(s4_est_info, info);
@@ -836,7 +844,7 @@ static void refresh_page2(const app_status_t *st)
         if (it->field == F_fuel_rate && live && !OBD_HAS(o, it->field) && o->fuel_lph_calc >= 0) {
             /* no fuel-rate PID: show the rate worked out from MAF (or the model, in amber) */
             lv_label_set_text_fmt(p2_val[i], "%.1f", (double)o->fuel_lph_calc);
-            lv_obj_set_style_text_color(p2_val[i], lv_color_hex(o->fuel_src == FUEL_MODEL ? C_WARN : C_TEXT), 0);
+            lv_obj_set_style_text_color(p2_val[i], lv_color_hex(econ_src_is_estimate((fuel_src_t)o->fuel_src) ? C_WARN : C_TEXT), 0);
             continue;
         }
         if (!live || !OBD_HAS(o, it->field)) { lv_label_set_text(p2_val[i], "--"); continue; }
@@ -995,7 +1003,7 @@ static void refresh_cb(lv_timer_t *t)
         float kpl = o->econ_trip_kpl >= 0 ? o->econ_trip_kpl : o->econ_inst_kpl;
         if (live && kpl >= 0) {
             lv_label_set_text_fmt(tile_val[2], "%.1f", (double)econ_to_unit(kpl, un));
-            lv_obj_set_style_text_color(tile_val[2], lv_color_hex(o->fuel_src == FUEL_MODEL ? C_WARN : C_TEXT), 0);
+            lv_obj_set_style_text_color(tile_val[2], lv_color_hex(econ_src_is_estimate((fuel_src_t)o->fuel_src) ? C_WARN : C_TEXT), 0);
         } else { lv_label_set_text(tile_val[2], "--"); lv_obj_set_style_text_color(tile_val[2], lv_color_hex(C_TEXT), 0); }
     }
     if (live && OBD_HAS(o, F_fuel_level)) lv_label_set_text_fmt(tile_val[3], "%d", (int)o->f[F_fuel_level]);
@@ -1019,16 +1027,33 @@ static void refresh_cb(lv_timer_t *t)
 
     if (s_page == 1) {
         static const char *wifi_txt[] = {"disabled", "scanning", "connecting", "connected", "idle"};
+        /* fuel used this drive and since the board started counting (rev_cal.h), with economy in the board's units:
+           L and L/100 km in metric, gallons and mpg in the US and the UK */
+        char fuel_drive[40], fuel_life[48];
+        rev_status_t rs;
+        rev_get_status(&rs);
+        units_t un = (units_t)st.units;
+        double gal = un == UNITS_US ? 3.785411784 : un == UNITS_UK ? 4.54609 : 1.0;
+        const char *vol = un == UNITS_METRIC ? "L" : "gal";
+        double d_l = o->trip_fuel_l, d_km = o->trip_km;
+        if (d_l >= 0.02 && d_km >= 0.5) {
+            if (un == UNITS_METRIC) snprintf(fuel_drive, sizeof fuel_drive, "Drive %.2f L  %.1f L/100km", d_l, 100.0 * d_l / d_km);
+            else snprintf(fuel_drive, sizeof fuel_drive, "Drive %.2f gal  %.1f mpg", d_l / gal, (double)econ_to_unit((float)(d_km / d_l), un));
+        } else snprintf(fuel_drive, sizeof fuel_drive, "Drive %.2f %s", d_l / gal, vol);
+        if (rs.life_l >= 0.02 && rs.life_km >= 0.5) {
+            if (un == UNITS_METRIC) snprintf(fuel_life, sizeof fuel_life, "Total %.1f L  %.1f L/100km x%.2f", rs.life_l, 100.0 * rs.life_l / rs.life_km, (double)rs.cal);
+            else snprintf(fuel_life, sizeof fuel_life, "Total %.1f gal  %.1f mpg x%.2f", rs.life_l / gal, (double)econ_to_unit((float)(rs.life_km / rs.life_l), un), (double)rs.cal);
+        } else snprintf(fuel_life, sizeof fuel_life, "Total %.1f %s  x%.2f", rs.life_l / gal, vol, (double)rs.cal);
         lv_label_set_text_fmt(lbl_info,
-            "Adapter: %s\n%s%s  rssi %d\n\nVIN: %s\nProto: %s\n\nMIL %s, %u DTC\nstored: %s\npending: %s\n\n"
-            "Wi-Fi: %s %s\nClock: %s\nSD: %s\n\nSession s%06lu  %lu rows  up %lu min\nIntake %d\xC2\xB0  Oil %d\xC2\xB0  Amb %d\xC2\xB0\nThr %d%%  MAF %.1f g/s\n\n" CARMIND_SCREEN_NAME " " CARMIND_VERSION "\nBOOT: tap = page, 2 s = off, 8 s = forget",
+            "Adapter: %s\n%s%s  rssi %d\n\nVIN: %s\nProto: %s\n\nMIL %s, %u DTC\nstored: %s\npending: %s\n"
+            "Wi-Fi: %s %s\nClock: %s\nSD: %s\n\nSession s%06lu  %lu rows  up %lu min\nIntake %d\xC2\xB0  Oil %d\xC2\xB0  Amb %d\xC2\xB0\nThr %d%%  MAF %.1f g/s\n%s\n%s\n" CARMIND_SCREEN_NAME " " CARMIND_VERSION "\nBOOT: tap = page, 2 s = off, 8 s = forget",
             st.adapter_name[0] ? st.adapter_name : "-", st.adapter_addr, st.adapter_saved ? " (saved)" : "", st.adapter_rssi,
             o->vin[0] ? o->vin : "-", o->protocol[0] ? o->protocol : "-",
             o->mil_on ? "ON" : "off", o->dtc_count, o->dtcs[0] ? o->dtcs : "none", o->pending_dtcs[0] ? o->pending_dtcs : "none",
             wifi_txt[st.wifi], (st.wifi == WIFI_ST_CONNECTING || st.wifi == WIFI_ST_CONNECTED) ? st.wifi_ssid : "", st.time_synced ? "synced" : "not synced",
             st.sd_mounted ? "ok" : (st.sd_error[0] ? st.sd_error : "not mounted"),
             (unsigned long)st.session_id, (unsigned long)st.rows_written, (unsigned long)(esp_timer_get_time() / 60000000),
-            (int)o->f[F_iat], (int)o->f[F_oil], (int)o->f[F_ambient], (int)o->f[F_throttle], o->f[F_maf]);
+            (int)o->f[F_iat], (int)o->f[F_oil], (int)o->f[F_ambient], (int)o->f[F_throttle], o->f[F_maf], fuel_drive, fuel_life);
     } else if (s_page == 2) {
         refresh_page2(&st);
     } else if (s_page == 3) {

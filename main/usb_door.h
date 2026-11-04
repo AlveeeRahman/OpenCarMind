@@ -11,6 +11,12 @@
  *   OCM1 CONFIG <config.json in base64>                      same keys as /sdcard/obd/config.json
  *   OCM1 LIST                        -> OCM1 D <name> <size> per session file
  *   OCM1 GET <name> <offset> <len>   -> OCM1 D <base64 of up to 3072 bytes>
+ *   OCM1 MODEL GET                   -> OCM1 OK MODEL active=<ev|rev> available=ev,rev loaded=<0|1> learning=<0|1> run_us=<n>
+ *   OCM1 MODEL SET <ev|rev>          switch the on-board model (unload, load, kept in NVS); same answer as MODEL GET
+ *   OCM1 REV-STATUS                  -> OCM1 D <group> key=value ... (state, fuel, error, phys, cal, life, one iv per interval)
+ *   OCM1 REV-FILLUPS <json b64>      the whole fill-up list: {"rev":n,"entries":[{"id","after","litres","full"} or
+ *                                    {"id","kind":"trip","from","after","l100"}]} -> OCM1 OK REV-FILLUPS rev= cal= used= skipped=
+ *   OCM1 REV-RESET <fuel|phys|cal|all>
  *   OCM1 REBOOT
  * Answers end with "OCM1 OK ..." or "OCM1 ERR <reason>". Anything that changes the board or reads the card is refused
  * while the car link is up. */

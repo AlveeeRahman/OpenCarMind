@@ -1,5 +1,9 @@
 /* On-board model: manoeuvre recogniser + estimator (ESP-DL), fed from the OBD poll loop.
  *
+ * Two models are embedded in flash and one runs at a time: CarMind E.V (the default) and, with CONFIG_CARMIND_REV_ENABLE,
+ * CarMind R.E.V, about half the size, which also outputs its 64-value feature z for on-board fuel learning (rev_task.h).
+ * The desktop app switches between them over USB (ml_select_model); the choice is kept in NVS (namespace "ml", key "model").
+ *
  * ml_feed() is called for every logged row and builds 1 s bins of the 10 pattern-layer channels.
  * ml_window_closed() is called when the pattern layer closes a 10 s window: it builds the model input from the last
  * ML_WINDOW seconds and hands it to the inference task through a message buffer, so the OBD task never waits on the
@@ -10,11 +14,29 @@
 #pragma once
 #include <stdint.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include "status.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+typedef enum { ML_MODEL_EV = 0, ML_MODEL_REV = 1, ML_MODEL_COUNT } ml_model_id_t;
+const char *ml_model_key(int id);        /* "ev", "rev" */
+const char *ml_model_name(int id);       /* "CarMind E.V", "CarMind R.E.V" */
+bool ml_model_available(int id);         /* built into this firmware */
+int  ml_model_active(void);              /* the selected model, ML_MODEL_EV until NVS says otherwise */
+/* Switch models: unload the running one, load the other from flash, keep the choice in NVS. Writes NVS, so call it from a task
+   with an internal-RAM stack (the USB door), and only while parked. If the new model does not load, the old one is loaded back
+   and false is returned with the reason in why. */
+bool ml_select_model(int id, char *why, size_t why_n);
+/* R.E.V learning can run: R.E.V selected and loaded, with a 64-value "z" output, and not in safe mode. */
+bool ml_rev_active(void);
+
+/* What the OBD task knows about the window it is about to feed (rev_task.c): the measured fuel label for the last 5 s and the
+   physics estimate for the same 5 s, both in L/h. Same task as ml_feed(), so no lock. */
+typedef struct { bool label_ok; float label_lph; bool phys_ok; float phys_lph; } ml_rev_in_t;
+void ml_set_rev_inputs(const ml_rev_in_t *in);
 
 void ml_init(void);
 void ml_feed(const obd_values_t *v, int64_t now_ms);
@@ -37,6 +59,13 @@ typedef struct {
     float    last_prob;
     float    last_est[3];         /* brake pressure bar, flywheel torque Nm, fuel rate L/h of the last inference */
     int64_t  last_at_ms;          /* esp_timer time of the last inference, 0 before the first */
+    /* appended for R.E.V: zero-initialised for E.V */
+    int      model;               /* ml_model_id_t of the loaded model */
+    bool     z_ok;                /* the loaded model has a usable z output */
+    bool     learned_ok;          /* learned_lph and prior_lph are from the last inference (MAF hidden when MAF was there) */
+    float    learned_lph, prior_lph;
+    uint32_t pass2_us;            /* the MAF-hidden second pass of the last inference, 0 when MAF was not in the window */
+    uint32_t selftest_us;         /* one timed run of the loaded model at load */
 } ml_stats_t;
 void ml_get_stats(ml_stats_t *out);
 /* Class probabilities of the last window, in ML_CLASSES order. Returns how many were written, 0 before the first window. */

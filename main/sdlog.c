@@ -47,7 +47,7 @@ static const char CSV_HEADER[] =
     "seq,uptime_ms,epoch_ms," OBD_FIELDS(OBD_NAME)
     "adapter_voltage_v,mil_on,dtc_count,dtcs,pending_dtcs,permanent_dtcs,"
     "custom_1,custom_2,custom_3,custom_4,custom_5,custom_6,custom_7,custom_8,"
-    "fuel_lph_calc,fuel_src,trip_km,trip_fuel_l,window_seq\n";
+    "fuel_lph_calc,fuel_src,trip_km,trip_fuel_l,window_seq,fuel_lph_raw,fuel_cal,trip_fuel_raw_l\n";
 #undef OBD_NAME
 static FILE    *s_raw;
 static char     s_raw_path[96];
@@ -397,7 +397,11 @@ void sdlog_write_row(const obd_values_t *v)
     if (v->fuel_lph_calc >= 0) n += snprintf(line + n, sizeof line - n, "%.3f,%s,%.4f,%.4f,", v->fuel_lph_calc,
                                              fuel_src_name((fuel_src_t)v->fuel_src), v->trip_km, v->trip_fuel_l);
     else n += snprintf(line + n, sizeof line - n, ",,%.4f,%.4f,", v->trip_km, v->trip_fuel_l);
-    n += snprintf(line + n, sizeof line - n, "%lu", (unsigned long)s_window_seq);
+    n += snprintf(line + n, sizeof line - n, "%lu,", (unsigned long)s_window_seq);
+    /* appended in 2.5: the fuel rate before the fill-up calibration, the factor, and the raw trip total */
+    if (v->fuel_lph_raw >= 0) n += snprintf(line + n, sizeof line - n, "%.3f,", v->fuel_lph_raw);
+    else line[n++] = ',';
+    n += snprintf(line + n, sizeof line - n, "%.4f,%.4f", v->fuel_cal, v->trip_fuel_raw_l);
     line[n++] = '\n';
     line[n] = 0;
 
@@ -547,6 +551,17 @@ void sdlog_meta_set_vehicle(const char *vin, const char *protocol)
     cJSON *veh = cJSON_GetObjectItem(s_meta, "vehicle");
     meta_set_str(veh, "vin", vin);
     meta_set_str(veh, "protocol", protocol);
+    meta_flush_locked();
+    xSemaphoreGive(s_lock);
+}
+
+void sdlog_meta_set_ml(const char *model_key, float fuel_cal)
+{
+    if (!s_meta) return;
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    set_meta_string(s_meta, "ml_model", model_key);
+    if (cJSON_HasObjectItem(s_meta, "fuel_cal")) cJSON_ReplaceItemInObject(s_meta, "fuel_cal", cJSON_CreateNumber(fuel_cal));
+    else cJSON_AddNumberToObject(s_meta, "fuel_cal", fuel_cal);
     meta_flush_locked();
     xSemaphoreGive(s_lock);
 }
