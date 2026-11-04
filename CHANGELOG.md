@@ -2,12 +2,12 @@
 
 ## Unreleased
 
-- Model renamed to CarMind E.V (was Edge Model 1). README training section updated for the four-stage training and w8a16 precision.
+- Model renamed to CarMind E.V (was Edge Model 1).
 - Model documentation shortened to what users of the board need; the training details are kept privately.
 
 ## 2.4.0
 
-- CarMind E.V (`dfa9af416dfb`, 89,152 bytes, 38,679 parameters, `w8a16`). Same architecture, new training: the public KIA drives plus 325 cars of the Vehicle Energy Dataset and twelve of the author's drives, partial labels where there is no brake switch, augmentation that imitates other cars, the adapter's real row spacing, and a fitted temperature folded into the class layer. Reads 5 s of nine channels (MAF and intake temperature now used, MAP stays off). On data held out from training: KIA macro-F1 0.887, 98.5 % of the author's held-out windows and 96.1 % of 37 unseen VED cars in an allowed class, fuel R² 0.688 on unseen cars with MAF hidden. It follows a manoeuvre change within 3 s 88 % of the time, against 55 % for a 10 s model. About 3.5 ms per run. Details are in `docs/MODEL.md`, and every variant tried, including contrastive pre-training and distillation, in `docs/MODEL_CASE_STUDY.md`.
+- CarMind E.V (`dfa9af416dfb`, 89,152 bytes), a new on-board model that holds up better on cars it has not seen. About 3.5 ms per run. Scores are in `docs/MODEL.md`.
 - Fixes from a code review, with no change to the model, the scheduler's default behaviour, the OBD polling or the log format:
   - Diesel fuel use from MAF accepts the lean commanded ratios diesels run at (up to 8). It read about 3x high before.
   - A fuel-cut reading of PID 0x44, which is polled slowly, no longer zeroes the fuel rate once the throttle opens again.
@@ -21,7 +21,7 @@
 - The events screen names the model "ML Model - CarMind E.V". Its hash stays in the serial log and in every `.ml.csv` row.
 - Repository: removed six screen renders no page used and five desktop design mockups of screens the app does not have. `ml/onboard/export.json` lists the architecture only. `.gitignore` covers those renders and assistant, scratch and editor files.
 - Architecture proposals: a new issue template. We train what you send on the same data and splits and post the scores.
-- Figures for the model, the inference path and training-to-board updated. The old model's bench summary (`ml/onboard/bench_summary.json`) is removed.
+- Figures for the inference path updated. The old model's bench summary (`ml/onboard/bench_summary.json`) is removed.
 - Field check: the author drove the board with the new features (the drive ending when the engine stops, the BOOT power-off, fuel economy, units) and the 10 s model, and reported every feature working.
 
 - Fuel economy: the first screen's LOAD tile now shows the drive's economy in km/L, or mpg in the US and the UK (LOAD moved to page 3, replacing BARO). The fuel rate comes from PID 0x5E when the car has it, else from MAF with the commanded equivalence ratio (PID 0x44, where 0 means decel fuel cut), else from the on-board model's estimate, shown in amber. New CSV columns `fuel_lph_calc`, `fuel_src`, `trip_km`, `trip_fuel_l` (`main/econ.c`, host-tested).
@@ -69,7 +69,7 @@ Installers for the desktop app and the firmware images are attached to the GitHu
 First public release.
 
 - Firmware for the Waveshare ESP32-S3-LCD-1.47B: reads every Mode 01 field the car reports over a Bluetooth LE ELM327-style adapter, ranks trouble codes, and saves sessions to the SD card at least every 10 seconds, with a "Safe to turn off" event on page 3.
-- On-board model: a quantisation-aware 1-D CNN (38,679 parameters, `w8a16`, hash `85d63ec33020`) that classifies the manoeuvre and estimates brake pressure, flywheel torque and fuel rate. The window is cut when each OBD row arrives.
+- On-board model (hash `85d63ec33020`) that classifies the manoeuvre and estimates brake pressure, flywheel torque and fuel rate. The window is cut when each OBD row arrives.
 - Soft real-time scheduler with deadlines, a task watchdog and a safe mode after repeated resets.
 - Optional Wi-Fi clock sync (`OCM_WIFI_CLOCK_SYNC`) and settings from `/obd/config.json` on the card.
 - Dark and light themes, switched by time of day or fixed in `config.json`.
