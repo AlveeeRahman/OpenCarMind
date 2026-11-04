@@ -1,0 +1,25 @@
+{
+ "model": "CarMind R.E.V",
+ "target": "esp32s3",
+ "quant_type": "w8a16",
+ "outputs": [
+  "man",
+  "est",
+  "z"
+ ],
+ "z_dim": 64,
+ "files": {
+  "onboard.espdl": {
+   "bytes": 65648,
+   "sha256": "f70bdcd3151b9b575b32268db88f3d2610ea4449752487f09ea63ad23dd02d2b"
+  },
+  "norm.json": {
+   "bytes": 928,
+   "sha256": "24447c58cb9f58a8c6aa41ff39a4fcf96f9154b6ed5fa0c6d25dbd3ce7cab5d6"
+  },
+  "targets.json": {
+   "bytes": 358,
+   "sha256": "5246a3c69eaedc82e2c62e01867f02303a54afc50a5fccc9bed1c7b58efff842"
+  }
+ }
+}
