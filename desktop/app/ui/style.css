@@ -49,3 +49,5 @@ table.kv{min-width:0;width:auto}table.kv td{padding:6px 14px 6px 0;border:0}tabl
 table.kv input{width:110px}
 .list{list-style:none;padding:0;margin:8px 0}.list li{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}
 .bad{color:#b91c1c}@media (prefers-color-scheme:dark){.bad{color:#fca5a5}}
+.panel.wide{max-width:none}
+.note p{margin:0 0 6px}

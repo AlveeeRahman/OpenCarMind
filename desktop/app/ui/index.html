@@ -14,6 +14,7 @@
 <nav class="tabs" aria-label="Pages">
   <button class="tab" data-page="overview" aria-current="page">Overview</button>
   <button class="tab" data-page="drives">Drives</button>
+  <button class="tab" data-page="fuel">Fuel</button>
   <button class="tab" data-page="board">Board</button>
 </nav>
 <main>
@@ -35,6 +36,50 @@
     <p class="sub">Choose a drive to see its charts.</p>
     <div class="table-wrap"><table id="drives"><thead><tr><th>Drive</th><th>Start</th><th class="n">Rows</th><th class="n">Minutes</th><th class="n">Max speed</th><th class="n">Distance</th><th class="n">Fuel</th><th class="n">Economy</th></tr></thead><tbody></tbody></table></div>
     <div id="detail"></div>
+  </section>
+  <section id="page-fuel" class="page" hidden>
+    <h1>Fuel</h1>
+    <p class="sub">What the drives used, and your fill-ups. The board compares the fuel you pump with the fuel it counted and corrects its figures with one factor. Fill to the pump's automatic click-off for the best result; the second full fill gives the first correction.</p>
+    <div class="cards" id="fuel-cards"></div>
+    <div class="panel">
+      <h2 id="fill-title">Add a fill-up</h2>
+      <div class="row">
+        <label for="fill-kind">What</label>
+        <select id="fill-kind"><option value="pump">Fuel pumped</option><option value="trip">The car's trip computer average</option></select>
+        <label for="fill-date">When</label><input id="fill-date" type="datetime-local">
+      </div>
+      <div class="row" id="fill-pump-row">
+        <label for="fill-amount">Amount</label><input id="fill-amount" type="number" min="0" step="0.01" size="8">
+        <select id="fill-unit" aria-label="Volume unit"><option value="L">litres</option><option value="usgal">US gallons</option><option value="ukgal">UK gallons</option></select>
+        <label><input id="fill-full" type="checkbox" checked> filled to the click-off</label>
+        <label for="fill-after">after drive</label><select id="fill-after"></select>
+      </div>
+      <div class="row" id="fill-trip-row" hidden>
+        <label for="fill-figure">Average</label><input id="fill-figure" type="number" min="0" step="0.1" size="8">
+        <select id="fill-econ-unit" aria-label="Economy unit"><option value="l100">L/100 km</option><option value="kpl">km/L</option><option value="mpgus">mpg (US)</option><option value="mpguk">mpg (UK)</option></select>
+        <label for="fill-from">from drive</label><select id="fill-from"></select>
+        <label for="fill-to">to drive</label><select id="fill-to"></select>
+      </div>
+      <div class="row"><button class="primary" id="fill-save">Save</button><button id="fill-cancel" hidden>Cancel edit</button></div>
+      <p id="fuel-msg" class="sub" role="status" aria-live="polite"></p>
+    </div>
+    <div class="panel wide">
+      <h2>Fill-up log</h2>
+      <p class="sub">Kept on this computer for the board shown below. After each change it is sent to the board when the board is connected on the Board page. The board keeps the last 16.</p>
+      <div class="table-wrap"><table id="fill-table"><thead><tr><th>When</th><th>What</th><th>After drive</th><th class="n">Pumped</th><th class="n">Board counted</th><th>Result</th><th></th></tr></thead><tbody></tbody></table></div>
+      <div class="row"><button id="fill-send">Send to the board</button><span id="fill-board" class="sub"></span></div>
+    </div>
+    <div class="panel wide">
+      <h2>Fuel per drive</h2>
+      <div class="table-wrap"><table id="fuel-drives"><thead><tr><th>Drive</th><th>Start</th><th>Model</th><th class="n">Distance</th><th class="n">Fuel</th><th class="n">km/L</th><th class="n">L/100 km</th><th class="n">mpg</th><th>Fuel from</th></tr></thead><tbody></tbody></table></div>
+    </div>
+    <div class="panel">
+      <h2>CarMind R.E.V learning</h2>
+      <p class="sub">Read from the board over the cable. Learning runs only while R.E.V is the model on the board; the fill-up correction applies to both models.</p>
+      <ul id="rev-status" class="list"><li>Connect the board on the Board page, then refresh.</li></ul>
+      <div class="row"><button id="rev-refresh">Refresh from the board</button><select id="rev-reset-what" aria-label="What to reset"><option value="fuel">learned fuel estimate</option><option value="phys">airflow constant</option><option value="cal">fill-up correction</option><option value="all">everything</option></select><button id="rev-reset">Reset to factory</button></div>
+      <div id="rev-confirm" class="note warn" hidden><p id="rev-confirm-text"></p><div class="row"><button class="primary" id="rev-reset-yes">Reset</button><button id="rev-reset-no">Cancel</button></div></div>
+    </div>
   </section>
   <section id="page-board" class="page" hidden>
     <h1>Board</h1>
@@ -58,6 +103,13 @@
       </div>
     </div>
     <div id="board-tools" hidden>
+      <div class="panel">
+        <h2>On-board model</h2>
+        <p class="sub">CarMind E.V is the fixed model the board has always run. CarMind R.E.V is about half the size and keeps learning your car's fuel use while you drive. R.E.V is new; E.V stays the default.</p>
+        <p id="model-text" class="sub" role="status" aria-live="polite">Connect to see which model runs.</p>
+        <div class="row"><label for="model-pick">Model</label><select id="model-pick"><option value="ev">CarMind E.V</option><option value="rev">CarMind R.E.V</option></select><button id="model-switch">Switch</button></div>
+        <div id="model-confirm" class="note warn" hidden><p id="model-confirm-text"></p><div class="row"><button class="primary" id="model-yes">Switch now</button><button id="model-no">Cancel</button></div></div>
+      </div>
       <div class="panel">
         <h2>Wi-Fi networks on the board</h2>
         <p class="sub">The board uses Wi-Fi to set its clock and to send its drives to this app. It joins 2.4 GHz networks only and keeps passwords in its flash as plain text, so a phone hotspot or a guest network is the better choice.</p>

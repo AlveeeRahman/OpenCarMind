@@ -34,8 +34,13 @@ const U = {
   econLabel: (u) => u === "metric" ? "km/L" : u === "uk" ? "mpg (UK)" : "mpg",
   fuel: (l, u) => l == null ? null : u === "us" ? l / USGAL : u === "uk" ? l / UKGAL : l,
   fuelLabel: (u) => u === "metric" ? "L" : "gal",
+  l100: (kpl) => kpl == null || kpl <= 0 ? null : 100 / kpl,
+  mpg: (kpl, u) => kpl == null ? null : kpl * (u === "uk" ? UKGAL : USGAL) / MI,
+  mpgLabel: (u) => u === "uk" ? "mpg (UK)" : "mpg (US)",
 };
-const SOURCE = { pid: "from the car", maf: "from airflow", model: "model estimate" };
+const SOURCE = { pid: "from the car", maf: "from airflow", model: "model estimate", phys: "airflow physics estimate", learned: "learned estimate" };
+const ESTIMATE = new Set(["model", "phys", "learned"]);
+const MODEL_NAME = { ev: "CarMind E.V", rev: "CarMind R.E.V" };
 
 function renderOverview() {
   const s = state.sessions;
@@ -75,7 +80,7 @@ function renderDrives() {
       el("td", { className: "n", textContent: x.max_speed_kph == null ? "n/a" : `${U.dist(x.max_speed_kph, x.units).toFixed(0)} ${U.speedLabel(x.units)}` }),
       el("td", { className: "n", textContent: `${U.dist(x.distance_km, x.units).toFixed(1)} ${U.distLabel(x.units)}` }),
       el("td", { className: "n", textContent: x.fuel_l == null ? "n/a" : `${U.fuel(x.fuel_l, x.units).toFixed(2)} ${U.fuelLabel(x.units)}` }),
-      el("td", { className: "n", title: SOURCE[x.fuel_source] || "", textContent: x.economy_kpl == null ? "n/a" : `${U.econ(x.economy_kpl, x.units).toFixed(1)} ${U.econLabel(x.units)}${x.fuel_source === "model" ? " (est.)" : ""}` }));
+      el("td", { className: "n", title: SOURCE[x.fuel_source] || "", textContent: x.economy_kpl == null ? "n/a" : `${U.econ(x.economy_kpl, x.units).toFixed(1)} ${U.econLabel(x.units)}${ESTIMATE.has(x.fuel_source) ? " (est.)" : ""}` }));
     const choose = () => showDetail(x, tr);
     tr.addEventListener("click", choose);
     tr.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); choose(); } });
@@ -141,7 +146,7 @@ async function load(folder) {
     $("#status").textContent = "No card folder open";
     error.textContent = String(e); error.hidden = false;
   }
-  renderOverview(); renderDrives(); $("#detail").replaceChildren();
+  renderOverview(); renderDrives(); renderFuel(); $("#detail").replaceChildren();
 }
 
 $("#open-card").addEventListener("click", async () => {
@@ -193,12 +198,49 @@ async function connect() {
   if (h.authed) {
     msg("#board-msg", `Connected to board ${h.board}, firmware ${h.firmware}, paired with this app.`);
     showTools(true); await step("Reading the board's networks...", loadWifi);
+    await step("Reading the board's model...", loadModel);
+    await loadFills();
     msg("#board-msg", `Connected to board ${h.board}, firmware ${h.firmware}, paired with this app.`);
   } else {
     showTools(false); $("#pair-box").hidden = false;
     msg("#board-msg", `Board ${h.board}, firmware ${h.firmware}. ${h.paired ? "It is paired with another app or an older install." : "It is not paired yet."} Pair it below.`);
   }
 }
+
+/* ---- On-board model: CarMind E.V (default) or CarMind R.E.V, switched over the cable and kept by the board ---- */
+let boardModel = null;
+function showModel(m) {
+  boardModel = m;
+  const pick = $("#model-pick");
+  for (const o of pick.options) {
+    const ok = m.available.includes(o.value);
+    o.disabled = !ok;
+    o.textContent = MODEL_NAME[o.value] + (ok ? "" : " (not in this firmware)");
+  }
+  pick.value = m.active;
+  const speed = m.run_us ? `, ${(m.run_us / 1000).toFixed(1)} ms per run` : "";
+  const learn = m.active === "rev" ? (m.learning ? ", learning on" : ", learning off") : "";
+  msg("#model-text", `The board runs ${MODEL_NAME[m.active] || m.active}${m.loaded ? "" : " (it did not load)"}${speed}${learn}.`);
+}
+async function loadModel() { showModel(await invoke("board_model", { port: port() })); }
+$("#model-switch").addEventListener("click", () => {
+  const want = $("#model-pick").value;
+  if (!boardModel) return msg("#model-text", "Connect first.", true);
+  if (want === boardModel.active) return msg("#model-text", `${MODEL_NAME[want]} is already running.`);
+  $("#model-confirm-text").textContent = want === "rev"
+    ? "Switch to CarMind R.E.V? It is new. It learns this car's fuel use while you drive and from your fill-ups. You can switch back to E.V at any time; what R.E.V learned is kept."
+    : "Switch back to CarMind E.V? R.E.V stops learning, and what it learned is kept on the card for later.";
+  $("#model-confirm").hidden = false;
+});
+$("#model-no").addEventListener("click", () => { $("#model-confirm").hidden = true; });
+$("#model-yes").addEventListener("click", () => {
+  const want = $("#model-pick").value;
+  $("#model-confirm").hidden = true;
+  step(`Switching to ${MODEL_NAME[want]}...`, async () => {
+    showModel(await invoke("board_model_set", { port: port(), model: want }));
+    msg("#board-msg", `The board now runs ${MODEL_NAME[want]}. It keeps this choice after a restart.`);
+  });
+});
 
 $("#refresh-ports").addEventListener("click", refreshPorts);
 $("#connect").addEventListener("click", connect);
@@ -286,3 +328,207 @@ $("#source").addEventListener("change", () => { const v = $("#source").value; re
 document.querySelector('.tab[data-page="board"]').addEventListener("click", () => { refreshReceiver(); refreshFirmware(); if (!$("#port").options.length) refreshPorts(); });
 refreshReceiver(); refreshSources();
 setInterval(() => { refreshReceiver(); refreshSources(); if (!$("#page-overview").hidden && $("#source").value && state.folder === $("#source").value) load(state.folder); }, 15000);
+
+/* ---- Fuel page: per-drive and lifetime fuel, the fill-up log (main/rev_cal.h) and R.E.V's learning status ---- */
+const fuel = { log: { rev: 0, entries: [] }, editing: null, status: null, board: null };
+
+function fuelBoard() {
+  if (current && current.board) return current.board;
+  const m = ($("#source").value || "").match(/([0-9a-f]{12})[\\/]*$/);
+  return m ? m[1] : null;
+}
+function sessionNumber(id) { return parseInt(String(id).replace(/^s/, ""), 10); }
+function boardConnected() { return !!(current && current.authed); }
+function userUnits() { const s = state.sessions; return s.length ? s[s.length - 1].units || "metric" : "metric"; }
+function fuelMsg(text, bad) { msg("#fuel-msg", text, bad); }
+function group(name) { return (fuel.status || []).find((g) => g.group === name)?.fields || null; }
+
+function driveOptions(sel, keep) {
+  const opts = state.sessions.slice().reverse().map((x) => el("option", { value: String(sessionNumber(x.id)), textContent: `${x.id}, ${x.date}` }));
+  sel.replaceChildren(...opts);
+  if (keep != null && [...sel.options].some((o) => o.value === String(keep))) sel.value = String(keep);
+}
+
+/* The default drive for a fill-up is the last one that started before the entered time. */
+function driveBefore(when) {
+  const t = Date.parse(when);
+  const before = state.sessions.filter((x) => { const d = Date.parse(String(x.date).replace(" UTC", "Z").replace(" ", "T")); return Number.isFinite(d) && Number.isFinite(t) && d <= t; });
+  const pick = before.length ? before[before.length - 1] : state.sessions[state.sessions.length - 1];
+  return pick ? sessionNumber(pick.id) : 0;
+}
+
+function localNow() { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 16); }
+
+function resetForm() {
+  fuel.editing = null;
+  $("#fill-title").textContent = "Add a fill-up";
+  $("#fill-cancel").hidden = true;
+  $("#fill-date").value = localNow();
+  $("#fill-amount").value = ""; $("#fill-figure").value = "";
+  $("#fill-full").checked = true;
+  const u = userUnits();
+  $("#fill-unit").value = u === "us" ? "usgal" : u === "uk" ? "ukgal" : "L";
+  $("#fill-econ-unit").value = u === "us" ? "mpgus" : u === "uk" ? "mpguk" : "l100";
+  driveOptions($("#fill-after"), driveBefore($("#fill-date").value));
+  driveOptions($("#fill-from")); driveOptions($("#fill-to"));
+  showKind();
+}
+function showKind() { const trip = $("#fill-kind").value === "trip"; $("#fill-pump-row").hidden = trip; $("#fill-trip-row").hidden = !trip; }
+$("#fill-kind").addEventListener("change", showKind);
+$("#fill-date").addEventListener("change", () => driveOptions($("#fill-after"), driveBefore($("#fill-date").value)));
+$("#fill-cancel").addEventListener("click", resetForm);
+
+function editEntry(e) {
+  fuel.editing = e.id;
+  $("#fill-title").textContent = "Edit a fill-up";
+  $("#fill-cancel").hidden = false;
+  $("#fill-kind").value = e.kind; showKind();
+  $("#fill-date").value = e.date || "";
+  if (e.kind === "pump") { $("#fill-amount").value = e.amount; $("#fill-unit").value = e.unit; $("#fill-full").checked = e.full; driveOptions($("#fill-after"), e.after_session); }
+  else { $("#fill-figure").value = e.amount; $("#fill-econ-unit").value = e.unit; driveOptions($("#fill-from"), e.from_session); driveOptions($("#fill-to"), e.after_session); }
+  $("#fill-title").scrollIntoView({ block: "nearest" });
+}
+
+async function saveEntries(entries, done) {
+  const board = fuelBoard();
+  if (!board) return fuelMsg("Connect the board on the Board page, or choose its received drives on the Overview, so the log is kept for that board.", true);
+  try {
+    fuel.log = await invoke("fillups_save", { board, entries });
+    fuel.board = board;
+    if (boardConnected()) {
+      const answer = await invoke("board_rev_fillups", { port: port(), board });
+      const c = (answer.match(/cal=([0-9.]+)/) || [])[1];
+      fuelMsg(`${done} Sent to the board${c ? `: correction x${Number(c).toFixed(3)}` : ""}.`);
+      await refreshRev(false);
+    } else fuelMsg(`${done} Connect the board on the Board page to send it.`);
+  } catch (e) { fuelMsg(String(e), true); }
+  renderFills();
+}
+
+$("#fill-save").addEventListener("click", () => {
+  const kind = $("#fill-kind").value;
+  const ids = fuel.log.entries.map((e) => e.id);
+  const id = fuel.editing ?? (ids.length ? Math.max(...ids) + 1 : 1);
+  const e = { id, date: $("#fill-date").value, kind, after_session: 0, from_session: 0, amount: 0, unit: "", full: false, price: null };
+  if (kind === "pump") {
+    e.amount = Number($("#fill-amount").value); e.unit = $("#fill-unit").value; e.full = $("#fill-full").checked;
+    e.after_session = Number($("#fill-after").value);
+  } else {
+    e.amount = Number($("#fill-figure").value); e.unit = $("#fill-econ-unit").value;
+    e.from_session = Number($("#fill-from").value); e.after_session = Number($("#fill-to").value);
+  }
+  if (!(e.amount > 0)) return fuelMsg("Enter the amount first.", true);
+  if (!e.after_session) return fuelMsg("There are no drives to attach it to yet.", true);
+  const entries = fuel.log.entries.filter((x) => x.id !== id).concat([e]);
+  saveEntries(entries, fuel.editing ? "Fill-up changed." : "Fill-up saved.").then(resetForm);
+});
+
+$("#fill-send").addEventListener("click", async () => {
+  const board = fuelBoard();
+  if (!boardConnected() || !board) return fuelMsg("Connect the board on the Board page first.", true);
+  try { const a = await invoke("board_rev_fillups", { port: port(), board }); fuelMsg(`Sent. ${a.replace(/^OK REV-FILLUPS /, "")}`); await refreshRev(false); }
+  catch (e) { fuelMsg(String(e), true); }
+});
+
+function volume(l, u) { return l == null ? "n/a" : `${U.fuel(l, u).toFixed(2)} ${U.fuelLabel(u)}`; }
+
+function renderFills() {
+  const u = userUnits();
+  const iv = (fuel.status || []).filter((g) => g.group === "iv").map((g) => g.fields);
+  const why = ["used", "under 5 L counted", "fuel data missing over 5 % of the time", "drives no longer on the board", "ratio outside 0.5 to 2"];
+  const body = $("#fill-table tbody");
+  const rows = fuel.log.entries.slice().reverse().map((e) => {
+    const r = iv.find((x) => Number(x.id) === e.id);
+    const what = e.kind === "pump" ? `${e.amount} ${e.unit === "L" ? "L" : e.unit === "usgal" ? "US gal" : "UK gal"}${e.full ? ", full" : ", partial"}`
+      : `trip computer ${e.amount} ${$(`#fill-econ-unit option[value="${e.unit}"]`)?.textContent || e.unit}`;
+    const result = r ? (Number(r.why) === 0 ? `ratio ${(Number(r.pumped) / Number(r.board)).toFixed(3)}` : `not used: ${why[Number(r.why)] || "?"}`)
+      : e.kind === "pump" && e.full ? "start of a tank" : "";
+    const del = el("button", { textContent: "Delete" });
+    del.addEventListener("click", () => saveEntries(fuel.log.entries.filter((x) => x.id !== e.id), "Fill-up deleted."));
+    const edit = el("button", { textContent: "Edit" });
+    edit.addEventListener("click", () => editEntry(e));
+    return el("tr", {}, el("td", { textContent: (e.date || "").replace("T", " ") }), el("td", { textContent: what }),
+      el("td", { textContent: e.kind === "trip" ? `s${String(e.from_session).padStart(6, "0")} to s${String(e.after_session).padStart(6, "0")}` : `s${String(e.after_session).padStart(6, "0")}` }),
+      el("td", { className: "n", textContent: r ? volume(Number(r.pumped), u) : "" }), el("td", { className: "n", textContent: r ? volume(Number(r.board), u) : "" }),
+      el("td", { textContent: result }), el("td", {}, el("div", { className: "row" }, edit, del)));
+  });
+  body.replaceChildren(...(rows.length ? rows : [el("tr", {}, el("td", { colSpan: 7, textContent: "No fill-ups yet." }))]));
+  $("#fill-board").textContent = fuelBoard() ? `Board ${fuelBoard()}, list revision ${fuel.log.rev}` : "No board chosen";
+}
+
+function renderFuel() {
+  const s = state.sessions, u = userUnits();
+  const withFuel = s.filter((x) => x.fuel_l != null && x.economy_kpl != null);
+  const L = withFuel.reduce((a, x) => a + x.fuel_l, 0), km = withFuel.reduce((a, x) => a + x.economy_kpl * x.fuel_l, 0);
+  const kpl = L >= 0.02 && km >= 0.5 ? km / L : null;
+  const cal = group("cal");
+  const cards = [["Fuel used, all drives", volume(L, u)], ["Average km/L", kpl == null ? "n/a" : kpl.toFixed(1)],
+    ["Average L/100 km", kpl == null ? "n/a" : U.l100(kpl).toFixed(1)], [`Average ${U.mpgLabel(u)}`, kpl == null ? "n/a" : U.mpg(kpl, u).toFixed(1)],
+    ["Fill-up correction", cal ? `x${Number(cal.c).toFixed(3)}` : "connect to read"]];
+  $("#fuel-cards").replaceChildren(...cards.map(([k, v]) => el("div", { className: "card" }, el("div", { className: "k", textContent: k }), el("div", { className: "v", textContent: v }))));
+  $("#fuel-drives tbody").replaceChildren(...s.slice().reverse().map((x) => {
+    const k = x.economy_kpl;
+    return el("tr", {}, el("td", { textContent: x.id }), el("td", { textContent: x.date }), el("td", { textContent: MODEL_NAME[x.ml_model] || "" }),
+      el("td", { className: "n", textContent: `${U.dist(x.distance_km, x.units).toFixed(1)} ${U.distLabel(x.units)}` }),
+      el("td", { className: "n", title: x.fuel_raw_l != null ? `before the fill-up correction: ${volume(x.fuel_raw_l, x.units)}` : "", textContent: volume(x.fuel_l, x.units) }),
+      el("td", { className: "n", textContent: k == null ? "n/a" : k.toFixed(1) }), el("td", { className: "n", textContent: k == null ? "n/a" : U.l100(k).toFixed(1) }),
+      el("td", { className: "n", textContent: k == null ? "n/a" : `${U.mpg(k, x.units).toFixed(1)}${x.units === "uk" ? " UK" : ""}` }),
+      el("td", { textContent: SOURCE[x.fuel_source] || x.fuel_source || "" }));
+  }));
+  renderFills();
+}
+
+function renderRev() {
+  const st = group("state"), f = group("fuel"), er = group("error"), ph = group("phys"), cal = group("cal"), life = group("life");
+  if (!st) { $("#rev-status").replaceChildren(el("li", { textContent: "Connect the board on the Board page, then refresh." })); return; }
+  const n = (v, d) => Number(v).toFixed(d);
+  const items = [`Model on the board: ${MODEL_NAME[st.model] || st.model}. Learning ${st.learning === "1" ? "on" : "off"}${st.safe === "1" ? " (safe mode)" : ""}. Saved to the card: ${st.saved === "1" ? "yes" : "not yet"}.`];
+  if (f) items.push(`Fuel estimate: ${f.commits} updates kept, ${f.resets} resets to factory, ${f.learned} labelled moments learned.`);
+  if (er && Number(er.n_learned) >= 20 && Number(er.factory) > 0) {
+    const gain = 1 - Number(er.learned) / Number(er.factory);
+    items.push(`Without airflow data the learned estimate is ${Math.abs(gain * 100).toFixed(0)} % ${gain >= 0 ? "better" : "worse"} than the factory one on this car (running error ${n(er.learned, 3)} against ${n(er.factory, 3)}).`);
+  }
+  if (er) items.push(`If airflow data dropped out now, the board would use: ${SOURCE[er.prefer] || er.prefer}.`);
+  if (ph) items.push(`Airflow constant k = ${Number(ph.k).toExponential(3)} g/s per %-rpm${ph.ready === "1" ? `, learned from ${ph.rows} rows` : " (factory value until 20 rows)"}${ph.path === "calc" ? ", from calculated load (experimental)" : ""}. It implies about ${(12000 * Number(ph.k) / 1.184).toFixed(1)} L of engine displacement.`);
+  if (cal) items.push(`Fill-up correction x${n(cal.c, 3)}: ${cal.used} tank${cal.used === "1" ? "" : "s"} used, ${cal.skipped} skipped, ${cal.fills} entr${cal.fills === "1" ? "y" : "ies"} on the board.`);
+  if (life && Number(life.litres) > 0.02) {
+    const k = Number(life.km) / Number(life.litres), u = userUnits();
+    items.push(`Counted by the board since it started: ${volume(Number(life.litres), u)} over ${U.dist(Number(life.km), u).toFixed(0)} ${U.distLabel(u)}, ${k.toFixed(1)} km/L, ${U.l100(k).toFixed(1)} L/100 km, ${U.mpg(k, u).toFixed(1)} ${U.mpgLabel(u)}.`);
+  }
+  $("#rev-status").replaceChildren(...items.map((t) => el("li", { textContent: t })));
+}
+
+async function refreshRev(say) {
+  if (!boardConnected()) { if (say) fuelMsg("Connect the board on the Board page first.", true); return; }
+  try {
+    fuel.status = await invoke("board_rev_status", { port: port() });
+    if (say) fuelMsg("Read from the board.");
+  } catch (e) {
+    fuel.status = null;
+    if (say) fuelMsg(String(e).includes("unknown command") ? "This board's firmware has no fuel learning yet. Flash the firmware on the Board page." : String(e), true);
+  }
+  renderRev(); renderFuel();
+}
+$("#rev-refresh").addEventListener("click", () => refreshRev(true));
+
+$("#rev-reset").addEventListener("click", () => {
+  if (!boardConnected()) return fuelMsg("Connect the board on the Board page first.", true);
+  const what = $("#rev-reset-what");
+  $("#rev-confirm-text").textContent = `Reset the ${what.options[what.selectedIndex].textContent} to its factory value? What the board learned for it is lost.`;
+  $("#rev-confirm").hidden = false;
+});
+$("#rev-reset-no").addEventListener("click", () => { $("#rev-confirm").hidden = true; });
+$("#rev-reset-yes").addEventListener("click", async () => {
+  $("#rev-confirm").hidden = true;
+  try { await invoke("board_rev_reset", { port: port(), what: $("#rev-reset-what").value }); fuelMsg("Reset done."); await refreshRev(false); }
+  catch (e) { fuelMsg(String(e), true); }
+});
+
+async function loadFills() {
+  const board = fuelBoard();
+  if (!board) { fuel.log = { rev: 0, entries: [] }; renderFills(); return; }
+  try { fuel.log = await invoke("fillups_load", { board }); fuel.board = board; } catch (e) { fuelMsg(String(e), true); }
+  if (boardConnected()) await refreshRev(false); else renderFills();
+}
+document.querySelector('.tab[data-page="fuel"]').addEventListener("click", () => { if (!fuel.editing) resetForm(); loadFills(); renderFuel(); });
+resetForm();
