@@ -284,7 +284,7 @@ static void build_page0(void)
     lv_obj_set_pos(lbl_speed, 6, 107);
 
     /* 2x2 tiles */
-    static const char *caps[4] = {"COOLANT " "\xC2\xB0" "C", "BATTERY V", "KM/L", "FUEL %"};
+    static const char *caps[4] = {"TEMP " "\xC2\xB0" "C", "BATTERY V", "KM/L", "FUEL %"};   /* TEMP = coolant, as car dashboards show it */
     for (int i = 0; i < 4; i++) {
         int x = 8 + (i % 2) * 80, y = 156 + (i / 2) * 52;
         make_tile(scr0, x, y, 76, 48, caps[i], &tile_val[i], &tile_cap[i]);

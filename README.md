@@ -74,9 +74,9 @@ By default the screen switches by time of day. It is light from 06:00 to 17:00 a
 
 Tap BOOT to change page. Hold it for 2 seconds to power off, or for 8 seconds to forget the saved adapter.
 
-1. Dashboard: RPM, speed, coolant, battery, load and fuel, plus Bluetooth, SD and Wi-Fi icons.
+1. Dashboard: RPM, speed, engine temperature, battery, fuel economy and fuel level, plus Bluetooth, SD and Wi-Fi icons.
 2. Details: adapter, VIN, protocol, trouble codes, clock and SD state, session counters.
-3. Internals: twelve extra fields (timing, fuel trims, baro, boost, catalyst temperature, rail pressure, fuel rate and more), up to eight custom PIDs, and the recent events, including "Safe to turn off".
+3. Internals: twelve extra fields (timing, fuel trims, engine load, boost, catalyst temperature, rail pressure, fuel rate and more), up to eight custom PIDs, and the recent events, including "Safe to turn off".
 4. Faults: ranked trouble codes with severity, description and likely cause.
 5. System: CPU and memory, link states, the job list with deadlines, what the model sees and its three estimates.
 
