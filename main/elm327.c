@@ -612,6 +612,13 @@ static void obd_task(void *arg)
         econ_trip_t trip;
         econ_reset(&trip);
         int64_t last_row_us = 0;
+        int64_t equiv_at_us = 0;                          /* when PID 0x44 was last read in this drive */
+        float equiv_thr = -1;                             /* throttle at that read, -1 unknown */
+        int64_t drive_start_ms = esp_timer_get_time() / 1000;
+        STATUS_LOCK();                                    /* a new drive starts with no fuel or economy figures */
+        g_status.obd.fuel_lph_calc = -1; g_status.obd.fuel_src = 0; g_status.obd.trip_km = 0; g_status.obd.trip_fuel_l = 0;
+        g_status.obd.econ_trip_kpl = -1; g_status.obd.econ_inst_kpl = -1;
+        STATUS_UNLOCK();
         char resp[64];
         s_in_drive = true;
 
@@ -623,7 +630,14 @@ static void obd_task(void *arg)
             int total_slow = ns + (int)s_custom_n;
             for (int k = 0; k < SLOW_PER_CYCLE && total_slow > 0 && s_link_up && !s_halt; k++) {
                 int idx = (slow_i++) % total_slow;
-                if (idx < ns) any_ok |= poll_pid(slow[idx]);
+                if (idx < ns) {
+                    bool ok = poll_pid(slow[idx]);
+                    if (ok && slow[idx] == 0x44) {
+                        equiv_at_us = esp_timer_get_time();
+                        STATUS_LOCK(); equiv_thr = OBD_HAS(&g_status.obd, F_throttle) ? g_status.obd.f[F_throttle] : -1; STATUS_UNLOCK();
+                    }
+                    any_ok |= ok;
+                }
                 else poll_custom(idx - ns);
                 if (slow_i % total_slow == 0) slow_passes++;
             }
@@ -660,10 +674,18 @@ static void obd_task(void *arg)
                     ml_stats_t ms;
                     ml_get_stats(&ms);
                     int64_t t_us = esp_timer_get_time();
-                    bool model_ok = ms.windows > 0 && ms.last_at_ms > 0 && t_us / 1000 - ms.last_at_ms < 15000;
+                    bool model_ok = ms.windows > 0 && ms.last_at_ms >= drive_start_ms && t_us / 1000 - ms.last_at_ms < 15000;
+                    /* PID 0x44 is polled slowly. A commanded 0 (fuel cut) is trusted only while it is recent or the throttle has not
+                       opened since it was read; otherwise a stale 0 would zero the fuel rate after the driver is back on the pedal. */
+                    bool equiv_ok = OBD_HAS(&snap, F_equiv);
+                    if (equiv_ok && snap.f[F_equiv] <= 0.05f) {
+                        bool recent = equiv_at_us && t_us - equiv_at_us < 3000000;
+                        bool thr_closed = equiv_thr >= 0 && OBD_HAS(&snap, F_throttle) && snap.f[F_throttle] <= equiv_thr + 2.0f;
+                        equiv_ok = recent || thr_closed;
+                    }
                     fuel_src_t src;
                     float lph = econ_fuel_lph(OBD_HAS(&snap, F_fuel_rate), snap.f[F_fuel_rate], OBD_HAS(&snap, F_maf), snap.f[F_maf],
-                                              OBD_HAS(&snap, F_equiv), snap.f[F_equiv],
+                                              equiv_ok, snap.f[F_equiv],
                                               OBD_HAS(&snap, F_fuel_type) ? (int)snap.f[F_fuel_type] : 0, model_ok, ms.last_est[2], &src);
                     float kph = OBD_HAS(&snap, F_speed) ? snap.f[F_speed] : -1;
                     if (last_row_us) econ_step(&trip, kph, lph, (float)(t_us - last_row_us) / 1e6f);

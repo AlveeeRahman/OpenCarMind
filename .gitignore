@@ -35,3 +35,25 @@ secrets.*
 *.nvs.bin
 nvs*.bin
 wifi*.json
+
+# screen renders that no page uses (docs/screens/render.sh makes a dark and a light copy of every screen)
+docs/images/details-light.png
+docs/images/internals-custom.png
+docs/images/internals-custom-light.png
+docs/images/internals-logging-light.png
+docs/images/pairing.png
+docs/images/pairing-light.png
+
+# assistant, scratch and editor noise
+.claude/
+CLAUDE.md
+CLAUDE.local.md
+*handoff*
+*HANDOFF*
+scratch/
+tmp/
+*.log
+*.bak
+*.orig
+*.swp
+.idea/

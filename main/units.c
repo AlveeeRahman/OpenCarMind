@@ -61,6 +61,7 @@ void units_detect(const char *country, const char *tz)
     s_locked = (int8_t)u;
     store("lock", s_locked);
     publish();
-    sys_event(EV_INFO, "Units: %s (from %s %s)", u == UNITS_METRIC ? "km, km/L" : "miles, mpg",
-              why, u >= 0 && country && country[0] ? country : "");
+    bool by_country = why[0] == 'W';
+    sys_event(EV_INFO, "Units: %s (from %s%s%s)", u == UNITS_METRIC ? "km, km/L" : "miles, mpg",
+              why, by_country ? " " : "", by_country ? country : "");
 }

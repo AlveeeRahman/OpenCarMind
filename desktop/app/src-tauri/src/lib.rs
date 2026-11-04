@@ -260,8 +260,29 @@ fn summarise(id: &str, table: &Table, has_model_file: bool) -> Option<SessionInf
     let date = if epoch_ms > 0.0 { format_utc((epoch_ms / 1000.0) as i64) } else { "clock not set".to_string() };
     let max_speed = speed.iter().flatten().copied().fold(None, |m: Option<f64>, v| Some(m.map_or(v, |x| x.max(v))));
     // Fuel: the board's running trip totals when present (firmware 2.3.1 and later), else integrate its fuel rate.
+    let fuel_source = {
+        let i = table.headers.iter().position(|h| h == "fuel_src");
+        let mut counts: Vec<(String, usize)> = Vec::new();
+        if let Some(i) = i {
+            for r in &table.rows {
+                if let Some(v) = r.get(i).filter(|v| !v.is_empty()) {
+                    match counts.iter().position(|(k, _)| k == v) {
+                        Some(j) => counts[j].1 += 1,
+                        None => counts.push((v.clone(), 1)),
+                    }
+                }
+            }
+        }
+        counts.into_iter().max_by_key(|c| c.1).map(|c| c.0)
+    };
     let last_of = |name: &str| table.column(name).into_iter().flatten().last();
     let (mut fuel_l, mut fuel_km) = (last_of("trip_fuel_l"), last_of("trip_km"));
+    // The board writes trip totals on every row, as 0 when it never had a fuel rate. A log with a source column but no
+    // source in any row had no fuel data at all: unknown, not 0 L.
+    if table.headers.iter().any(|h| h == "fuel_src") && fuel_source.is_none() {
+        fuel_l = None;
+        fuel_km = None;
+    }
     if fuel_l.is_none() {
         let rate = table.column("fuel_lph_calc");
         let (mut l, mut k, mut any) = (0.0, 0.0, false);
@@ -280,21 +301,6 @@ fn summarise(id: &str, table: &Table, has_model_file: bool) -> Option<SessionInf
     let economy_kpl = match (fuel_km, fuel_l) {
         (Some(k), Some(l)) if k >= 0.5 && l >= 0.02 => Some(((k / l) * 10.0).round() / 10.0),
         _ => None,
-    };
-    let fuel_source = {
-        let i = table.headers.iter().position(|h| h == "fuel_src");
-        let mut counts: Vec<(String, usize)> = Vec::new();
-        if let Some(i) = i {
-            for r in &table.rows {
-                if let Some(v) = r.get(i).filter(|v| !v.is_empty()) {
-                    match counts.iter().position(|(k, _)| k == v) {
-                        Some(j) => counts[j].1 += 1,
-                        None => counts.push((v.clone(), 1)),
-                    }
-                }
-            }
-        }
-        counts.into_iter().max_by_key(|c| c.1).map(|c| c.0)
     };
     Some(SessionInfo {
         id: id.to_string(),
@@ -703,6 +709,11 @@ mod tests {
         for i in 0..=100 { csv.push_str(&format!("{},36,3.6\n", i * 1000)); }
         let s = summarise("s4", &table(&csv), false).unwrap();
         assert_eq!(s.economy_kpl, Some(10.0));
+        // a 2.4 log from a car with no fuel source: trip totals are written as 0, but fuel is unknown, not 0 L
+        let s = summarise("s5", &table("uptime_ms,speed_kph,fuel_lph_calc,fuel_src,trip_km,trip_fuel_l\n0,30,,,0,0\n1000,30,,,0,0\n"), false).unwrap();
+        assert_eq!(s.fuel_l, None);
+        assert_eq!(s.economy_kpl, None);
+        assert_eq!(s.fuel_source, None);
         assert_eq!(s.fuel_source, None);
         assert_eq!(unit_of("odometer_km"), "km");
         assert_eq!(unit_of("not_a_column"), "");

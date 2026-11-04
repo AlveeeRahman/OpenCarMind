@@ -10,20 +10,20 @@
 
 OpenCarMind turns an ESP32-S3 board and a Bluetooth OBD-II adapter into a car data logger that runs a neural network on the board. It needs no phone, no account and no internet connection. Everything it records goes to an SD card in the car and, if you pair the board, to the desktop app on your own computer.
 
-Version 2.3.0. Licence: MIT. Website: <https://alveeerahman.github.io/OpenCarMind/>. Downloads for the firmware and the desktop app are on the [Releases page](https://github.com/AlveeeRahman/OpenCarMind/releases/latest).
+Version 2.4.0, with Edge Model 1. Licence: MIT. Website: <https://alveeerahman.github.io/OpenCarMind/>. Downloads for the firmware and the desktop app are on the [Releases page](https://github.com/AlveeeRahman/OpenCarMind/releases/latest).
 
 ## What you get
 
-- Every standard Mode 01 field the car reports (70 are decoded), battery voltage, the VIN, and stored, pending and permanent trouble codes. One CSV row is written per poll cycle.
-- A small neural network on the chip. Each time a row arrives it classifies the last 5 seconds of driving as stopped, braking, accelerating or cruising. It also estimates three values the OBD port does not report: brake pressure, flywheel torque and fuel rate.
-- A save to the SD card every 10 seconds, and a live power-off line on page 3: green "Safe to turn off" only once car data has stopped, everything is on the card and nothing is uploading, red with the reason (logging, saving, upload) otherwise. When the ignition goes off, the drive ends 15 seconds after the engine computer stops answering: the board saves and closes the session, even if the adapter stays powered, and starts a new session if the engine comes back.
-- Fuel economy on the first screen: km/L, or mpg in the US and the UK. The fuel rate comes from the best source the car has: its own fuel-rate PID (common on newer cars), the airflow sensor with the commanded air-fuel ratio, or, on cars with neither, the on-board model's estimate, shown in amber. A car that gives nothing shows "--", never a made-up number.
-- Units that follow you. The board starts in km. The first time it joins Wi-Fi it reads the country code the access point broadcasts, switches to miles and mpg in the US or the UK, and keeps that choice. Tested on the board: a US access point switched it to miles and mpg, and the choice stayed after a reboot. `units` in `config.json` overrides it.
-- A fault engine that ranks trouble codes by severity and groups codes that share a cause.
-- Dark and light screen themes, switched by time of day or fixed in a settings file.
-- A soft real-time scheduler that times every job against its deadline and restarts the board if a step hangs.
-- Optional Wi-Fi: it sets the clock and, once paired, sends new drives to the desktop app on your computer.
-- A desktop app for Windows, macOS and Linux that receives the drives, charts them, shows fuel and economy per drive, and lists every value the car reported, including what the screen has no room for (odometer, oil temperature, hybrid battery and more on newer cars).
+- **Every standard Mode 01 field** the car reports (70 are decoded), battery voltage, the VIN, and stored, pending and permanent trouble codes. One CSV row is written per poll cycle.
+- **A small neural network on the chip** (Edge Model 1). Each time a row arrives it classifies the last 5 seconds of driving as stopped, braking, accelerating or cruising. It also estimates three values the OBD port does not report: brake pressure, flywheel torque and fuel rate.
+- **A save to the SD card every 10 seconds**, and a live **power-off line** on page 3: green "Safe to turn off" only once car data has stopped, everything is on the card and nothing is uploading, red with the reason (logging, saving, upload) otherwise. When the ignition goes off, the drive ends 15 seconds after the engine computer stops answering: the board saves and closes the session, even if the adapter stays powered, and starts a new session if the engine comes back.
+- **Fuel economy** on the first screen: km/L, or mpg in the US and the UK. The fuel rate comes from the best source the car has: its own fuel-rate PID (common on newer cars), the airflow sensor with the commanded air-fuel ratio, or, on cars with neither, the on-board model's estimate, shown in amber. A car that gives nothing shows "--", never a made-up number.
+- **Units that follow you.** The board starts in km. The first time it joins Wi-Fi it reads the country code the access point broadcasts, switches to miles and mpg in the US or the UK, and keeps that choice. Tested on the board: a US access point switched it to miles and mpg, and the choice stayed after a reboot. `units` in `config.json` overrides it.
+- **A fault engine** that ranks trouble codes by severity and groups codes that share a cause.
+- **Dark and light screen themes**, switched by time of day or fixed in a settings file.
+- **A soft real-time scheduler** that times every job against its deadline and restarts the board if a step hangs.
+- **Optional Wi-Fi**: it sets the clock and, once paired, sends new drives to the desktop app on your computer.
+- **A desktop app** for Windows, macOS and Linux that receives the drives, charts them, shows fuel and economy per drive, and lists every value the car reported, including what the screen has no room for (odometer, oil temperature, hybrid battery and more on newer cars).
 
 ## Local-first
 

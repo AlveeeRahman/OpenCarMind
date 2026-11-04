@@ -101,6 +101,7 @@ static lv_obj_t *scr0, *bar_top, *lbl_ble, *lbl_sd, *lbl_wifi, *lbl_clock;
 static lv_obj_t *lbl_clock_bold;   /* the same text 1 px to the right: faux bold, the fonts have no bold weight */
 static lv_obj_t *lbl_rpm, *bar_rpm, *lbl_speed, *lbl_state;
 static lv_obj_t *tile_val[4], *tile_cap[4], *cap_speed;
+static int s_units_p0 = -1, s_units_p2 = -1;      /* units the captions show; -1 forces a refresh after a (re)build */
 static lv_obj_t *lbl_foot, *bar_cpu;
 /* ---- widgets, page 1 ---- */
 static lv_obj_t *scr1, *lbl_info;
@@ -231,6 +232,7 @@ static lv_obj_t *make_tile(lv_obj_t *parent, int x, int y, int w, int h, const c
 
 static void build_page0(void)
 {
+    s_units_p0 = -1;
     scr0 = make_screen();
     /* status bar */
     bar_top = lv_obj_create(scr0);
@@ -769,6 +771,7 @@ static void refresh_page4(const app_status_t *st)
 
 static void build_page2(void)
 {
+    s_units_p2 = -1;
     scr2 = make_screen();
     lv_obj_t *title = make_label(scr2, &lv_font_montserrat_14, C_ACCENT);
     lv_label_set_text(title, "Internals");
@@ -822,11 +825,14 @@ static void refresh_page2(const app_status_t *st)
 {
     const obd_values_t *o = &st->obd;
     bool live = st->ble == BLE_ST_LOGGING;
+    units_t un = (units_t)st->units;
+    bool new_units = s_units_p2 != (int)un;
+    s_units_p2 = (int)un;
     for (int i = 0; i < P2_STD; i++) {
         const p2_item_t *it = &P2_ITEMS[i];
-        units_t un = (units_t)st->units;
-        if (it->field == F_odometer) lv_label_set_text(p2_cap[i], un == UNITS_METRIC ? "ODO km" : "ODO mi");
-        if (it->field == F_dist_mil) lv_label_set_text(p2_cap[i], un == UNITS_METRIC ? "MIL km" : "MIL mi");
+        if (new_units && it->field == F_odometer) lv_label_set_text(p2_cap[i], un == UNITS_METRIC ? "ODO km" : "ODO mi");
+        if (new_units && it->field == F_dist_mil) lv_label_set_text(p2_cap[i], un == UNITS_METRIC ? "MIL km" : "MIL mi");
+        if (it->field == F_fuel_rate) lv_obj_set_style_text_color(p2_val[i], lv_color_hex(C_TEXT), 0);   /* amber only below */
         if (it->field == F_fuel_rate && live && !OBD_HAS(o, it->field) && o->fuel_lph_calc >= 0) {
             /* no fuel-rate PID: show the rate worked out from MAF (or the model, in amber) */
             lv_label_set_text_fmt(p2_val[i], "%.1f", (double)o->fuel_lph_calc);
@@ -965,7 +971,9 @@ static void refresh_cb(lv_timer_t *t)
     } else { lv_label_set_text(lbl_rpm, "----"); lv_bar_set_value(bar_rpm, 0, LV_ANIM_OFF); }
 
     units_t un = (units_t)st.units;
-    lv_label_set_text(cap_speed, un == UNITS_METRIC ? "SPEED  km/h" : "SPEED  mph");
+    bool new_units = s_units_p0 != (int)un;
+    s_units_p0 = (int)un;
+    if (new_units) lv_label_set_text(cap_speed, un == UNITS_METRIC ? "SPEED  km/h" : "SPEED  mph");
     if (live && OBD_HAS(o, F_speed)) lv_label_set_text_fmt(lbl_speed, "%d", (int)(econ_dist_to_unit(o->f[F_speed], un) + 0.5));
     else lv_label_set_text(lbl_speed, "--");
 
@@ -982,13 +990,13 @@ static void refresh_cb(lv_timer_t *t)
     else lv_label_set_text(tile_val[1], "--");
 
     /* economy: the drive's average, or the instant value until enough is counted; amber when it rests on the model */
-    lv_label_set_text(tile_cap[2], un == UNITS_METRIC ? "KM/L" : un == UNITS_UK ? "MPG (UK)" : "MPG");
+    if (new_units) lv_label_set_text(tile_cap[2], un == UNITS_METRIC ? "KM/L" : un == UNITS_UK ? "MPG (UK)" : "MPG");
     {
         float kpl = o->econ_trip_kpl >= 0 ? o->econ_trip_kpl : o->econ_inst_kpl;
         if (live && kpl >= 0) {
             lv_label_set_text_fmt(tile_val[2], "%.1f", (double)econ_to_unit(kpl, un));
             lv_obj_set_style_text_color(tile_val[2], lv_color_hex(o->fuel_src == FUEL_MODEL ? C_WARN : C_TEXT), 0);
-        } else lv_label_set_text(tile_val[2], "--");
+        } else { lv_label_set_text(tile_val[2], "--"); lv_obj_set_style_text_color(tile_val[2], lv_color_hex(C_TEXT), 0); }
     }
     if (live && OBD_HAS(o, F_fuel_level)) lv_label_set_text_fmt(tile_val[3], "%d", (int)o->f[F_fuel_level]);
     else lv_label_set_text(tile_val[3], "--");

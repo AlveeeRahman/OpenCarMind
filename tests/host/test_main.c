@@ -304,6 +304,12 @@ static void test_econ(void)
     CHECK(econ_fuel_lph(false, 0, true, 4.44f, true, 0.0f, 1, false, 0, &src) == 0 && src == FUEL_MAF);   /* fuel cut */
     CHECK(near(econ_fuel_lph(false, 0, true, 4.44f, true, 0.912f, 1, false, 0, &src), 1.4595 / 0.912, 0.002));   /* enriched */
     CHECK(near(econ_fuel_lph(false, 0, true, 4.44f, true, 7.0f, 1, false, 0, &src), 1.4595, 0.001));   /* nonsense ratio: 1.0 */
+    /* diesels run lean: a commanded 3.0 is real, so 14.5 g/s of air at lambda 3 is 1/3 g/s of fuel: 1/3*3600/832 L/h */
+    CHECK(near(econ_fuel_lph(false, 0, true, 14.5f, true, 3.0f, 4, false, 0, &src), 3600.0 / 832.0 / 3.0, 0.001) && src == FUEL_MAF);
+    CHECK(near(econ_fuel_lph(false, 0, true, 14.5f, true, 9.0f, 4, false, 0, &src), 3600.0 / 832.0, 0.001));   /* past 8: 1.0 */
+    CHECK(near(econ_fuel_lph(false, 0, true, 14.7f, true, 3.0f, 1, false, 0, &src), 3600.0 / 745.0, 0.001));   /* petrol at 3: 1.0 */
+    /* a stale fuel cut is passed as lambda unknown by the caller: stoichiometric, not zero */
+    CHECK(near(econ_fuel_lph(false, 0, true, 14.7f, false, 0.0f, 1, false, 0, &src), 3600.0 / 745.0, 0.001));
     CHECK(near(econ_fuel_lph(false, 0, true, 10.0f, false, 0, 4, false, 0, &src), 10.0 / 14.5 * 3600 / 832, 0.001));  /* diesel */
     CHECK(near(econ_fuel_lph(false, 0, false, 0, false, 0, 0, true, 1.3f, &src), 1.3, 1e-6) && src == FUEL_MODEL);
     CHECK(econ_fuel_lph(false, 0, false, 0, false, 0, 0, false, 0, &src) < 0 && src == FUEL_NONE);   /* old car, no MAF */

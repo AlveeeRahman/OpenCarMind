@@ -63,7 +63,7 @@ float econ_fuel_lph(bool rate_ok, float rate_lph, bool maf_ok, float maf_gps, bo
     float lam = 1.0f;
     if (lambda_ok) {
         if (lambda <= 0.05f) return 0;                                       /* commanded 0: decel fuel cut */
-        if (lambda >= 0.5f && lambda <= 2.0f) lam = lambda;
+        if (lambda >= 0.5f && lambda <= (diesel ? 8.0f : 2.0f)) lam = lambda;   /* diesels run lean: 3 to 6 at light load */
     }
     return maf_gps / (afr * lam) * 3600.0f / density;
 }

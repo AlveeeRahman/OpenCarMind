@@ -375,7 +375,7 @@ extern "C" void ml_init(void)
     s_job = sched_register("ml", (ML_STRIDE_S > 0 ? ML_STRIDE_S : 10) * 1000, (ML_STRIDE_S > 0 ? ML_STRIDE_S : 10) * 1000, true);
     /* The model runs once per OBD row, which the car paces: about 1.4 s on a real car with gaps over 3 s, so three 1 s
        periods is too tight. A stall is no run for a whole 10 s label window while rows are expected. */
-    sched_set_stall_ms(s_job, 10000);
+    if (ML_STRIDE_S > 0) sched_set_stall_ms(s_job, 10000);   /* stride 0 keeps the 3-period rule of its 10 s period */
     sched_set_expected(s_job, false);              /* runs only while windows arrive */
     /* stack in PSRAM: the task only computes and never runs while the flash cache is disabled */
     if (xTaskCreatePinnedToCoreWithCaps(ml_task, "ml", 6144, NULL, 3, NULL, 1, MALLOC_CAP_SPIRAM) != pdPASS) {
@@ -383,7 +383,7 @@ extern "C" void ml_init(void)
         return;
     }
     s_stats.ready = true;
-    sys_event(EV_INFO, "ML model %s ready", ML_MODEL_VERSION);
+    sys_event(EV_INFO, "ML Model - CarMind Edge ready");   /* the hash stays in the serial log and in every .ml.csv row */
 #if CONFIG_CARMIND_ML_SYNTH_TEST
     xTaskCreatePinnedToCoreWithCaps(synth_task, "ml_synth", 4096, NULL, 2, NULL, 1, MALLOC_CAP_SPIRAM);
 #endif

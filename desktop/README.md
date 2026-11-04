@@ -1,6 +1,6 @@
 # Desktop app
 
-Status: preview, version 2.3.0, released together with the firmware of the same number. The board sends its drives to the app over your Wi-Fi every 10 seconds while the car is parked, and the app shows them. It can also open an SD card directly.
+Status: preview, version 2.4.0, released together with the firmware of the same number. The board sends its drives to the app over your Wi-Fi every 10 seconds while the car is parked, and the app shows them. It can also open an SD card directly.
 
 Built with Rust and Tauri for Windows, macOS (Apple silicon and Intel) and Linux. All the setup lives in the app: it writes the board's Wi-Fi networks, settings and pairing file to the SD card. The board itself has no console and accepts no incoming connections.
 
@@ -59,21 +59,6 @@ One window, native frame, resizable down to 480 by 360. Below 640 px the margins
 
 - `app/`: the Tauri app (`src-tauri` for Rust, `ui` for the window).
 - `icons/`: the app icon in the sizes Tauri expects (`32x32.png`, `128x128.png`, `128x128@2x.png`, `icon.png`, `icon.icns`, `icon.ico`), the 1024 px master, and the tray glyphs (`tray-template` is black on transparent so macOS can tint it, `tray-light` is white for dark panels).
-- `design/`: five preview screens. They are mockups for later versions: the app does not have the health page or the board screen they show. The numbers on the overview come from the replay sessions in `samples/replay`, and the statuses on the health screen illustrate the possible states. They are not results from any car.
-
-## Design previews
-
-![Brand sheet](design/brand-sheet.png)
-
-![Overview](design/overview.png)
-
-![Subsystem health](design/subsystem-health.png)
-
-![Board and Wi-Fi](design/board-and-wifi.png)
-
-The same overview in a half-screen tile, as a tiling window manager or Windows snap layout would give it:
-
-![Half-screen tile](design/half-screen-tile.png)
 
 ## The health states
 
@@ -97,4 +82,4 @@ Tested: CI builds the app and runs its unit tests on each system. No CI job open
 
 - Code signing for the installers.
 - Finding the computer again when its address changes. Today that needs a new pairing over USB.
-- The health page and the subsystem states from the design previews.
+- A health page with the state of each subsystem.

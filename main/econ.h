@@ -24,6 +24,7 @@ typedef enum { FUEL_NONE = 0, FUEL_PID, FUEL_MAF, FUEL_MODEL } fuel_src_t;
 const char *fuel_src_name(fuel_src_t s);     /* "", "pid", "maf", "model" */
 
 /* Fuel rate in L/h from the best source available, or a negative value with FUEL_NONE. fuel_type is PID 0x51 (0 unknown).
+   The caller decides whether a commanded 0 (fuel cut) is still current: PID 0x44 is polled slowly.
    model_lph is the on-board model's estimate (an estimate, not a measurement), used only when the car gives neither. */
 float econ_fuel_lph(bool rate_ok, float rate_lph, bool maf_ok, float maf_gps, bool lambda_ok, float lambda, int fuel_type,
                     bool model_ok, float model_lph, fuel_src_t *src);

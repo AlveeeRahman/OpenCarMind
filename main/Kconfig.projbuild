@@ -147,7 +147,7 @@ menu "OBD Logger Configuration"
 
     menu "On-board model"
         config CARMIND_ML_ENABLE
-            bool "Run the manoeuvre and estimator model on a sliding 30 s window"
+            bool "Run the manoeuvre and estimator model on a sliding window (ML_WINDOW seconds, from ml_params.h)"
             default y
             help
                 Loads ml/onboard/onboard.espdl (ESP-DL) at boot and writes one line per pattern window to
@@ -157,7 +157,7 @@ menu "OBD Logger Configuration"
             depends on CARMIND_ML_ENABLE
             default y
         config CARMIND_ML_STRIDE_S
-            int "Run the model every N seconds on a sliding 30 s window (0 = once per 10 s pattern window)"
+            int "Run the model every N seconds on a sliding window (ML_WINDOW seconds, from ml_params.h) (0 = once per 10 s pattern window)"
             depends on CARMIND_ML_ENABLE
             range 0 10
             default 1
