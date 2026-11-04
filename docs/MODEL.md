@@ -1,94 +1,64 @@
-# The on-board model: CarMind Edge
+# The on-board model: CarMind GenEdge
 
-One highly generalized and small convolutional network runs on the ESP32-S3 and answers two questions every time an OBD row arrives. What is the car doing right now, and what are three things the OBD port does not report? Edge Model 1 is the first OpenCarMind model trained on more than one car. [MODEL_CASE_STUDY.md](MODEL_CASE_STUDY.md) has every variant we trained on the way here and how each one scored.
+One highly generalized and small convolutional network runs on the ESP32-S3 and answers two questions every time an OBD row arrives. What is the car doing right now, and what are three things the OBD port does not report? This page is for people who use the board. The model is a small quantised network run by ESP-DL. It takes about 89 KB on the chip and about 3.5 ms per run.
 
-## Inputs
+## What it reads
 
-The input is a window of 5 one-second bins. Ten channels are defined, in this order: rpm, speed, engine load, MAF, throttle, short-term fuel trim, long-term fuel trim, coolant temperature, intake temperature and MAP. The model was trained on the first nine. MAP is always fed as missing (`trained` is false for it in `ml/onboard/norm.json`).
+The model looks at the last 5 seconds, cut into five one-second bins. Ten channels are defined, in this order: rpm, speed, engine load, MAF, throttle, short-term fuel trim, long-term fuel trim, coolant temperature, intake temperature and MAP. The model reads the first nine. MAP is always fed as missing (`trained` is false for it in `ml/onboard/norm.json`).
 
-No single training source has every channel. KIA drives (public) lack MAF and intake temperature, VED cars report only rpm, speed, MAF and fuel trims, and the author's car reports all nine. During training, whole channels were also switched off at random (15 % each, rpm and speed always kept), so a car that reports fewer PIDs gets a model that has seen that case.
-
-The network sees 30 input features per step: the 10 standardised values, 10 masks that say whether a value is present, and 10 differences between neighbouring steps. Standardisation uses the means and standard deviations in `ml/onboard/norm.json`. MAF is scaled on the VED fleet and intake temperature on the author's car, since the KIA drives have neither.
+Cars report different PIDs, so the model is told which values are present. A channel the car does not report is marked missing, and the model still answers. Rpm and speed matter most, so keep them in your adapter's PID list.
 
 The firmware builds the window when a row arrives. The newest bin ends when the row arrives, each earlier bin ends one second before the next, and each takes the latest sample in its second. If a channel has no sample in time, its last value is held for up to 3 seconds (`CARMIND_ML_HOLD_S`), and after that the bin is marked missing. At 1.4 s per row, a 5 s window holds about three rows.
 
-## Outputs
+## What it answers
 
-Manoeuvre, four classes in this order: stopped, braking, accelerating, cruising.
+Manoeuvre, one of four classes in this order: stopped, braking, accelerating, cruising.
 
-Three estimates, each standardised by the model and converted back with `ml/onboard/targets.json`:
+Three estimates:
 
-| Estimate | Unit | Mean | Standard deviation |
-|---|---|---|---|
-| brake pressure | bar | 6.55 | 9.54 |
-| flywheel torque | N m | 22.35 | 24.59 |
-| fuel rate | L/h | 2.67 | 2.12 |
+| Estimate | Unit | `.ml.csv` column |
+|---|---|---|
+| brake pressure | bar | `est_brake_pressure_bar` |
+| flywheel torque | N m | `est_flywheel_torque_nm` |
+| fuel rate | L/h | `est_fuel_rate_lph` |
 
 The firmware uses the fuel estimate only when the car reports neither a fuel-rate PID nor MAF. It is then shown in amber.
 
-## How the labels were made
+## Where the answers appear
 
-Every label and every estimate target covers the last 5 seconds.
-
-- stopped, if the mean speed is below 2 km/h
-- braking, if not stopped and the brake switch was on for at least 30 % of the window
-- accelerating, if neither of the above and the mean longitudinal acceleration is at least 0.5 m/s²
-- cruising, otherwise
-
-Only the KIA drives have a brake switch. On the VED fleet and the author's car, braking is labelled from speed: a deceleration of at least 0.3 m/s² over the window is braking, and a moving window that is neither braking nor accelerating carries the set label "braking or cruising". The loss then asks only for one of the two (partial-label learning). We measured the speed rule against the KIA brake switch before using it: at 0.3 m/s² it is right 92 % of the time it says braking, but it catches only a third of real brake presses, which is why it is not used as a hard label.
-
-The fuel target is measured on the KIA. Elsewhere it is MAF / (14.7 × λ) × 3600 / 745 L/h, with λ the commanded equivalence ratio (PID 0x44) where the car reports it and 1 otherwise. No car in our data logs both MAF and a measured fuel rate, so this formula has not been checked against a measurement.
-
-## Architecture
-
-A 1×1 convolution lifts the 30 features to 48 channels. Six residual blocks follow. Each block has two depthwise-separable convolutions (a kernel-3 filter on every channel, then a 1×1 mix across channels) and a skip connection. The network takes the mean over all 5 steps and the mean over the last 3, joins the two, and passes them through a 64-wide dense layer shared by both heads. The layer sizes came from an Optuna search over 150 designs, chosen on validation. Because the network pools over time, the same weights work for any window length, which is how the window went from 30 s to 10 s to 5 s without a new search.
-
-It has 38,679 parameters and needs about 0.16 million multiply-adds per window. The exported file is 89,152 bytes. Every layer is a standard operation that ESP-DL runs on the chip, so the firmware has no custom kernels. A temperature of 1.05, fitted on validation data, is folded into the class layer so the class probabilities are calibrated.
-
-## Training
-
-Adversarial Training coupled with Contrastive learning techniques were applied for increased generalizatio. Quantization-aware methods were used from the very first step: every forward pass rounds weights and activations to the int8 grid with power-of-two scales, the scheme ESP-DL uses. Each batch mixes the three sources (about 55 % KIA, 30 % VED, 15 % the author's car). The KIA drives are replayed through the author's real row spacing (median 1.45 s, gaps over 3 s) and binned exactly as the firmware does. Augmentation imitates other cars: whole sensors switched off, a random gain per channel in raw units (±25 % for MAF and load, which covers engine size, ±8 % elsewhere), and thinned slow channels. Three seeds were trained, and the one with the best validation score ships.
+- Page 5 of the board shows what the model sees and its three estimates for the newest window.
+- Every row adds one line to the drive's `sNNNNNN.ml.csv` file on the SD card. The columns are `window_seq`, `start_ms`, `end_ms`, `model`, `manoeuvre`, `p_stopped`, `p_braking`, `p_accelerating`, `p_cruising`, `est_brake_pressure_bar`, `est_flywheel_torque_nm`, `est_fuel_rate_lph`, `latency_us` and `queue_ms`. The `p_` columns are the class probabilities. The `model` column holds the first 12 hex digits of the model file's hash, so every answer can be traced to the exact weights. [CONFIGURATION.md](CONFIGURATION.md) has the rest of the file layout.
 
 ## Scores
 
-All test data was held out from training and model selection. The VED test set is 37 whole vehicles the model never saw. The author's test set is two whole drives.
+Scores of the version on the chip, on data held out from training:
 
 | Test set | Manoeuvre | Fuel R² |
 |---|---|---|
-| Public KIA drives, last 20 % of each drive | macro-F1 0.887 | 0.947 (brake pressure R² 0.46, torque 0.92) |
-| Author's car, two held-out drives | class in the allowed set 98.5 %, macro-F1 0.989 on unambiguous windows | 0.884 |
-| 37 unseen VED cars (26 petrol, 10 hybrid, 1 plug-in) | class in the allowed set 96.1 %, macro-F1 0.966 on unambiguous windows | 0.940 with MAF, 0.688 with MAF hidden |
+| Public KIA drives | macro-F1 0.887 | 0.947 |
+| Two drives of the author's car | 98.5 % in an allowed class | 0.884 |
+| 37 VED cars the model never saw | 96.1 % in an allowed class | 0.940 (0.688 with MAF hidden) |
 
-Scores are for the int8 file on the chip. It gives the same class as the float network on 99.9 % of KIA windows, 100 % in my car and 99.9 % of VED's. The VED fuel score with MAF partly measures the formula above, since the target is computed from MAF. The "MAF hidden" score is the one that matters, because that is when the board uses the estimate.
-
-How fast it reacts: on held-out KIA drives with 1,498 manoeuvre changes, the median time from a label change to the model's first matching answer is 0 s, the mean 1.5 s, and 88 % of changes are matched within 3 s. The previous 10 s model, on the same labels, had a median of 2.8 s and matched 55 % within 3 s. The label itself needs the pedal down for 30 % of 5 s, so a real brake press shows about 1.5 s after the foot goes down.
-
-## Cost on the chip
-
-One run takes about 3.5 ms on the ESP32-S3 (measured at the boot self-test). Loading takes 61 ms and 192 bytes of internal RAM. The road numbers for this model are not measured yet.
+"In an allowed class" means the answer is one of the classes the labels allow for that window. Where there is no brake switch, "braking or cruising" counts as correct either way. The VED score with MAF partly measures the fuel formula, because the target is computed from MAF. The "MAF hidden" score is the one that matters, since that is when the board uses the estimate. Brake pressure (R² 0.46) is the weakest estimate.
 
 ## Limits
 
-- The labels outside the KIA drives are partial: without a brake switch, "braking or cruising" is often all the data can say.
-- Brake pressure is the weakest estimate, and only the KIA drives teach it.
-- The fuel formula on MAF cars is unchecked against a measured fuel rate.
-- The VED test set has one plug-in hybrid. No diesel car is in any data set.
-- ESP-DL's own boot test reports "output does not match" at one-step precision. The S3 drifts about 2 % inside the network, so the firmware checks the output to within that drift instead (`main/ml_infer.cpp`).
+- Outside one data set there is no brake-switch signal, so braking and cruising are partly ambiguous.
+- No diesel car is in the data.
+- Brake pressure is the weakest estimate.
+- The fuel estimate on MAF cars has not been checked against a measured fuel rate.
+- The road numbers for this model are not measured yet.
 
 ## Files
 
 | File | What it is |
 |---|---|
-| `ml/onboard/onboard.espdl` | the model, 8-bit weights and 16-bit activations |
+| `ml/onboard/onboard.espdl` | the model |
 | `ml/onboard/norm.json` | channel order, means, standard deviations and which channels were trained |
 | `ml/onboard/targets.json` | class names, estimate names, means and standard deviations |
-| `ml/onboard/export.json` | float and int8 scores on all three test sets, the temperature, and file hashes |
+| `ml/onboard/export.json` | model name, file sizes and hashes, target chip and quantisation type |
 | `main/ml_params.h` | generated from the files above by `tools/gen_ml_params.py` |
 
 ## Data
 
-- HCRL Driving Dataset (KIA Soul drives, public), the source of the brake switch, brake pressure and torque labels.
-- Vehicle Energy Dataset (VED), by Oh, LeBlanc and Peng, IEEE Transactions on Intelligent Transportation Systems, 2020, under Apache-2.0: 384 vehicles around Ann Arbor, of which 325 trained, 19 validated and 37 tested the model. EVs were left out.
-- Twelve drives from the author's car, logged by this board. They are not published.
-
-The training code is not part of this repository. If you want to try an architecture, see the call at the end of [MODEL_CASE_STUDY.md](MODEL_CASE_STUDY.md).
+Trained on public data, the HCRL Driving Dataset (Kwak, Woo and Kim, PST 2016) and the Vehicle Energy Dataset (Oh, LeBlanc and Peng, 2020, Apache-2.0), plus drives from my own car. The full model description is kept privately.

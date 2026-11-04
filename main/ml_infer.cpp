@@ -383,7 +383,7 @@ extern "C" void ml_init(void)
         return;
     }
     s_stats.ready = true;
-    sys_event(EV_INFO, "ML Model - CarMind Edge ready");   /* the hash stays in the serial log and in every .ml.csv row */
+    sys_event(EV_INFO, "ML Model - CarMind GenEdge ready");   /* the hash stays in the serial log and in every .ml.csv row */
 #if CONFIG_CARMIND_ML_SYNTH_TEST
     xTaskCreatePinnedToCoreWithCaps(synth_task, "ml_synth", 4096, NULL, 2, NULL, 1, MALLOC_CAP_SPIRAM);
 #endif

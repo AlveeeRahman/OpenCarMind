@@ -10,12 +10,12 @@
 
 OpenCarMind turns an ESP32-S3 board and a Bluetooth OBD-II adapter into a car data logger that runs a neural network on the board. It needs no phone, no account and no internet connection. Everything it records goes to an SD card in the car and, if you pair the board, to the desktop app on your own computer.
 
-Version 2.4.0, with Edge Model 1. Licence: MIT. Website: <https://alveeerahman.github.io/OpenCarMind/>. Downloads for the firmware and the desktop app are on the [Releases page](https://github.com/AlveeeRahman/OpenCarMind/releases/latest).
+Version 2.4.0, with CarMind GenEdge. Licence: MIT. Website: <https://alveeerahman.github.io/OpenCarMind/>. Downloads for the firmware and the desktop app are on the [Releases page](https://github.com/AlveeeRahman/OpenCarMind/releases/latest).
 
 ## What you get
 
 - **Every standard Mode 01 field** the car reports (70 are decoded), battery voltage, the VIN, and stored, pending and permanent trouble codes. One CSV row is written per poll cycle.
-- **A small neural network on the chip** (Edge Model 1). Each time a row arrives it classifies the last 5 seconds of driving as stopped, braking, accelerating or cruising. It also estimates three values the OBD port does not report: brake pressure, flywheel torque and fuel rate.
+- **A small neural network on the chip** (CarMind GenEdge). Each time a row arrives it classifies the last 5 seconds of driving as stopped, braking, accelerating or cruising. It also estimates three values the OBD port does not report: brake pressure, flywheel torque and fuel rate.
 - **A save to the SD card every 10 seconds**, and a live **power-off line** on page 3: green "Safe to turn off" only once car data has stopped, everything is on the card and nothing is uploading, red with the reason (logging, saving, upload) otherwise. When the ignition goes off, the drive ends 15 seconds after the engine computer stops answering: the board saves and closes the session, even if the adapter stays powered, and starts a new session if the engine comes back.
 - **Fuel economy** on the first screen: km/L, or mpg in the US and the UK. The fuel rate comes from the best source the car has: its own fuel-rate PID (common on newer cars), the airflow sensor with the commanded air-fuel ratio, or, on cars with neither, the on-board model's estimate, shown in amber. A car that gives nothing shows "--", never a made-up number.
 - **Units that follow you.** The board starts in km. The first time it joins Wi-Fi it reads the country code the access point broadcasts, switches to miles and mpg in the US or the UK, and keeps that choice. Tested on the board: a US access point switched it to miles and mpg, and the choice stayed after a reboot. `units` in `config.json` overrides it.
@@ -29,7 +29,7 @@ Version 2.4.0, with Edge Model 1. Licence: MIT. Website: <https://alveeerahman.g
 
 <p align="center"><img src="docs/images/workflow/local-first.png" width="900" alt="Local-first: no account, no cloud, AI on the chip, your SD card, optional Wi-Fi, your choice of dashboard"></p>
 
-Most car loggers stream your driving to a server and do the thinking there. OpenCarMind does the thinking on the board, in the way TinyML work runs networks on microcontrollers<sup>[[1]](#ref-1)–[[3]](#ref-3)</sup>. The model is 93 KB, runs in a few milliseconds and needs no network. Your data is plain CSV, JSON and text on a card you hold. Nothing leaves the car unless you copy the card or pair the board with your own computer.
+Most car loggers stream your driving to a server and do the thinking there. OpenCarMind does the thinking on the board, in the way TinyML work runs networks on microcontrollers<sup>[[1]](#ref-1)–[[3]](#ref-3)</sup>. The model is 89 KB, runs in a few milliseconds and needs no network. Your data is plain CSV, JSON and text on a card you hold. Nothing leaves the car unless you copy the card or pair the board with your own computer.
 
 Wi-Fi is the only radio besides Bluetooth, and it is optional. It sets the clock from a public time server, and once you pair the board with the desktop app it sends new drive data to that app every 10 seconds while the car is parked at home. Nothing goes to a cloud. You can compile Wi-Fi out with one setting (`OCM_WIFI_CLOCK_SYNC`).
 
@@ -144,9 +144,7 @@ Settings, SD card files, the Wi-Fi list and the CSV columns are in [docs/CONFIGU
 
 ## The model
 
-<p align="center"><img src="docs/images/workflow/edge_architecture.png" width="640" alt="Edge Model 1 layers: 30 features by 5 seconds input, 1 by 1 stem to 48 channels, 6 residual depthwise-separable blocks, mean over 5 s and the last 3 s, dense 64, manoeuvre head and estimate head"></p>
-
-Edge Model 1, the first OpenCarMind model trained on more than one car. A 1-D convolutional network<sup>[[6]](#ref-6)</sup> with 38,679 parameters, built from residual depthwise-separable blocks<sup>[[7]](#ref-7),[[8]](#ref-8)</sup>, quantised to 8-bit weights and 16-bit activations (`w8a16`) and run by ESP-DL<sup>[[9]](#ref-9)</sup>. It reads five one-second steps of nine channels (rpm, speed, load, MAF, throttle, both fuel trims, coolant and intake temperature) and feeds two heads that share one trunk. It learned from three sources: the public KIA drives of the HCRL Driving Dataset, 325 cars of the Vehicle Energy Dataset<sup>[[10]](#ref-10)</sup> and twelve of the author's drives.
+CarMind GenEdge runs on the chip. With every OBD row it classifies the last 5 seconds as stopped, braking, accelerating or cruising, and estimates brake pressure, flywheel torque and fuel rate, which OBD does not report. It is a small quantised 1-D convolutional network run by ESP-DL<sup>[[6]](#ref-6)</sup>. It takes about 89 KB on the chip and about 3.5 ms per run on the ESP32-S3.
 
 Scores of the version on the chip, on data held out from training:
 
@@ -156,33 +154,15 @@ Scores of the version on the chip, on data held out from training:
 | Two drives of the author's car | 98.5 % in an allowed class | 0.884 |
 | 37 VED cars the model never saw | 96.1 % in an allowed class | 0.940 (0.688 with MAF hidden) |
 
-Against the previous 10 s model, it matches 88 % of manoeuvre changes within 3 s instead of 55 %. Brake pressure (R² 0.46) is still the weakest estimate. [docs/MODEL.md](docs/MODEL.md) has the inputs, outputs, labels and limits. [docs/MODEL_CASE_STUDY.md](docs/MODEL_CASE_STUDY.md) shows every variant we trained to get here, what failed, and how to send us an architecture to test. The shipped files are in [ml/onboard](ml/onboard).
+Limits:
 
-### How Edge Model 1 was made
+- Outside one data set there is no brake-switch signal, so braking and cruising are partly ambiguous.
+- No diesel car is in the data.
+- Brake pressure (R² 0.46) is the weakest estimate.
 
-The architecture did not change from the first model. Everything below is data, labels and training, each checked on held-out data with three seeds before it stayed.
+Trained on public data, the HCRL Driving Dataset (Kwak, Woo and Kim, PST 2016)<sup>[[7]](#ref-7)</sup> and the Vehicle Energy Dataset (Oh, LeBlanc and Peng, 2020, Apache-2.0)<sup>[[8]](#ref-8)</sup>, plus drives from my own car.
 
-- More cars. The first model learned from the public KIA drives alone<sup>[[11]](#ref-11)</sup>. Edge Model 1 adds 325 cars of the Vehicle Energy Dataset<sup>[[10]](#ref-10)</sup> (petrol, hybrid and plug-in hybrid, 1.5 to 3.5 L), and twelve of the author's drives. Whole VED vehicles are held back for testing, so the test cars are cars the model never saw.
-- Honest labels. Only the KIA data has a brake switch. Elsewhere a moving window that is neither clearly braking nor accelerating is labelled "braking or cruising", and the loss only asks for one of the two, which is partial-label learning<sup>[[12]](#ref-12)</sup>. A speed-only braking rule, measured against the KIA brake switch, caught only a third of real brake presses, so it was never used as a hard label.
-- Augmentation that imitates other cars. In training, sensors are switched off at random, each channel gets a random gain in raw units (enough to cover engine size and sensor calibration), and slow channels are thinned. Added together with the author's drives, it lifted every score on the author's car. We did not test the two apart.
-- The board's own timing. Training windows are replayed through the real row spacing of an ELM327 adapter (median 1.45 s) and binned exactly as the firmware bins them.
-- Calibrated confidence. A single temperature, fitted on validation data, softens over-confident class probabilities<sup>[[13]](#ref-13)</sup>. It is folded into the class layer, so the firmware needs no change.
-- A shorter window, measured first. Windows of 10, 15, 20 and 30 s scored the same within noise. 5 s then cut the time to follow a manoeuvre change from a median of 2.8 s to 0 s.
-- Tried and dropped. Contrastive pre-training<sup>[[14]](#ref-14)</sup> first diverged, then matched the simpler recipe without beating it. Distillation from a 30 s teacher<sup>[[15]](#ref-15)</sup> made new cars worse. Both results are in the case study.
-
-### From training to the board
-
-<p align="center"><img src="docs/images/workflow/train-to-deploy.png" width="900" alt="From training to the board: your drives, windows and labels, architecture search, QAT, refine and test, then ONNX export, ESP-PPQ quantisation, int8 check, parameter generation, firmware build and a check on the board, with feedback loops"></p>
-
-The network is trained quantisation-aware (QAT) from the start<sup>[[16]](#ref-16),[[17]](#ref-17)</sup>: in every forward pass its weights and activations are rounded to the int8 grid with power-of-two scales. ESP-DL uses the same scheme, so the float network that reaches the converter already lives on that grid. A second training stage continues from those weights, still with QAT, on dense one-second windows that mimic a slow adapter. The test split is read once.
-
-Deployment is a chain with two checks. The trained network is exported to ONNX and quantised by ESP-PPQ<sup>[[18]](#ref-18)</sup> (`w8a16`, calibrated on windows from all three sources). The exporter scores the int8 graph on the same test windows, and if the score drops you go back to refinement. `tools/gen_ml_params.py` then writes `main/ml_params.h` with the channel order, normalisation, class names and the model's hash, the firmware embeds the model, and the board runs its own self-test at boot. The training code and data are not part of this repository.
-
-What the model does not do yet:
-
-- Outside the KIA drives there is no brake-switch signal, so many windows can only be labelled "braking or cruising". The training data is not published here.
-- No diesel car is in any data set, and the VED test set has one plug-in hybrid.
-- Brake pressure is the weakest estimate. Torque and fuel rate are strong.
+The shipped files are in [ml/onboard](ml/onboard). `tools/gen_ml_params.py` turns them into `main/ml_params.h`, which holds the channel order, normalisation, class names and the model's hash. [docs/MODEL.md](docs/MODEL.md) lists the inputs and outputs.
 
 ## Status
 
@@ -190,15 +170,15 @@ What has been checked, on the bench or in the code: the build (with Wi-Fi clock 
 
 Known security limits are listed in [SECURITY.md](SECURITY.md#known-limits).
 
-The author has driven the board with the drive-end, power-off, fuel economy and units features and reported them all working. What has not been checked: other boards, any adapter other than the LELink, Edge Model 1 on the road (it was flashed after that drive), and what the screens do on a board without a panel. The checks that need a car or a card are listed in [docs/FIELD_CHECKS.md](docs/FIELD_CHECKS.md), with empty result tables for users to fill in.
+The author has driven the board with the drive-end, power-off, fuel economy and units features and reported them all working. What has not been checked: other boards, any adapter other than the LELink, CarMind GenEdge on the road (it was flashed after that drive), and what the screens do on a board without a panel. The checks that need a car or a card are listed in [docs/FIELD_CHECKS.md](docs/FIELD_CHECKS.md), with empty result tables for users to fill in.
 
 ## Next board: ESP-Mosaico with the ESP32-S31
 
 <p align="center"><img src="docs/images/mosaico-concept.png" width="900" alt="Concept: OpenCarMind on ESP-Mosaico, three 480 by 480 screens showing the drive gauges, the model's two heads (what it sees, and each estimate over the last 30 s), and faults with the power-off line"></p>
 
-The next board is Espressif's ESP-Mosaico<sup>[[19]](#ref-19),[[20]](#ref-20)</sup>. The author has one on order, and the concept above shows how the screens would look on its square display.
+The next board is Espressif's ESP-Mosaico<sup>[[9]](#ref-9),[[10]](#ref-10)</sup>. The author has one on order, and the concept above shows how the screens would look on its square display.
 
-If you build things with the ESP32, this is a good board to get, and the port will be easier with more people testing it. The Vision Combo Kit (Core Unit v1.2, camera module and interaction module) is 59 USD on the [ESP-Mosaico Store](https://store.mosaico.ai/products/esp-mosaico). It was on pre-order with an estimated 15-day dispatch on 3 November 2026. If you have one, open an issue or a pull request with what you find: pin maps, screen layouts, NAND logging and S31 model exports are all open. It is built on the ESP32-S31<sup>[[21]](#ref-21)</sup>: two 32-bit RISC-V cores at 320 MHz, one with a 128-bit SIMD data path, 512 KB of SRAM, Wi-Fi 6, and Bluetooth 5.4 with both LE and Classic (BR/EDR).
+If you build things with the ESP32, this is a good board to get, and the port will be easier with more people testing it. The Vision Combo Kit (Core Unit v1.2, camera module and interaction module) is 59 USD on the [ESP-Mosaico Store](https://store.mosaico.ai/products/esp-mosaico). It was on pre-order with an estimated 15-day dispatch on 3 November 2026. If you have one, open an issue or a pull request with what you find: pin maps, screen layouts, NAND logging and S31 model exports are all open. It is built on the ESP32-S31<sup>[[11]](#ref-11)</sup>: two 32-bit RISC-V cores at 320 MHz, one with a 128-bit SIMD data path, 512 KB of SRAM, Wi-Fi 6, and Bluetooth 5.4 with both LE and Classic (BR/EDR).
 
 What the Mosaico adds for a car logger:
 
@@ -214,7 +194,7 @@ What the Mosaico adds for a car logger:
 | Storage for drives | microSD | no microSD slot. Drives would go to the 128 MB NAND, or to a card on the expansion headers |
 | Price | 12.99 to 13.99 USD from [Waveshare](https://www.waveshare.com/esp32-s3-lcd-1.47b.htm), about 15 EUR in the EU from [OpenELAB](https://openelab.io/pl/products/waveshare-esp32-s3-lcd-1-47b) | 59 USD for the Vision Combo Kit from the [ESP-Mosaico Store](https://store.mosaico.ai/products/esp-mosaico) |
 
-Sources for this table: Espressif and Waveshare documentation, the Circuit Rocks review and the store pages, prices seen on 3 November 2026<sup>[[19]](#ref-19)–[[24]](#ref-24)</sup>.
+Sources for this table: Espressif and Waveshare documentation, the Circuit Rocks review and the store pages, prices seen on 3 November 2026<sup>[[9]](#ref-9)–[[14]](#ref-14)</sup>.
 
 For the model, the most useful step is motion data. An accelerometer measures braking and acceleration directly, so it can check the labels the network predicts from OBD data. The S3 board has an IMU the firmware does not read yet, and the Mosaico adds a magnetometer for heading. Bluetooth Classic matters for compatibility: the adapters that fail today because they only speak Classic SPP could work, once an SPP client is written. TWAI with a transceiver on the headers is the route to reading the CAN bus directly, for the faults OBD-II cannot see.
 
@@ -224,19 +204,19 @@ The two chips do not share machine code. The S3 uses Xtensa LX7 cores and the S3
 
 This was tested, not assumed. ESP-IDF v6.1 lists `esp32s31` as a preview target, and OpenCarMind was built for it with `idf.py --preview set-target esp32s31`. All the libraries compiled unchanged. Two board-level lines needed changes. The S3 board's pin numbers do not exist on the S31 (GPIO41 is not a valid pin there), and `esp_sleep_enable_ext0_wakeup` is not available on the S31, so the power-off button has to use the ext1 wakeup. With placeholder pins and that one call changed, the firmware compiled and linked into an ESP32-S31 image of 4.27 MB. That is larger than the S3 image (3.0 MB) and slightly over the current 4 MB app partition. Both boards have 16 MB of flash, so a larger partition fits.
 
-The model also needs one step. ESP-PPQ quantises for the S3 with its first SIMD extension and for the S31 with the newer one shared with the ESP32-P4, so the shipped `.espdl` file must be exported again with the S31 as target. The trained weights stay the same. ESP-DL 3.3.14 lists `esp32s31` among its supported targets<sup>[[9]](#ref-9)</sup>.
+The model also needs one step. ESP-PPQ quantises for the S3 with its first SIMD extension and for the S31 with the newer one shared with the ESP32-P4, so the shipped `.espdl` file must be exported again with the S31 as target. The trained weights stay the same. ESP-DL 3.3.14 lists `esp32s31` among its supported targets<sup>[[6]](#ref-6)</sup>.
 
 ### Continual learning on the S31
 
-The network on the board today is fixed. It was trained on a laptop, quantised, and never changes in the car. Learning on the board needs two things the car rarely gives you: a label for each window, and room to keep past windows so that new drives do not erase what the model knew (catastrophic forgetting<sup>[[25]](#ref-25)</sup>).
+The network on the board today is fixed. It was trained on a laptop, quantised, and never changes in the car. Learning on the board needs two things the car rarely gives you: a label for each window, and room to keep past windows so that new drives do not erase what the model knew (catastrophic forgetting<sup>[[15]](#ref-15)</sup>).
 
 The private CarMind line already learns on the board, in a narrow way. A small linear forecaster predicts the next OBD row. When that row arrives, the error is its own label. It keeps only running statistics with forgetting, never the raw data, stays close to a factory prior, and swaps in new weights only while parked, and only if they beat the current weights on recent rows. That code is plain C with no chip-specific parts, built the same way as the public firmware, so it should move to the S31 unchanged. The same work found that the two heads of the CNN have no ground truth in the car, so they stay as trained. That is the gap the S31 board could close.
 
 How the two heads could learn on a Mosaico:
 
-- Labels for the manoeuvre head. An accelerometer measures braking and acceleration directly, so stopped, braking, accelerating and cruising can be labelled in the car. The Mosaico has a BMI270<sup>[[20]](#ref-20)</sup>. The S3 board has an IMU too<sup>[[23]](#ref-23)</sup>, which the firmware does not read yet, so this part could start on today's board.
+- Labels for the manoeuvre head. An accelerometer measures braking and acceleration directly, so stopped, braking, accelerating and cruising can be labelled in the car. The Mosaico has a BMI270<sup>[[10]](#ref-10)</sup>. The S3 board has an IMU too<sup>[[13]](#ref-13)</sup>, which the firmware does not read yet, so this part could start on today's board.
 - Labels for two of the three estimates, on some cars. The firmware already reads PID 0x5E (fuel rate) and PIDs 0x62 and 0x63 (torque) when the car reports them. Brake pressure has no label in any car, so that head stays fixed.
-- Only the heads would train. ESP-DL runs inference only, so the int8 trunk stays frozen, and the heads (a 64-wide feature into 4 classes and 3 estimates, a few hundred weights) are updated in plain C on the CPU. That is the approach of TinyOL<sup>[[26]](#ref-26)</sup> and TinyTL<sup>[[27]](#ref-27)</sup>. Updating parts of the trunk as well, as in<sup>[[28]](#ref-28)</sup>, is where the S31's extra speed and memory would count.
+- Only the heads would train. ESP-DL runs inference only, so the int8 trunk stays frozen, and the heads (a 64-wide feature into 4 classes and 3 estimates, a few hundred weights) are updated in plain C on the CPU. That is the approach of TinyOL<sup>[[16]](#ref-16)</sup> and TinyTL<sup>[[17]](#ref-17)</sup>. Updating parts of the trunk as well, as in<sup>[[18]](#ref-18)</sup>, is where the S31's extra speed and memory would count.
 - A replay buffer against forgetting. One 30-step window of 30 features is 3.6 KB in float. The S31's 16 MB of PSRAM (8 MB on the S3 board) holds thousands of past windows to mix into each update, and its 128 MB NAND keeps them between drives.
 - Time to finish. The 65 mAh battery lets an update and its save complete after the ignition is off.
 
@@ -267,51 +247,31 @@ The Mosaico also changes how you use the logger. Your adapter lives in the car, 
 
 <a id="ref-5"></a>[5] M. Joseph and P. Pandya, "Finding response times in a real-time system," *The Computer Journal*, vol. 29, no. 5, pp. 390–395, 1986. [doi:10.1093/comjnl/29.5.390](https://doi.org/10.1093/comjnl/29.5.390)
 
-<a id="ref-6"></a>[6] Z. Wang, W. Yan and T. Oates, "Time series classification from scratch with deep neural networks: A strong baseline," in *Proc. Int. Joint Conf. Neural Networks (IJCNN)*, 2017. [arXiv:1611.06455](https://arxiv.org/abs/1611.06455)
+<a id="ref-6"></a>[6] Espressif Systems, "ESP-DL: Espressif deep-learning library for AIoT applications." [github.com/espressif/esp-dl](https://github.com/espressif/esp-dl)
 
-<a id="ref-7"></a>[7] A. G. Howard *et al.*, "MobileNets: Efficient convolutional neural networks for mobile vision applications," 2017. [arXiv:1704.04861](https://arxiv.org/abs/1704.04861)
+<a id="ref-7"></a>[7] B. I. Kwak, J. Woo and H. K. Kim, "Know your master: Driver profiling-based anti-theft method," in *Proc. 14th Annual Conf. on Privacy, Security and Trust (PST)*, 2016, pp. 211–218. [arXiv:1704.05223](https://arxiv.org/abs/1704.05223)
 
-<a id="ref-8"></a>[8] M. Sandler, A. Howard, M. Zhu, A. Zhmoginov and L.-C. Chen, "MobileNetV2: Inverted residuals and linear bottlenecks," in *Proc. IEEE/CVF Conf. Computer Vision and Pattern Recognition (CVPR)*, 2018, pp. 4510–4520. [arXiv:1801.04381](https://arxiv.org/abs/1801.04381)
+<a id="ref-8"></a>[8] G. Oh, D. J. LeBlanc and H. Peng, "Vehicle Energy Dataset (VED), a large-scale dataset for vehicle energy consumption research," *IEEE Transactions on Intelligent Transportation Systems*, 2020. [arXiv:1905.02081](https://arxiv.org/abs/1905.02081), data and licence (Apache-2.0) at [github.com/gsoh/VED](https://github.com/gsoh/VED)
 
-<a id="ref-9"></a>[9] Espressif Systems, "ESP-DL: Espressif deep-learning library for AIoT applications." [github.com/espressif/esp-dl](https://github.com/espressif/esp-dl)
+<a id="ref-9"></a>[9] Espressif Systems, "ESP-Mosaico," esp-dev-kits documentation. [docs.espressif.com](https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32s31/esp-mosaico/index.html)
 
-<a id="ref-10"></a>[10] G. Oh, D. J. LeBlanc and H. Peng, "Vehicle Energy Dataset (VED), a large-scale dataset for vehicle energy consumption research," *IEEE Transactions on Intelligent Transportation Systems*, 2020. [arXiv:1905.02081](https://arxiv.org/abs/1905.02081), data and licence (Apache-2.0) at [github.com/gsoh/VED](https://github.com/gsoh/VED)
+<a id="ref-10"></a>[10] Espressif Systems, "ESP-Mosaico V1.0," ESP Board Manager guide. [docs.espressif.com](https://docs.espressif.com/projects/esp-board-manager/en/latest/references/boards/esp_mosaico.html)
 
-<a id="ref-11"></a>[11] B. I. Kwak, J. Woo and H. K. Kim, "Know your master: Driver profiling-based anti-theft method," in *Proc. 14th Annual Conf. on Privacy, Security and Trust (PST)*, 2016, pp. 211–218. [arXiv:1704.05223](https://arxiv.org/abs/1704.05223)
+<a id="ref-11"></a>[11] Espressif Systems, "Espressif unveils ESP32-S31: a dual-core RISC-V SoC with Wi-Fi 6, Bluetooth 5.4, and advanced HMI capabilities," press release, 26 March 2026. [espressif.com](https://www.espressif.com/en/news/ESP32_S31_Release)
 
-<a id="ref-12"></a>[12] T. Cour, B. Sapp and B. Taskar, "Learning from partial labels," *Journal of Machine Learning Research*, vol. 12, pp. 1501–1536, 2011. [jmlr.org](https://jmlr.org/papers/v12/cour11a.html)
+<a id="ref-12"></a>[12] Circuit Rocks, "ESP-Mosaico: ESP32-S31 board for AI-written firmware," 2026. [blog.circuit.rocks](https://blog.circuit.rocks/esp-mosaico-espressifs-59-board-where-ai-writes-the-firmware)
 
-<a id="ref-13"></a>[13] C. Guo, G. Pleiss, Y. Sun and K. Q. Weinberger, "On calibration of modern neural networks," in *Proc. 34th Int. Conf. on Machine Learning (ICML)*, PMLR 70, 2017, pp. 1321–1330. [proceedings.mlr.press](https://proceedings.mlr.press/v70/guo17a)
+<a id="ref-13"></a>[13] Waveshare, "ESP32-S3-LCD-1.47B," product page. [waveshare.com](https://www.waveshare.com/ESP32-S3-LCD-1.47B.htm)
 
-<a id="ref-14"></a>[14] T. Chen, S. Kornblith, M. Norouzi and G. Hinton, "A simple framework for contrastive learning of visual representations," 2020. [arXiv:2002.05709](https://arxiv.org/abs/2002.05709)
+<a id="ref-14"></a>[14] OpenELAB, "Waveshare ESP32-S3-LCD-1.47B," listing, price seen 3 November 2026. [openelab.io](https://openelab.io/pl/products/waveshare-esp32-s3-lcd-1-47b)
 
-<a id="ref-15"></a>[15] G. Hinton, O. Vinyals and J. Dean, "Distilling the knowledge in a neural network," 2015. [arXiv:1503.02531](https://arxiv.org/abs/1503.02531)
+<a id="ref-15"></a>[15] J. Kirkpatrick *et al.*, "Overcoming catastrophic forgetting in neural networks," *Proc. National Academy of Sciences*, vol. 114, no. 13, pp. 3521–3526, 2017. [arXiv:1612.00796](https://arxiv.org/abs/1612.00796)
 
-<a id="ref-16"></a>[16] B. Jacob *et al.*, "Quantization and training of neural networks for efficient integer-arithmetic-only inference," in *Proc. IEEE/CVF Conf. Computer Vision and Pattern Recognition (CVPR)*, 2018. [arXiv:1712.05877](https://arxiv.org/abs/1712.05877)
+<a id="ref-16"></a>[16] H. Ren, D. Anicic and T. A. Runkler, "TinyOL: TinyML with online-learning on microcontrollers," in *Proc. Int. Joint Conf. Neural Networks (IJCNN)*, 2021. [arXiv:2103.08295](https://arxiv.org/abs/2103.08295)
 
-<a id="ref-17"></a>[17] R. Krishnamoorthi, "Quantizing deep convolutional networks for efficient inference: A whitepaper," 2018. [arXiv:1806.08342](https://arxiv.org/abs/1806.08342)
+<a id="ref-17"></a>[17] H. Cai, C. Gan, L. Zhu and S. Han, "TinyTL: Reduce activations, not trainable parameters for efficient on-device learning," in *Advances in Neural Information Processing Systems (NeurIPS)*, 2020. [arXiv:2007.11622](https://arxiv.org/abs/2007.11622)
 
-<a id="ref-18"></a>[18] Espressif Systems, "ESP-PPQ: Quantization tool for ESP-DL." [github.com/espressif/esp-ppq](https://github.com/espressif/esp-ppq)
-
-<a id="ref-19"></a>[19] Espressif Systems, "ESP-Mosaico," esp-dev-kits documentation. [docs.espressif.com](https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32s31/esp-mosaico/index.html)
-
-<a id="ref-20"></a>[20] Espressif Systems, "ESP-Mosaico V1.0," ESP Board Manager guide. [docs.espressif.com](https://docs.espressif.com/projects/esp-board-manager/en/latest/references/boards/esp_mosaico.html)
-
-<a id="ref-21"></a>[21] Espressif Systems, "Espressif unveils ESP32-S31: a dual-core RISC-V SoC with Wi-Fi 6, Bluetooth 5.4, and advanced HMI capabilities," press release, 26 March 2026. [espressif.com](https://www.espressif.com/en/news/ESP32_S31_Release)
-
-<a id="ref-22"></a>[22] Circuit Rocks, "ESP-Mosaico: ESP32-S31 board for AI-written firmware," 2026. [blog.circuit.rocks](https://blog.circuit.rocks/esp-mosaico-espressifs-59-board-where-ai-writes-the-firmware)
-
-<a id="ref-23"></a>[23] Waveshare, "ESP32-S3-LCD-1.47B," product page. [waveshare.com](https://www.waveshare.com/ESP32-S3-LCD-1.47B.htm)
-
-<a id="ref-24"></a>[24] OpenELAB, "Waveshare ESP32-S3-LCD-1.47B," listing, price seen 3 November 2026. [openelab.io](https://openelab.io/pl/products/waveshare-esp32-s3-lcd-1-47b)
-
-<a id="ref-25"></a>[25] J. Kirkpatrick *et al.*, "Overcoming catastrophic forgetting in neural networks," *Proc. National Academy of Sciences*, vol. 114, no. 13, pp. 3521–3526, 2017. [arXiv:1612.00796](https://arxiv.org/abs/1612.00796)
-
-<a id="ref-26"></a>[26] H. Ren, D. Anicic and T. A. Runkler, "TinyOL: TinyML with online-learning on microcontrollers," in *Proc. Int. Joint Conf. Neural Networks (IJCNN)*, 2021. [arXiv:2103.08295](https://arxiv.org/abs/2103.08295)
-
-<a id="ref-27"></a>[27] H. Cai, C. Gan, L. Zhu and S. Han, "TinyTL: Reduce activations, not trainable parameters for efficient on-device learning," in *Advances in Neural Information Processing Systems (NeurIPS)*, 2020. [arXiv:2007.11622](https://arxiv.org/abs/2007.11622)
-
-<a id="ref-28"></a>[28] J. Lin, L. Zhu, W.-M. Chen, W.-C. Wang, C. Gan and S. Han, "On-device training under 256KB memory," in *Advances in Neural Information Processing Systems (NeurIPS)*, 2022. [arXiv:2206.15472](https://arxiv.org/abs/2206.15472)
+<a id="ref-18"></a>[18] J. Lin, L. Zhu, W.-M. Chen, W.-C. Wang, C. Gan and S. Han, "On-device training under 256KB memory," in *Advances in Neural Information Processing Systems (NeurIPS)*, 2022. [arXiv:2206.15472](https://arxiv.org/abs/2206.15472)
 
 ## Repository layout
 
