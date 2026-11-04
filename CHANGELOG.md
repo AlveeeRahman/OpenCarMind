@@ -2,12 +2,12 @@
 
 ## Unreleased
 
-- Model renamed to CarMind GenEdge (was Edge Model 1); README training section updated for the four-stage training and w8a16 precision.
+- Model renamed to CarMind E.V (was Edge Model 1). README training section updated for the four-stage training and w8a16 precision.
 - Model documentation shortened to what users of the board need; the training details are kept privately.
 
 ## 2.4.0
 
-- CarMind GenEdge (`dfa9af416dfb`, 89,152 bytes, 38,679 parameters, `w8a16`). Same architecture, new training: the public KIA drives plus 325 cars of the Vehicle Energy Dataset and twelve of the author's drives, partial labels where there is no brake switch, augmentation that imitates other cars, the adapter's real row spacing, and a fitted temperature folded into the class layer. Reads 5 s of nine channels (MAF and intake temperature now used, MAP stays off). On data held out from training: KIA macro-F1 0.887, 98.5 % of the author's held-out windows and 96.1 % of 37 unseen VED cars in an allowed class, fuel R² 0.688 on unseen cars with MAF hidden. It follows a manoeuvre change within 3 s 88 % of the time, against 55 % for a 10 s model. About 3.5 ms per run. Details are in `docs/MODEL.md`, and every variant tried, including contrastive pre-training and distillation, in `docs/MODEL_CASE_STUDY.md`.
+- CarMind E.V (`dfa9af416dfb`, 89,152 bytes, 38,679 parameters, `w8a16`). Same architecture, new training: the public KIA drives plus 325 cars of the Vehicle Energy Dataset and twelve of the author's drives, partial labels where there is no brake switch, augmentation that imitates other cars, the adapter's real row spacing, and a fitted temperature folded into the class layer. Reads 5 s of nine channels (MAF and intake temperature now used, MAP stays off). On data held out from training: KIA macro-F1 0.887, 98.5 % of the author's held-out windows and 96.1 % of 37 unseen VED cars in an allowed class, fuel R² 0.688 on unseen cars with MAF hidden. It follows a manoeuvre change within 3 s 88 % of the time, against 55 % for a 10 s model. About 3.5 ms per run. Details are in `docs/MODEL.md`, and every variant tried, including contrastive pre-training and distillation, in `docs/MODEL_CASE_STUDY.md`.
 - Fixes from a code review, with no change to the model, the scheduler's default behaviour, the OBD polling or the log format:
   - Diesel fuel use from MAF accepts the lean commanded ratios diesels run at (up to 8). It read about 3x high before.
   - A fuel-cut reading of PID 0x44, which is polled slowly, no longer zeroes the fuel rate once the throttle opens again.
@@ -18,7 +18,7 @@
   - The 10 s model stall rule applies only when the model runs every second.
   - Host tests: 321 checks.
 - The desktop app shows fuel as unknown, not 0 L, for a drive where the car gave no fuel source.
-- The events screen names the model "ML Model - CarMind GenEdge". Its hash stays in the serial log and in every `.ml.csv` row.
+- The events screen names the model "ML Model - CarMind E.V". Its hash stays in the serial log and in every `.ml.csv` row.
 - Repository: removed six screen renders no page used and five desktop design mockups of screens the app does not have. `ml/onboard/export.json` lists the architecture only. `.gitignore` covers those renders and assistant, scratch and editor files.
 - Architecture proposals: a new issue template. We train what you send on the same data and splits and post the scores.
 - Figures for the model, the inference path and training-to-board updated. The old model's bench summary (`ml/onboard/bench_summary.json`) is removed.
