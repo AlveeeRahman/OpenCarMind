@@ -65,7 +65,7 @@
     {"@type": "Question", "name": "Which OBD2 adapters work with OpenCarMind?",
      "acceptedAnswer": {"@type": "Answer", "text": "The LELink has been tested on the board. Veepeak OBDCheck BLE and BLE+, OBDLink CX, Carista, Vgate iCar Pro BLE 4.0 and vLinker MC+ are expected to work from their published Bluetooth layouts. OBDLink MX+, OBDLink LX and other Classic-only adapters will not work. The full table with Amazon links is in docs/ADAPTERS.md."}},
     {"@type": "Question", "name": "What does the on-board AI model do?",
-     "acceptedAnswer": {"@type": "Answer", "text": "CarMind GenEdge, a small quantised 1-D convolutional network, classifies the last 5 seconds of driving as stopped, braking, accelerating or cruising, and estimates brake pressure, flywheel torque and fuel rate, which the OBD port does not report. It takes about 89 KB on the chip and runs in about 3.5 ms."}},
+     "acceptedAnswer": {"@type": "Answer", "text": "CarMind E.V, a small quantised 1-D convolutional network, classifies the last 5 seconds of driving as stopped, braking, accelerating or cruising, and estimates brake pressure, flywheel torque and fuel rate, which the OBD port does not report. It takes about 89 KB on the chip and runs in about 3.5 ms."}},
     {"@type": "Question", "name": "Does OpenCarMind need a phone, an account or the internet?",
      "acceptedAnswer": {"@type": "Answer", "text": "No. Drives are saved to an SD card in the car as CSV, JSON and text. Wi-Fi is optional: it sets the clock and, once you pair the board with the desktop app over USB, sends new drives to that app on your own computer every 10 seconds while the car is parked. Nothing goes to a cloud."}},
     {"@type": "Question", "name": "Which board does it run on?",
@@ -160,7 +160,7 @@
     <h2>How it works</h2>
     <div class="grid">
       <div class="card"><h3>Every field the car reports</h3><p>All standard Mode 01 fields (70 decoded), battery voltage, the VIN, and stored, pending and permanent trouble codes. One CSV row per poll cycle.</p></div>
-      <div class="card"><h3>A neural network on the ESP32-S3</h3><p>CarMind GenEdge classifies the last 5 s as stopped, braking, accelerating or cruising, and estimates brake pressure, flywheel torque and fuel rate. Scored on 37 cars it never saw. About 3.5 ms per run.</p></div>
+      <div class="card"><h3>A neural network on the ESP32-S3</h3><p>CarMind E.V classifies the last 5 s as stopped, braking, accelerating or cruising, and estimates brake pressure, flywheel torque and fuel rate. Scored on 37 cars it never saw. About 3.5 ms per run.</p></div>
       <div class="card"><h3>Local-first storage</h3><p>Plain CSV, JSON and text on an SD card you hold, saved every 10 s. A live line on the screen says when it is safe to cut the power.</p></div>
       <div class="card"><h3>Setup over USB, upload over Wi-Fi</h3><p>The desktop app pairs with the board through an authenticated USB door, sets Wi-Fi and the time zone, and flashes firmware. Parked at home, the board sends new drives to the app over TLS every 10 s.</p></div>
       <div class="card"><h3>Fuel economy in your units</h3><p>km/L, or mpg in the US and the UK, chosen once from the country your Wi-Fi access point broadcasts, and kept after a reboot (tested with a US access point). The fuel rate comes from the car's own PID, from airflow, or from the model on older cars, and "--" when the car gives nothing.</p></div>
@@ -201,7 +201,7 @@
 
   <section id="model" class="narrow">
     <h2>The model</h2>
-    <p>With every OBD row, CarMind GenEdge classifies the last 5 seconds as stopped, braking, accelerating or cruising, and estimates brake pressure, flywheel torque and fuel rate, which OBD does not report. It is a small quantised 1-D convolutional network run by ESP-DL<sup><a href="#r1">[1]</a></sup>. It takes about 89 KB on the chip and about 3.5 ms per run. On data held out from training, it scores a manoeuvre macro-F1 of 0.887 on the public KIA drives and places 96.1 % of windows from 37 unseen VED cars in an allowed class.</p>
+    <p>With every OBD row, CarMind E.V classifies the last 5 seconds as stopped, braking, accelerating or cruising, and estimates brake pressure, flywheel torque and fuel rate, which OBD does not report. It is a small quantised 1-D convolutional network run by ESP-DL<sup><a href="#r1">[1]</a></sup>. It takes about 89 KB on the chip and about 3.5 ms per run. On data held out from training, it scores a manoeuvre macro-F1 of 0.887 on the public KIA drives and places 96.1 % of windows from 37 unseen VED cars in an allowed class.</p>
     <p>Limits: outside one data set there is no brake-switch signal, so braking and cruising are partly ambiguous. No diesel car is in the data. Brake pressure is the weakest estimate.</p>
     <p>Trained on public data, the HCRL Driving Dataset (Kwak, Woo and Kim, PST 2016)<sup><a href="#r2">[2]</a></sup> and the Vehicle Energy Dataset (Oh, LeBlanc and Peng, 2020, Apache-2.0)<sup><a href="#r3">[3]</a></sup>, plus drives from my own car.</p>
   </section>

@@ -1,5 +1,5 @@
 {
- "model": "CarMind GenEdge",
+ "model": "CarMind E.V",
  "target": "esp32s3",
  "quant_type": "w8a16",
  "files": {

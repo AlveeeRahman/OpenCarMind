@@ -1,4 +1,4 @@
-# The on-board model: CarMind GenEdge
+# The on-board model: CarMind E.V
 
 One highly generalized and small convolutional network runs on the ESP32-S3 and answers two questions every time an OBD row arrives. What is the car doing right now, and what are three things the OBD port does not report? This page is for people who use the board. The model is a small quantised network run by ESP-DL. It takes about 89 KB on the chip and about 3.5 ms per run.
 
