@@ -28,10 +28,13 @@ Each build runs the Rust unit tests on its own system first. They check the sess
 3. Add your Wi-Fi network, check the time zone the app filled in, and send them to the board.
 4. Unplug the board and put it back in the car. From then on it sends new data to this app every 10 seconds whenever the car is parked within reach of that network. On the Overview page, pick "Received over Wi-Fi" in the source list. The page refreshes itself while data arrives.
 
-Two more things on the Board page, both over the cable:
+More on the Board page, all over the cable:
 
+- On-board model shows whether the board runs CarMind E.V (the default) or CarMind R.E.V, which keeps learning your car's fuel use, and switches between them.
 - Import drives over USB copies new drives from the card into the same folder the Wi-Fi upload fills, at about 15 KB/s.
 - Flash the firmware installs the firmware that ships with the app. The board keeps its Wi-Fi networks and pairing.
+
+The Fuel page keeps your fill-ups (per board, in the app's data folder as `fillups.json`) and sends them to a connected board, which uses them to correct its fuel figures. It also shows fuel and economy per drive and in total, and what R.E.V has learned.
 
 To read a card on its own, choose Open card folder on the Overview and pick the card's `obd` folder, its `sessions` folder, or any folder of `sNNNNNN.csv` files.
 

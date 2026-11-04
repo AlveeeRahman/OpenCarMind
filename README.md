@@ -164,6 +164,17 @@ Trained on public data, the HCRL Driving Dataset (Kwak, Woo and Kim, PST 2016)<s
 
 The shipped files are in [ml/onboard](ml/onboard). `tools/gen_ml_params.py` turns them into `main/ml_params.h`, which holds the channel order, normalisation, class names and the model's hash. [docs/MODEL.md](docs/MODEL.md) lists the inputs and outputs.
 
+### Two models: CarMind E.V and CarMind R.E.V
+
+The firmware carries two models, and one runs at a time.
+
+- **CarMind E.V** is the fixed model described above. It is the default.
+- **CarMind R.E.V** is a smaller model, about half the size, that keeps learning your car's fuel use on the board. While you drive, it compares its fuel estimate with what the car reports and adjusts. It also learns from your fill-ups: you enter the fuel you pump in the desktop app, and the board corrects its fuel figures to match. When the airflow sensor's reading is missing, R.E.V uses what it learned about your car.
+
+To switch, connect the board to the desktop app with the USB cable, open the Board page and pick the model under "On-board model". The board keeps the choice after a restart, and you can switch back at any time; what R.E.V learned is kept on the SD card. Fill-ups go on the app's Fuel page, which also shows the fuel used per drive and in total, and what R.E.V has learned. The fill-up correction works with both models.
+
+R.E.V is new and has not been checked on a car yet, so E.V stays the default. Its files are in [ml/onboard/rev](ml/onboard/rev).
+
 ## Status
 
 What has been checked, on the bench or in the code: the build (with Wi-Fi clock sync on and off), the model's identity hash, the host unit tests (317 checks, including a simulated drive for the power-off line, the adapter profile chooser, and the fuel, economy and units logic), the automatic switch to miles and mpg with a US Wi-Fi access point, kept after a reboot, the 10-second save and the "Safe to turn off" event on a board with an SD card, and the Wi-Fi upload to a stand-in receiver with resume after a cut-off pass. CI builds the desktop app and runs its unit tests on Windows, macOS and Linux. Nobody has opened the app on a real machine yet.
@@ -233,6 +244,8 @@ The Mosaico also changes how you use the logger. Your adapter lives in the car, 
 - The ESP-Mosaico (ESP32-S31) port described above, and a build without a display.
 - Code-signed installers.
 - More regularised models, released by this project, to fit more cars.
+- CarMind R.E.V 2: a forecast of the next moment's manoeuvre, learned on the board, as a self-check of the classifier.
+- Fill-ups sent to the board over Wi-Fi, not only over the cable.
 - A faster version built on a Jetson.
 
 ## References
@@ -278,11 +291,11 @@ The Mosaico also changes how you use the logger. Your adapter lives in the car, 
 | Path | What it holds |
 |---|---|
 | `main/` | firmware source |
-| `ml/onboard/` | the shipped model, its normalisation and export record |
+| `ml/onboard/` | the shipped models (CarMind E.V, and CarMind R.E.V in `rev/`), their normalisation and export records |
 | `samples/replay/` | two replay sessions from a public dataset, in the board's file format |
 | `schema/` | JSON schema of the session files |
 | `tests/host/` | unit tests that run on a computer |
-| `tools/` | `ocm_report.py` (SD card sessions to reports) and the generator for `main/ml_params.h` |
+| `tools/` | `ocm_report.py` (SD card sessions to reports) and the generator for `main/ml_params.h` and `main/ml_params_rev.h` |
 | `desktop/` | the desktop app (Rust and Tauri), its icons and design previews |
 | `dashboard/` | Docker Compose file and Dashy configuration |
 | `docs/` | configuration, model notes, field checks, screen designs and figures |

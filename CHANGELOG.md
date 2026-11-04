@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- CarMind R.E.V, a second on-board model (19,815 parameters, 65,648 bytes, `f70bdcd3151b`) that learns the car's fuel use while driving: a new fuel read-out of the model's feature with the airflow reading hidden, an airflow constant from absolute load (calculated load as an experimental fallback), and a choice between them by their running error when MAF is missing. CarMind E.V stays the default. Both models are in the firmware; the desktop app switches between them over USB (`MODEL GET` / `MODEL SET`), and the choice is kept in NVS.
+- Fill-up calibration for both models: fill-ups entered in the desktop app (`REV-FILLUPS`) give one correction factor for every fuel figure (tank to tank, newest tanks weighted most, limited to 0.7 to 1.4). New CSV columns `fuel_lph_raw`, `fuel_cal`, `trip_fuel_raw_l`; new `.ml.csv` columns from `model_name` on. Learned state in `/sdcard/obd/rev_state.bin` with a CRC and a `.tmp` fallback.
+- Desktop app: model selector on the Board page and a Fuel page with the fill-up log, fuel per drive and in total (km/L, L/100 km, mpg), and R.E.V's learning status.
+- Scheduler: the `rev` job is the first user of the CPU reservation (2 % of core 1). Host tests: a new `make -C tests/host rev` target (109 checks) next to the 321 existing ones.
+- Kconfig `CARMIND_REV_ENABLE` (default on) keeps an E.V-only build possible.
+
 - Model renamed to CarMind E.V (was Edge Model 1). README training section updated for the four-stage training and w8a16 precision.
 - Model documentation shortened to what users of the board need; the training details are kept privately.
 
