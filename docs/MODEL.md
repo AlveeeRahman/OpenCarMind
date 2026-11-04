@@ -1,6 +1,6 @@
-# The on-board model: CarMind Edge
+# The on-board model: CarMind GenEdge
 
-One highly generalized and small convolutional network runs on the ESP32-S3 and answers two questions every time an OBD row arrives. What is the car doing right now, and what are three things the OBD port does not report? Edge Model 1 is the first OpenCarMind model trained on more than one car. [MODEL_CASE_STUDY.md](MODEL_CASE_STUDY.md) has every variant we trained on the way here and how each one scored.
+One highly generalized and small convolutional network runs on the ESP32-S3 and answers two questions every time an OBD row arrives. What is the car doing right now, and what are three things the OBD port does not report? CarMind GenEdge is the first OpenCarMind model trained on more than one car. [MODEL_CASE_STUDY.md](MODEL_CASE_STUDY.md) has every variant we trained on the way here and how each one scored.
 
 ## Inputs
 
@@ -47,7 +47,7 @@ It has 38,679 parameters and needs about 0.16 million multiply-adds per window. 
 
 ## Training
 
-Adversarial Training coupled with Contrastive learning techniques were applied for increased generalizatio. Quantization-aware methods were used from the very first step: every forward pass rounds weights and activations to the int8 grid with power-of-two scales, the scheme ESP-DL uses. Each batch mixes the three sources (about 55 % KIA, 30 % VED, 15 % the author's car). The KIA drives are replayed through the author's real row spacing (median 1.45 s, gaps over 3 s) and binned exactly as the firmware does. Augmentation imitates other cars: whole sensors switched off, a random gain per channel in raw units (±25 % for MAF and load, which covers engine size, ±8 % elsewhere), and thinned slow channels. Three seeds were trained, and the one with the best validation score ships.
+Quantisation-aware from the first step: every forward pass rounds each convolution's weights and outputs to an 8-bit grid with power-of-two scales, the scheme ESP-DL uses; the three dense layers are rounded at export. On the chip (`w8a16`) activations are 16-bit integers and depthwise weights fall back to 16 bits. Each batch mixes the three sources (about 55 % KIA, 30 % VED, 15 % the author's car). The KIA drives are replayed through the author's real row spacing (median 1.45 s, gaps over 3 s) and binned exactly as the firmware does. Augmentation imitates other cars: whole sensors switched off, a random gain per channel in raw units (±25 % for MAF and load, which covers engine size, ±8 % elsewhere), and thinned slow channels. Three seeds were trained, and the one with the best validation score ships.
 
 ## Scores
 

@@ -99,6 +99,6 @@
   "torch": "2.8.0",
   "esp_ppq": "?"
  },
- "source_weights": "CarMind Edge Model 1 (BV5, seed 1)",
+ "source_weights": "CarMind GenEdge (BV5, seed 1)",
  "data": "HCRL Driving Dataset (KIA), 12 owner drives, Vehicle Energy Dataset (VED); 5 s window, labels over the last 5 s"
 }

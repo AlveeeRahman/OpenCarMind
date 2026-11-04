@@ -10,12 +10,12 @@
 
 OpenCarMind turns an ESP32-S3 board and a Bluetooth OBD-II adapter into a car data logger that runs a neural network on the board. It needs no phone, no account and no internet connection. Everything it records goes to an SD card in the car and, if you pair the board, to the desktop app on your own computer.
 
-Version 2.4.0, with Edge Model 1. Licence: MIT. Website: <https://alveeerahman.github.io/OpenCarMind/>. Downloads for the firmware and the desktop app are on the [Releases page](https://github.com/AlveeeRahman/OpenCarMind/releases/latest).
+Version 2.4.0, with CarMind GenEdge. Licence: MIT. Website: <https://alveeerahman.github.io/OpenCarMind/>. Downloads for the firmware and the desktop app are on the [Releases page](https://github.com/AlveeeRahman/OpenCarMind/releases/latest).
 
 ## What you get
 
 - **Every standard Mode 01 field** the car reports (70 are decoded), battery voltage, the VIN, and stored, pending and permanent trouble codes. One CSV row is written per poll cycle.
-- **A small neural network on the chip** (Edge Model 1). Each time a row arrives it classifies the last 5 seconds of driving as stopped, braking, accelerating or cruising. It also estimates three values the OBD port does not report: brake pressure, flywheel torque and fuel rate.
+- **A small neural network on the chip** (CarMind GenEdge). Each time a row arrives it classifies the last 5 seconds of driving as stopped, braking, accelerating or cruising. It also estimates three values the OBD port does not report: brake pressure, flywheel torque and fuel rate.
 - **A save to the SD card every 10 seconds**, and a live **power-off line** on page 3: green "Safe to turn off" only once car data has stopped, everything is on the card and nothing is uploading, red with the reason (logging, saving, upload) otherwise. When the ignition goes off, the drive ends 15 seconds after the engine computer stops answering: the board saves and closes the session, even if the adapter stays powered, and starts a new session if the engine comes back.
 - **Fuel economy** on the first screen: km/L, or mpg in the US and the UK. The fuel rate comes from the best source the car has: its own fuel-rate PID (common on newer cars), the airflow sensor with the commanded air-fuel ratio, or, on cars with neither, the on-board model's estimate, shown in amber. A car that gives nothing shows "--", never a made-up number.
 - **Units that follow you.** The board starts in km. The first time it joins Wi-Fi it reads the country code the access point broadcasts, switches to miles and mpg in the US or the UK, and keeps that choice. Tested on the board: a US access point switched it to miles and mpg, and the choice stayed after a reboot. `units` in `config.json` overrides it.
@@ -144,9 +144,9 @@ Settings, SD card files, the Wi-Fi list and the CSV columns are in [docs/CONFIGU
 
 ## The model
 
-<p align="center"><img src="docs/images/workflow/edge_architecture.png" width="640" alt="Edge Model 1 layers: 30 features by 5 seconds input, 1 by 1 stem to 48 channels, 6 residual depthwise-separable blocks, mean over 5 s and the last 3 s, dense 64, manoeuvre head and estimate head"></p>
+<p align="center"><img src="docs/images/workflow/edge_architecture.png" width="640" alt="CarMind GenEdge layers: 30 features by 5 seconds input, 1 by 1 stem to 48 channels, 6 residual depthwise-separable blocks, mean over 5 s and the last 3 s, dense 64, manoeuvre head and estimate head"></p>
 
-Edge Model 1, the first OpenCarMind model trained on more than one car. A 1-D convolutional network<sup>[[6]](#ref-6)</sup> with 38,679 parameters, built from residual depthwise-separable blocks<sup>[[7]](#ref-7),[[8]](#ref-8)</sup>, quantised to 8-bit weights and 16-bit activations (`w8a16`) and run by ESP-DL<sup>[[9]](#ref-9)</sup>. It reads five one-second steps of nine channels (rpm, speed, load, MAF, throttle, both fuel trims, coolant and intake temperature) and feeds two heads that share one trunk. It learned from three sources: the public KIA drives of the HCRL Driving Dataset, 325 cars of the Vehicle Energy Dataset<sup>[[10]](#ref-10)</sup> and twelve of the author's drives.
+CarMind GenEdge, the first OpenCarMind model trained on more than one car. A 1-D convolutional network<sup>[[6]](#ref-6)</sup> with 38,679 parameters, built from residual depthwise-separable blocks<sup>[[7]](#ref-7),[[8]](#ref-8)</sup>, quantised to 8-bit weights and 16-bit activations (`w8a16`) and run by ESP-DL<sup>[[9]](#ref-9)</sup>. It reads five one-second steps of nine channels (rpm, speed, load, MAF, throttle, both fuel trims, coolant and intake temperature) and feeds two heads that share one trunk. It learned from three sources: the public KIA drives of the HCRL Driving Dataset, 325 cars of the Vehicle Energy Dataset<sup>[[10]](#ref-10)</sup> and twelve of the author's drives.
 
 Scores of the version on the chip, on data held out from training:
 
@@ -158,11 +158,11 @@ Scores of the version on the chip, on data held out from training:
 
 Against the previous 10 s model, it matches 88 % of manoeuvre changes within 3 s instead of 55 %. Brake pressure (R² 0.46) is still the weakest estimate. [docs/MODEL.md](docs/MODEL.md) has the inputs, outputs, labels and limits. [docs/MODEL_CASE_STUDY.md](docs/MODEL_CASE_STUDY.md) shows every variant we trained to get here, what failed, and how to send us an architecture to test. The shipped files are in [ml/onboard](ml/onboard).
 
-### How Edge Model 1 was made
+### How CarMind GenEdge was made
 
 The architecture did not change from the first model. Everything below is data, labels and training, each checked on held-out data with three seeds before it stayed.
 
-- More cars. The first model learned from the public KIA drives alone<sup>[[11]](#ref-11)</sup>. Edge Model 1 adds 325 cars of the Vehicle Energy Dataset<sup>[[10]](#ref-10)</sup> (petrol, hybrid and plug-in hybrid, 1.5 to 3.5 L), and twelve of the author's drives. Whole VED vehicles are held back for testing, so the test cars are cars the model never saw.
+- More cars. The first model learned from the public KIA drives alone<sup>[[11]](#ref-11)</sup>. CarMind GenEdge adds 325 cars of the Vehicle Energy Dataset<sup>[[10]](#ref-10)</sup> (petrol, hybrid and plug-in hybrid, 1.5 to 3.5 L), and twelve of the author's drives. Whole VED vehicles are held back for testing, so the test cars are cars the model never saw.
 - Honest labels. Only the KIA data has a brake switch. Elsewhere a moving window that is neither clearly braking nor accelerating is labelled "braking or cruising", and the loss only asks for one of the two, which is partial-label learning<sup>[[12]](#ref-12)</sup>. A speed-only braking rule, measured against the KIA brake switch, caught only a third of real brake presses, so it was never used as a hard label.
 - Augmentation that imitates other cars. In training, sensors are switched off at random, each channel gets a random gain in raw units (enough to cover engine size and sensor calibration), and slow channels are thinned. Added together with the author's drives, it lifted every score on the author's car. We did not test the two apart.
 - The board's own timing. Training windows are replayed through the real row spacing of an ELM327 adapter (median 1.45 s) and binned exactly as the firmware bins them.
@@ -174,9 +174,16 @@ The architecture did not change from the first model. Everything below is data, 
 
 <p align="center"><img src="docs/images/workflow/train-to-deploy.png" width="900" alt="From training to the board: your drives, windows and labels, architecture search, QAT, refine and test, then ONNX export, ESP-PPQ quantisation, int8 check, parameter generation, firmware build and a check on the board, with feedback loops"></p>
 
-The network is trained quantisation-aware (QAT) from the start<sup>[[16]](#ref-16),[[17]](#ref-17)</sup>: in every forward pass its weights and activations are rounded to the int8 grid with power-of-two scales. ESP-DL uses the same scheme, so the float network that reaches the converter already lives on that grid. A second training stage continues from those weights, still with QAT, on dense one-second windows that mimic a slow adapter. The test split is read once.
+The network is trained quantisation-aware (QAT)<sup>[[16]](#ref-16),[[17]](#ref-17)</sup>. In every forward pass, each convolution's weights and outputs are rounded to an 8-bit grid with power-of-two scales, the scheme ESP-DL uses, and the gradient passes the rounding unchanged (a straight-through estimator). The three dense layers at the end train in float and are rounded only at export. Training happens in four stages, each starting from the weights of the one before:
 
-Deployment is a chain with two checks. The trained network is exported to ONNX and quantised by ESP-PPQ<sup>[[18]](#ref-18)</sup> (`w8a16`, calibrated on windows from all three sources). The exporter scores the int8 graph on the same test windows, and if the score drops you go back to refinement. `tools/gen_ml_params.py` then writes `main/ml_params.h` with the channel order, normalisation, class names and the model's hash, the firmware embeds the model, and the board runs its own self-test at boot. The training code and data are not part of this repository.
+1. Architecture search on the public KIA drives, then QAT training of the winner.
+2. Refinement on dense one-second windows that mimic a slow adapter.
+3. Training on 10 s windows from all three sources, with the augmentation and partial labels described above.
+4. Fine-tuning to the 5 s window and 5 s labels on three seeds. The seed with the best validation score ships, with its temperature fitted on validation data.
+
+The test split is read once, at the end.
+
+Deployment is a chain with two checks. The trained network is exported to ONNX and quantised by ESP-PPQ<sup>[[18]](#ref-18)</sup> in its `w8a16` mode, calibrated on 255 windows split equally across the three sources. In that mode the stem, the pointwise convolutions and the dense layers keep 8-bit weights, the depthwise convolutions fall back to 16-bit weights, and every activation is a 16-bit integer. The exporter scores the quantised graph on the same test windows as the float network. Manoeuvre answers agree on 99.9 to 100 % of windows, and the largest loss is 0.02 in fuel R² on the KIA drives. If the score drops, you go back to refinement. `tools/gen_ml_params.py` then writes `main/ml_params.h` with the channel order, normalisation, class names and the model's hash, the firmware embeds the model, and the board runs its own self-test at boot. The training code and data are not part of this repository.
 
 What the model does not do yet:
 
@@ -190,7 +197,7 @@ What has been checked, on the bench or in the code: the build (with Wi-Fi clock 
 
 Known security limits are listed in [SECURITY.md](SECURITY.md#known-limits).
 
-The author has driven the board with the drive-end, power-off, fuel economy and units features and reported them all working. What has not been checked: other boards, any adapter other than the LELink, Edge Model 1 on the road (it was flashed after that drive), and what the screens do on a board without a panel. The checks that need a car or a card are listed in [docs/FIELD_CHECKS.md](docs/FIELD_CHECKS.md), with empty result tables for users to fill in.
+The author has driven the board with the drive-end, power-off, fuel economy and units features and reported them all working. What has not been checked: other boards, any adapter other than the LELink, CarMind GenEdge on the road (it was flashed after that drive), and what the screens do on a board without a panel. The checks that need a car or a card are listed in [docs/FIELD_CHECKS.md](docs/FIELD_CHECKS.md), with empty result tables for users to fill in.
 
 ## Next board: ESP-Mosaico with the ESP32-S31
 

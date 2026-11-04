@@ -1,6 +1,6 @@
 # Case study: making one small model work on every car
 
-Edge Model 1 is the result of one question: how far can training alone take a 38,679-parameter network on an ESP32-S3, without touching its architecture? Here is everything we tried between the first model (30 s window, one car) and Edge Model 1 (5 s window, three sources, 384 extra cars), including what failed. The architecture stayed fixed the whole time. That is the next step, and we would like your help with it (see the end).
+CarMind GenEdge is the result of one question: how far can training alone take a 38,679-parameter network on an ESP32-S3, without touching its architecture? Here is everything we tried between the first model (30 s window, one car) and CarMind GenEdge (5 s window, three sources, 384 extra cars), including what failed. The architecture stayed fixed the whole time. That is the next step, and we would like your help with it (see the end).
 
 ## The problem
 
@@ -72,7 +72,7 @@ At about 1.4 s per OBD row, 5 s still holds three rows, and a faster adapter onl
 | BV, 10 s | 2.8 s | 4.5 s | 55 % | 16 % | 0.805 |
 | BV5, 5 s (3 seeds) | 0 s | 1.5 to 1.6 s | 87 to 88 % | 5 % | 0.892 to 0.893 |
 
-The 10 s model was built to describe a longer span, so some of that lag is by design. What the table shows is that the 5 s model answers "what is the car doing now". On its own 5 s labels, BV5 kept the BV scores: KIA F1 0.887, author's car set accuracy 0.983, unseen VED cars 0.958, fuel with MAF hidden 0.882 and 0.685. Brake pressure paid the price (KIA estimator mean R² 0.776, against 0.792), because 5 s averages are noisier. BV5 seed 1 shipped as Edge Model 1.
+The 10 s model was built to describe a longer span, so some of that lag is by design. What the table shows is that the 5 s model answers "what is the car doing now". On its own 5 s labels, BV5 kept the BV scores: KIA F1 0.887, author's car set accuracy 0.983, unseen VED cars 0.958, fuel with MAF hidden 0.882 and 0.685. Brake pressure paid the price (KIA estimator mean R² 0.776, against 0.792), because 5 s averages are noisier. BV5 seed 1 shipped as CarMind GenEdge.
 
 ## What did not help
 
@@ -98,7 +98,7 @@ What a proposal needs to fit on the chip:
 - Input `[1, 30, 1, W]`: 10 values, 10 masks and 10 differences per one-second step, oldest first, W = 5 today (any W from 5 to 30 is fine).
 - Outputs: 4 manoeuvre logits and 3 standardised estimates.
 - Operations ESP-DL runs: convolution (standard and depthwise), ReLU, Add, ReduceMean, Concat and Gemm are known to work. Others may, but check the ESP-DL operator list first.
-- Budget: under about 150 KB as int8 and under about 10 ms per run on the ESP32-S3. Edge Model 1 uses 89 KB and 3.5 ms.
+- Budget: under about 150 KB as int8 and under about 10 ms per run on the ESP32-S3. CarMind GenEdge uses 89 KB and 3.5 ms.
 - Format: a PyTorch `nn.Module` or an ONNX graph, plus a sentence on why you expect it to help.
 
 We do not publish the training data or code. The author's drives stay private, and training lives in a separate project. Every result we post will follow the test protocol above.

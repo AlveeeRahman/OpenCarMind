@@ -5,7 +5,7 @@ title: "Architecture: "
 labels: model
 ---
 
-**The idea in one or two sentences, and why you expect it to beat Edge Model 1**
+**The idea in one or two sentences, and why you expect it to beat CarMind GenEdge**
 
 **The network**
 Attach a PyTorch `nn.Module` (a single file) or an ONNX graph, or link to one.
