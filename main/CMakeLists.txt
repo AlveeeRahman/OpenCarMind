@@ -31,6 +31,22 @@ idf_component_register(
 
 target_compile_definitions(${COMPONENT_LIB} PRIVATE CARMIND_VERSION="${PROJECT_VER}")
 
+# Model keys. The shipped models are encrypted (AES-128-CTR, ESP-DL's own format). An official build sets
+# CARMIND_MODEL_KEY_EV in its environment; main/model_keys.cmake turns it into carmind_model_keys.h in the build folder
+# at every build. Without the key the firmware builds and runs with the model locked.
+set(model_keys_dir "${CMAKE_CURRENT_BINARY_DIR}/model_keys")
+file(MAKE_DIRECTORY "${model_keys_dir}")
+idf_build_get_property(model_keys_python PYTHON)
+add_custom_target(carmind_model_keys
+    COMMAND ${CMAKE_COMMAND} -DOUT=${model_keys_dir}/carmind_model_keys.h
+            "-DMODELS=EV|${CMAKE_CURRENT_LIST_DIR}/../ml/onboard/onboard.espdl"
+            -DPYTHON=${model_keys_python} -DCHECK=${CMAKE_CURRENT_LIST_DIR}/../tools/check_model_key.py
+            -P ${CMAKE_CURRENT_LIST_DIR}/model_keys.cmake
+    BYPRODUCTS ${model_keys_dir}/carmind_model_keys.h
+    VERBATIM)
+add_dependencies(${COMPONENT_LIB} carmind_model_keys)
+target_include_directories(${COMPONENT_LIB} PRIVATE "${model_keys_dir}")
+
 # On-board model (ml/onboard/onboard.espdl), embedded on a 16-byte boundary with ESP-DL's own helper so the loader
 # does not warn or copy. Symbol: _binary_onboard_espdl_start.
 if(CONFIG_CARMIND_ML_ENABLE)

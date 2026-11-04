@@ -24,6 +24,7 @@ extern "C" {                     /* C headers without their own C++ guards, befo
 #include "sdkconfig.h"
 #include "ml_infer.h"
 #include "ml_params.h"
+#include "carmind_model_keys.h"      /* generated in the build folder from CARMIND_MODEL_KEY_* (main/model_keys.cmake) */
 #include "harden.h"
 #include "sched_mon.h"
 
@@ -40,6 +41,36 @@ static const char *TAG = "ml";
 #define ML_ROW_MODEL ML_MODEL_VERSION
 #endif
 extern const uint8_t ml_model_start[] asm("_binary_onboard_espdl_start");
+#if ML_KEY_EV_PRESENT
+static const uint8_t *const ML_EV_KEY = ML_KEY_EV;
+#else
+static const uint8_t *const ML_EV_KEY = nullptr;
+#endif
+/* ESP-DL's own AES-128-CTR (fbs_loader.cpp in esp-dl 3.3.14, not in its public headers): used on the first block only, to
+   tell a wrong key from a right one before ESP-DL parses the decrypted model. */
+namespace fbs { void fbs_aes_crypt_ctr(const uint8_t *ciphertext, uint8_t *plaintext, size_t size, const uint8_t *key); }
+
+/* Can the embedded model be opened? An unencrypted model (header mode 0, for developers' own exports) needs no key. */
+typedef enum { ML_OPEN_PLAIN, ML_OPEN_KEYED, ML_OPEN_NO_KEY, ML_OPEN_BAD_KEY, ML_OPEN_BAD_FILE } ml_open_t;
+static ml_open_t model_open_state(const uint8_t *data, const uint8_t *key)
+{
+    /* header: "EDL2", u32 mode (0 plain, 1 AES-128-CTR), u32 body size, 4 bytes padding, then the FlatBuffer body
+       (EDL1/PDL1 have no padding) */
+    uint32_t mode, size;
+    memcpy(&mode, data + 4, 4);
+    memcpy(&size, data + 8, 4);
+    if (mode == 0) return ML_OPEN_PLAIN;
+    if (mode != 1) return ML_OPEN_BAD_FILE;
+    if (!key) return ML_OPEN_NO_KEY;
+    size_t hdr = memcmp(data, "EDL1", 4) == 0 || memcmp(data, "PDL1", 4) == 0 ? 12 : 16;
+    uint8_t first[16];
+    fbs::fbs_aes_crypt_ctr(data + hdr, first, sizeof first, key);
+    uint32_t root;
+    memcpy(&root, first, 4);
+    /* a FlatBuffer starts with the offset of its root table: aligned and inside the body. Random bytes pass about 1 in 10^5. */
+    return root % 4 == 0 && root >= 8 && root + 4 <= size ? ML_OPEN_KEYED : ML_OPEN_BAD_KEY;
+}
+static ml_open_t s_open = ML_OPEN_PLAIN;
 
 static const obd_field_t FIELDS[ML_CHANNELS] = {F_rpm, F_speed, F_load, F_maf, F_throttle, F_stft1, F_ltft1, F_coolant, F_iat, F_map};
 
@@ -77,7 +108,7 @@ static volatile bool s_paused;
 EXT_RAM_BSS_ATTR static ml_msg_t s_run;           /* received by the inference task */
 
 static dl::Model     *s_model;
-static ml_stats_t     s_stats = {false, 0, 0, 0, 0, 0, -1, 0.0f, {0.0f, 0.0f, 0.0f}, 0};
+static ml_stats_t     s_stats = {false, 0, 0, 0, 0, 0, -1, 0.0f, {0.0f, 0.0f, 0.0f}, 0, false};
 static float          s_last_p[ML_N_CLASSES];
 static SemaphoreHandle_t s_stats_lock;
 static sched_job_t    s_job = -1;
@@ -200,11 +231,13 @@ static SemaphoreHandle_t s_model_lock;
 
 static dl::Model *load_model(void)
 {
+    if (s_open != ML_OPEN_PLAIN && s_open != ML_OPEN_KEYED) return nullptr;
     /* ESP-DL makes many small allocations (layers, tensor headers) and malloc puts anything under
        CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL in internal RAM, which TLS needs. Send them all to PSRAM while loading. */
     heap_caps_malloc_extmem_enable(0);
     /* nothrow: a failed top-level allocation means "model off", not an abort (ESP-DL's own allocations can still abort) */
-    dl::Model *m = new (std::nothrow) dl::Model((const char *)ml_model_start, fbs::MODEL_LOCATION_IN_FLASH_RODATA);
+    dl::Model *m = new (std::nothrow) dl::Model((const char *)ml_model_start, fbs::MODEL_LOCATION_IN_FLASH_RODATA, 0,
+                                                dl::MEMORY_MANAGER_GREEDY, s_open == ML_OPEN_KEYED ? ML_EV_KEY : nullptr);
     heap_caps_malloc_extmem_enable(CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL);
     if (m && !m->get_input()) { delete m; m = nullptr; }
     return m;
@@ -228,7 +261,8 @@ extern "C" bool ml_load(void)
 {
     if (!s_model_lock || xSemaphoreTake(s_model_lock, pdMS_TO_TICKS(2000)) != pdTRUE) return false;
     bool ok = true;
-    if (!s_model) {
+    if (!s_model && s_stats.locked) ok = false;          /* no key in this build: nothing to load, already reported */
+    else if (!s_model) {
         int64_t t0 = esp_timer_get_time();
         s_model = load_model();
         ok = s_model != nullptr;
@@ -359,9 +393,19 @@ extern "C" void ml_init(void)
     s_mb = xMessageBufferCreateStatic(sizeof s_mb_store, s_mb_store, &s_mb_struct);
     int64_t t0 = esp_timer_get_time();
     size_t heap0 = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+    s_open = model_open_state(ml_model_start, ML_EV_KEY);
+    if (s_open == ML_OPEN_NO_KEY || s_open == ML_OPEN_BAD_KEY) {
+        /* Built without the model key (any build from source): everything else runs, the model stays off. */
+        s_stats.locked = true;
+        if (s_open == ML_OPEN_NO_KEY) sys_event(EV_INFO, "ML Model - CarMind E.V locked (no key)");
+        else sys_event(EV_ERROR, "ML Model - CarMind E.V locked (wrong key)");
+        return;
+    }
+    if (s_open == ML_OPEN_BAD_FILE) { sys_event(EV_ERROR, "ML model file not recognised"); return; }
     s_model = load_model();
     if (!s_model) { sys_event(EV_ERROR, "ML model failed to load"); return; }
-    ESP_LOGI(TAG, "model %s (%s, %s) loaded in %lld ms, internal RAM %u B", ML_MODEL_VERSION, ML_QUANT, ML_TARGET_CHIP,
+    ESP_LOGI(TAG, "model %s (%s, %s) loaded in %lld ms, internal RAM %u B", ML_MODEL_VERSION,
+             s_open == ML_OPEN_KEYED ? "encrypted" : "plain", ML_TARGET_CHIP,
              (esp_timer_get_time() - t0) / 1000, (unsigned)(heap0 - heap_caps_get_free_size(MALLOC_CAP_INTERNAL)));
 #if CONFIG_CARMIND_ML_SELFTEST
     /* ESP-DL compares the model's output on its embedded test input with ESP-PPQ's simulation to 1 LSB. The S3 drifts

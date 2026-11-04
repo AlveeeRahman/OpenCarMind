@@ -1,11 +1,11 @@
 {
  "model": "CarMind E.V",
  "target": "esp32s3",
- "quant_type": "w8a16",
+ "encrypted": true,
  "files": {
   "onboard.espdl": {
    "bytes": 89152,
-   "sha256": "dfa9af416dfbd8641e053420acec390be56febd38fb5a12bc72686f9305de2ba"
+   "sha256": "562d00214bb17f8cdd7e37155a74629fbcec6029a2945ef9b8dac3f0d2e4e7de"
   },
   "norm.json": {
    "bytes": 928,

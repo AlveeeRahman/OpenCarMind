@@ -4,6 +4,7 @@
 
 - Model renamed to CarMind E.V (was Edge Model 1).
 - Model documentation shortened to what users of the board need; the training details are kept privately.
+- The model file ships encrypted (same model, `562d00214bb1` is the hash of the encrypted file). Release firmware includes the key and runs the model. A firmware built from source without the key runs everything else and shows the model as locked ("ML Model - CarMind E.V locked (no key)"). A build with a key checks that the key opens the model file.
 
 ## 2.4.0
 

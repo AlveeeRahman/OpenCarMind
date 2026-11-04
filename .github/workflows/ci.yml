@@ -40,6 +40,8 @@ jobs:
         run: |
           python tools/gen_ml_params.py ml/onboard "$RUNNER_TEMP/ml_params.h"
           diff main/ml_params.h "$RUNNER_TEMP/ml_params.h"
+      - name: The shipped models are encrypted
+        run: grep -q '^#define ML_MODEL_ENCRYPTED 1' main/ml_params.h
       - name: Report tool on the replay sessions
         run: |
           python tools/ocm_report.py samples/replay/obd dashboard/site
@@ -74,8 +76,16 @@ jobs:
           . "$IDF_PATH/export.sh"
           idf.py set-target esp32s3
           echo "CONFIG_OCM_WIFI_CLOCK_SYNC=$WIFI_CLOCK_SYNC" >> sdkconfig
+          # public CI never has the model keys: the firmware must build and run with the model locked
+          unset CARMIND_MODEL_KEY_EV CARMIND_MODEL_KEY_REV
           idf.py build
           idf.py size
+      - name: Built without keys, model reported locked
+        shell: bash
+        run: |
+          grep -q '^#define ML_KEY_EV_PRESENT 0' build/esp-idf/main/model_keys/carmind_model_keys.h
+          grep -q '^#define ML_MODEL_ENCRYPTED 1' main/ml_params.h
+          grep -aq 'locked (no key)' build/opencarmind.bin
       - name: One image that flashes at offset 0
         if: matrix.wifi_clock_sync == 'y'
         shell: bash

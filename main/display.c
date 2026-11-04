@@ -697,7 +697,7 @@ static void refresh_ml(const sched_system_t *sys)
     bool have = m.ready && m.last_class >= 0 && m.last_class < ML_N_CLASSES && np == ML_N_CLASSES;
 
     if (!m.ready) {
-        lv_label_set_text(s4_ml_class, sys->safe_mode ? "Safe mode" : "Model off");
+        lv_label_set_text(s4_ml_class, sys->safe_mode ? "Safe mode" : m.locked ? "Model locked" : "Model off");
         lv_obj_set_style_text_color(s4_ml_class, lv_color_hex(C_WARN), 0);
     } else if (!have) {
         lv_label_set_text(s4_ml_class, "No drive yet");
@@ -745,7 +745,7 @@ static void refresh_est(void)
         lv_obj_set_style_text_color(s4_est_val[i], lv_color_hex(fresh ? C_TEXT : C_MUTED), 0);
     }
     char info[32];
-    if (!m.ready) snprintf(info, sizeof info, "model off");
+    if (!m.ready) snprintf(info, sizeof info, m.locked ? "model locked" : "model off");
     else if (!have) snprintf(info, sizeof info, "waiting");
     else if (fresh) snprintf(info, sizeof info, "#%lu  %.1f s", (unsigned long)m.windows, (double)age_ms / 1000.0);
     else snprintf(info, sizeof info, "paused %lu s", (unsigned long)(age_ms / 1000));

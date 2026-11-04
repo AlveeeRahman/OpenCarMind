@@ -37,6 +37,7 @@ typedef struct {
     float    last_prob;
     float    last_est[3];         /* brake pressure bar, flywheel torque Nm, fuel rate L/h of the last inference */
     int64_t  last_at_ms;          /* esp_timer time of the last inference, 0 before the first */
+    bool     locked;              /* the model is encrypted and this firmware was built without its key */
 } ml_stats_t;
 void ml_get_stats(ml_stats_t *out);
 /* Class probabilities of the last window, in ML_CLASSES order. Returns how many were written, 0 before the first window. */

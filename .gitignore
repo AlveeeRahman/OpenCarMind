@@ -57,3 +57,8 @@ tmp/
 *.orig
 *.swp
 .idea/
+
+# model keys: only ever in the environment of an official build and in the build folder
+carmind_model_keys.h
+*.key
+model_keys/

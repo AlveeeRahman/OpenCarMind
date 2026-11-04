@@ -1,6 +1,12 @@
 # The on-board model: CarMind E.V
 
-One highly generalized and small convolutional network runs on the ESP32-S3 and answers two questions every time an OBD row arrives. What is the car doing right now, and what are three things the OBD port does not report? This page is for people who use the board. The model is a small quantised network run by ESP-DL. It takes about 89 KB on the chip and about 3.5 ms per run.
+One small on-board neural network runs on the ESP32-S3 and answers two questions every time an OBD row arrives. What is the car doing right now, and what are three things the OBD port does not report? This page is for people who use the board. The model is run by ESP-DL. It takes about 89 KB on the chip and about 3.5 ms per run.
+
+## Which firmware has the model
+
+The model file ships encrypted. The firmware in each GitHub release, and the one the desktop app flashes, includes the key, so the model runs. A firmware you build from source without the key runs everything else: logging, faults, fuel and economy from the car's own PIDs. The events list then shows "ML Model - CarMind E.V locked (no key)" and the model page shows "Model locked".
+
+The owner's release build sets the key in the environment (`CARMIND_MODEL_KEY_EV`, 32 hex characters). The build writes it into a header in the build folder only, and checks that it opens the model file. To run your own unencrypted ESP-DL export instead, put it in `ml/onboard/`, update `export.json` and regenerate `main/ml_params.h`; an unencrypted file needs no key.
 
 ## What it reads
 
@@ -53,10 +59,10 @@ Scores of the version on the chip, on data held out from training:
 
 | File | What it is |
 |---|---|
-| `ml/onboard/onboard.espdl` | the model |
+| `ml/onboard/onboard.espdl` | the model, encrypted |
 | `ml/onboard/norm.json` | channel order, means, standard deviations and which channels were trained |
 | `ml/onboard/targets.json` | class names, estimate names, means and standard deviations |
-| `ml/onboard/export.json` | model name, file sizes and hashes, target chip and quantisation type |
+| `ml/onboard/export.json` | model name, target chip, whether the model is encrypted, file sizes and hashes |
 | `main/ml_params.h` | generated from the files above by `tools/gen_ml_params.py` |
 
 ## Data

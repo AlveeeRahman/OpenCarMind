@@ -43,8 +43,13 @@ jobs:
         with:
           persist-credentials: false
       # The container's default shell is sh; ESP-IDF's export.sh needs bash.
+      # The model keys reach this step only, as environment variables; main/model_keys.cmake writes them into a header in
+      # the build folder and never prints them. Without them the firmware still builds, with the model locked.
       - name: Build the firmware
         shell: bash
+        env:
+          CARMIND_MODEL_KEY_EV: ${{ secrets.CARMIND_MODEL_KEY_EV }}
+          CARMIND_MODEL_KEY_REV: ${{ secrets.CARMIND_MODEL_KEY_REV }}
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           . "$IDF_PATH/export.sh"
@@ -55,6 +60,14 @@ jobs:
           cd build
           python -m esptool --chip esp32s3 merge-bin -o "../out/opencarmind-$version-firmware-merged.bin" @flash_args
           cp opencarmind.bin "../out/opencarmind-$version-firmware-app.bin"
+      # An official release must carry the model. Forks have no keys and build a locked firmware.
+      - name: Official release includes the model key
+        if: github.repository == 'AlveeeRahman/OpenCarMind'
+        shell: bash
+        run: |
+          if ! grep -q '^#define ML_KEY_EV_PRESENT 1' build/esp-idf/main/model_keys/carmind_model_keys.h; then
+            echo "::error::CARMIND_MODEL_KEY_EV secret is not set: this firmware would ship with the model locked"; exit 1
+          fi
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: firmware
