@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Model renamed to CarMind GenEdge (was Edge Model 1); README training section updated for the four-stage training and w8a16 precision.
+- Model documentation shortened to what users of the board need; the training details are kept privately.
 
 ## 2.4.0
 

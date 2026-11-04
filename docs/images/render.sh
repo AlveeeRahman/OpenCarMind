@@ -16,5 +16,4 @@ shot local 1472 480 docs/images/workflow/local-first.png
 shot sync 1472 480 docs/images/workflow/wifi-link.png
 shot scheduler 1472 480 docs/images/workflow/scheduler.png
 shot banner 1280 420 docs/images/banner.png
-shot train-to-deploy 1472 800 docs/images/workflow/train-to-deploy.png
 shot logo 512 512 assets/logo/opencarmind-logo.png 00000000
