@@ -68,6 +68,8 @@ static volatile float s_c = 1.0f;
 static volatile uint32_t s_pairs, s_dropped, s_saves;
 static volatile bool s_saved_ok;
 static bool s_safe, s_ready;
+static cal_nvs_t s_nv;                                      /* the calibration read from NVS at boot, merged when the card is read */
+static bool s_have_nv;
 static int64_t s_drive_start_ms, s_last_row_ms;
 static float s_row_ms;
 
@@ -116,10 +118,33 @@ static void save(void)
     ESP_LOGI(TAG, "state %s in %lld ms", s_saved_ok ? "saved" : "NOT saved", (esp_timer_get_time() - t0) / 1000);
 }
 
+/* Read the learned state from the card once, in the rev task; under the lock because the obd task updates phys and cal. */
+static void load_state(void)
+{
+    if (!sdlog_ok()) return;
+#if CONFIG_CARMIND_REV_ENABLE
+    rev_fuel_t *fuel = &s_fuel;
+#else
+    rev_fuel_t *fuel = NULL;
+#endif
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    rev_load_t how = rev_state_load(STATE_PATH, fuel, &s_phys, &s_pick, &s_cal, PRIOR_ID);
+    if (s_have_nv && s_nv.fill_rev > s_cal.fill_rev) { s_cal.c = s_nv.c; s_cal.fill_rev = s_nv.fill_rev; }   /* NVS is newer than the card */
+#if CONFIG_CARMIND_REV_CAL
+    s_c = s_cal.c;
+#endif
+    xSemaphoreGive(s_lock);
+    if (how == REV_LOAD_NONE) ESP_LOGI(TAG, "no learned state on the card: starting from the factory values");
+    else if (how == REV_LOAD_OTHER_MODEL) sys_event(EV_INFO, "Fuel learning restarted: new R.E.V model");
+    else ESP_LOGI(TAG, "learned state loaded%s", how == REV_LOAD_TMP ? " from the .tmp copy" : "");
+    s_saved_ok = how != REV_LOAD_NONE;
+}
+
 static void rev_task(void *arg)
 {
     (void)arg;
     static rev_msg_t m;
+    load_state();
     bool commit_due = false, dirty = false;
     int64_t last_pair = 0, last_save = esp_timer_get_time() / 1000;
     for (;;) {
@@ -195,19 +220,11 @@ void rev_init(void)
         ESP_LOGW(TAG, "safe mode: no learning, fuel calibration x%.3f from NVS", (double)s_c);
         return;
     }
-    if (sdlog_ok()) {
-#if CONFIG_CARMIND_REV_ENABLE
-        rev_fuel_t *fuel = &s_fuel;
-#else
-        rev_fuel_t *fuel = NULL;
-#endif
-        rev_load_t how = rev_state_load(STATE_PATH, fuel, &s_phys, &s_pick, &s_cal, PRIOR_ID);
-        if (how == REV_LOAD_NONE) ESP_LOGI(TAG, "no learned state on the card: starting from the factory values");
-        else if (how == REV_LOAD_OTHER_MODEL) sys_event(EV_INFO, "Fuel learning restarted: new R.E.V model");
-        else ESP_LOGI(TAG, "learned state loaded%s", how == REV_LOAD_TMP ? " from the .tmp copy" : "");
-        s_saved_ok = how != REV_LOAD_NONE;
-    }
-    if (have_nv && nv.fill_rev > s_cal.fill_rev) { s_cal.c = nv.c; s_cal.fill_rev = nv.fill_rev; }   /* NVS is newer than the card */
+    /* The SD state file is read by the rev task (6 KB stack), not here: FATFS reads and formatted logs overflow the 3.5 KB main
+       task stack (seen on the board: "stack overflow in task main" right after the model self-test). NVS stays here, since the rev
+       task's stack is in PSRAM and NVS runs with the flash cache disabled. Until the file is read, c comes from NVS. */
+    s_nv = nv; s_have_nv = have_nv;
+    if (have_nv && nv.fill_rev > s_cal.fill_rev) { s_cal.c = nv.c; s_cal.fill_rev = nv.fill_rev; }
     s_c = s_cal.c;
 #if !CONFIG_CARMIND_REV_CAL
     s_c = 1.0f;
