@@ -34,7 +34,7 @@
   "applicationCategory": "Automotive data logger",
   "keywords": "ESP32-S31, ESP-Mosaico, OBD-II logger, OBD2 data logger, ESP32 OBD2, ESP32-S3, ELM327 BLE, Bluetooth LE OBD adapter, TinyML, edge AI, on-device inference, ESP-DL, car diagnostics, open source",
   "license": "https://github.com/AlveeeRahman/OpenCarMind/blob/main/LICENSE",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "dateModified": "2026-11-03",
   "downloadUrl": "https://github.com/AlveeeRahman/OpenCarMind/releases/latest",
   "author": {"@type": "Person", "name": "Alvee Rahman", "url": "https://github.com/AlveeeRahman"}
@@ -65,7 +65,7 @@
     {"@type": "Question", "name": "Which OBD2 adapters work with OpenCarMind?",
      "acceptedAnswer": {"@type": "Answer", "text": "The LELink has been tested on the board. Veepeak OBDCheck BLE and BLE+, OBDLink CX, Carista, Vgate iCar Pro BLE 4.0 and vLinker MC+ are expected to work from their published Bluetooth layouts. OBDLink MX+, OBDLink LX and other Classic-only adapters will not work. The full table with Amazon links is in docs/ADAPTERS.md."}},
     {"@type": "Question", "name": "What does the on-board AI model do?",
-     "acceptedAnswer": {"@type": "Answer", "text": "A 1-D convolutional network with 38,679 parameters classifies the last 30 seconds of driving as stopped, braking, accelerating or cruising, and estimates brake pressure, flywheel torque and fuel rate, which the OBD port does not report. It is quantised to 8-bit weights, is 93 KB, and runs in about 9 ms per row on the chip."}},
+     "acceptedAnswer": {"@type": "Answer", "text": "Edge Model 1, a 1-D convolutional network with 38,679 parameters, classifies the last 5 seconds of driving as stopped, braking, accelerating or cruising, and estimates brake pressure, flywheel torque and fuel rate, which the OBD port does not report. It learned from the public KIA drives, 325 cars of the Vehicle Energy Dataset and the author's drives, is 89 KB as int8, and runs in about 3.5 ms on the chip."}},
     {"@type": "Question", "name": "Does OpenCarMind need a phone, an account or the internet?",
      "acceptedAnswer": {"@type": "Answer", "text": "No. Drives are saved to an SD card in the car as CSV, JSON and text. Wi-Fi is optional: it sets the clock and, once you pair the board with the desktop app over USB, sends new drives to that app on your own computer every 10 seconds while the car is parked. Nothing goes to a cloud."}},
     {"@type": "Question", "name": "Which board does it run on?",
@@ -149,7 +149,7 @@
     <h1>An OBD-II logger that runs AI on the chip</h1>
     <p class="tag">OpenCarMind turns an ESP32-S3 board and a Bluetooth LE OBD-II adapter into a car data logger with a 93 KB neural network on board. It needs no phone, no account and no internet. Every drive goes to an SD card in the car, and to the desktop app on your own computer if you pair it.</p>
     <div class="ctas">
-      <a class="cta primary" href="https://github.com/AlveeeRahman/OpenCarMind/releases/latest">Download 2.3.0</a>
+      <a class="cta primary" href="https://github.com/AlveeeRahman/OpenCarMind/releases/latest">Download 2.4.0</a>
       <a class="cta" href="https://github.com/AlveeeRahman/OpenCarMind">Source on GitHub</a>
       <a class="cta" href="#adapters">Check your adapter</a>
     </div>
@@ -160,7 +160,7 @@
     <h2>How it works</h2>
     <div class="grid">
       <div class="card"><h3>Every field the car reports</h3><p>All standard Mode 01 fields (70 decoded), battery voltage, the VIN, and stored, pending and permanent trouble codes. One CSV row per poll cycle.</p></div>
-      <div class="card"><h3>A neural network on the ESP32-S3</h3><p>Classifies the last 30 s as stopped, braking, accelerating or cruising, and estimates brake pressure, flywheel torque and fuel rate. About 9 ms per run, 0.6 % of one core.</p></div>
+      <div class="card"><h3>A neural network on the ESP32-S3</h3><p>Edge Model 1 classifies the last 5 s as stopped, braking, accelerating or cruising, and estimates brake pressure, flywheel torque and fuel rate. Trained on three sources, tested on 37 cars it never saw. About 3.5 ms per run.</p></div>
       <div class="card"><h3>Local-first storage</h3><p>Plain CSV, JSON and text on an SD card you hold, saved every 10 s. A live line on the screen says when it is safe to cut the power.</p></div>
       <div class="card"><h3>Setup over USB, upload over Wi-Fi</h3><p>The desktop app pairs with the board through an authenticated USB door, sets Wi-Fi and the time zone, and flashes firmware. Parked at home, the board sends new drives to the app over TLS every 10 s.</p></div>
       <div class="card"><h3>Fuel economy in your units</h3><p>km/L, or mpg in the US and the UK, chosen once from the country your Wi-Fi access point broadcasts, and kept after a reboot (tested with a US access point). The fuel rate comes from the car's own PID, from airflow, or from the model on older cars, and "--" when the car gives nothing.</p></div>
@@ -201,7 +201,7 @@
 
   <section id="model" class="narrow">
     <h2>The model</h2>
-    <p>A 1-D convolutional network<sup><a href="#r1">[1]</a></sup> with 38,679 parameters, built from residual depthwise-separable blocks<sup><a href="#r2">[2]</a>,<a href="#r3">[3]</a></sup>, quantised to 8-bit weights and 16-bit activations and run by ESP-DL<sup><a href="#r4">[4]</a></sup>. It reads thirty one-second steps of seven channels: rpm, speed, load, throttle, both fuel trims and coolant temperature. On held-out drives, the version on the chip scores a manoeuvre macro-F1 of 0.912 and a mean estimator R² of 0.830.</p>
+    <p>A 1-D convolutional network<sup><a href="#r1">[1]</a></sup> with 38,679 parameters, built from residual depthwise-separable blocks<sup><a href="#r2">[2]</a>,<a href="#r3">[3]</a></sup>, quantised to 8-bit weights and 16-bit activations and run by ESP-DL<sup><a href="#r4">[4]</a></sup>. It reads five one-second steps of nine channels. Trained on the public KIA drives, 325 cars of the Vehicle Energy Dataset and the author's drives, the version on the chip places 96.1 % of windows from 37 unseen VED cars in an allowed class and scores a manoeuvre macro-F1 of 0.887 on held-out KIA drives. <a href="https://github.com/AlveeeRahman/OpenCarMind/blob/main/docs/MODEL_CASE_STUDY.md">The case study</a> shows every variant we tried and how to send us an architecture.</p>
     <p>It is trained quantisation-aware from the start<sup><a href="#r5">[5]</a>,<a href="#r6">[6]</a></sup>, exported to ONNX, quantised by ESP-PPQ<sup><a href="#r7">[7]</a></sup>, and checked again on the board at every boot. The approach follows TinyML work on running networks within microcontroller memory<sup><a href="#r8">[8]</a>–<a href="#r10">[10]</a></sup>. The model was trained on one car, so accuracy on other cars has not been measured.</p>
     <figure class="fig" style="max-width:30rem"><img src="images/workflow/edge_architecture.png" alt="Model layers: 30 by 30 input, stem to 48 channels, 6 residual depthwise-separable blocks, pooling, dense 64, manoeuvre head and estimate head" loading="lazy" width="2800" height="2920"></figure>
   </section>
@@ -238,7 +238,7 @@ idf.py -p /dev/cu.usbmodemXXXX flash</code></pre>
     <h2 id="questions">Questions</h2>
     <details><summary>Can an ESP32 read OBD-II data over Bluetooth?</summary><p>Yes, from a Bluetooth LE adapter that speaks the ELM327 command set. The ESP32-S3 has no Classic Bluetooth radio, so Classic-only adapters (Bluetooth 3.0, SPP) cannot connect. OpenCarMind finds the adapter, picks its serial characteristics, pairs only when the adapter asks, and polls every Mode 01 field the car reports.</p></details>
     <details><summary>Which OBD2 adapters work with OpenCarMind?</summary><p>The LELink has been tested on the board. Veepeak OBDCheck BLE and BLE+, OBDLink CX, Carista, Vgate iCar Pro BLE 4.0 and vLinker MC+ are expected to work from their published Bluetooth layouts. OBDLink MX+, OBDLink LX and other Classic-only adapters will not work. See the <a href="#adapters">table above</a>.</p></details>
-    <details><summary>What does the on-board AI model do?</summary><p>It classifies the last 30 seconds of driving as stopped, braking, accelerating or cruising, and estimates brake pressure, flywheel torque and fuel rate, which the OBD port does not report. It is 93 KB and runs in about 9 ms per row.</p></details>
+    <details><summary>What does the on-board AI model do?</summary><p>It classifies the last 5 seconds of driving as stopped, braking, accelerating or cruising, and estimates brake pressure, flywheel torque and fuel rate, which the OBD port does not report. It is 89 KB and runs in about 3.5 ms per row.</p></details>
     <details><summary>Does it need a phone, an account or the internet?</summary><p>No. Drives are saved to an SD card in the car. Wi-Fi is optional: it sets the clock and, once paired, sends new drives to the desktop app on your own computer while the car is parked. Nothing goes to a cloud.</p></details>
     <details><summary>Which board does it run on?</summary><p>The Waveshare ESP32-S3-LCD-1.47B. Other ESP32-S3 boards need the pin map in <code>main/board.h</code> edited.</p></details>
     <details><summary>Will OpenCarMind run on the ESP32-S31 and ESP-Mosaico?</summary><p>That is the next port. The S31 runs different machine code from the S3, but both use ESP-IDF, and OpenCarMind already compiles and links for the S31 with only the pin map and one wakeup call changed. The model needs a fresh export for the S31. Nothing has run on a real Mosaico yet.</p></details>
@@ -269,7 +269,7 @@ idf.py -p /dev/cu.usbmodemXXXX flash</code></pre>
   </section>
 
   <footer>
-    OpenCarMind is open source under the MIT licence. Version 2.3.0. Also by the same author: <a href="https://alveeerahman.github.io/mr-usage/">Mr. Usage</a>, <a href="https://alveeerahman.github.io/llm-dogfight/">LLM Dogfight</a>, <a href="https://alveeerahman.github.io/skill-vision/">Skill Vision</a>, <a href="https://alveeerahman.github.io/agent-oracle/">Agent Oracle</a>, <a href="https://alveeerahman.github.io/research-hound/">Research Hound</a>.
+    OpenCarMind is open source under the MIT licence. Version 2.4.0. Also by the same author: <a href="https://alveeerahman.github.io/mr-usage/">Mr. Usage</a>, <a href="https://alveeerahman.github.io/llm-dogfight/">LLM Dogfight</a>, <a href="https://alveeerahman.github.io/skill-vision/">Skill Vision</a>, <a href="https://alveeerahman.github.io/agent-oracle/">Agent Oracle</a>, <a href="https://alveeerahman.github.io/research-hound/">Research Hound</a>.
   </footer>
 </div>
 </body>

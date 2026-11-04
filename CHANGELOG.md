@@ -1,9 +1,14 @@
 # Changelog
 
-## Unreleased
+## 2.4.0
+
+- Edge Model 1 (`dfa9af416dfb`, 89,152 bytes, 38,679 parameters, `w8a16`). Same architecture, new training: the public KIA drives plus 325 cars of the Vehicle Energy Dataset and twelve of the author's drives, partial labels where there is no brake switch, augmentation that imitates other cars, the adapter's real row spacing, and a fitted temperature folded into the class layer. Reads 5 s of nine channels (MAF and intake temperature now used, MAP stays off). On data held out from training: KIA macro-F1 0.887, 98.5 % of the author's held-out windows and 96.1 % of 37 unseen VED cars in an allowed class, fuel R² 0.688 on unseen cars with MAF hidden. It follows a manoeuvre change within 3 s 88 % of the time, against 55 % for a 10 s model. About 3.5 ms per run. Details are in `docs/MODEL.md`, and every variant tried, including contrastive pre-training and distillation, in `docs/MODEL_CASE_STUDY.md`.
+- Architecture proposals: a new issue template. We train what you send on the same data and splits and post the scores.
+- Figures for the model, the inference path and training-to-board updated. The old model's bench summary (`ml/onboard/bench_summary.json`) is removed.
+- Field check: the author drove the board with the new features (the drive ending when the engine stops, the BOOT power-off, fuel economy, units) and the 10 s model, and reported every feature working.
 
 - Fuel economy: the first screen's LOAD tile now shows the drive's economy in km/L, or mpg in the US and the UK (LOAD moved to page 3, replacing BARO). The fuel rate comes from PID 0x5E when the car has it, else from MAF with the commanded equivalence ratio (PID 0x44, where 0 means decel fuel cut), else from the on-board model's estimate, shown in amber. New CSV columns `fuel_lph_calc`, `fuel_src`, `trip_km`, `trip_fuel_l` (`main/econ.c`, host-tested).
-- Units: metric by default; on the first Wi-Fi connection the access point's country code (802.11d) sets miles and mpg for the US and the UK, once, stored in NVS (`main/units.c`). A UK time zone is the fallback. Tested on the board with a US access point: it switched to miles and mpg and kept them after a reboot. `units` in `config.json` (`metric`, `us`, `uk`, `auto`) overrides it. Speed, odometer and MIL distance follow the units on screen; the session JSON records them.
+- Units: metric by default. On the first Wi-Fi connection the access point's country code (802.11d) sets miles and mpg for the US and the UK, once, stored in NVS (`main/units.c`). A UK time zone is the fallback. Tested on the board with a US access point: it switched to miles and mpg and kept them after a reboot. `units` in `config.json` (`metric`, `us`, `uk`, `auto`) overrides it. Speed, odometer and MIL distance follow the units on screen, and the session JSON records them.
 - Desktop app: fuel used and economy per drive in each drive's units, an average-economy card, and a table of every value the car reported in a drive (columns the car never filled are left out).
 - Scheduler: the model job's stall limit is one 10 s label window instead of three 1 s periods, which the car's own row gaps (up to 3.6 s) could trip.
 
