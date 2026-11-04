@@ -1,6 +1,6 @@
-# The on-board model: Edge Model 1
+# The on-board model: CarMind Edge
 
-One small convolutional network runs on the ESP32-S3 and answers two questions every time an OBD row arrives. What is the car doing right now, and what are three things the OBD port does not report? Edge Model 1 is the first OpenCarMind model trained on more than one car. [MODEL_CASE_STUDY.md](MODEL_CASE_STUDY.md) has every variant we trained on the way here and how each one scored.
+One highly generalized and small convolutional network runs on the ESP32-S3 and answers two questions every time an OBD row arrives. What is the car doing right now, and what are three things the OBD port does not report? Edge Model 1 is the first OpenCarMind model trained on more than one car. [MODEL_CASE_STUDY.md](MODEL_CASE_STUDY.md) has every variant we trained on the way here and how each one scored.
 
 ## Inputs
 
@@ -47,7 +47,7 @@ It has 38,679 parameters and needs about 0.16 million multiply-adds per window. 
 
 ## Training
 
-Quantisation-aware from the first step: every forward pass rounds weights and activations to the int8 grid with power-of-two scales, the scheme ESP-DL uses. Each batch mixes the three sources (about 55 % KIA, 30 % VED, 15 % the author's car). The KIA drives are replayed through the author's real row spacing (median 1.45 s, gaps over 3 s) and binned exactly as the firmware does. Augmentation imitates other cars: whole sensors switched off, a random gain per channel in raw units (±25 % for MAF and load, which covers engine size, ±8 % elsewhere), and thinned slow channels. Three seeds were trained, and the one with the best validation score ships.
+Adversarial Training coupled with Contrastive learning techniques were applied for increased generalizatio. Quantization-aware methods were used from the very first step: every forward pass rounds weights and activations to the int8 grid with power-of-two scales, the scheme ESP-DL uses. Each batch mixes the three sources (about 55 % KIA, 30 % VED, 15 % the author's car). The KIA drives are replayed through the author's real row spacing (median 1.45 s, gaps over 3 s) and binned exactly as the firmware does. Augmentation imitates other cars: whole sensors switched off, a random gain per channel in raw units (±25 % for MAF and load, which covers engine size, ±8 % elsewhere), and thinned slow channels. Three seeds were trained, and the one with the best validation score ships.
 
 ## Scores
 
@@ -59,7 +59,7 @@ All test data was held out from training and model selection. The VED test set i
 | Author's car, two held-out drives | class in the allowed set 98.5 %, macro-F1 0.989 on unambiguous windows | 0.884 |
 | 37 unseen VED cars (26 petrol, 10 hybrid, 1 plug-in) | class in the allowed set 96.1 %, macro-F1 0.966 on unambiguous windows | 0.940 with MAF, 0.688 with MAF hidden |
 
-Scores are for the int8 file on the chip. It gives the same class as the float network on 99.9 % of KIA windows, 100 % of the author's and 99.9 % of VED's. The VED fuel score with MAF partly measures the formula above, since the target is computed from MAF. The "MAF hidden" score is the one that matters, because that is when the board uses the estimate.
+Scores are for the int8 file on the chip. It gives the same class as the float network on 99.9 % of KIA windows, 100 % in my car and 99.9 % of VED's. The VED fuel score with MAF partly measures the formula above, since the target is computed from MAF. The "MAF hidden" score is the one that matters, because that is when the board uses the estimate.
 
 How fast it reacts: on held-out KIA drives with 1,498 manoeuvre changes, the median time from a label change to the model's first matching answer is 0 s, the mean 1.5 s, and 88 % of changes are matched within 3 s. The previous 10 s model, on the same labels, had a median of 2.8 s and matched 55 % within 3 s. The label itself needs the pedal down for 30 % of 5 s, so a real brake press shows about 1.5 s after the foot goes down.
 
