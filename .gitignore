@@ -26,3 +26,12 @@ dashboard/site/
 /desktop/app/src-tauri/resources/*.bin
 /desktop/app/src-tauri/resources/firmware-version.txt
 /desktop/app/src-tauri/resources/esptool-LICENSE.txt
+
+# Wi-Fi names, passwords and other secrets never go in the repo
+.env
+.env.*
+secrets.*
+*secret*
+*.nvs.bin
+nvs*.bin
+wifi*.json
