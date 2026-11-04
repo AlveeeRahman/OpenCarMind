@@ -45,7 +45,7 @@ The board asks the engine computer for every field it supports, shows the live v
 
 When an OBD row arrives, the board cuts the last 5 seconds into five one-second bins that end at that moment. Each bin takes the latest value, held for up to 3 seconds if a channel was not read in time. The model runs in its own task, so logging never waits for it. Every row adds one line to the drive's `.ml.csv` file, and the newest answer shows on page 5.
 
-On the author's car, a row arrives every 1.35 to 1.65 seconds, so a 5 s window holds about three rows. One run of the model takes about 3.5 ms on the ESP32-S3, measured at the boot self-test.
+On my car, a row arrives every 1.35 to 1.65 seconds, so a 5 s window holds about three rows. One run of the model takes about 3.5 ms on the ESP32-S3, measured at the boot self-test.
 
 ### Scheduler and safety
 
