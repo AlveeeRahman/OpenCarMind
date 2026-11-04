@@ -3,7 +3,7 @@
 ## Unreleased
 
 - Fuel economy: the first screen's LOAD tile now shows the drive's economy in km/L, or mpg in the US and the UK (LOAD moved to page 3, replacing BARO). The fuel rate comes from PID 0x5E when the car has it, else from MAF with the commanded equivalence ratio (PID 0x44, where 0 means decel fuel cut), else from the on-board model's estimate, shown in amber. New CSV columns `fuel_lph_calc`, `fuel_src`, `trip_km`, `trip_fuel_l` (`main/econ.c`, host-tested).
-- Units: metric by default; on the first Wi-Fi connection the access point's country code (802.11d) sets miles and mpg for the US and the UK, once, stored in NVS (`main/units.c`). A UK time zone is the fallback. `units` in `config.json` (`metric`, `us`, `uk`, `auto`) overrides it. Speed, odometer and MIL distance follow the units on screen; the session JSON records them.
+- Units: metric by default; on the first Wi-Fi connection the access point's country code (802.11d) sets miles and mpg for the US and the UK, once, stored in NVS (`main/units.c`). A UK time zone is the fallback. Tested on the board with a US access point: it switched to miles and mpg and kept them after a reboot. `units` in `config.json` (`metric`, `us`, `uk`, `auto`) overrides it. Speed, odometer and MIL distance follow the units on screen; the session JSON records them.
 - Desktop app: fuel used and economy per drive in each drive's units, an average-economy card, and a table of every value the car reported in a drive (columns the car never filled are left out).
 - Scheduler: the model job's stall limit is one 10 s label window instead of three 1 s periods, which the car's own row gaps (up to 3.6 s) could trip.
 
