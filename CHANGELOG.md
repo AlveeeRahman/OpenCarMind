@@ -14,6 +14,7 @@ A new brand, a screen made for the LCD, and a visible power-off.
 - **Supply chain**: CodeQL, a fuzz harness over the input parsers, Dependabot, hash-pinned test dependencies and release provenance.
 - **USB door**: unbiased pairing codes. The desktop app explains an expired session and can restart the board.
 - **Desktop app**: says new boards start on R.E.V, and shows the running model's mark.
+- **Report image**: `ghcr.io/alveeerahman/opencarmind-report` serves the SD card's drives as the HTML report (`dashboard/Dockerfile`).
 - **Fixes**: the status LED no longer drops a frame when the button and the LED task update it at once ("RMT transaction is busy"). The boot log no longer lists the saved Wi-Fi networks. The model self-test log says plainly when the board differs from the PC simulation.
 - **Figures**: the seven workflow figures were redrawn with straight connectors and larger text, the three README GIFs re-rendered with the brand fonts, and the screen mock-ups and the Mosaico concept updated to the new colours.
 - **Model marks**: small variants for figures, tags and GIFs, and figures rendered at 3x, so the marks stay sharp when zoomed.

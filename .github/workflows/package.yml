@@ -1,0 +1,86 @@
+name: package
+
+# Publishes the report tool as a container image, ghcr.io/alveeerahman/opencarmind-report (dashboard/Dockerfile):
+# "edge" from main when the tool or the Dockerfile changes, and the version number on each release tag. The image
+# carries build provenance and an SBOM. Follows https://docs.github.com/en/actions/tutorials/publish-packages/publish-docker-images
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]                # path filters are not evaluated for tag pushes, so every release tag publishes
+    paths:
+      - "tools/ocm_report.py"
+      - "dashboard/Dockerfile"
+      - ".github/workflows/package.yml"
+  pull_request:               # build and smoke-test only; nothing is published from a pull request
+    paths:
+      - "tools/ocm_report.py"
+      - "dashboard/Dockerfile"
+      - ".github/workflows/package.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: package-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/alveeerahman/opencarmind-report
+
+jobs:
+  image:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write          # push to ghcr.io with the workflow's own GITHUB_TOKEN
+      id-token: write          # sign the provenance
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - if: github.event_name != 'pull_request'
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=raw,value=edge,enable={{is_default_branch}}
+            type=ref,event=pr
+      - id: push
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: dashboard/Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          load: ${{ github.event_name == 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # attestations make a manifest list, which a local load cannot hold: published images only
+          provenance: ${{ github.event_name == 'pull_request' && 'false' || 'mode=max' }}
+          sbom: ${{ github.event_name != 'pull_request' }}
+      - if: github.event_name != 'pull_request'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+      - name: Smoke test the image on the replay samples
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+          PR: ${{ github.event_name == 'pull_request' }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          if [ "$PR" = true ]; then ref="$(printf '%s\n' "$TAGS" | head -n1)"; else ref="$IMAGE@$DIGEST"; fi
+          docker run -d --name report -v "$PWD/samples/replay/obd:/data:ro" -p 8080:8080 "$ref"
+          for i in $(seq 1 30); do curl -fsS http://localhost:8080/ >/dev/null && break; sleep 1; done
+          curl -fsS http://localhost:8080/ | grep -qi "<html" && echo "report served"
+          docker rm -f report
