@@ -24,6 +24,6 @@ shot banner 1280 420 docs/images/banner.png
 shot logo 512 512 assets/logo/opencarmind-logo.png 00000000
 shot mosaico-rev 1600 740 docs/images/mosaico-rev.png
 shot lcd-amoled 1200 260 docs/images/lcd-amoled.png
-shot leaders 1600 790 docs/images/leaders.png
+shot leaders 1600 810 docs/images/leaders.png
 shot learner-board 1600 740 docs/images/learner-board.png
 shot board-bench 1880 860 docs/images/board-bench.png

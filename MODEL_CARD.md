@@ -25,6 +25,7 @@ Evidence level, shown in the "Where" column:
 | **Q** | The quantised model, or its integer classifier head on features the board logged, run on a computer |
 | **R** | Replay: recorded drives played through the learners on a computer, float network, airflow hidden |
 | **D** | Drives of my own car (Nissan Sentra), labelled by a rule on the raw OBD signals |
+| **U** | Unseen test drives: two later drives of my car that no model on `main` had seen, driven unusually ([docs/TEST_DRIVES.md](docs/TEST_DRIVES.md)) and scored as an unknown car. The closed-throttle level for the labels is read from each drive, and learners start from their factory state. The models run as their int8 files on a computer. |
 
 ## The two models at a glance
 
@@ -39,6 +40,10 @@ Evidence level, shown in the "Where" column:
 | Learns in the car | tank size and fill-up only (both models) | fuel read-out, airflow constant (engine size, which sizes the torque estimate), tank size | the same, outlier-robust |
 | Held-out windows, 2 drives of my car (**Q, D**) | 78.9 % | 78.3 % | 95.1 % |
 | Steady cruising, foot on the gas (**Q, D**) | 13.7 % right | 10.7 % right | 87.5 % right |
+| Unseen test drives, all labelled windows (**Q, U**) | 73.5 % | 71.8 % | 94.5 % |
+| Steady cruising, unseen test drives (**Q, U**) | 14.6 % right | 7.9 % right | 88.9 % right |
+| Fuel R², unseen test drives, factory, airflow hidden (**Q, U**) | 0.832 | 0.783 | 0.783 |
+| Fuel R² after learning through both drives (**R, U**) | does not learn | 0.771 | 0.756 |
 
 ## From E.V to the final R.E.V, step by step
 

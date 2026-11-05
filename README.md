@@ -16,35 +16,50 @@ Version 2.5.1. Licence: MIT. Website: <https://alveeerahman.github.io/OpenCarMin
 
 ## Contents
 
-1. [Choose your model](#choose-your-model)
-2. [What you get](#what-you-get)
-3. [Local-first](#local-first)
-4. [How it works](#how-it-works)
-    - 4.1 [On-board inference](#on-board-inference)
-    - 4.2 [Scheduler and safety](#scheduler-and-safety)
-5. [The screens](#the-screens)
-6. [Dashboard](#dashboard)
-7. [Desktop app](#desktop-app)
-8. [Hardware](#hardware)
-    - 8.1 [Adapter compatibility](#adapter-compatibility)
-9. [Build and flash](#build-and-flash)
-10. [The models](#the-models)
-    - 10.1 [CarMind R.E.V results so far](#carmind-rev-results-so-far)
-    - 10.2 [How the models are made](#how-the-models-are-made)
-    - 10.3 [What R.E.V learns](#what-rev-learns)
-    - 10.4 [How R.E.V learns on the board](#how-rev-learns-on-the-board)
-    - 10.5 [Looking inside R.E.V with explainable AI](#looking-inside-rev-with-explainable-ai)
-    - 10.6 [How R.E.V got better, step by step](#how-rev-got-better-step-by-step)
-11. [Status](#status)
-12. [Next board: ESP-Mosaico with the ESP32-S31](#next-board-esp-mosaico-with-the-esp32-s31)
-    - 12.1 [How the S3 and the S31 are compatible](#how-the-s3-and-the-s31-are-compatible)
-    - 12.2 [Continual learning on the S31](#continual-learning-on-the-s31)
-    - 12.3 [A release for the Mosaico](#a-release-for-the-mosaico)
-13. [Limitations and future work](#limitations-and-future-work)
-14. [Planned](#planned)
-15. [References](#references)
-16. [Repository layout](#repository-layout)
-17. [Credits and licence](#credits-and-licence)
+<ol type="I">
+<li><a href="#choose-your-model">Choose your model</a></li>
+<li><a href="#what-you-get">What you get</a></li>
+<li><a href="#local-first">Local-first</a></li>
+<li><a href="#how-it-works">How it works</a>
+<ol type="A">
+<li><a href="#on-board-inference">On-board inference</a></li>
+<li><a href="#scheduler-and-safety">Scheduler and safety</a></li>
+</ol>
+</li>
+<li><a href="#the-screens">The screens</a></li>
+<li><a href="#dashboard">Dashboard</a></li>
+<li><a href="#desktop-app">Desktop app</a></li>
+<li><a href="#hardware">Hardware</a>
+<ol type="A">
+<li><a href="#adapter-compatibility">Adapter compatibility</a></li>
+</ol>
+</li>
+<li><a href="#build-and-flash">Build and flash</a></li>
+<li><a href="#the-models">The models</a>
+<ol type="A">
+<li><a href="#the-test-drives">The test drives</a></li>
+<li><a href="#carmind-rev-results-so-far">CarMind R.E.V results so far</a></li>
+<li><a href="#how-the-models-are-made">How the models are made</a></li>
+<li><a href="#what-rev-learns">What R.E.V learns</a></li>
+<li><a href="#how-rev-learns-on-the-board">How R.E.V learns on the board</a></li>
+<li><a href="#looking-inside-rev-with-explainable-ai">Looking inside R.E.V with explainable AI</a></li>
+<li><a href="#how-rev-got-better-step-by-step">How R.E.V got better, step by step</a></li>
+</ol>
+</li>
+<li><a href="#status">Status</a></li>
+<li><a href="#next-board-esp-mosaico-with-the-esp32-s31">Next board: ESP-Mosaico with the ESP32-S31</a>
+<ol type="A">
+<li><a href="#how-the-s3-and-the-s31-are-compatible">How the S3 and the S31 are compatible</a></li>
+<li><a href="#continual-learning-on-the-s31">Continual learning on the S31</a></li>
+<li><a href="#a-release-for-the-mosaico">A release for the Mosaico</a></li>
+</ol>
+</li>
+<li><a href="#limitations-and-future-work">Limitations and future work</a></li>
+<li><a href="#planned">Planned</a></li>
+<li><a href="#references">References</a></li>
+<li><a href="#repository-layout">Repository layout</a></li>
+<li><a href="#credits-and-licence">Credits and licence</a></li>
+</ol>
 
 ## Choose your model
 
@@ -208,9 +223,17 @@ Both models are small quantised 1-D convolutional networks run by ESP-DL<sup>[[6
 
 The [model card](MODEL_CARD.md) puts every step from E.V to the final R.E.V in one table: size, speed, classifier and fuel-learner scores, before and after, with a key to each metric and where it was measured.
 
+### The test drives
+
+I drove my car twice to test the models, and not the way I usually drive. I drove rough, switched cruise control on and off at speed, and did sudden acceleration and brake checks between traffic lights. One drive includes a long stop while police dealt with an emergency on the road. None of the models on `main` had seen these drives. I score them as if they came from a car the models never met: nothing carries over from my earlier drives, and every learner starts from its factory state.
+
+<p align="center"><img src="docs/images/test-drives-timeline.png" width="900" alt="My two test drives: speed, throttle, accelerator pedal and engine rpm against time, with bands for stops at traffic lights, a long stop for a police emergency, steady holds and holds with the foot off the pedal"></p>
+
+A comparison with my everyday drives is in [docs/TEST_DRIVES.md](docs/TEST_DRIVES.md).
+
 ### CarMind R.E.V results so far
 
-<p align="center"><img src="docs/images/leaders.png" width="900" alt="CarMind model leaders. R.E.V: 95.1 percent of held-out windows right on two drives of my car, cruising 87.5, braking 96.8, accelerating 91.0, stopped 98.6, KIA test accuracy 87.1, fuel R squared 0.867 learned and 0.867 with 1 percent bad labels. R.E.V (old): 78.3 percent, cruising 10.7. E.V: 78.9 percent held-out, cruising 13.7, does not learn"></p>
+<p align="center"><img src="docs/images/leaders.png" width="900" alt="CarMind model leaders: the models on main, tested on two drives they never saw, scored as an unknown car. R.E.V: 94.5 percent of windows right, cruising 88.9, braking 98.4, accelerating 87.7, stopped 99.4, earlier held-out drives 95.1, KIA test 87.1, fuel R squared 0.867 learned on 31 cars. R.E.V (old): 71.8 percent, cruising 7.9. E.V: 73.5 percent, cruising 14.6, does not learn"></p>
 
 <p align="center"><img src="docs/images/board-bench.png" width="900" alt="On-board benchmark, every number measured on the ESP32-S3 on the same windows. Ranked by the test set of my car: CarMind R.E.V 94.7 percent, 64 KB, cruising 86.3, learns in the car; MLP 85.1; TCN 84.7; CarMind E.V 79.1; CarMind R.E.V (old) 79.1; GRU 34.3. The MLP is the smallest and fastest, E.V has the best KIA macro-F1"></p>
 
