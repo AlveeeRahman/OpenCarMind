@@ -75,11 +75,28 @@ menu "OBD Logger Configuration"
 
     menu "Wi-Fi clock sync"
         config OCM_WIFI_CLOCK_SYNC
-            bool "Set the clock over Wi-Fi (SNTP) when a known network is in reach"
+            bool "Set the clock over Wi-Fi from one verified HTTPS time server when a known network is in reach"
             default y
             help
                 Compiles the Wi-Fi module in. When off, Wi-Fi is never started and the clock stays unset (session files
                 carry epoch 0) unless the RTC kept a time through a reset.
+        config OCM_TIME_HTTPS_HOST
+            string "The one time server (host name, HTTPS)"
+            depends on OCM_WIFI_CLOCK_SYNC
+            default "www.google.com"
+            help
+                The board sends one HTTPS HEAD request to this host and takes the time from the Date header of the reply.
+                The server must present a certificate for exactly this name that chains to a root in ESP-IDF's common
+                certificate bundle; any other server, or a time outside 2026-2099, is refused. Nothing else is sent: no
+                SNTP, no upload. Point it at a server you run if you prefer (set it in your own sdkconfig).
+        config OCM_WIFI_UPLOAD
+            bool "Send drives to the paired desktop app over Wi-Fi (off: in the works, see README)"
+            depends on OCM_WIFI_CLOCK_SYNC
+            default n
+            help
+                Off by default in 2.5.0: Wi-Fi only sets the clock, and drives reach the desktop app over the USB cable.
+                The upload is being reworked into a transfer without head-of-line blocking. Pairing over USB still works
+                and still protects the USB commands.
         config SYNC_WIFI_SSID
             string "Fallback Wi-Fi SSID (optional; networks normally come from wifi.csv on the SD card)"
             depends on OCM_WIFI_CLOCK_SYNC
@@ -179,5 +196,36 @@ menu "OBD Logger Configuration"
             default n
             help
                 Writes 10 windows (window_seq 990000+) to the current session's .ml.csv. Never enable in a car build.
+        config CARMIND_REV_ENABLE
+            bool "CarMind R.E.V: embed the second model and its on-board fuel learning"
+            depends on CARMIND_ML_ENABLE
+            default y
+            help
+                Embeds ml/onboard/rev/onboard.espdl (about 64 KB of flash) next to CarMind E.V. The desktop app switches
+                between the two over USB; E.V stays the default until the user picks R.E.V. While R.E.V runs, the board learns
+                this car's fuel use (a new read-out of the model's z feature, see rev_learn.h). Say n for an E.V-only firmware;
+                the app then shows R.E.V as not available.
+        config CARMIND_REV_PHYS
+            bool "R.E.V: learn the airflow constant (polls PID 0x43 in every cycle while R.E.V runs)"
+            depends on CARMIND_REV_ENABLE
+            default y
+            help
+                MAF = k x absolute load x rpm, with k learned while MAF is reported and used when it is not. Absolute load
+                joins the fast PIDs, which adds one adapter transaction per row on cars that report it. Cars without PID 0x43
+                learn from calculated load (0x04) per rpm bin instead: EXPERIMENTAL, not yet tested on data.
+        config CARMIND_REV_CAL
+            bool "Fill-up calibration of every fuel source"
+            depends on CARMIND_ML_ENABLE
+            default y
+            help
+                One factor from the fill-ups entered in the desktop app (litres pumped against litres counted), applied to
+                every fuel figure for both models. Without fill-ups the factor is 1 and nothing changes.
+        config CARMIND_REV_SAVE_MIN
+            int "Save the learned state at most every N minutes while driving"
+            depends on CARMIND_REV_ENABLE || CARMIND_REV_CAL
+            range 1 60
+            default 5
+            help
+                /sdcard/obd/rev_state.bin, about 20 KB, is also saved when a drive ends, after a fill-up and before power-off.
     endmenu
 endmenu

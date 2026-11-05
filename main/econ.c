@@ -42,21 +42,43 @@ const char *units_dist_label(units_t u) { return u == UNITS_METRIC ? "km" : "mi"
 
 const char *fuel_src_name(fuel_src_t s)
 {
-    return s == FUEL_PID ? "pid" : s == FUEL_MAF ? "maf" : s == FUEL_MODEL ? "model" : "";
+    return s == FUEL_PID ? "pid" : s == FUEL_MAF ? "maf" : s == FUEL_MODEL ? "model" : s == FUEL_PHYS ? "phys" : s == FUEL_LEARNED ? "learned" : "";
+}
+
+bool econ_src_is_estimate(fuel_src_t s) { return s == FUEL_MODEL || s == FUEL_PHYS || s == FUEL_LEARNED; }
+
+static bool maf_valid(bool ok, float g) { return ok && g >= 0 && g < 655.0f; }   /* 0xFFFF (655.35 g/s) is a sensor fault, not air */
+static bool est_valid(bool ok, float lph) { return ok && lph >= 0 && lph < 100; }
+
+float econ_fuel_pick(const econ_in_t *in, fuel_src_t *src)
+{
+    fuel_src_t dummy;
+    if (!src) src = &dummy;
+    if (in->rate_ok && in->rate_lph >= 0 && in->rate_lph < 3213) { *src = FUEL_PID; return in->rate_lph; }
+    if (maf_valid(in->maf_ok, in->maf_gps)) { *src = FUEL_MAF; return econ_maf_lph(in->maf_gps, in->lambda_ok, in->lambda, in->fuel_type); }
+    float phys = maf_valid(in->phys_ok, in->phys_maf_gps) ? econ_maf_lph(in->phys_maf_gps, in->lambda_ok, in->lambda, in->fuel_type) : -1;
+    bool phys_ok = est_valid(phys >= 0, phys);
+    bool learned_ok = est_valid(in->learned_ok, in->learned_lph), model_ok = est_valid(in->model_ok, in->model_lph);
+    if (in->prefer == FUEL_PHYS && phys_ok) { *src = FUEL_PHYS; return phys; }
+    if (in->prefer == FUEL_LEARNED && learned_ok) { *src = FUEL_LEARNED; return in->learned_lph; }
+    if (in->prefer == FUEL_MODEL && model_ok) { *src = FUEL_MODEL; return in->model_lph; }
+    if (phys_ok) { *src = FUEL_PHYS; return phys; }
+    if (learned_ok) { *src = FUEL_LEARNED; return in->learned_lph; }
+    if (model_ok) { *src = FUEL_MODEL; return in->model_lph; }
+    *src = FUEL_NONE;
+    return -1;
 }
 
 float econ_fuel_lph(bool rate_ok, float rate_lph, bool maf_ok, float maf_gps, bool lambda_ok, float lambda, int fuel_type,
                     bool model_ok, float model_lph, fuel_src_t *src)
 {
-    fuel_src_t dummy;
-    if (!src) src = &dummy;
-    if (rate_ok && rate_lph >= 0 && rate_lph < 3213) { *src = FUEL_PID; return rate_lph; }
-    if (!maf_ok || maf_gps < 0 || maf_gps > 655.35f) {
-        if (model_ok && model_lph >= 0 && model_lph < 100) { *src = FUEL_MODEL; return model_lph; }
-        *src = FUEL_NONE;
-        return -1;
-    }
-    *src = FUEL_MAF;
+    econ_in_t in = {rate_ok, rate_lph, maf_ok, maf_gps, lambda_ok, lambda, fuel_type, model_ok, model_lph,
+                    false, 0, false, 0, FUEL_MODEL};
+    return econ_fuel_pick(&in, src);
+}
+
+float econ_maf_lph(float maf_gps, bool lambda_ok, float lambda, int fuel_type)
+{
     bool diesel = fuel_type == 4 || fuel_type == 19 || fuel_type == 23;     /* PID 0x51: diesel, hybrid diesel, bifuel diesel */
     float afr = diesel ? 14.5f : 14.7f;                                      /* stoichiometric air-fuel ratio by mass */
     float density = diesel ? 832.0f : 745.0f;                                /* g/L */

@@ -36,7 +36,7 @@ The board connects only while parked. It scans, connects, reads the time, stays 
 
 ## The clock
 
-The board has no battery for its clock. Every save writes the time to `/sdcard/obd/clock.txt`. After a power cut the clock resumes from that file, behind by the time the car was off, and the screen shows it in amber until the next Wi-Fi sync corrects it. Each session JSON says where its time came from in the `clock` field: `sntp` (set over Wi-Fi), `rtc` (kept through a reset), `resumed` (from the card, an estimate) or `unset`. Rows also carry `uptime_ms`, and `time_sync` in the JSON maps uptime to real time, so a session can be re-timed once the clock was corrected.
+The board has no battery for its clock. Every save writes the time to `/sdcard/obd/clock.txt`. After a power cut the clock resumes from that file, behind by the time the car was off, and the screen shows it in amber until the next Wi-Fi sync corrects it. Each session JSON says where its time came from in the `clock` field: `https` (set over Wi-Fi from the time server; `sntp` in versions before 2.5.0), `rtc` (kept through a reset), `resumed` (from the card, an estimate) or `unset`. Rows also carry `uptime_ms`, and `time_sync` in the JSON maps uptime to real time, so a session can be re-timed once the clock was corrected.
 
 ## Setup over USB with the desktop app
 
@@ -47,7 +47,7 @@ With the desktop app, the SD card can stay in the board. The app talks to it ove
 - Reading the session files from the card, so drives can be imported over the cable.
 - Flashing: the app carries the matching firmware image and Espressif's `esptool`. Flashing keeps the Wi-Fi networks and the pairing, which live in a separate flash partition.
 
-The board refuses all of this while the car link is up. While paired, the board stays on Wi-Fi when parked and sends new data to the app every 10 seconds.
+The board refuses all of this while the car link is up. In 2.5.0 the board sends no drive data over Wi-Fi: import drives over the USB cable. Wi-Fi only sets the clock, with one HTTPS request to the time server (`time_host` in `config.json`, or Time server on the app's Board page; default `www.google.com`, `""` for the default). The server's certificate must chain to a trusted root and name that host, and a time outside 2026 to 2099 is refused.
 
 The card files below (`wifi.csv`, `config.json`, `custom_pids.csv`) still work for anyone who prefers them.
 
@@ -64,6 +64,7 @@ Put a file called `config.json` in `/sdcard/obd/` and reboot. The board applies 
 | `theme_mode` | 0 by time of day, 1 dark, 2 light | 0 to 2 |
 | `day_start_hour`, `day_end_hour` | light theme from the start hour until the end hour, local time. The defaults, 6 and 17, give light from 06:00 to 16:59 and dark from 17:00 | 0 to 23 |
 | `timezone` | the board's local time zone as a POSIX string, for example `CST6CDT,M3.2.0,M11.1.0` (US Central) or `<+06>-6` (UTC+6). The desktop app fills it in from your computer. Without it the board uses `SYNC_TIMEZONE` from the build, which is UTC | text, 3 to 47 characters |
+| `time_host` | the one HTTPS server the board asks for the time (2.5.0). It must present a valid certificate for this name. `""` goes back to the default, `www.google.com` | host name, 4 to 63 characters, no scheme, port or IP |
 | `units` | `auto` (default), `metric`, `us` or `uk`. Auto starts in km and km/L. The first time the board joins Wi-Fi it reads the country code the access point broadcasts and switches to miles and mpg in the US or the UK, then keeps that choice. Without a country code, a UK time zone (`GMT0BST`) also counts. Set a value to override the detection | text |
 | `wifi` | list of `{"ssid", "password"}`, or `{"ssid", "forget": true}` | |
 | `custom_pids` | the text of `custom_pids.csv` | |

@@ -4,7 +4,7 @@
 mod board;
 mod receiver;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 #[derive(Serialize, Clone, Debug, PartialEq)]
@@ -26,6 +26,10 @@ pub struct SessionInfo {
     /// How the board showed this drive: "metric", "us" or "uk" (from the session JSON; "metric" when absent).
     pub units: String,
     pub odometer_km: Option<f64>,
+    /// Fuel before the fill-up calibration (firmware 2.5 and later), None for older logs.
+    pub fuel_raw_l: Option<f64>,
+    /// Which on-board model ran the drive: "ev" or "rev" (session JSON), None for older logs.
+    pub ml_model: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -64,7 +68,7 @@ const CHANNELS: [(&str, &str); 6] = [
 ];
 /// Columns that are bookkeeping, not car data.
 const NOT_DATA: [&str; 4] = ["seq", "uptime_ms", "epoch_ms", "window_seq"];
-const KNOWN_UNITS: [(&str, &str); 71] = [
+const KNOWN_UNITS: [(&str, &str); 77] = [
     ("engine_load_pct", "%"),
     ("coolant_c", "°C"),
     ("stft_b1_pct", "%"),
@@ -136,6 +140,12 @@ const KNOWN_UNITS: [(&str, &str); 71] = [
     ("fuel_lph_calc", "L/h"),
     ("trip_km", "km"),
     ("trip_fuel_l", "L"),
+    ("fuel_lph_raw", "L/h"),
+    ("fuel_cal", ""),
+    ("trip_fuel_raw_l", "L"),
+    ("torque_nm", "N m"),
+    ("tank_left_l", "L"),
+    ("tank_range_km", "km"),
 ];
 
 fn unit_of(name: &str) -> &'static str {
@@ -316,6 +326,8 @@ fn summarise(id: &str, table: &Table, has_model_file: bool) -> Option<SessionInf
         fuel_source,
         units: "metric".to_string(),
         odometer_km: last_of("odometer_km"),
+        fuel_raw_l: last_of("trip_fuel_raw_l").filter(|_| fuel_l.is_some()).map(|l| (l * 100.0).round() / 100.0),
+        ml_model: None,
     })
 }
 
@@ -377,9 +389,33 @@ pub fn timezone_ok(tz: &str) -> bool {
     (3..=47).contains(&tz.len()) && tz.chars().all(|c| c.is_ascii_alphanumeric() || "<>+-,.:/".contains(c))
 }
 
-/// Checks the settings and time zone the way the board does and turns them into a config.json object.
-fn config_object(settings: &std::collections::HashMap<String, f64>, timezone: Option<String>) -> Result<Option<serde_json::Value>, String> {
+/// The board's rule for the one time server it may contact (main/harden.c harden_hostname_ok): a DNS name, 4 to 63
+/// characters, letters, digits and hyphens in dot-separated labels, at least one dot and one letter, no IP, port or scheme.
+pub fn hostname_ok(h: &str) -> bool {
+    let b = h.as_bytes();
+    if !(4..=63).contains(&b.len()) || !h.contains('.') || !b.iter().any(|c| c.is_ascii_alphabetic()) {
+        return false;
+    }
+    h.split('.').all(|l| !l.is_empty() && !l.starts_with('-') && !l.ends_with('-') && l.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-'))
+}
+
+/// Checks the settings, time zone and time server the way the board does and turns them into a config.json object.
+/// time_host "default" sends "", which puts the board back on its built-in time server.
+fn config_object(
+    settings: &std::collections::HashMap<String, f64>,
+    timezone: Option<String>,
+    time_host: Option<String>,
+) -> Result<Option<serde_json::Value>, String> {
     let mut map = serde_json::Map::new();
+    if let Some(h) = time_host.map(|t| t.trim().to_ascii_lowercase()).filter(|t| !t.is_empty()) {
+        if h == "default" {
+            map.insert("time_host".into(), serde_json::json!(""));
+        } else if hostname_ok(&h) {
+            map.insert("time_host".into(), serde_json::json!(h));
+        } else {
+            return Err(format!("time server '{h}' is not a host name such as www.google.com (no https://, port or IP address)"));
+        }
+    }
     if let Some(tz) = timezone.map(|t| t.trim().to_string()).filter(|t| !t.is_empty()) {
         if !timezone_ok(&tz) {
             return Err(format!("time zone '{tz}' is not a POSIX time zone such as CST6CDT,M3.2.0,M11.1.0"));
@@ -394,6 +430,155 @@ fn config_object(settings: &std::collections::HashMap<String, f64>, timezone: Op
         map.insert(key.clone(), serde_json::json!(*value as i64));
     }
     Ok((!map.is_empty()).then_some(serde_json::Value::Object(map)))
+}
+
+/* ---- Fill-ups (main/rev_cal.h). The app keeps the user's log and sends all of it to the board, which works out one
+   correction factor for its fuel figures. The board takes litres and L/100 km; the app converts the user's units. ---- */
+
+const L_PER_US_GAL: f64 = 3.785411784;
+const L_PER_UK_GAL: f64 = 4.54609;
+const KM_PER_MILE: f64 = 1.609344;
+pub const FILLUPS_MAX: usize = 16;
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+pub struct FillEntry {
+    pub id: u32,
+    /// When it happened, as the user entered it (ISO 8601 local time); shown only.
+    #[serde(default)]
+    pub date: String,
+    /// "pump": litres pumped; "trip": the car's trip-computer average over a range of drives.
+    pub kind: String,
+    /// Pump: the last drive before the fill. Trip: the last drive of the range.
+    pub after_session: u32,
+    /// Trip: the first drive of the range.
+    #[serde(default)]
+    pub from_session: u32,
+    /// Pump: volume in `unit` ("L", "usgal", "ukgal"). Trip: the figure in `unit` ("l100", "kpl", "mpgus", "mpguk").
+    pub amount: f64,
+    pub unit: String,
+    /// Pump: filled to the automatic click-off.
+    #[serde(default)]
+    pub full: bool,
+    #[serde(default)]
+    pub price: Option<f64>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+pub struct FillLog {
+    pub rev: u32,
+    pub entries: Vec<FillEntry>,
+}
+
+pub fn to_litres(amount: f64, unit: &str) -> Result<f64, String> {
+    match unit {
+        "L" => Ok(amount),
+        "usgal" => Ok(amount * L_PER_US_GAL),
+        "ukgal" => Ok(amount * L_PER_UK_GAL),
+        _ => Err(format!("unknown volume unit {unit}")),
+    }
+}
+
+/// L/100 km from km/L or mpg: L/100 km = 100 / (km/L), km/L = mpg x km per mile / litres per gallon.
+pub fn to_l_per_100km(value: f64, unit: &str) -> Result<f64, String> {
+    if !(value > 0.0) {
+        return Err("a fuel economy figure must be above 0".into());
+    }
+    match unit {
+        "l100" => Ok(value),
+        "kpl" => Ok(100.0 / value),
+        "mpgus" => Ok(100.0 / (value * KM_PER_MILE / L_PER_US_GAL)),
+        "mpguk" => Ok(100.0 / (value * KM_PER_MILE / L_PER_UK_GAL)),
+        _ => Err(format!("unknown economy unit {unit}")),
+    }
+}
+
+/// The list the board takes (main/usb_door.c REV-FILLUPS), with the board's own plausibility rules checked first.
+pub fn board_fill_list(log: &FillLog) -> Result<serde_json::Value, String> {
+    if log.entries.len() > FILLUPS_MAX {
+        return Err(format!("the board keeps the last {FILLUPS_MAX} fill-ups; delete older ones first"));
+    }
+    let mut out = Vec::new();
+    for e in &log.entries {
+        match e.kind.as_str() {
+            "pump" => {
+                let l = to_litres(e.amount, &e.unit)?;
+                if !(l > 0.0 && l <= 300.0) {
+                    return Err(format!("{:.1} L is not a plausible fill-up", l));
+                }
+                out.push(serde_json::json!({"id": e.id, "after": e.after_session, "litres": (l * 1000.0).round() / 1000.0, "full": e.full}));
+            }
+            "trip" => {
+                let l100 = to_l_per_100km(e.amount, &e.unit)?;
+                if !(1.0..=60.0).contains(&l100) {
+                    return Err(format!("{:.1} L/100 km is not a plausible average", l100));
+                }
+                if e.from_session > e.after_session {
+                    return Err("the first drive of the range comes after the last one".into());
+                }
+                out.push(serde_json::json!({"id": e.id, "kind": "trip", "from": e.from_session, "after": e.after_session, "l100": (l100 * 1000.0).round() / 1000.0}));
+            }
+            k => return Err(format!("unknown fill-up kind {k}")),
+        }
+    }
+    Ok(serde_json::json!({"rev": log.rev, "entries": out}))
+}
+
+fn fillups_path(state: &AppState, board: &str) -> Result<PathBuf, String> {
+    if !receiver::valid_board(board) {
+        return Err("unknown board".into());
+    }
+    Ok(state.rx.dir.join(board).join("fillups.json"))
+}
+
+fn read_fill_log(path: &Path) -> FillLog {
+    std::fs::read_to_string(path).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+}
+
+#[tauri::command]
+fn fillups_load(state: tauri::State<AppState>, board: String) -> Result<FillLog, String> {
+    Ok(read_fill_log(&fillups_path(&state, &board)?))
+}
+
+/// Saves the edited list (checked as the board would check it) with the next revision number.
+#[tauri::command]
+fn fillups_save(state: tauri::State<AppState>, board: String, entries: Vec<FillEntry>) -> Result<FillLog, String> {
+    let path = fillups_path(&state, &board)?;
+    let mut log = FillLog { rev: read_fill_log(&path).rev + 1, entries };
+    log.entries.sort_by_key(|e| (e.after_session, e.id));
+    board_fill_list(&log)?;
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    }
+    let tmp = path.with_extension("json.tmp");
+    let text = serde_json::to_string_pretty(&log).map_err(|e| e.to_string())?;
+    std::fs::write(&tmp, text).and_then(|_| std::fs::rename(&tmp, &path)).map_err(|e| format!("{}: {e}", path.display()))?;
+    Ok(log)
+}
+
+#[tauri::command]
+async fn board_rev_fillups(state: tauri::State<'_, AppState>, port: String, board: String) -> Result<String, String> {
+    let list = board_fill_list(&read_fill_log(&fillups_path(&state, &board)?))?;
+    blocking(move || board::rev_fillups(&port, &list)).await
+}
+
+#[tauri::command]
+async fn board_model(port: String) -> Result<board::ModelInfo, String> {
+    blocking(move || board::model_get(&port)).await
+}
+
+#[tauri::command]
+async fn board_model_set(port: String, model: String) -> Result<board::ModelInfo, String> {
+    blocking(move || board::model_set(&port, &model)).await
+}
+
+#[tauri::command]
+async fn board_rev_status(port: String) -> Result<Vec<board::StatusGroup>, String> {
+    blocking(move || board::rev_status(&port)).await
+}
+
+#[tauri::command]
+async fn board_rev_reset(port: String, what: String) -> Result<(), String> {
+    blocking(move || board::rev_reset(&port, &what)).await
 }
 
 async fn blocking<T: Send + 'static>(f: impl FnOnce() -> Result<T, String> + Send + 'static) -> Result<T, String> {
@@ -418,14 +603,20 @@ async fn board_request_code(port: String) -> Result<(), String> {
 
 #[tauri::command]
 async fn board_pair(state: tauri::State<'_, AppState>, port: String, code: String) -> Result<String, String> {
-    let host = receiver::local_address().ok_or("this computer has no network address. Connect it to the Wi-Fi the board will use")?;
+    // Pairing is what lets the board accept this app's USB commands. The address is stored for the Wi-Fi upload, which
+    // is off in 2.5.0, so a computer without a network address pairs with the loopback address.
+    let host = receiver::local_address().unwrap_or_else(|| "127.0.0.1".to_string());
     if state.rx.token.is_empty() {
         return Err("the receiver could not start, so there is nothing to pair with".into());
     }
     let (token, cert) = (state.rx.token.clone(), state.rx.cert_pem.clone());
     let h = host.clone();
     blocking(move || board::pair(&port, &code, &h, receiver::PORT, &token, &cert)).await?;
-    Ok(format!("Paired. The board will send its drives to {host}:{} when it is parked on Wi-Fi.", receiver::PORT))
+    if receiver::WIFI_UPLOAD {
+        Ok(format!("Paired. The board will send its drives to {host}:{} when it is parked on Wi-Fi.", receiver::PORT))
+    } else {
+        Ok("Paired. The board now accepts this app's commands over the cable. Import drives over USB: the Wi-Fi upload is being reworked.".into())
+    }
 }
 
 #[tauri::command]
@@ -444,11 +635,12 @@ async fn board_setup(
     networks: Vec<(String, String)>,
     settings: std::collections::HashMap<String, f64>,
     timezone: Option<String>,
+    time_host: Option<String>,
 ) -> Result<String, String> {
     for (ssid, password) in &networks {
         wifi_entry_ok(ssid, password)?;
     }
-    let config = config_object(&settings, timezone)?;
+    let config = config_object(&settings, timezone, time_host)?;
     blocking(move || board::setup(&port, &networks, config.as_ref())).await
 }
 
@@ -558,11 +750,11 @@ async fn read_sessions(folder: String) -> Result<Vec<SessionInfo>, String> {
         let table = read_table(&path)?;
         let has_model = path.with_extension("ml.csv").exists();
         if let Some(mut info) = summarise(&id, &table, has_model) {
-            let json = std::fs::read_to_string(path.with_extension("json")).ok();
-            if let Some(u) = json.and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
-                .and_then(|v| v.get("units").and_then(|u| u.as_str()).map(str::to_string)) {
+            let json = std::fs::read_to_string(path.with_extension("json")).ok().and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok());
+            if let Some(u) = json.as_ref().and_then(|v| v.get("units").and_then(|u| u.as_str()).map(str::to_string)) {
                 if ["metric", "us", "uk"].contains(&u.as_str()) { info.units = u; }
             }
+            info.ml_model = json.as_ref().and_then(|v| v.get("ml_model")).and_then(|m| m.as_str()).filter(|m| *m == "ev" || *m == "rev").map(str::to_string);
             out.push(info);
         }
     }
@@ -647,7 +839,14 @@ pub fn run() {
             board_setup,
             board_import,
             firmware_info,
-            board_flash
+            board_flash,
+            board_model,
+            board_model_set,
+            board_rev_status,
+            board_rev_reset,
+            board_rev_fillups,
+            fillups_load,
+            fillups_save
         ])
         .run(tauri::generate_context!())
         .expect("OpenCarMind could not start");
@@ -720,6 +919,18 @@ mod tests {
     }
 
     #[test]
+    fn time_server_names() {
+        assert!(hostname_ok("www.google.com") && hostname_ok("my-broker.example.workers.dev"));
+        assert!(!hostname_ok("localhost") && !hostname_ok("192.168.1.10") && !hostname_ok("a.b") && !hostname_ok("https://x.com"));
+        assert!(!hostname_ok("x.com:443") && !hostname_ok("-x.com") && !hostname_ok("x-.com") && !hostname_ok("x..com") && !hostname_ok(".x.com"));
+        let none = std::collections::HashMap::new();
+        assert_eq!(config_object(&none, None, Some("WWW.Google.com".into())).unwrap().unwrap()["time_host"], "www.google.com");
+        assert_eq!(config_object(&none, None, Some("default".into())).unwrap().unwrap()["time_host"], "");
+        assert!(config_object(&none, None, Some("http://x".into())).is_err());
+        assert!(config_object(&none, None, Some("  ".into())).unwrap().is_none());
+    }
+
+    #[test]
     fn wifi_entries() {
         assert!(wifi_entry_ok("Home", "").is_ok());
         assert!(wifi_entry_ok("Home", "12345678").is_ok());
@@ -728,6 +939,38 @@ mod tests {
         assert!(wifi_entry_ok("-Home", "12345678").is_err());
         assert!(wifi_entry_ok("Home", "pass\nword1").is_err());
         assert!(timezone_ok("CST6CDT,M3.2.0,M11.1.0") && timezone_ok("<+06>-6") && !timezone_ok("CST 6") && !timezone_ok("UT"));
+    }
+
+    #[test]
+    fn fill_up_units() {
+        assert!((to_litres(10.0, "usgal").unwrap() - 37.85411784).abs() < 1e-9);
+        assert!((to_litres(10.0, "ukgal").unwrap() - 45.4609).abs() < 1e-9);
+        assert!(to_litres(10.0, "pints").is_err());
+        assert!((to_l_per_100km(12.5, "kpl").unwrap() - 8.0).abs() < 1e-9);
+        // 30 mpg (US) is 12.754 km/L, 7.84 L/100 km; 30 mpg (UK) is 10.62 km/L, 9.42 L/100 km
+        assert!((to_l_per_100km(30.0, "mpgus").unwrap() - 7.8404).abs() < 1e-3);
+        assert!((to_l_per_100km(30.0, "mpguk").unwrap() - 9.4160).abs() < 1e-3);
+        assert!(to_l_per_100km(0.0, "kpl").is_err());
+    }
+
+    #[test]
+    fn fill_list_for_the_board() {
+        let pump = |id, after, amount: f64, unit: &str| FillEntry { id, kind: "pump".into(), after_session: after, amount, unit: unit.into(), full: true, ..Default::default() };
+        let log = FillLog { rev: 3, entries: vec![pump(1, 10, 40.0, "L"), pump(2, 14, 10.0, "usgal")] };
+        let v = board_fill_list(&log).unwrap();
+        assert_eq!(v["rev"], 3);
+        assert_eq!(v["entries"][1]["litres"], 37.854);
+        assert_eq!(v["entries"][0]["after"], 10);
+        let trip = FillEntry { id: 3, kind: "trip".into(), from_session: 11, after_session: 14, amount: 30.0, unit: "mpgus".into(), ..Default::default() };
+        let v = board_fill_list(&FillLog { rev: 1, entries: vec![trip.clone()] }).unwrap();
+        assert_eq!(v["entries"][0]["kind"], "trip");
+        assert_eq!(v["entries"][0]["l100"], 7.84);
+        // the board's rules: a typo of 400 L, a range backwards, more than 16 entries
+        assert!(board_fill_list(&FillLog { rev: 1, entries: vec![pump(1, 1, 400.0, "L")] }).is_err());
+        assert!(board_fill_list(&FillLog { rev: 1, entries: vec![FillEntry { from_session: 20, ..trip }] }).is_err());
+        assert!(board_fill_list(&FillLog { rev: 1, entries: (0..17).map(|i| pump(i, i, 30.0, "L")).collect() }).is_err());
+        // the board reads its JSON with cJSON: the text must stay one line of plain JSON
+        assert!(!board_fill_list(&log).unwrap().to_string().contains('\n'));
     }
 
     #[test]

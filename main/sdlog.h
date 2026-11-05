@@ -28,6 +28,8 @@ void sdlog_write_row(const obd_values_t *v);
 /* Rewrite the session metadata JSON. Any argument may be NULL to keep the previous value. */
 void sdlog_meta_set_adapter(const char *name, const char *addr, const char *ati, const char *batch);
 void sdlog_meta_set_vehicle(const char *vin, const char *protocol);
+/* Which model ran this drive ("ev", "rev") and the fill-up calibration factor at its start. */
+void sdlog_meta_set_ml(const char *model_key, float fuel_cal);
 void sdlog_meta_set_supported(const char *pid_cmd, const char *bitmap_hex);
 void sdlog_meta_set_time_sync(int64_t epoch_ms, int64_t uptime_ms);
 void sdlog_meta_add_dtcs(int64_t uptime_ms, const char *dtcs);

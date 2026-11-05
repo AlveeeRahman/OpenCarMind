@@ -9,6 +9,8 @@ int  obd_ble_write(const uint8_t *data, size_t len);
 
 /* Called by the transport */
 void elm_init(void);
+/* A drive is being set up or logged (poll lists built from the selected model): no model switch now. */
+bool elm_drive_active(void);
 void elm_rx_bytes(const uint8_t *data, size_t len);   /* from BLE notifications */
 void elm_link_changed(bool up);                        /* link up = subscribed and ready */
 

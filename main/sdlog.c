@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <string.h>
+#include <math.h>
 #include <sys/stat.h>
 #include <sys/unistd.h>
 #include <dirent.h>
@@ -47,7 +48,8 @@ static const char CSV_HEADER[] =
     "seq,uptime_ms,epoch_ms," OBD_FIELDS(OBD_NAME)
     "adapter_voltage_v,mil_on,dtc_count,dtcs,pending_dtcs,permanent_dtcs,"
     "custom_1,custom_2,custom_3,custom_4,custom_5,custom_6,custom_7,custom_8,"
-    "fuel_lph_calc,fuel_src,trip_km,trip_fuel_l,window_seq\n";
+    "fuel_lph_calc,fuel_src,trip_km,trip_fuel_l,window_seq,fuel_lph_raw,fuel_cal,trip_fuel_raw_l,"
+    "torque_nm,torque_src,tank_left_l,tank_range_km\n";
 #undef OBD_NAME
 static FILE    *s_raw;
 static char     s_raw_path[96];
@@ -68,7 +70,7 @@ static WORD_ALIGNED_ATTR char s_csv_iobuf[2048];   /* internal DRAM, DMA-capable
 /* The board has no battery-backed clock. Every save writes the time to the card, so after a power cut the clock resumes
    from the last save (behind by however long the car was off) until the next Wi-Fi sync corrects it. */
 #define CLOCK_PATH SDLOG_DIR "/clock.txt"
-static const char *s_clock_source = "unset";   /* unset, rtc (kept through a reset), resumed (from the card), sntp */
+static const char *s_clock_source = "unset";   /* unset, rtc (kept through a reset), resumed (from the card), https (the time server) */
 
 static void save_clock_locked(void)
 {
@@ -397,7 +399,17 @@ void sdlog_write_row(const obd_values_t *v)
     if (v->fuel_lph_calc >= 0) n += snprintf(line + n, sizeof line - n, "%.3f,%s,%.4f,%.4f,", v->fuel_lph_calc,
                                              fuel_src_name((fuel_src_t)v->fuel_src), v->trip_km, v->trip_fuel_l);
     else n += snprintf(line + n, sizeof line - n, ",,%.4f,%.4f,", v->trip_km, v->trip_fuel_l);
-    n += snprintf(line + n, sizeof line - n, "%lu", (unsigned long)s_window_seq);
+    n += snprintf(line + n, sizeof line - n, "%lu,", (unsigned long)s_window_seq);
+    /* appended in 2.5: the fuel rate before the fill-up calibration, the factor, and the raw trip total */
+    if (v->fuel_lph_raw >= 0) n += snprintf(line + n, sizeof line - n, "%.3f,", v->fuel_lph_raw);
+    else line[n++] = ',';
+    n += snprintf(line + n, sizeof line - n, "%.4f,%.4f,", v->fuel_cal, v->trip_fuel_raw_l);
+    /* appended in 2.5: R.E.V physics torque (5 s mean) and the tank learner, empty when unknown */
+    static const char *tq_src[] = {"", "pid", "rate", "maf", "k"};
+    if (isfinite(v->torque_nm)) n += snprintf(line + n, sizeof line - n, "%.1f,%s,", v->torque_nm, tq_src[v->torque_src < 5 ? v->torque_src : 0]);
+    else n += snprintf(line + n, sizeof line - n, ",,");
+    if (v->tank_left_l >= 0) n += snprintf(line + n, sizeof line - n, "%.1f,", v->tank_left_l); else line[n++] = ',';
+    if (v->tank_range_km >= 0) n += snprintf(line + n, sizeof line - n, "%.0f", v->tank_range_km);
     line[n++] = '\n';
     line[n] = 0;
 
@@ -551,6 +563,17 @@ void sdlog_meta_set_vehicle(const char *vin, const char *protocol)
     xSemaphoreGive(s_lock);
 }
 
+void sdlog_meta_set_ml(const char *model_key, float fuel_cal)
+{
+    if (!s_meta) return;
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    set_meta_string(s_meta, "ml_model", model_key);
+    if (cJSON_HasObjectItem(s_meta, "fuel_cal")) cJSON_ReplaceItemInObject(s_meta, "fuel_cal", cJSON_CreateNumber(fuel_cal));
+    else cJSON_AddNumberToObject(s_meta, "fuel_cal", fuel_cal);
+    meta_flush_locked();
+    xSemaphoreGive(s_lock);
+}
+
 void sdlog_meta_set_supported(const char *pid_cmd, const char *bitmap_hex)
 {
     if (!s_meta) return;
@@ -565,7 +588,7 @@ void sdlog_meta_set_time_sync(int64_t epoch_ms, int64_t uptime_ms)
 {
     if (!s_meta) return;
     xSemaphoreTake(s_lock, portMAX_DELAY);
-    s_clock_source = "sntp";
+    s_clock_source = "https";
     cJSON *ts = cJSON_GetObjectItem(s_meta, "time_sync");
     cJSON_ReplaceItemInObject(ts, "epoch_ms", cJSON_CreateNumber((double)epoch_ms));
     cJSON_ReplaceItemInObject(ts, "uptime_ms", cJSON_CreateNumber((double)uptime_ms));

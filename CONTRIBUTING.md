@@ -14,7 +14,7 @@ idf.py set-target esp32s3 && idf.py build            # firmware
 cargo test --manifest-path desktop/app/src-tauri/Cargo.toml   # desktop app, needs Rust
 ```
 
-If you change a file in `ml/onboard/`, regenerate `main/ml_params.h` with `python3 tools/gen_ml_params.py ml/onboard main/ml_params.h`. CI fails if the two disagree.
+If you change a file in `ml/onboard/`, regenerate `main/ml_params.h` with `python3 tools/gen_ml_params.py ml/onboard main/ml_params.h`; for `ml/onboard/rev/`, run `python3 tools/gen_ml_params.py ml/onboard/rev main/ml_params_rev.h MLR`. CI fails if a header and its files disagree.
 
 ## Sending a change
 

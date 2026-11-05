@@ -1,6 +1,6 @@
 # Desktop app
 
-Status: preview, version 2.4.0, released together with the firmware of the same number. The board sends its drives to the app over your Wi-Fi every 10 seconds while the car is parked, and the app shows them. It can also open an SD card directly.
+Status: preview, version 2.5.0, released together with the firmware of the same number. The app imports drives from the board over the USB cable and shows them. It can also open an SD card directly. In 2.5.0 the board's Wi-Fi only sets its clock: the Wi-Fi upload is being reworked (see the main README, Limitations and future work), so the app opens no network port.
 
 Built with Rust and Tauri for Windows, macOS (Apple silicon and Intel) and Linux. All the setup lives in the app: it writes the board's Wi-Fi networks, settings and pairing file to the SD card. The board itself has no console and accepts no incoming connections.
 
@@ -19,19 +19,22 @@ Download them from the [Releases page](https://github.com/AlveeeRahman/OpenCarMi
 
 The installers are not code-signed. macOS asks you to confirm the first launch: right-click the app and choose Open. Windows SmartScreen shows a warning: choose More info, then Run anyway. Builds of every change to `desktop/` are also kept for 90 days under the `desktop` workflow in the Actions tab.
 
-Each build runs the Rust unit tests on its own system first. They check the session summary maths against `tools/ocm_report.py`, the receiver's resume-by-offset rules, and the Wi-Fi and time zone checks.
+Each build runs the Rust unit tests on its own system first. They check the session summary maths against `tools/ocm_report.py`, the receiver's resume-by-offset rules, and the Wi-Fi, time zone and time server checks.
 
 ## Use it
 
 1. Install the app and connect the board to the computer with its USB cable. Open the Board page, pick the port (the app marks the one that looks like the board) and choose Connect.
 2. The first time, choose Show a code on the board, type the 6-digit code from the board's screen, and choose Pair. Later connections need no code.
-3. Add your Wi-Fi network, check the time zone the app filled in, and send them to the board.
-4. Unplug the board and put it back in the car. From then on it sends new data to this app every 10 seconds whenever the car is parked within reach of that network. On the Overview page, pick "Received over Wi-Fi" in the source list. The page refreshes itself while data arrives.
+3. Add your Wi-Fi network, check the time zone the app filled in, optionally type a time server you trust (an HTTPS host name; "default" for the built-in one), and send them to the board. The board uses Wi-Fi only to set its clock.
+4. After a drive, connect the board again and choose Import drives over USB.
 
-Two more things on the Board page, both over the cable:
+More on the Board page, all over the cable:
 
-- Import drives over USB copies new drives from the card into the same folder the Wi-Fi upload fills, at about 15 KB/s.
+- On-board model shows whether the board runs CarMind E.V (the default) or CarMind R.E.V, which keeps learning your car's fuel use, and switches between them.
+- Import drives over USB copies new drives from the card into the app's drives folder, at about 15 KB/s.
 - Flash the firmware installs the firmware that ships with the app. The board keeps its Wi-Fi networks and pairing.
+
+The Fuel page keeps your fill-ups (per board, in the app's data folder as `fillups.json`) and sends them to a connected board, which uses them to correct its fuel figures. It also shows fuel and economy per drive and in total, and what R.E.V has learned.
 
 To read a card on its own, choose Open card folder on the Overview and pick the card's `obd` folder, its `sessions` folder, or any folder of `sNNNNNN.csv` files.
 
@@ -39,9 +42,9 @@ To read a card on its own, choose Open card folder on the Overview and pick the 
 
 Over USB: the board accepts setup commands only after the app shows it the code from the board's screen, or, once paired, an HMAC-SHA256 of a fresh random challenge keyed with the app's token. The app does the work and the board only stores or applies what it receives (`main/usb_door.h`).
 
-Over Wi-Fi: the board is the client and the app is the server. The app makes a self-signed certificate and a random token on first run and keeps them in its data folder. Pairing hands both to the board over the cable, so they never cross the network in the clear. The board then trusts only that certificate (TLS 1.2), sends the token with every request, and appends each session file from the point the app already has. A pass that is cut off resumes where it stopped, and no byte is stored twice. Details and the protocol are in `main/uploader.h`.
+Over Wi-Fi (off in 2.5.0, kept for the reworked upload): the board is the client and the app is the server. The app makes a self-signed certificate and a random token on first run and keeps them in its data folder. Pairing hands both to the board over the cable, so they never cross the network in the clear. The board then trusts only that certificate (TLS 1.2), sends the token with every request, and appends each session file from the point the app already has. A pass that is cut off resumes where it stopped, and no byte is stored twice. Details and the protocol are in `main/uploader.h`.
 
-Your firewall must let the app accept connections on port 8787. Allow it for private networks only. Windows normally asks the first time. macOS can block an app it has not approved without asking, so if no drives arrive, add OpenCarMind under System Settings, Network, Firewall, Options. On Linux, open the port if a firewall is active, for example `sudo ufw allow from 192.168.0.0/16 to any port 8787 proto tcp`, and add yourself to the `dialout` group (`uucp` on Arch) so the app can open the USB port: `sudo usermod -aG dialout $USER`, then log out and in.
+With the upload back on, your firewall must let the app accept connections on port 8787. Allow it for private networks only. Windows normally asks the first time. macOS can block an app it has not approved without asking, so if no drives arrive, add OpenCarMind under System Settings, Network, Firewall, Options. On Linux, open the port if a firewall is active, for example `sudo ufw allow from 192.168.0.0/16 to any port 8787 proto tcp`, and add yourself to the `dialout` group (`uucp` on Arch) so the app can open the USB port: `sudo usermod -aG dialout $USER`, then log out and in.
 
 If the computer's address changes, connect the board by USB and pair again.
 

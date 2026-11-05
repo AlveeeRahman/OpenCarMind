@@ -18,12 +18,15 @@
 #include "cJSON.h"
 #include "usb_door.h"
 #include "uploader.h"
+#include "elm327.h"
 #include "wifi_creds.h"
 #include "remote_config.h"
 #include "sdlog.h"
 #include "status.h"
 #include "sys_mode.h"
 #include "version.h"
+#include "ml_infer.h"
+#include "rev_task.h"
 
 static const char *TAG = "door";
 
@@ -146,6 +149,106 @@ static void cmd_get(char *name, char *off_s, char *len_s, char *buf, char *b64)
     reply("OK GET %u", (unsigned)n);
 }
 
+/* OK MODEL active=<key> available=<keys> loaded=<0|1> learning=<0|1> run_us=<one timed run at load> */
+static void reply_model(void)
+{
+    ml_stats_t ms;
+    ml_get_stats(&ms);
+    char avail[16] = "";
+    for (int i = 0; i < ML_MODEL_COUNT; i++)
+        if (ml_model_available(i)) snprintf(avail + strlen(avail), sizeof avail - strlen(avail), "%s%s", avail[0] ? "," : "", ml_model_key(i));
+    reply("OK MODEL active=%s available=%s loaded=%d learning=%d run_us=%lu", ml_model_key(ml_model_active()), avail[0] ? avail : "none",
+          ms.ready ? 1 : 0, ml_rev_active() ? 1 : 0, (unsigned long)ms.selftest_us);
+}
+
+static void cmd_model(const char *sub, const char *key)
+{
+    if (sub && !strcmp(sub, "GET")) { reply_model(); return; }
+    if (!sub || strcmp(sub, "SET") || !key) { reply("ERR usage: MODEL GET | MODEL SET ev|rev"); return; }
+    if (elm_drive_active()) { reply("ERR a drive is running: switch models while parked"); return; }
+    int id = -1;
+    for (int i = 0; i < ML_MODEL_COUNT; i++) if (!strcmp(key, ml_model_key(i))) id = i;
+    if (id < 0) { reply("ERR unknown model %.8s: ev or rev", key); return; }
+    char why[80];
+    if (!ml_select_model(id, why, sizeof why)) { reply("ERR %s", why); return; }
+    reply_model();
+}
+
+/* Several "D <group> key=value ..." lines, each well under the 190-character reply limit, then OK REV-STATUS. */
+static void cmd_rev_status(void)
+{
+    rev_status_t st;
+    rev_get_status(&st);
+    static const char *const src[] = {"model", "learned", "phys"};
+    reply("D state model=%s enabled=%d learning=%d safe=%d sd=%d saved=%d saves=%lu row_ms=%.0f", ml_model_key(ml_model_active()),
+          st.enabled, st.learning, st.safe, st.sd, st.saved, (unsigned long)st.saves, (double)st.row_ms);
+    reply("D fuel commits=%lu resets=%lu kept=%lu failed=%lu learned=%lu pairs=%lu dropped=%lu drift=%.3f mse_live=%.4f mse_factory=%.4f",
+          (unsigned long)st.commits, (unsigned long)st.resets, (unsigned long)st.kept, (unsigned long)st.failed, (unsigned long)st.learned,
+          (unsigned long)st.pairs, (unsigned long)st.dropped, (double)st.drift, (double)st.mse_live, (double)st.mse_prior);
+    reply("D error factory=%.4f learned=%.4f phys=%.4f n_factory=%lu n_learned=%lu n_phys=%lu prefer=%s", (double)st.err[0], (double)st.err[1],
+          (double)st.err[2], (unsigned long)st.n_err[0], (unsigned long)st.n_err[1], (unsigned long)st.n_err[2], src[st.prefer]);
+    reply("D phys k=%.4e ready=%d rows=%lu path=%s", (double)st.k, st.k_ready, (unsigned long)st.k_rows, st.k_calc ? "calc" : "abs");
+    reply("D cal c=%.4f fill_rev=%lu used=%d skipped=%d fills=%d", (double)st.cal, (unsigned long)st.fill_rev, st.used, st.skipped, st.fills);
+    reply("D life litres=%.3f km=%.3f", st.life_l, st.life_km);
+    {
+        static const char *const tsrc[] = {"none", "pid", "rate", "maf", "k"};
+        reply("D torque ok=%d nm=%.1f src=%s idle=%d vd_l=%.2f", st.torque_ok, st.torque_ok ? (double)st.torque_nm : 0.0,
+              tsrc[st.torque_src < 5 ? st.torque_src : 0], st.torque_idle, (double)st.vd_l);
+        const rev_tank_out_t *t = &st.tank;
+        reply("D tank have=%d ready=%d cap_raw_l=%.2f rel_se=%.4f band_l=%.2f span_pct=%.1f level=%.1f left_raw_l=%.2f range_km=%.0f segs=%lu fills=%lu",
+              t->have, t->ready, (double)t->cap_raw_l, (double)t->rel_se, (double)t->band_l, (double)t->span_pct, (double)t->level,
+              (double)t->left_raw_l, (double)t->range_km, (unsigned long)st.tank_segs, (unsigned long)st.tank_fills);
+        for (uint32_t i = 0; i < st.tank_sug_n && i < REV_TANK_SUGGEST; i++) {
+            const rev_tank_fill_t *f = &st.tank_sug[i];
+            reply("D tankfill seq=%lu session=%lu before=%.1f after=%.1f raw_l=%.2f ready=%d top=%d", (unsigned long)f->seq,
+                  (unsigned long)f->session, (double)f->before, (double)f->after, (double)f->raw_l, f->ready, f->top);
+        }
+    }
+    rev_interval_t iv;
+    for (int i = 0; rev_get_interval(i, &iv); i++)
+        reply("D iv id=%lu from=%lu to=%lu pumped=%.3f board=%.3f trip=%d why=%d", (unsigned long)iv.fill_id, (unsigned long)iv.from_session,
+              (unsigned long)iv.to_session, (double)iv.pumped_l, (double)iv.raw_l, iv.trip, iv.why);
+    reply("OK REV-STATUS");
+}
+
+/* {"rev": n, "entries": [{"id": 1, "after": 12, "litres": 40.1, "full": true}, {"id": 2, "kind": "trip", "from": 3, "after": 12,
+   "l100": 7.9}]}: litres and L/100 km, the app converts gallons and mpg. */
+static void cmd_rev_fillups(char *buf)
+{
+    cJSON *root = cJSON_Parse(buf);
+    cJSON *rev = cJSON_GetObjectItem(root, "rev"), *arr = cJSON_GetObjectItem(root, "entries");
+    static rev_fill_t f[REV_CAL_FILLUPS];
+    int n = 0;
+    bool ok = cJSON_IsNumber(rev) && rev->valuedouble >= 0 && cJSON_IsArray(arr) && cJSON_GetArraySize(arr) <= REV_CAL_FILLUPS;
+    cJSON *e;
+    if (ok) cJSON_ArrayForEach(e, arr) {
+        cJSON *id = cJSON_GetObjectItem(e, "id"), *after = cJSON_GetObjectItem(e, "after"), *kind = cJSON_GetObjectItem(e, "kind");
+        bool trip = cJSON_IsString(kind) && !strcmp(kind->valuestring, "trip");
+        memset(&f[n], 0, sizeof f[n]);
+        if (!cJSON_IsNumber(id) || !cJSON_IsNumber(after) || after->valuedouble < 0) { ok = false; break; }
+        f[n].id = (uint32_t)id->valuedouble;
+        f[n].after_session = (uint32_t)after->valuedouble;
+        if (trip) {
+            cJSON *from = cJSON_GetObjectItem(e, "from"), *l100 = cJSON_GetObjectItem(e, "l100");
+            if (!cJSON_IsNumber(from) || !cJSON_IsNumber(l100) || from->valuedouble < 0) { ok = false; break; }
+            f[n].kind = REV_FILL_TRIP; f[n].from_session = (uint32_t)from->valuedouble; f[n].l_per_100km = (float)l100->valuedouble;
+        } else {
+            cJSON *litres = cJSON_GetObjectItem(e, "litres");
+            if (!cJSON_IsNumber(litres)) { ok = false; break; }
+            f[n].kind = REV_FILL_PUMP; f[n].litres = (float)litres->valuedouble; f[n].full = cJSON_IsTrue(cJSON_GetObjectItem(e, "full"));
+        }
+        n++;
+    }
+    uint32_t r = ok ? (uint32_t)rev->valuedouble : 0;
+    cJSON_Delete(root);
+    if (!ok) { reply("ERR usage: REV-FILLUPS <json b64> with rev and at most %d entries", REV_CAL_FILLUPS); return; }
+    char why[100];
+    if (!rev_set_fills(f, n, r, why, sizeof why)) { reply("ERR %s", why); return; }
+    rev_status_t st;
+    rev_get_status(&st);
+    reply("OK REV-FILLUPS rev=%lu cal=%.4f used=%d skipped=%d", (unsigned long)st.fill_rev, (double)st.cal, st.used, st.skipped);
+}
+
 static void handle(char *line, char *buf, char *b64)
 {
     if (strncmp(line, "OCM1 ", 5) != 0) return;
@@ -245,6 +348,20 @@ static void handle(char *line, char *buf, char *b64)
         reply("OK LIST");
     } else if (!strcmp(cmd, "GET")) {
         cmd_get(a1, a2, a3, buf, b64);
+    } else if (!strcmp(cmd, "MODEL")) {
+        cmd_model(a1, a2);
+    } else if (!strcmp(cmd, "REV-STATUS")) {
+        cmd_rev_status();
+    } else if (!strcmp(cmd, "REV-FILLUPS")) {
+        if (!a1 || !unb64(a1, buf, GET_MAX)) { reply("ERR usage: REV-FILLUPS <json b64>"); return; }
+        cmd_rev_fillups(buf);
+    } else if (!strcmp(cmd, "REV-RESET")) {
+        if (a1 && rev_reset(a1)) reply("OK REV-RESET %s", a1);
+        else reply("ERR usage: REV-RESET fuel|phys|cal|tank|all (not in safe mode)");
+    } else if (!strcmp(cmd, "REV-TANK-ACK")) {
+        if (!a1) { reply("ERR usage: REV-TANK-ACK <seq>"); return; }
+        rev_tank_suggestions_ack((uint32_t)strtoul(a1, NULL, 10));
+        reply("OK REV-TANK-ACK");
     } else if (!strcmp(cmd, "REBOOT")) {
         reply("OK REBOOT");
         vTaskDelay(pdMS_TO_TICKS(300));

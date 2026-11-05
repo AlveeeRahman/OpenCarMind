@@ -97,6 +97,15 @@ void uploader_init(void)
 
 bool uploader_configured(void) { return s_ok; }
 
+bool uploader_wifi_enabled(void)
+{
+#if CONFIG_OCM_WIFI_UPLOAD
+    return s_ok;
+#else
+    return false;            /* 2.5.0: Wi-Fi only sets the clock; drives come over USB (see README) */
+#endif
+}
+
 static esp_err_t on_event(esp_http_client_event_t *e)
 {
     body_t *b = e->user_data;

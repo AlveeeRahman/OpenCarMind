@@ -3,6 +3,9 @@ idf_component_register(
          "obd_ble.c"
          "adapter_match.c"
          "econ.c"
+         "obd_fresh.c"
+         "rev_torque.c"
+         "rev_tank.c"
          "units.c"
          "harden.c"
          "power_state.c"
@@ -23,8 +26,12 @@ idf_component_register(
          "sched_mon.c"
          "sys_mode.c"
          "ml_infer.cpp"
+         "rev_learn.c"
+         "rev_cal.c"
+         "rev_state.c"
+         "rev_task.c"
     INCLUDE_DIRS "."
-    REQUIRES bt nvs_flash driver esp_wifi esp_netif esp_event esp_http_client esp_driver_usb_serial_jtag
+    REQUIRES bt nvs_flash driver esp_wifi esp_netif esp_event esp_http_client mbedtls esp_driver_usb_serial_jtag
              esp_lcd fatfs sdmmc vfs esp_timer esp_driver_gpio
              esp_driver_spi esp_driver_sdmmc esp_driver_ledc
 )
@@ -38,4 +45,11 @@ if(CONFIG_CARMIND_ML_ENABLE)
     set(cmake_dir ${esp_dl_dir}/fbs_loader/cmake)
     include(${cmake_dir}/utilities.cmake)
     target_add_aligned_binary_data(${COMPONENT_LIB} "${CMAKE_CURRENT_LIST_DIR}/../ml/onboard/onboard.espdl" BINARY)
+    # CarMind R.E.V (ml/onboard/rev/onboard.espdl). The helper names the symbol and its generated .S after the file name, so the
+    # file is copied into the build folder under its own name first. Symbol: _binary_onboard_rev_espdl_start.
+    if(CONFIG_CARMIND_REV_ENABLE)
+        idf_build_get_property(build_dir BUILD_DIR)
+        configure_file("${CMAKE_CURRENT_LIST_DIR}/../ml/onboard/rev/onboard.espdl" "${build_dir}/onboard_rev.espdl" COPYONLY)
+        target_add_aligned_binary_data(${COMPONENT_LIB} "${build_dir}/onboard_rev.espdl" BINARY)
+    endif()
 endif()

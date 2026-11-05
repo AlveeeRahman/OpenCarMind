@@ -23,3 +23,6 @@ void                  remote_config_load_sd(void);
 /* Apply a JSON object: known numeric fields, "wifi":[{ssid,password}], "custom_pids":"csv text".
  * Returns the number of settings applied; persists the settings. */
 int                   remote_config_apply(cJSON *root);
+/* The one HTTPS time server: the user's choice ("time_host", NVS key rconf/thost) or the build default
+   CONFIG_OCM_TIME_HTTPS_HOST. Kept outside remote_config_t so older saved settings stay valid. */
+const char           *remote_config_time_host(void);

@@ -186,6 +186,83 @@ pub fn setup(port: &str, networks: &[(String, String)], config: Option<&serde_js
     Ok(format!("{} network(s) and {applied} setting(s) sent to the board.", networks.len()))
 }
 
+/// The on-board model, from "OK MODEL active=ev available=ev,rev loaded=1 learning=0 run_us=3500".
+#[derive(Serialize, Clone, Debug, PartialEq)]
+pub struct ModelInfo {
+    pub active: String,
+    pub available: Vec<String>,
+    pub loaded: bool,
+    pub learning: bool,
+    pub run_us: Option<u64>,
+}
+
+pub fn parse_model(line: &str) -> Result<ModelInfo, String> {
+    let active = field(line, "active").ok_or("the board's model answer was not understood")?.to_string();
+    let available = field(line, "available").unwrap_or("").split(',').filter(|k| *k == "ev" || *k == "rev").map(str::to_string).collect();
+    Ok(ModelInfo {
+        active,
+        available,
+        loaded: field(line, "loaded") == Some("1"),
+        learning: field(line, "learning") == Some("1"),
+        run_us: field(line, "run_us").and_then(|v| v.parse().ok()).filter(|v| *v > 0),
+    })
+}
+
+/// Firmware before 2.5 has no MODEL command: it answers "unknown command", which means only CarMind E.V.
+pub fn model_get(port: &str) -> Result<ModelInfo, String> {
+    match Door::open(port)?.call("MODEL GET", SHORT) {
+        Ok(lines) => parse_model(lines.last().map(String::as_str).unwrap_or("")),
+        Err(e) if e.contains("unknown command") => Ok(ModelInfo { active: "ev".into(), available: vec!["ev".into()], loaded: true, learning: false, run_us: None }),
+        Err(e) => Err(e),
+    }
+}
+
+/// Unloading one model and loading the other takes a few seconds on the board.
+pub fn model_set(port: &str, key: &str) -> Result<ModelInfo, String> {
+    if key != "ev" && key != "rev" {
+        return Err("the model is ev or rev".into());
+    }
+    let lines = Door::open(port)?.call(&format!("MODEL SET {key}"), Duration::from_secs(20))?;
+    parse_model(lines.last().map(String::as_str).unwrap_or(""))
+}
+
+/// One "D <group> key=value ..." line of REV-STATUS.
+#[derive(Serialize, Clone, Debug, PartialEq)]
+pub struct StatusGroup {
+    pub group: String,
+    pub fields: std::collections::BTreeMap<String, String>,
+}
+
+pub fn parse_rev_status(lines: &[String]) -> Vec<StatusGroup> {
+    lines
+        .iter()
+        .filter_map(|l| l.strip_prefix("D "))
+        .filter_map(|rest| {
+            let mut words = rest.split_whitespace();
+            let group = words.next()?.to_string();
+            let fields = words.filter_map(|w| w.split_once('=')).map(|(k, v)| (k.to_string(), v.to_string())).collect();
+            Some(StatusGroup { group, fields })
+        })
+        .collect()
+}
+
+pub fn rev_status(port: &str) -> Result<Vec<StatusGroup>, String> {
+    Ok(parse_rev_status(&Door::open(port)?.call("REV-STATUS", SHORT)?))
+}
+
+/// Sends the whole fill-up list (already converted to litres and L/100 km); returns the board's answer line.
+pub fn rev_fillups(port: &str, list: &serde_json::Value) -> Result<String, String> {
+    let lines = Door::open(port)?.call(&format!("REV-FILLUPS {}", B64.encode(list.to_string())), Duration::from_secs(10))?;
+    Ok(lines.last().cloned().unwrap_or_default())
+}
+
+pub fn rev_reset(port: &str, what: &str) -> Result<(), String> {
+    if !["fuel", "phys", "cal", "tank", "all"].contains(&what) {
+        return Err("reset fuel, phys, cal, tank or all".into());
+    }
+    Door::open(port)?.call(&format!("REV-RESET {what}"), Duration::from_secs(10)).map(|_| ())
+}
+
 /// The session files on the card, as (name, size).
 pub fn list_files(door: &mut Door) -> Result<Vec<(String, u64)>, String> {
     let lines = door.call("LIST", Duration::from_secs(20))?;
@@ -267,6 +344,29 @@ mod tests {
         assert_eq!(field(l, "board"), Some("a1b2c3d4e5f6"));
         assert_eq!(field(l, "paired"), Some("1"));
         assert_eq!(field(l, "missing"), None);
+    }
+
+    #[test]
+    fn model_answers() {
+        let m = parse_model("OK MODEL active=rev available=ev,rev loaded=1 learning=1 run_us=2100").unwrap();
+        assert_eq!(m.active, "rev");
+        assert_eq!(m.available, vec!["ev", "rev"]);
+        assert!(m.loaded && m.learning);
+        assert_eq!(m.run_us, Some(2100));
+        let m = parse_model("OK MODEL active=ev available=ev loaded=1 learning=0 run_us=0").unwrap();
+        assert_eq!(m.available, vec!["ev"]);
+        assert_eq!(m.run_us, None);
+        assert!(parse_model("OK MODEL").is_err());
+    }
+
+    #[test]
+    fn rev_status_lines() {
+        let lines = vec!["D cal c=1.0430 fill_rev=7 used=2".to_string(), "D iv id=3 from=12 to=20 why=0".to_string(), "OK REV-STATUS".to_string()];
+        let g = parse_rev_status(&lines);
+        assert_eq!(g.len(), 2);
+        assert_eq!(g[0].group, "cal");
+        assert_eq!(g[0].fields["c"], "1.0430");
+        assert_eq!(g[1].fields["to"], "20");
     }
 
     #[test]

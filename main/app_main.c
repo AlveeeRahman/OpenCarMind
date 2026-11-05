@@ -1,6 +1,7 @@
 #include <string.h>
 #include "sys_mode.h"
 #include "ml_infer.h"
+#include "rev_task.h"
 #include "sched_mon.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -39,6 +40,8 @@ void status_init(void)
     g_status_mutex = xSemaphoreCreateMutex();
     memset(&g_status, 0, sizeof g_status);
     g_status.obd.fuel_lph_calc = g_status.obd.econ_trip_kpl = g_status.obd.econ_inst_kpl = -1;   /* unknown until a row */
+    g_status.obd.fuel_lph_raw = -1;
+    g_status.obd.fuel_cal = 1.0f;
 }
 
 void status_get(app_status_t *out)
@@ -54,6 +57,7 @@ static void power_off(void)
 {
     /* Logging already stopped when the hold passed 2 s; wait for the drive to be saved and closed, then sleep. */
     if (!elm_wait_stopped(4000)) ESP_LOGW(TAG, "poll loop still busy after 4 s; saving what is logged");
+    rev_flush(2000);                   /* the learned fuel state, before the card is unmounted */
     ESP_LOGW(TAG, "powering off (deep sleep); press BOOT to wake");
     status_led_set(0, 0, 0);
     display_sleep();
@@ -191,6 +195,7 @@ void app_main(void)
     /* the model loads before BLE and Wi-Fi start, so the global small-allocation switch it needs (ml_infer.cpp)
        is on while the fewest other tasks allocate; it takes under 200 B of internal RAM either way */
     if (!sched_safe_mode()) ml_init();   /* after repeated abnormal resets, boot without the newest component */
+    rev_init();                       /* R.E.V learning and fill-up calibration; in safe mode only the calibration factor, from NVS */
     ESP_LOGI(TAG, "internal heap before BLE: %u", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
     ESP_ERROR_CHECK(obd_ble_start());
     ESP_LOGI(TAG, "internal heap before Wi-Fi: %u", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));

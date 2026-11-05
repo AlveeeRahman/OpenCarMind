@@ -23,6 +23,7 @@ void sys_event(event_level_t level, const char *fmt, ...)
 
 static int fails, checks;
 #include "adapter_match.h"
+#include "obd_fresh.h"
 #include "econ.h"
 #include "harden.h"
 #include "power_state.h"
@@ -342,6 +343,27 @@ static void test_econ(void)
 
 static void test_harden(void)
 {
+    {   /* HTTP Date (IMF-fixdate) for the HTTPS clock; expected values from Python's calendar.timegm */
+        int64_t e = 0;
+        CHECK(harden_http_date("Sun, 06 Nov 1994 08:49:37 GMT", &e) && e == 784111777LL);
+        CHECK(harden_http_date("Thu, 05 Nov 2026 00:46:41 GMT", &e) && e == 1793839601LL);
+        CHECK(harden_http_date("Tue, 29 Feb 2028 23:59:59 GMT", &e) && e == 1835481599LL);
+        CHECK(harden_http_date("Fri, 31 Dec 2099 23:59:59 GMT", &e) && e == 4102444799LL);
+        CHECK(!harden_http_date("Mon, 29 Feb 2027 12:00:00 GMT", &e));      /* not a leap year */
+        CHECK(!harden_http_date("Sun, 06 Nov 1994 08:49:37 UTC", &e));
+        CHECK(!harden_http_date("Sunday, 06-Nov-94 08:49:37 GMT", &e));     /* RFC 850 form */
+        CHECK(!harden_http_date("Sun Nov  6 08:49:37 1994", &e));           /* asctime form */
+        CHECK(!harden_http_date("Sun, 06 Foo 1994 08:49:37 GMT", &e));
+        CHECK(!harden_http_date("Sun, 32 Nov 1994 08:49:37 GMT", &e));
+        CHECK(!harden_http_date("Sun, 06 Nov 1994 24:00:00 GMT", &e));
+        CHECK(!harden_http_date("Sun, 06 Nov 1994 08:49:3x GMT", &e));
+        CHECK(!harden_http_date("", &e) && !harden_http_date(NULL, &e));
+        CHECK(harden_hostname_ok("www.google.com") && harden_hostname_ok("my-broker.example.workers.dev"));
+        CHECK(!harden_hostname_ok("localhost") && !harden_hostname_ok("192.168.1.10") && !harden_hostname_ok("a.b"));
+        CHECK(!harden_hostname_ok("https://x.com") && !harden_hostname_ok("x.com:443") && !harden_hostname_ok("-x.com"));
+        CHECK(!harden_hostname_ok("x-.com") && !harden_hostname_ok("x..com") && !harden_hostname_ok(".x.com") && !harden_hostname_ok("x.com."));
+        CHECK(!harden_hostname_ok("ex ample.com") && !harden_hostname_ok(NULL));
+    }
     CHECK(!harden_epoch_plausible(0));
     CHECK(!harden_epoch_plausible(1767225599LL));
     CHECK(harden_epoch_plausible(1767225600LL));
@@ -395,6 +417,32 @@ static void test_power_state(void)
     for (int s = POWER_SAFE; s <= POWER_UPLOADING; s++) CHECK(strlen(power_state_text((power_state_t)s)) <= 18);   /* fits page 3 */
 }
 
+static void test_obd_fresh(void)
+{
+    /* field 0 fast (MAF-like), field 1 slow, field 70 fast in the second word */
+    uint64_t fast[2] = {1ULL << 0, 1ULL << (70 - 64)};
+    uint32_t t[128] = {0};
+    uint64_t v[2] = {(1ULL << 0) | (1ULL << 1), 1ULL << (70 - 64)};
+    t[0] = 10000; t[1] = 10000; t[70] = 10000;
+    /* cycle 1.5 s: fast limit max(4 s, 4.5 s) = 4.5 s; slow list of 5 cycles: max(10 s, 22.5 s) = 22.5 s */
+    CHECK(obd_fresh_expire(v, fast, t, 128, 14400, 1500, 5) == 0 && (v[0] & 3) == 3 && (v[1] >> 6 & 1));
+    CHECK(obd_fresh_expire(v, fast, t, 128, 14600, 1500, 5) == 2 && (v[0] & 3) == 2 && !(v[1] >> 6 & 1));   /* fast ones go */
+    CHECK(obd_fresh_expire(v, fast, t, 128, 32400, 1500, 5) == 0 && (v[0] & 2));                              /* slow one stays */
+    CHECK(obd_fresh_expire(v, fast, t, 128, 32600, 1500, 5) == 1 && v[0] == 0);                               /* then goes too */
+    /* minimums: a 0.5 s cycle still allows 4 s for fast and 10 s for slow fields */
+    uint64_t w[2] = {3, 0};
+    CHECK(obd_fresh_expire(w, fast, t, 128, 13900, 500, 1) == 0 && w[0] == 3);
+    CHECK(obd_fresh_expire(w, fast, t, 128, 14100, 500, 1) == 1 && w[0] == 2);
+    CHECK(obd_fresh_expire(w, fast, t, 128, 20100, 500, 1) == 1 && w[0] == 0);
+    /* the millisecond clock wraps after 49 days: a read just before the wrap is 1 s old just after it */
+    uint64_t x[2] = {1, 0};
+    uint32_t tw[1] = {0xFFFFFE00u};
+    CHECK(obd_fresh_expire(x, fast, tw, 1, 0x00000200u, 1500, 1) == 0 && x[0] == 1);
+    /* a field never read is not touched */
+    uint64_t y[2] = {0, 0};
+    CHECK(obd_fresh_expire(y, fast, t, 128, 99999, 1500, 1) == 0 && y[0] == 0 && y[1] == 0);
+}
+
 int main(void)
 {
     test_power_state();
@@ -402,6 +450,7 @@ int main(void)
     test_adapter_names();
     test_adapter_profiles();
     test_econ();
+    test_obd_fresh();
     test_pattern();
     test_formula();
     test_custom_csv();

@@ -1,9 +1,11 @@
 #include <string.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
 #include <stdint.h>
 #include "ml_infer.h"
+#include "rev_task.h"
 #include "sched_mon.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -14,6 +16,7 @@
 #include "elm327.h"
 #include "obd_ble.h"
 #include "econ.h"
+#include "obd_fresh.h"
 #include "status.h"
 #include "sdlog.h"
 #include "custom_pids.h"
@@ -275,6 +278,12 @@ static float raw_value(const field_def_t *d, const uint8_t *b, int n)
     return NAN;
 }
 
+/* Freshness (obd_fresh.h): when each field was last read, which fields are in the fast tier, and the typical cycle. obd task only. */
+static uint32_t s_field_ms[F_COUNT];
+static uint64_t s_fast_fields[2];
+static uint32_t s_cycle_ms = 1500;
+static uint32_t s_level_seen_ms;                    /* fuel-level read time last given to the tank learner */
+
 /* Query one PID and store every table field it carries. Returns false when nothing decoded. */
 static bool poll_pid(uint8_t pid)
 {
@@ -290,6 +299,7 @@ static bool poll_pid(uint8_t pid)
         /* lambda sensors 0x24..0x2B report 0xFFFF for "not used"; O2 voltage PIDs 0xFF too */
         g_status.obd.f[i] = raw * FIELDS[i].scale + FIELDS[i].offset;
         OBD_SET(&g_status.obd, i);
+        s_field_ms[i] = (uint32_t)(esp_timer_get_time() / 1000);
         any = true;
     }
     STATUS_UNLOCK();
@@ -547,6 +557,7 @@ static void end_drive(sched_job_t poll_job)
 {
     sched_set_expected(poll_job, false);
     ml_drive_ended();
+    rev_drive_ended();
     sdlog_end_drive();
     STATUS_LOCK();
     if (g_status.ble == BLE_ST_LOGGING) g_status.ble = BLE_ST_ELM_INIT;
@@ -585,16 +596,26 @@ static void obd_task(void *arg)
             continue;
         }
 
+        s_in_drive = true;                                /* from here the model must not change (usb_door refuses MODEL SET) */
         /* Build the polling lists from what the ECU supports. */
         uint8_t fast[32], slow[160], raw[160];
         int nf = 0, ns = 0, nr = 0;
         for (int pid = 0x01; pid < 0x100; pid++) {
             if (!pid_supported(pid) || (pid & 0x1F) == 0) continue;
             if (pid == 0x01) continue;                       /* status: handled with DTCs */
-            if (pid_in_table(pid)) { if (pid_is_fast(pid) || (s_resp_count && pid_is_model_channel(pid))) fast[nf++] = pid; else slow[ns++] = pid; }
+            /* R.E.V's airflow constant needs absolute load (0x43) in every row, like MAF and rpm: one more ELM transaction per
+               cycle, only while R.E.V is the selected model and only on cars that report 0x43. Calculated load (0x04) is fast already. */
+            bool rev_fast = pid == 0x43 && rev_wants_abs_load();
+            if (pid_in_table(pid)) { if (pid_is_fast(pid) || (s_resp_count && pid_is_model_channel(pid)) || rev_fast) fast[nf++] = pid; else slow[ns++] = pid; }
             else if (nr < 160) raw[nr++] = pid;
         }
         ESP_LOGI(TAG, "polling %d fast, %d slow, %d raw-only PIDs, %u custom", nf, ns, nr, (unsigned)s_custom_n);
+        s_fast_fields[0] = s_fast_fields[1] = 0;
+        for (int i = 0; i < F_COUNT; i++)
+            for (int k = 0; k < nf; k++)
+                if (FIELDS[i].pid == fast[k]) { s_fast_fields[i / 64] |= 1ULL << (i % 64); break; }
+        s_cycle_ms = 1500;
+        int64_t last_cycle_us = 0;
 
         STATUS_LOCK();
         g_status.ble = BLE_ST_LOGGING;
@@ -609,8 +630,9 @@ static void obd_task(void *arg)
         int64_t last_dtc = 0, last_rv = 0;
         int consecutive_fail = 0;
         int64_t last_ok = esp_timer_get_time();
-        econ_trip_t trip;
+        econ_trip_t trip, trip_raw;                       /* calibrated (shown) and as the sources gave it */
         econ_reset(&trip);
+        econ_reset(&trip_raw);
         int64_t last_row_us = 0;
         int64_t equiv_at_us = 0;                          /* when PID 0x44 was last read in this drive */
         float equiv_thr = -1;                             /* throttle at that read, -1 unknown */
@@ -618,7 +640,11 @@ static void obd_task(void *arg)
         STATUS_LOCK();                                    /* a new drive starts with no fuel or economy figures */
         g_status.obd.fuel_lph_calc = -1; g_status.obd.fuel_src = 0; g_status.obd.trip_km = 0; g_status.obd.trip_fuel_l = 0;
         g_status.obd.econ_trip_kpl = -1; g_status.obd.econ_inst_kpl = -1;
+        g_status.obd.fuel_lph_raw = -1; g_status.obd.fuel_cal = rev_cal_factor(); g_status.obd.trip_fuel_raw_l = 0;
+        g_status.obd.torque_nm = NAN; g_status.obd.torque_src = 0; g_status.obd.tank_left_l = -1; g_status.obd.tank_range_km = -1;
         STATUS_UNLOCK();
+        rev_drive_started();
+        sdlog_meta_set_ml(ml_model_key(ml_model_active()), rev_cal_factor());
         char resp[64];
         s_in_drive = true;
 
@@ -667,8 +693,21 @@ static void obd_task(void *arg)
             if (any_ok) {
                 consecutive_fail = 0;
                 last_ok = esp_timer_get_time();
+                if (last_cycle_us) {                        /* typical cycle, for the freshness limits */
+                    int64_t c = (last_ok - last_cycle_us) / 1000;
+                    if (c > 0 && c < 60000) s_cycle_ms = (uint32_t)(0.8f * (float)s_cycle_ms + 0.2f * (float)c);
+                }
+                last_cycle_us = last_ok;
                 obd_values_t snap;
-                STATUS_LOCK(); snap = g_status.obd; STATUS_UNLOCK();
+                /* a field that stopped answering is missing, not frozen at its last value: the fuel picker, R.E.V and the model
+                   then see the gap (a stale MAF kept the picker on MAF and fed R.E.V a frozen label before) */
+                uint32_t slow_cycles = (uint32_t)((total_slow + SLOW_PER_CYCLE - 1) / SLOW_PER_CYCLE);
+                STATUS_LOCK();
+                int gone = obd_fresh_expire(g_status.obd.valid, s_fast_fields, s_field_ms, F_COUNT, (uint32_t)(last_ok / 1000),
+                                            s_cycle_ms, slow_cycles);
+                snap = g_status.obd;
+                STATUS_UNLOCK();
+                if (gone) ESP_LOGD(TAG, "%d field(s) stopped answering", gone);
                 {
                     /* fuel and economy from the best source this car has; older cars fall back, missing stays missing */
                     ml_stats_t ms;
@@ -683,13 +722,30 @@ static void obd_task(void *arg)
                         bool thr_closed = equiv_thr >= 0 && OBD_HAS(&snap, F_throttle) && snap.f[F_throttle] <= equiv_thr + 2.0f;
                         equiv_ok = recent || thr_closed;
                     }
+                    /* R.E.V (when selected): the physics and learned estimates for cars without MAF, and which one this car
+                       trusts. Off with E.V: then this is exactly econ_fuel_lph(). */
+                    rev_est_t re;
+                    rev_estimates(&snap, &re);
+                    econ_in_t in = {OBD_HAS(&snap, F_fuel_rate), snap.f[F_fuel_rate], OBD_HAS(&snap, F_maf), snap.f[F_maf],
+                                    equiv_ok, snap.f[F_equiv], OBD_HAS(&snap, F_fuel_type) ? (int)snap.f[F_fuel_type] : 0,
+                                    model_ok, ms.last_est[2], re.phys_ok, re.phys_maf_gps, re.learned_ok, re.learned_lph, re.prefer};
                     fuel_src_t src;
-                    float lph = econ_fuel_lph(OBD_HAS(&snap, F_fuel_rate), snap.f[F_fuel_rate], OBD_HAS(&snap, F_maf), snap.f[F_maf],
-                                              equiv_ok, snap.f[F_equiv],
-                                              OBD_HAS(&snap, F_fuel_type) ? (int)snap.f[F_fuel_type] : 0, model_ok, ms.last_est[2], &src);
+                    float raw = econ_fuel_pick(&in, &src);
+                    float cal = rev_cal_factor();                 /* fill-up calibration: 1.0 until the user enters fill-ups */
+                    float lph = raw >= 0 ? raw * cal : raw;
                     float kph = OBD_HAS(&snap, F_speed) ? snap.f[F_speed] : -1;
-                    if (last_row_us) econ_step(&trip, kph, lph, (float)(t_us - last_row_us) / 1e6f);
+                    float dt = last_row_us ? (float)(t_us - last_row_us) / 1e6f : 0;
+                    if (last_row_us) { econ_step(&trip, kph, lph, dt); econ_step(&trip_raw, kph, raw, dt); }
                     last_row_us = t_us;
+                    /* a fresh fuel-level answer this row (not one carried over), for the tank learner */
+                    bool level_fresh = OBD_HAS(&snap, F_fuel_level) && s_field_ms[F_fuel_level] != s_level_seen_ms;
+                    if (level_fresh) s_level_seen_ms = s_field_ms[F_fuel_level];
+                    rev_row(&snap, t_us / 1000, src, raw, dt, level_fresh);   /* labels, airflow constant, ledger: before ml_feed takes the label */
+                    bool tq_idle;
+                    rev_row_outputs(&snap.torque_nm, &snap.torque_src, &tq_idle, &snap.tank_left_l, &snap.tank_range_km);
+                    snap.fuel_lph_raw = raw;
+                    snap.fuel_cal = cal;
+                    snap.trip_fuel_raw_l = (float)trip_raw.litres;
                     snap.fuel_lph_calc = lph;
                     snap.fuel_src = (uint8_t)src;
                     snap.trip_km = trip.km;
@@ -700,6 +756,10 @@ static void obd_task(void *arg)
                     g_status.obd.fuel_lph_calc = snap.fuel_lph_calc;   g_status.obd.fuel_src = snap.fuel_src;
                     g_status.obd.trip_km = snap.trip_km;               g_status.obd.trip_fuel_l = snap.trip_fuel_l;
                     g_status.obd.econ_trip_kpl = snap.econ_trip_kpl;   g_status.obd.econ_inst_kpl = snap.econ_inst_kpl;
+                    g_status.obd.fuel_lph_raw = snap.fuel_lph_raw;     g_status.obd.fuel_cal = snap.fuel_cal;
+                    g_status.obd.trip_fuel_raw_l = snap.trip_fuel_raw_l;
+                    g_status.obd.torque_nm = snap.torque_nm;           g_status.obd.torque_src = snap.torque_src;
+                    g_status.obd.tank_left_l = snap.tank_left_l;       g_status.obd.tank_range_km = snap.tank_range_km;
                     STATUS_UNLOCK();
                 }
                 ml_feed(&snap, esp_timer_get_time() / 1000);   /* before pattern_step: the closing row is in its second */
@@ -723,6 +783,8 @@ static void obd_task(void *arg)
         }
     }
 }
+
+bool elm_drive_active(void) { return s_in_drive; }
 
 void elm_init(void)
 {

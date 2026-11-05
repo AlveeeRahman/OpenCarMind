@@ -20,8 +20,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # The fault engine, custom PID parser and pattern layer build and run on a computer.
+      # The fault engine, custom PID parser, pattern layer and fuel economy build and run on a computer.
       - run: make -C tests/host
+      # CarMind R.E.V learners: fuel head, airflow constant, fill-up calibration, state file, float vs double solve.
+      - run: make -C tests/host rev
 
   python:
     runs-on: ubuntu-24.04
@@ -36,17 +38,19 @@ jobs:
         run: python -m py_compile tools/ocm_report.py tools/gen_ml_params.py tools/check_docs.py
       - name: Unit tests
         run: python -m unittest discover -s tests -p "test_*.py" -v
-      - name: main/ml_params.h matches the shipped model files
+      - name: main/ml_params.h and main/ml_params_rev.h match the shipped model files
         run: |
           python tools/gen_ml_params.py ml/onboard "$RUNNER_TEMP/ml_params.h"
           diff main/ml_params.h "$RUNNER_TEMP/ml_params.h"
+          python tools/gen_ml_params.py ml/onboard/rev "$RUNNER_TEMP/ml_params_rev.h" MLR
+          diff main/ml_params_rev.h "$RUNNER_TEMP/ml_params_rev.h"
       - name: Report tool on the replay sessions
         run: |
           python tools/ocm_report.py samples/replay/obd dashboard/site
           test -s dashboard/site/summary.json
       - name: Replay checksums
         run: cd samples/replay && sha256sum --check SHA256SUMS
-      - name: Markdown links and images
+      - name: Markdown links and images, model export records
         run: python tools/check_docs.py
       - name: Dashboard configuration parses
         run: |

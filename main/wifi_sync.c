@@ -3,7 +3,11 @@
  * CONFIG_SYNC_STAY_CONNECTED_S seconds and then disconnects so the radio stops competing with BLE. It scans again
  * every CONFIG_SYNC_SCAN_INTERVAL_S seconds while the clock has never been set, and every
  * CONFIG_SYNC_RESYNC_INTERVAL_H hours afterwards to correct drift. It never scans or connects while the car is being
- * logged (sys_mode DRIVE), and drops an open connection when the drive starts. Nothing but SNTP time queries leaves the board. */
+ * logged (sys_mode DRIVE), and drops an open connection when the drive starts.
+ * Time comes from ONE server (remote_config_time_host(), default CONFIG_OCM_TIME_HTTPS_HOST): one HTTPS HEAD request,
+ * the server's certificate checked against ESP-IDF's root bundle and its name, the time read from the Date header.
+ * Apart from DHCP and the DNS lookup of that name, nothing else leaves the board; it listens on no port. The upload to
+ * the desktop app is compiled out unless CONFIG_OCM_WIFI_UPLOAD (off in 2.5.0). */
 #include <string.h>
 #include <stdio.h>
 #include <time.h>
@@ -16,7 +20,9 @@
 #include "esp_wifi.h"
 #include "esp_netif.h"
 #include "esp_event.h"
-#include "esp_netif_sntp.h"
+#include "esp_http_client.h"
+#include "esp_crt_bundle.h"
+#include <strings.h>
 #include "units.h"
 #include "remote_config.h"
 #include "esp_timer.h"
@@ -108,32 +114,55 @@ static bool clock_is_set(void)
     return ok;
 }
 
+static char s_date[40];                              /* Date header of the last reply; wifi task only */
+
+static esp_err_t on_header(esp_http_client_event_t *e)
+{
+    if (e->event_id == HTTP_EVENT_ON_HEADER && e->header_key && e->header_value && !strcasecmp(e->header_key, "Date"))
+        strlcpy(s_date, e->header_value, sizeof s_date);
+    return ESP_OK;
+}
+
 static bool sync_clock(void)
 {
-    bool ok = false;
-    struct timeval before;
-    gettimeofday(&before, NULL);
-    esp_sntp_config_t cfg = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
-    esp_netif_sntp_init(&cfg);
-    if (esp_netif_sntp_sync_wait(pdMS_TO_TICKS(10000)) == ESP_OK) {
-        struct timeval tv;
-        gettimeofday(&tv, NULL);
-        if (!harden_epoch_plausible(tv.tv_sec)) {            /* SNTP is not authenticated: refuse a time that cannot be right */
-            settimeofday(&before, NULL);
-            sys_event(EV_WARN, "Clock sync refused: server time %lld is outside 2026-2099", (long long)tv.tv_sec);
-            esp_netif_sntp_deinit();
-            return false;
-        }
-        int64_t epoch_ms = (int64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000;
-        int64_t up_ms = esp_timer_get_time() / 1000;
-        sdlog_meta_set_time_sync(epoch_ms, up_ms);
-        STATUS_LOCK(); g_status.time_synced = true; g_status.clock_estimated = false; STATUS_UNLOCK();
-        ESP_LOGI(TAG, "clock synced, epoch %lld", (long long)tv.tv_sec);
-        sys_event(EV_INFO, "Clock synced over Wi-Fi");
-        ok = true;
-    } else sys_event(EV_WARN, "Clock sync (SNTP) timed out");
-    esp_netif_sntp_deinit();
-    return ok;
+    const char *host = remote_config_time_host();
+    char url[80];
+    snprintf(url, sizeof url, "https://%s/", host);
+    s_date[0] = 0;
+    esp_http_client_config_t cfg = {
+        .url = url,
+        .method = HTTP_METHOD_HEAD,
+        .crt_bundle_attach = esp_crt_bundle_attach,      /* chain to a known root, and the name must match the host */
+        .event_handler = on_header,
+        .timeout_ms = 10000,
+        .disable_auto_redirect = true,                   /* the first reply already carries Date; never follow elsewhere */
+        .keep_alive_enable = false,
+    };
+    int64_t t0 = esp_timer_get_time();
+    esp_http_client_handle_t c = esp_http_client_init(&cfg);
+    esp_err_t err = c ? esp_http_client_perform(c) : ESP_FAIL;
+    int64_t rtt_us = esp_timer_get_time() - t0;
+    if (c) esp_http_client_cleanup(c);
+    int64_t epoch;
+    if (err != ESP_OK || !harden_http_date(s_date, &epoch)) {
+        sys_event(EV_WARN, "Clock sync from %s failed (%s)", host, err != ESP_OK ? esp_err_to_name(err) : "no Date");
+        return false;
+    }
+    if (!harden_epoch_plausible(epoch)) {
+        sys_event(EV_WARN, "Clock sync refused: %s gave %lld, outside 2026-2099", host, (long long)epoch);
+        return false;
+    }
+    /* Date has 1 s resolution: take the middle of that second, stamped half a round trip before the reply arrived */
+    int64_t us = epoch * 1000000LL + 500000 + rtt_us / 2;
+    struct timeval tv = {.tv_sec = (time_t)(us / 1000000), .tv_usec = (suseconds_t)(us % 1000000)};
+    settimeofday(&tv, NULL);
+    int64_t epoch_ms = us / 1000;
+    int64_t up_ms = esp_timer_get_time() / 1000;
+    sdlog_meta_set_time_sync(epoch_ms, up_ms);
+    STATUS_LOCK(); g_status.time_synced = true; g_status.clock_estimated = false; STATUS_UNLOCK();
+    ESP_LOGI(TAG, "clock synced from %s, epoch %lld (round trip %lld ms)", host, (long long)epoch, (long long)(rtt_us / 1000));
+    sys_event(EV_INFO, "Clock synced over Wi-Fi");
+    return true;
 }
 
 static bool driving(void) { return sys_mode_get() == MODE_DRIVE; }
@@ -195,7 +224,7 @@ static bool sync_once(void)
     }
     bool ok = false;
     for (int attempt = 0; attempt < 3 && !ok && s_connected && !driving(); attempt++) ok = sync_clock();
-    if (uploader_configured()) {
+    if (uploader_wifi_enabled()) {
         /* Paired with the desktop app: stay on Wi-Fi while parked and send new data every 10 s */
         int64_t last_resync_ms = esp_timer_get_time() / 1000;
         while (s_connected && !driving()) {
@@ -218,12 +247,12 @@ static void sync_task(void *arg)
 {
     /* A clock kept by the RTC through a software reset or deep sleep counts as set: the first drift correction is
        then a full resync interval away instead of a scan every few seconds. */
-    uint32_t wait_s = clock_is_set() && !uploader_configured() ? CONFIG_SYNC_RESYNC_INTERVAL_H * 3600U : 0;
+    uint32_t wait_s = clock_is_set() && !uploader_wifi_enabled() ? CONFIG_SYNC_RESYNC_INTERVAL_H * 3600U : 0;
     for (;;) {
         if (wait_s) vTaskDelay(pdMS_TO_TICKS(wait_s * 1000U));
         while (driving()) vTaskDelay(pdMS_TO_TICKS(2000));   /* never scan or connect while the car is being logged */
         bool ok = sync_once();
-        if (uploader_configured()) wait_s = CONFIG_SYNC_SCAN_INTERVAL_S;   /* paired: get back on Wi-Fi soon after parking */
+        if (uploader_wifi_enabled()) wait_s = CONFIG_SYNC_SCAN_INTERVAL_S;   /* paired: get back on Wi-Fi soon after parking */
         else if (ok) wait_s = CONFIG_SYNC_RESYNC_INTERVAL_H * 3600U;
         else    wait_s = clock_is_set() ? 900U : CONFIG_SYNC_SCAN_INTERVAL_S;   /* due for drift, network not in reach: ask again in 15 min */
     }

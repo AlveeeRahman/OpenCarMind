@@ -1,9 +1,23 @@
 # Changelog
 
-## Unreleased
+## 2.5.0
 
-- Model renamed to CarMind E.V (was Edge Model 1).
-- Model documentation shortened to what users of the board need; the training details are kept privately.
+Two on-board models, chosen in the desktop app: CarMind E.V (fixed, the default) and CarMind R.E.V, the first model that keeps learning in your car.
+
+- **CarMind R.E.V** (19,815 parameters, 65,648 bytes, `f70bdcd3151b`, about 2.9 ms per run): learns your car's fuel use on the board with a fuel read-out that is refit while you drive and goes live only when it beats the current one on held-back rows, plus an airflow constant for cars that lose MAF. Page 5 shows the learned fuel rate. Switch models on the desktop app's Board page while parked; the choice is kept after a restart.
+- **Engine torque from physics** (both models, shown by R.E.V): fuel energy flow over engine speed minus friction, sized to your engine through the learned airflow constant; uses the car's own torque PIDs (0x62, 0x63) when it reports them. Amber, "idle" when stopped. New CSV columns `torque_nm`, `torque_src`.
+- **Fuel tank learner** (both models): learns the tank size from the fuel level against the fuel counted; shows litres left and range on the details page once it is sure, and suggests fill-ups it sees. New CSV columns `tank_left_l`, `tank_range_km`; state in `/sdcard/obd/rev_tank.bin`.
+- **Fill-up calibration** (both models): fill-ups typed on the app's new Fuel page give one correction factor for every fuel figure (tank to tank, limited to 0.7 to 1.4). New CSV columns `fuel_lph_raw`, `fuel_cal`, `trip_fuel_raw_l`.
+- **Wi-Fi only sets the clock**: one HTTPS request to one time server, its certificate checked against trusted roots and its name; the default is `www.google.com` and the desktop app sets your own (`time_host`). SNTP is gone, and the board listens on no port. Session JSON `clock` is now `https`.
+- **Wi-Fi upload to the desktop app is off** while it is reworked to avoid head-of-line blocking; import drives over the USB cable. Pairing still protects the USB commands.
+- Page 5: "Learning" job, the time since the model's last answer beside AI ESTIMATES, brake "holding" while stopped, fuel rate in L/h or gal/h with the display units. A model switch clears the last answer, and is refused while a drive is starting or running.
+- Fix: a PID that stopped answering kept its last value, marked valid, until the drive ended. Fields now count as missing after 3 poll cycles (at least 4 s), or 3 rounds of the slow list (at least 10 s), and the CSV leaves them empty.
+- Fix: a MAF reading of 0xFFFF (655.35 g/s, a sensor fault) is ignored everywhere, including by the airflow learner.
+- Fix: R.E.V's learned-state file is read by its own task, not at start-up, which overflowed the main task's stack.
+- Version 2.5.0 for the firmware and the desktop app. Host tests: 524 checks.
+- README: two models, what R.E.V learns and what stays fixed, how the models are made, limitations and future work, larger workflow figures, an ESP-Mosaico concept with R.E.V.
+
+Known limits: R.E.V is in its first drives; torque is an estimate checked on one public car and reads high at a standstill; the tank needs about 10 L of driving before it shows anything; the Wi-Fi clock has not yet been checked on a board.
 
 ## 2.4.0
 
