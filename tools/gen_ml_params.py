@@ -131,6 +131,11 @@ def main(src, dst, prefix="ML"):
     espdl = open(os.path.join(src, "onboard.espdl"), "rb").read()
     digest = hashlib.sha256(espdl).hexdigest()
     version = digest[:12]
+    # Learned state depends on the trunk (z) and the estimate head (W0). A classifier-only change keeps both, so
+    # export.json may name the file whose learned state still applies; otherwise the id is this file's own hash.
+    prior = meta.get("prior_sha256", digest)
+    prior_why = ("first 4 bytes of sha256 of the model whose trunk and estimate head this file keeps (export.json prior_sha256)"
+                 if "prior_sha256" in meta else "first 4 bytes of sha256(onboard.espdl): learned state belongs to this file")
     ch = norm["channels"]
     trained = norm.get("trained", [True] * len(ch))
     assert len(ch) == 10 and len(trained) == 10
@@ -168,7 +173,7 @@ static const float   ML_EST_STD[ML_N_ESTIMATES]  = {{{c_floats(tg["std"])}}};
 /* R.E.V: the model has a third output "z", the {z_dim}-value feature both heads read. */
 #define ML_Z_DIM           {z_dim}
 #define ML_FUEL_INDEX      {tg["targets"].index("fuel_rate_lph")}                          /* fuel in the est output */
-#define ML_PRIOR_ID        0x{digest[:8]}u                /* first 4 bytes of sha256(onboard.espdl): learned state belongs to this file */
+#define ML_PRIOR_ID        0x{prior[:8]}u                /* {prior_why} */
 /* Factory fuel head, standardised units: fuel = z . W0[0..{z_dim - 1}] + W0[{z_dim}]. Dequantised from the .espdl's est layer (int8 weight x 2^e,
    int64 bias x 2^e) and checked against the file's own test vector by tools/gen_ml_params.py. */
 static const float   ML_W0[ML_Z_DIM + 1] = {{{c_floats(w0)}}};

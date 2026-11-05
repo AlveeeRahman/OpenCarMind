@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- **CarMind R.E.V, corrected classifier head** (`6e6d698c44c5`, replaces `f70bdcd3151b`): R.E.V no longer calls steady cruising with the throttle open "braking". On two held-out drives of my car, cruising 10.7 % → 87.5 % right and all labelled windows 78.3 % → 95.1 %; on the public KIA test set accuracy 88.9 % → 87.1 %. Only the classifier head changed (126 bytes), so learned fuel, airflow and tank state carry over. See "Looking inside R.E.V with explainable AI" in the README.
+- `tools/gen_ml_params.py`: the learned-state id can name an earlier model through `prior_sha256` in `export.json`, for model changes that keep the trunk and the estimate head.
+
 ## 2.5.0
 
 Two on-board models, chosen in the desktop app: CarMind E.V (fixed, the default) and CarMind R.E.V, the first model that keeps learning in your car.

@@ -26,7 +26,7 @@ Version 2.5.0. Licence: MIT. Website: <https://alveeerahman.github.io/OpenCarMin
 | Learns in your car | nothing, the model is fixed | its fuel-rate read-out (the last layer, which turns the network's features into a fuel rate), an airflow constant that also gives the engine size, and the fuel tank size. Engine torque comes from physics sized to your engine |
 | Fill-up calibration | yes | yes |
 | Best for | a fixed, tested model | older cars, roughly pre-2020, that have no fuel-rate PID and can lose the airflow (MAF) reading |
-| Model hash | `dfa9af416dfb` | `f70bdcd3151b` |
+| Model hash | `dfa9af416dfb` | `6e6d698c44c5` |
 
 Many older cars do not report a fuel-rate PID (0x5E), so the board works out the fuel rate from the airflow sensor. When that reading is missing, a fixed model can only offer its factory estimate. R.E.V learns your car while a fuel-rate or airflow reading is there and uses what it learned when it is not. A car that reports neither from the start gives R.E.V nothing to learn from. It then runs its factory read-out, corrected by your fill-ups like E.V.
 
@@ -282,7 +282,7 @@ On two drives from 4 November 2026 that took no part in the correction:
 | KIA test set, braking recall | 80.5 % | 83.7 % |
 | KIA test set, cruising recall | 90.3 % | 84.7 % |
 
-The cost is on the KIA car, whose cruising recall drops 5.6 points, and real braking now wins by a smaller margin. The labels come from a rule on the raw signals, which cannot see the brake pedal, and all the gains are measured on one car, mine. The final R.E.V (model hash `6e6d698c44c5`) runs on my board now and goes into a release after a test drive. A lasting fix is to learn each car's closed-throttle position on the board, so the throttle scale fits the car.
+The cost is on the KIA car, whose cruising recall drops 5.6 points, and real braking now wins by a smaller margin. The labels come from a rule on the raw signals, which cannot see the brake pedal, and all the gains are measured on one car, mine. The final R.E.V (model hash `6e6d698c44c5`) replaces the first one (`f70bdcd3151b`) in the firmware on `main`. What R.E.V has already learned in a car carries over, because the trunk and the estimate head it learns from did not change. It has not been test-driven yet. A lasting fix is to learn each car's closed-throttle position on the board, so the throttle scale fits the car.
 
 ## Status
 
@@ -351,9 +351,10 @@ The Mosaico also changes how you use the logger. Your adapter lives in the car, 
 
 What 2.5.0 cannot do yet, and what is being built for it:
 
-- **CarMind R.E.V has had two drives, in one car.** Its learning has otherwise been checked in replay on a computer, on recorded drives fed through the board, and in host tests. Both models call steady foot-on-gas cruising "braking" on my car. R.E.V's corrected classifier head fixes most of it and ships after a test drive, and E.V keeps the error for now.
+- **CarMind R.E.V has had two drives, in one car.** Its learning has otherwise been checked in replay on a computer, on recorded drives fed through the board, and in host tests. Both models call steady foot-on-gas cruising "braking" on my car. R.E.V's corrected classifier head, in the firmware on `main`, fixes most of it, and E.V keeps the error for now.
 - **Torque is a physics estimate, not a measurement.** Its one check with true torque is a single public car, and that car's "truth" is its engine computer's own torque model. Accessories such as the air conditioning are not modelled, the efficiency is a typical value the board cannot learn without a torque sensor, it reads high at a standstill in Drive (so the screen shows "idle"), and it is for petrol engines only.
 - **The tank size needs driving to settle.** About 10 litres with the level between 10 % and 95 % before it shows anything, more on cars whose level reading jumps. A fuel sender that is not linear with the tank's shape is not modelled, and the range runs to an empty reading, not to the reserve below it.
+- **The fuel learner trusts any finite label.** In a replay of 31 public test cars with the airflow hidden, replacing 1 % of the labels with implausible values (such as the 215 L/h a stuck airflow reading of 655 g/s gives) made the learned fuel estimate worse than the factory one (R² 0.709 without learning, 0.696 with it), and 15 of the 31 cars more than 10 % worse. A version that weights and rejects outliers keeps R² at 0.867 with the same bad labels and is being compared before it ships.
 - **The manoeuvre classifier and brake pressure do not learn in the car.** Nothing in OBD gives a label for them. A self-check of the classifier (CarMind R.E.V 2) and accelerometer labels on the ESP-Mosaico are the routes being worked on.
 - **No Wi-Fi upload in 2.5.0.** Sending drives over TCP and TLS stalls the whole stream when one packet is lost on a weak home Wi-Fi link, the problem known as head-of-line blocking. The upload is being reworked so that each file travels on its own stream, as in QUIC<sup>[[19]](#ref-19)</sup>, which removes that stall<sup>[[20]](#ref-20)</sup>, while keeping resume from the last byte and the pinned certificate. It will come back once it is measured against today's path on a lossy link. Until then drives come over the USB cable.
 - **The clock is only as exact as one second.** It comes from the time server's HTTP Date header, which has one-second resolution, enough for drive logs. It needs a known Wi-Fi network within reach. Without one, the board keeps the time it saved to the card.
@@ -362,7 +363,8 @@ What 2.5.0 cannot do yet, and what is being built for it:
 
 - The ESP-Mosaico (ESP32-S31) port described above, and a build without a display.
 - Code-signed installers.
-- CarMind R.E.V's corrected classifier head in a release, after a test drive, and a per-car closed-throttle baseline learned on the board.
+- A test drive of the corrected R.E.V before it goes into a release, and a per-car closed-throttle baseline learned on the board.
+- A fuel learner that ignores implausible labels, compared against meta-learning methods for on-board learning.
 - More regularised models, to fit more cars.
 - CarMind R.E.V 2: a forecast of the next moment's manoeuvre, learned on the board, as a self-check that lets the classifier learn in the car.
 - A faster version built on a Jetson.
