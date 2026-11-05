@@ -662,6 +662,7 @@ static void build_page4(void)
     lv_obj_t *ai = s4_frame(185, 53, C_ORANGE, "AI SEES");
     s4_ml_class = s4_label(ai, &lv_font_montserrat_14, C_TEXT, 54, -3, 102, 17);
     lv_label_set_long_mode(s4_ml_class, LV_LABEL_LONG_DOT);
+    lv_obj_set_style_text_align(s4_ml_class, LV_TEXT_ALIGN_RIGHT, 0);   /* top right, above the class bars */
     s4_ml_bar = s4_bar(ai, 0, 19, 58, 6, 100);
     s4_ml_prob = s4_label(ai, &lv_font_montserrat_12, C_TEXT, 62, 14, 56, 15);
     s4_ml_counts = s4_label(ai, &lv_font_montserrat_12, C_MUTED, 0, 29, 116, 15);

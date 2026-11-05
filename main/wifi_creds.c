@@ -170,7 +170,7 @@ void wifi_creds_dedupe(const char *good_ssid)
     for (size_t i = 0; i < s_n; ) {
         fold(s_creds[i].ssid, b, sizeof b);
         if (strcmp(s_creds[i].ssid, good_ssid) != 0 && strcmp(a, b) == 0) {
-            ESP_LOGI(TAG, "removing near-duplicate network '%s'", s_creds[i].ssid);
+            ESP_LOGI(TAG, "removing a near-duplicate saved network");
             wifi_creds_remove(s_creds[i].ssid);
         } else i++;
     }
