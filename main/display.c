@@ -167,20 +167,30 @@ static const p2_item_t P2_ITEMS[P2_STD] = {
 };
 
 /* Re-colour every object that carries a colour from the old theme. Dynamic labels are repainted by
- * the refresh timer anyway; this handles the static ones (captions, tiles, bars, dots, borders). */
+ * the refresh timer anyway; this handles the static ones (captions, tiles, bars, dots, borders).
+ * Only properties the object set itself (local styles) are touched: reading an inherited or default colour and
+ * writing it back would create a new local style on every object and part, which empties LVGL's memory pool
+ * (CONFIG_LV_MEM_SIZE_KILOBYTES) and halts in LV_ASSERT_MALLOC until the task watchdog resets the board. */
+static void remap_prop(lv_obj_t *o, lv_style_prop_t prop, lv_part_t part, const theme_t *from, const theme_t *to)
+{
+    lv_style_value_t v;
+    if (lv_obj_get_local_style_prop(o, prop, &v, part) != LV_STYLE_RES_FOUND) return;
+    const uint32_t *f = (const uint32_t *)from, *t = (const uint32_t *)to;
+    const uint32_t have = lv_color_to_u32(v.color);
+    for (int i = 0; i < (int)(sizeof(theme_t) / sizeof(uint32_t)); i++) {
+        if (have != lv_color_to_u32(lv_color_hex(f[i]))) continue;
+        v.color = lv_color_hex(t[i]);
+        lv_obj_set_local_style_prop(o, prop, v, part);   /* same style, same slot: no allocation */
+        return;
+    }
+}
+
 static void remap_color(lv_obj_t *o, lv_part_t part, const theme_t *from, const theme_t *to)
 {
-    const uint32_t *f = (const uint32_t *)from, *t = (const uint32_t *)to;
-    int n = sizeof(theme_t) / sizeof(uint32_t);
-    lv_color_t bg = lv_obj_get_style_bg_color(o, part), bd = lv_obj_get_style_border_color(o, part),
-               tx = lv_obj_get_style_text_color(o, part), ac = lv_obj_get_style_arc_color(o, part);
-    for (int i = 0; i < n; i++) {
-        lv_color_t c = lv_color_hex(f[i]);
-        if (lv_color_eq(bg, c)) lv_obj_set_style_bg_color(o, lv_color_hex(t[i]), part);
-        if (lv_color_eq(bd, c)) lv_obj_set_style_border_color(o, lv_color_hex(t[i]), part);
-        if (lv_color_eq(tx, c)) lv_obj_set_style_text_color(o, lv_color_hex(t[i]), part);
-        if (lv_color_eq(ac, c)) lv_obj_set_style_arc_color(o, lv_color_hex(t[i]), part);
-    }
+    remap_prop(o, LV_STYLE_BG_COLOR, part, from, to);
+    remap_prop(o, LV_STYLE_BORDER_COLOR, part, from, to);
+    remap_prop(o, LV_STYLE_TEXT_COLOR, part, from, to);
+    remap_prop(o, LV_STYLE_ARC_COLOR, part, from, to);
 }
 
 static void retheme_tree(lv_obj_t *o, const theme_t *from, const theme_t *to)
@@ -198,8 +208,20 @@ static void apply_theme(const theme_t *to)
     if (to == T) return;
     const theme_t *from = T;
     T = to;
+    int64_t t0 = esp_timer_get_time();
+    lv_mem_monitor_t before, after;
+    lv_mem_monitor(&before);
+    /* colours first with style refreshing paused, then one refresh per tree: each set would otherwise re-lay out
+       the object and its children, hundreds of times over */
+    lv_obj_enable_style_refresh(false);
     for (int i = 0; i < N_PAGES; i++) if (s_screens[i]) retheme_tree(s_screens[i], from, to);
     retheme_tree(lv_layer_top(), from, to);
+    lv_obj_enable_style_refresh(true);
+    for (int i = 0; i < N_PAGES; i++) if (s_screens[i]) lv_obj_refresh_style(s_screens[i], LV_PART_ANY, LV_STYLE_PROP_ANY);
+    lv_obj_refresh_style(lv_layer_top(), LV_PART_ANY, LV_STYLE_PROP_ANY);
+    lv_mem_monitor(&after);
+    ESP_LOGI(TAG, "theme -> %s in %lld ms, LVGL pool %u%% -> %u%% used of %u B", to == &THEME_LIGHT ? "light" : "dark",
+             (long long)((esp_timer_get_time() - t0) / 1000), (unsigned)before.used_pct, (unsigned)after.used_pct, (unsigned)after.total_size);
 }
 
 /* 0 auto (light between day_start and day_end once the clock is synced), 1 dark, 2 light */
@@ -289,6 +311,9 @@ static void build_page0(void)
     lv_obj_align_to(lbl_clock, brand, LV_ALIGN_OUT_RIGHT_MID, 8, 0);  /* the clock follows the name, well inside the panel edge */
     lbl_clock_bold = make_label(bar_top, &lv_font_montserrat_12, C_MUTED);
     lv_obj_align_to(lbl_clock_bold, lbl_clock, LV_ALIGN_TOP_LEFT, 1, 0);
+    /* the faux bold narrows the gaps between digits: open them up by 1 px on both copies (same in both themes) */
+    lv_obj_set_style_text_letter_space(lbl_clock, 1, 0);
+    lv_obj_set_style_text_letter_space(lbl_clock_bold, 1, 0);
 
     /* RPM block */
     lv_obj_t *cap = make_label(scr0, &lv_font_montserrat_12, C_MUTED);
