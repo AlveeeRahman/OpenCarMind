@@ -1,129 +1,133 @@
 <!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<title>On-board benchmark</title>
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-<!-- Generated from the on-board bench results (every number measured on the ESP32-S3). Render with docs/images/render.sh. -->
+<html lang="en"><head><meta charset="utf-8"><title>On-board benchmark</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <style>
 html, body { margin: 0; background: #F5F2EB; font-family: 'IBM Plex Sans', system-ui, sans-serif; color: #17212E; }
-.wrap { width: 1880px; box-sizing: border-box; padding: 40px 48px 34px; }
-.head { display: flex; align-items: baseline; gap: 14px; }
-h1 { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 34px; margin: 0; }
-.snap { font-size: 19px; color: #57616F; }
+.wrap { width: 2400px; box-sizing: border-box; padding: 40px 48px 34px; }
+.head { display: flex; align-items: baseline; gap: 16px; }
+h1 { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 38px; margin: 0; }
+.snap { font-size: 21px; color: #57616F; }
 .table { margin-top: 26px; background: #FFFFFF; border: 1.5px solid #C9C1B3; border-radius: 18px; overflow: hidden; }
-.tr { display: grid; grid-template-columns: 50px 64px minmax(0, 1fr) 220px 160px 150px 100px 110px 90px 110px 96px; align-items: center; gap: 0 14px; padding: 0 26px; min-height: 90px; border-top: 1px solid #E6E1D7; }
-.th { min-height: 70px; border-top: none; background: #FBF9F5; font-size: 15px; color: #57616F; line-height: 1.3; }
-.th span { text-align: right; }
-.th .c, .num.c { background: transparent; }
-.th .grp { color: #57616F; }
-.rank { font-size: 20px; color: #57616F; }
-.logo { width: 50px; height: 50px; border-radius: 12px; display: flex; align-items: center; justify-content: center; border: 1.5px solid #E6E1D7; font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 17px; color: #57616F; background: #FBF9F5; }
-.logo.ocm { background: #15202D; border-color: #15202D; }
-.logo img { width: 38px; height: 38px; }
+.tr { display: grid; grid-template-columns: 54px 64px minmax(0, 1fr) 200px 120px 120px 140px 120px 120px 120px 170px 170px 110px 100px 100px; align-items: center; gap: 0 14px; padding: 0 28px; min-height: 96px; border-top: 1px solid #E6E1D7; }
+.th { min-height: 84px; border-top: none; background: #FBF9F5; font-size: 17px; color: #57616F; line-height: 1.3; }
+.th span { text-align: center; }
+.th .grp { color: #17212E; font-weight: 600; }
+.rank { font-size: 22px; color: #57616F; }
+.logo { width: 52px; height: 52px; border-radius: 12px; display: flex; align-items: center; justify-content: center; border: 1.5px solid #E6E1D7; font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 18px; color: #57616F; background: #FBF9F5; }
 .logo.badge { border: none; background: none; }
-.logo.badge img { width: 54px; height: 54px; display: block; }
-.nm { font-size: 21px; font-weight: 600; }
-.sub { font-size: 15px; color: #57616F; margin-top: 3px; display: flex; align-items: center; gap: 7px; }
+.logo.badge img { width: 56px; height: 56px; display: block; }
+.nm { font-size: 23px; font-weight: 600; }
+.sub { font-size: 16px; color: #57616F; margin-top: 3px; display: flex; align-items: center; gap: 7px; }
 .d { width: 9px; height: 9px; border-radius: 5px; }
 .d.ship { background: #2D7A31; } .d.fixed { background: #948D81; } .d.repl { background: #7A5600; } .d.base { background: #9372C8; }
 .tag { font-weight: 600; } .tag.ship { color: #2D7A31; } .tag.fixed { color: #57616F; } .tag.repl { color: #7A5600; } .tag.base { color: #6A4FA0; }
-.score { text-align: right; }
-.score .n { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 29px; }
+.score { text-align: center; }
+.score .n { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 34px; }
 .bar { height: 8px; border-radius: 4px; background: #E6E1D7; margin-top: 6px; overflow: hidden; }
-.bar i { display: block; height: 100%; border-radius: 4px; background: #2F5FD0; }
-.num { text-align: right; font-size: 20px; }
-.size { text-align: right; }
-.size .n2 { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 22px; }
-.size small { display: block; font-size: 13px; color: #57616F; margin-top: 3px; }
-.bar.s { height: 6px; margin-top: 5px; }
-.bar.s i { background: #F59A2E; }
-.num small { display: block; font-size: 13px; color: #57616F; }
-.best { color: #2D7A31; font-weight: 700; }
+.bar i { display: block; height: 100%; border-radius: 4px; background: #F2A35E; }
+.num { text-align: center; font-size: 25px; }
+.num small, .size small { display: block; font-size: 14px; color: #57616F; margin-top: 2px; }
+.size { text-align: center; }
+.size .n2 { font-size: 25px; }
+.hi { color: #1A47E0; font-weight: 700; }
 .no { color: #8C96A3; }
-.ctx { display: flex; gap: 28px; margin-top: 20px; font-size: 16px; color: #57616F; line-height: 1.45; }
+.tr.base { background: #FBF9F5; color: #57616F; }
+.tr.base .num, .tr.base .score .n { color: #57616F; }
+.ctx { display: flex; gap: 28px; margin-top: 20px; font-size: 18px; color: #57616F; line-height: 1.45; }
 .ctx b { color: #17212E; font-weight: 600; }
-</style>
-</head>
+</style></head>
 <body>
 <div class="wrap">
-  <div class="head"><h1>On-board benchmark</h1><span class="snap">Every number measured on the ESP32-S3 · same windows for every model</span></div>
+  <div class="head"><h1>On-board benchmark</h1><span class="snap">Two unseen test drives, 1,119 labelled windows · every number measured on the ESP32-S3</span></div>
   <div class="table">
-    <div class="tr th"><span>Rank</span><span></span><span style="text-align:left">Model</span><span>Test set (my car) ↓</span><span>Model size</span><span>RAM</span><span>Cruising</span><span>Learns in the car</span><span>Params</span><span class="c">KIA macro-F1</span><span class="c">ms per run</span></div>
+    <div class="tr th"><span>Rank</span><span></span><span style="text-align:left">Model</span><span class="grp">Accuracy ↓</span><span>Stopped recall</span><span>Braking recall</span><span>Accel. recall</span><span>Cruising recall</span><span>Macro-F1</span><span>ROC-AUC</span><span>Model size</span><span>RAM</span><span>ms per run</span><span>Params</span><span>Learns in car</span></div>
 <div class="tr">
   <span class="rank">#1</span><span class="logo badge"><img src="../../../assets/logo/carmind-rev-small.svg" alt=""></span>
   <div><div class="nm">CarMind R.E.V</div><div class="sub">OpenCarMind <span class="d ship"></span><span class="tag ship">Shipped</span></div></div>
-  <div class="score"><span class="n"><span class="best">94.7</span></span><div class="bar"><i style="width:94.7%"></i></div></div>
-  <div class="size"><span class="n2"><span class="">64 KB</span></span><div class="bar s"><i style="width:74%"></i></div><small>−26 % vs E.V</small></div>
-  <span class="num"><span class="">60 KB</span><small>20 int + 40 PSRAM</small></span>
-  <span class="num"><span class="best">86.3</span></span>
-  <span class="num"><span class="best">Yes</span></span>
-  <span class="num"><span class="">19.8K</span></span>
-  <span class="num c"><span class="">0.868</span></span>
-  <span class="num c"><span class="">2.18</span></span>
+  <div class="score"><span class="n"><span class="hi">93.8</span></span><div class="bar"><i style="width:93.8%"></i></div></div>
+  <span class="num">99.4</span><span class="num">98.4</span><span class="num">86.0</span><span class="num"><span class="hi">87.7</span></span>
+  <span class="num"><span class="hi">0.917</span></span>
+  <span class="num"><span class="hi">0.995</span></span>
+  <div class="size"><span class="n2">64 KB</span><small>−26 % vs E.V</small></div>
+  <span class="num">60 KB<small>20 int + 40 PSRAM</small></span>
+  <span class="num">2.18</span>
+  <span class="num">19.8K</span>
+  <span class="num"><span class="hi">Yes</span></span>
 </div>
 <div class="tr">
   <span class="rank">#2</span><span class="logo">ML</span>
   <div><div class="nm">MLP</div><div class="sub">public data <span class="d base"></span><span class="tag base">Baseline</span></div></div>
-  <div class="score"><span class="n"><span class="">85.1</span></span><div class="bar"><i style="width:85.1%"></i></div></div>
-  <div class="size"><span class="n2"><span class="best">26 KB</span></span><div class="bar s"><i style="width:30%"></i></div><small>−70 % vs E.V</small></div>
-  <span class="num"><span class="best">30 KB</span><small>7 int + 23 PSRAM</small></span>
-  <span class="num"><span class="">50.6</span></span>
+  <div class="score"><span class="n">81.0</span><div class="bar"><i style="width:81.0%"></i></div></div>
+  <span class="num">99.8</span><span class="num">95.1</span><span class="num">74.9</span><span class="num">49.0</span>
+  <span class="num">0.755</span>
+  <span class="num">0.978</span>
+  <div class="size"><span class="n2"><span class="hi">26 KB</span></span><small>−70 % vs E.V</small></div>
+  <span class="num"><span class="hi">30 KB</span><small>7 int + 23 PSRAM</small></span>
+  <span class="num"><span class="hi">0.73</span></span>
+  <span class="num">19.8K</span>
   <span class="num"><span class="no">No</span></span>
-  <span class="num"><span class="">19.8K</span></span>
-  <span class="num c"><span class="">0.861</span></span>
-  <span class="num c"><span class="best">0.73</span></span>
 </div>
 <div class="tr">
   <span class="rank">#3</span><span class="logo">TC</span>
   <div><div class="nm">TCN</div><div class="sub">Bai et al. 2018 · public data <span class="d base"></span><span class="tag base">Baseline</span></div></div>
-  <div class="score"><span class="n"><span class="">84.7</span></span><div class="bar"><i style="width:84.7%"></i></div></div>
-  <div class="size"><span class="n2"><span class="">57 KB</span></span><div class="bar s"><i style="width:66%"></i></div><small>−34 % vs E.V</small></div>
-  <span class="num"><span class="">59 KB</span><small>11 int + 48 PSRAM</small></span>
-  <span class="num"><span class="">53.6</span></span>
+  <div class="score"><span class="n">80.2</span><div class="bar"><i style="width:80.2%"></i></div></div>
+  <span class="num"><span class="hi">100.0</span></span><span class="num">89.3</span><span class="num">67.6</span><span class="num">52.2</span>
+  <span class="num">0.742</span>
+  <span class="num">0.971</span>
+  <div class="size"><span class="n2">57 KB</span><small>−34 % vs E.V</small></div>
+  <span class="num">59 KB<small>11 int + 48 PSRAM</small></span>
+  <span class="num">2.65</span>
+  <span class="num">39.2K</span>
   <span class="num"><span class="no">No</span></span>
-  <span class="num"><span class="">39.2K</span></span>
-  <span class="num c"><span class="">0.879</span></span>
-  <span class="num c"><span class="">2.65</span></span>
 </div>
 <div class="tr">
   <span class="rank">#4</span><span class="logo badge"><img src="../../../assets/logo/carmind-ev-small.svg" alt=""></span>
   <div><div class="nm">CarMind E.V</div><div class="sub">OpenCarMind <span class="d fixed"></span><span class="tag fixed">Fixed</span></div></div>
-  <div class="score"><span class="n"><span class="">79.1</span></span><div class="bar"><i style="width:79.1%"></i></div></div>
-  <div class="size"><span class="n2"><span class="">87 KB</span></span><div class="bar s"><i style="width:100%"></i></div><small>reference</small></div>
-  <span class="num"><span class="">84 KB</span><small>21 int + 63 PSRAM</small></span>
-  <span class="num"><span class="">14.9</span></span>
+  <div class="score"><span class="n">73.5</span><div class="bar"><i style="width:73.5%"></i></div></div>
+  <span class="num">99.2</span><span class="num">99.2</span><span class="num">87.7</span><span class="num">14.6</span>
+  <span class="num">0.657</span>
+  <span class="num">0.981</span>
+  <div class="size"><span class="n2">87 KB</span><small>reference</small></div>
+  <span class="num">84 KB<small>21 int + 63 PSRAM</small></span>
+  <span class="num">2.91</span>
+  <span class="num">38.7K</span>
   <span class="num"><span class="no">No</span></span>
-  <span class="num"><span class="">38.7K</span></span>
-  <span class="num c"><span class="best">0.885</span></span>
-  <span class="num c"><span class="">2.91</span></span>
 </div>
 <div class="tr">
   <span class="rank">#5</span><span class="logo badge"><img src="../../../assets/logo/carmind-rev-old-small.svg" alt=""></span>
   <div><div class="nm">CarMind R.E.V (old)</div><div class="sub">OpenCarMind <span class="d repl"></span><span class="tag repl">Replaced</span></div></div>
-  <div class="score"><span class="n"><span class="">79.1</span></span><div class="bar"><i style="width:79.1%"></i></div></div>
-  <div class="size"><span class="n2"><span class="">64 KB</span></span><div class="bar s"><i style="width:74%"></i></div><small>−26 % vs E.V</small></div>
-  <span class="num"><span class="">60 KB</span><small>20 int + 40 PSRAM</small></span>
-  <span class="num"><span class="">13.1</span></span>
-  <span class="num"><span class="best">Yes</span></span>
-  <span class="num"><span class="">19.8K</span></span>
-  <span class="num c"><span class="">0.881</span></span>
-  <span class="num c"><span class="">2.18</span></span>
+  <div class="score"><span class="n">71.8</span><div class="bar"><i style="width:71.8%"></i></div></div>
+  <span class="num">99.2</span><span class="num">99.2</span><span class="num"><span class="hi">89.4</span></span><span class="num">7.9</span>
+  <span class="num">0.627</span>
+  <span class="num">0.982</span>
+  <div class="size"><span class="n2">64 KB</span><small>−26 % vs E.V</small></div>
+  <span class="num">60 KB<small>20 int + 40 PSRAM</small></span>
+  <span class="num">2.18</span>
+  <span class="num">19.8K</span>
+  <span class="num"><span class="hi">Yes</span></span>
 </div>
 <div class="tr">
   <span class="rank">#6</span><span class="logo">GR</span>
   <div><div class="nm">GRU</div><div class="sub">public data <span class="d base"></span><span class="tag base">Baseline</span></div></div>
-  <div class="score"><span class="n"><span class="">34.3</span></span><div class="bar"><i style="width:34.3%"></i></div></div>
-  <div class="size"><span class="n2"><span class="">43 KB</span></span><div class="bar s"><i style="width:49%"></i></div><small>−51 % vs E.V</small></div>
-  <span class="num"><span class="">68 KB</span><small>10 int + 58 PSRAM</small></span>
-  <span class="num"><span class="">54.2</span></span>
+  <div class="score"><span class="n">40.7</span><div class="bar"><i style="width:40.7%"></i></div></div>
+  <span class="num">7.4</span><span class="num"><span class="hi">100.0</span></span><span class="num">82.7</span><span class="num">46.8</span>
+  <span class="num">0.465</span>
+  <span class="num">0.945</span>
+  <div class="size"><span class="n2">43 KB</span><small>−51 % vs E.V</small></div>
+  <span class="num">68 KB<small>10 int + 58 PSRAM</small></span>
+  <span class="num">5.86</span>
+  <span class="num">19.3K</span>
   <span class="num"><span class="no">No</span></span>
-  <span class="num"><span class="best">19.3K</span></span>
-  <span class="num c"><span class="">0.862</span></span>
-  <span class="num c"><span class="">5.86</span></span>
+</div>
+<div class="tr base">
+  <span class="rank"></span><span></span>
+  <div><div class="nm">Always "stopped"</div><div class="sub">majority-class baseline</div></div>
+  <div class="score"><span class="n">44.9</span><div class="bar"><i style="width:44.9%; background:#8C96A3"></i></div></div>
+  <span class="num">100.0</span><span class="num">0.0</span><span class="num">0.0</span><span class="num">0.0</span>
+  <span class="num">0.155</span><span class="num">0.500</span>
+  <span class="num"></span><span class="num"></span><span class="num"></span><span class="num"></span><span class="num"></span>
 </div>
   </div>
-  <div class="ctx"><span><b>How:</b> each model was flashed in turn and the same windows replayed through the chip: 796 labelled windows of two test drives of my car, 2,000 KIA and 2,000 VED test windows. Baselines were trained from scratch on public data only (HCRL and VED, about 140,000 windows). Green: best in the column.</span></div>
+  <div class="ctx"><span><b>How:</b> each model flashed in turn and the windows of both drives replayed through the chip; labels from a rule on the raw OBD signals with the closed-throttle level read from each drive, as for an unseen vehicle. Recall: the share of each class called correctly. ROC-AUC: one class against the rest, averaged over the four classes. Baselines were trained from scratch on public data only. <b style="color:#1A47E0">Blue:</b> best in the column.</span></div>
 </div>
-</body>
-</html>
+</body></html>
