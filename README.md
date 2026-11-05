@@ -16,36 +16,50 @@ Version 2.5.1. Licence: MIT. Website: <https://alveeerahman.github.io/OpenCarMin
 
 ## Contents
 
-1. [Choose your model](#choose-your-model)
-2. [What you get](#what-you-get)
-3. [Local-first](#local-first)
-4. [How it works](#how-it-works)
-    - 4.1 [On-board inference](#on-board-inference)
-    - 4.2 [Scheduler and safety](#scheduler-and-safety)
-5. [The screens](#the-screens)
-6. [Dashboard](#dashboard)
-7. [Desktop app](#desktop-app)
-8. [Hardware](#hardware)
-    - 8.1 [Adapter compatibility](#adapter-compatibility)
-9. [Build and flash](#build-and-flash)
-10. [The models](#the-models)
-    - 10.1 [The test drives](#the-test-drives)
-    - 10.2 [CarMind R.E.V results so far](#carmind-rev-results-so-far)
-    - 10.3 [How the models are made](#how-the-models-are-made)
-    - 10.4 [What R.E.V learns](#what-rev-learns)
-    - 10.5 [How R.E.V learns on the board](#how-rev-learns-on-the-board)
-    - 10.6 [Looking inside R.E.V with explainable AI](#looking-inside-rev-with-explainable-ai)
-    - 10.7 [How R.E.V got better, step by step](#how-rev-got-better-step-by-step)
-11. [Status](#status)
-12. [Next board: ESP-Mosaico with the ESP32-S31](#next-board-esp-mosaico-with-the-esp32-s31)
-    - 12.1 [How the S3 and the S31 are compatible](#how-the-s3-and-the-s31-are-compatible)
-    - 12.2 [Continual learning on the S31](#continual-learning-on-the-s31)
-    - 12.3 [A release for the Mosaico](#a-release-for-the-mosaico)
-13. [Limitations and future work](#limitations-and-future-work)
-14. [Planned](#planned)
-15. [References](#references)
-16. [Repository layout](#repository-layout)
-17. [Credits and licence](#credits-and-licence)
+<ol type="I">
+<li><a href="#choose-your-model">Choose your model</a></li>
+<li><a href="#what-you-get">What you get</a></li>
+<li><a href="#local-first">Local-first</a></li>
+<li><a href="#how-it-works">How it works</a>
+<ol type="A">
+<li><a href="#on-board-inference">On-board inference</a></li>
+<li><a href="#scheduler-and-safety">Scheduler and safety</a></li>
+</ol>
+</li>
+<li><a href="#the-screens">The screens</a></li>
+<li><a href="#dashboard">Dashboard</a></li>
+<li><a href="#desktop-app">Desktop app</a></li>
+<li><a href="#hardware">Hardware</a>
+<ol type="A">
+<li><a href="#adapter-compatibility">Adapter compatibility</a></li>
+</ol>
+</li>
+<li><a href="#build-and-flash">Build and flash</a></li>
+<li><a href="#the-models">The models</a>
+<ol type="A">
+<li><a href="#the-test-drives">The test drives</a></li>
+<li><a href="#carmind-rev-results-so-far">CarMind R.E.V results so far</a></li>
+<li><a href="#how-the-models-are-made">How the models are made</a></li>
+<li><a href="#what-rev-learns">What R.E.V learns</a></li>
+<li><a href="#how-rev-learns-on-the-board">How R.E.V learns on the board</a></li>
+<li><a href="#looking-inside-rev-with-explainable-ai">Looking inside R.E.V with explainable AI</a></li>
+<li><a href="#how-rev-got-better-step-by-step">How R.E.V got better, step by step</a></li>
+</ol>
+</li>
+<li><a href="#status">Status</a></li>
+<li><a href="#next-board-esp-mosaico-with-the-esp32-s31">Next board: ESP-Mosaico with the ESP32-S31</a>
+<ol type="A">
+<li><a href="#how-the-s3-and-the-s31-are-compatible">How the S3 and the S31 are compatible</a></li>
+<li><a href="#continual-learning-on-the-s31">Continual learning on the S31</a></li>
+<li><a href="#a-release-for-the-mosaico">A release for the Mosaico</a></li>
+</ol>
+</li>
+<li><a href="#limitations-and-future-work">Limitations and future work</a></li>
+<li><a href="#planned">Planned</a></li>
+<li><a href="#references">References</a></li>
+<li><a href="#repository-layout">Repository layout</a></li>
+<li><a href="#credits-and-licence">Credits and licence</a></li>
+</ol>
 
 ## Choose your model
 
