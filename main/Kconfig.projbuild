@@ -94,7 +94,7 @@ menu "OBD Logger Configuration"
             depends on OCM_WIFI_CLOCK_SYNC
             default n
             help
-                Off by default in 2.5.0: Wi-Fi only sets the clock, and drives reach the desktop app over the USB cable.
+                Off by default in 2.5.x: Wi-Fi only sets the clock, and drives reach the desktop app over the USB cable.
                 The upload is being reworked into a transfer without head-of-line blocking. Pairing over USB still works
                 and still protects the USB commands.
         config SYNC_WIFI_SSID

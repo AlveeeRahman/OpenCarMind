@@ -286,6 +286,9 @@ $("#flash").addEventListener("click", () => {
   $("#flash-log").textContent = "";
   step("Flashing... this takes about 30 seconds.", async () => msg("#board-msg", await invoke("board_flash", { port: port() })));
 });
+$("#reboot").addEventListener("click", () => {
+  step("Restarting the board...", async () => { await invoke("board_reboot", { port: port() }); showTools(false); $("#pair-box").hidden = true; msg("#board-msg", "The board is restarting. It keeps its networks, settings, pairing and what it learned. Connect again in a few seconds."); });
+});
 
 async function refreshReceiver() {
   try {

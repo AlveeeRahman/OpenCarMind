@@ -98,6 +98,11 @@ async fn board_rev_reset(port: String, what: String) -> Result<(), String> {
     blocking(move || board::rev_reset(&port, &what)).await
 }
 
+#[tauri::command]
+async fn board_reboot(port: String) -> Result<(), String> {
+    blocking(move || board::reboot(&port)).await
+}
+
 async fn blocking<T: Send + 'static>(f: impl FnOnce() -> Result<T, String> + Send + 'static) -> Result<T, String> {
     tauri::async_runtime::spawn_blocking(f).await.map_err(|e| format!("background task failed: {e}"))?
 }
@@ -362,6 +367,7 @@ pub fn run() {
             board_rev_status,
             board_rev_reset,
             board_rev_fillups,
+            board_reboot,
             fillups_load,
             fillups_save
         ])

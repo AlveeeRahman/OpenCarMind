@@ -94,7 +94,8 @@ impl Door {
                         return Ok(got);
                     }
                     if let Some(why) = rest.strip_prefix("ERR ") {
-                        return Err(why.to_string());
+                        // The board ends a session after 10 minutes without a command: say what to do, not just the board's word.
+                        return Err(if why == "not authenticated" { "the board's session has ended (10 minutes idle). Choose Connect on the Board page again.".to_string() } else { why.to_string() });
                     }
                     got.push(rest.to_string());
                 }
@@ -254,6 +255,11 @@ pub fn rev_status(port: &str) -> Result<Vec<StatusGroup>, String> {
 pub fn rev_fillups(port: &str, list: &serde_json::Value) -> Result<String, String> {
     let lines = Door::open(port)?.call(&format!("REV-FILLUPS {}", B64.encode(list.to_string())), Duration::from_secs(10))?;
     Ok(lines.last().cloned().unwrap_or_default())
+}
+
+/// The board answers OK and restarts about 300 ms later; it keeps its Wi-Fi networks, settings, pairing and learned state.
+pub fn reboot(port: &str) -> Result<(), String> {
+    Door::open(port)?.call("REBOOT", SHORT).map(|_| ())
 }
 
 pub fn rev_reset(port: &str, what: &str) -> Result<(), String> {
