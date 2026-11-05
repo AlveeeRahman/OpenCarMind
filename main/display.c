@@ -633,7 +633,7 @@ static void build_page4(void)
     s4_head = make_label(scr4, &lv_font_montserrat_14, C_ACCENT);
     lv_label_set_text(s4_head, "System");
     lv_obj_set_pos(s4_head, 8, 4);
-    static const char *caps[4] = {"MIPS 0 / 1", "PSRAM", "SYS TEMP", "UPTIME / FW"};    /* SYS TEMP = the chip's own sensor, page 1 CAR TEMP = coolant */
+    static const char *caps[4] = {"MIPS", "PSRAM", "SYS TEMP", "UPTIME / FW"};    /* SYS TEMP = the chip's own sensor, page 1 CAR TEMP = coolant */
     const uint32_t cols[4] = {C_VIOLET, C_TEAL, C_SAGE, C_PINK};            /* TL TR / BL BR */
     for (int i = 0; i < 4; i++) {
         int x = 4 + (i % 2) * 83, y = 24 + (i / 2) * 46;
@@ -649,6 +649,13 @@ static void build_page4(void)
         lv_obj_t *cap = make_label(t, &lv_font_montserrat_12, cols[i]);
         lv_label_set_text(cap, caps[i]);
         lv_obj_align(cap, LV_ALIGN_TOP_LEFT, 0, -2);
+        if (i == 0) {
+            /* which core each number belongs to: SYS = core 0 (Bluetooth, Wi-Fi clock, display, scheduler),
+               AI = core 1 (car data, the model, the learner). "MIPS" 31 px + "SYS/AI" 39 px fit the 73 px inside */
+            lv_obj_t *who = make_label(t, &lv_font_montserrat_12, C_MUTED);
+            lv_label_set_text(who, "SYS/AI");
+            lv_obj_align(who, LV_ALIGN_TOP_RIGHT, 0, -2);
+        }
         s4_tile_val[i] = make_label(t, &lv_font_montserrat_12, C_TEXT);
         lv_obj_set_size(s4_tile_val[i], 75, 16);                    /* fixed size: LONG_DOT only clips with both set */
         lv_label_set_long_mode(s4_tile_val[i], LV_LABEL_LONG_DOT);
@@ -860,9 +867,9 @@ static void refresh_est(const app_status_t *st)
 
 static void refresh_page4(const app_status_t *st)
 {
-    lv_label_set_text_fmt(s4_tile_val[0], "%.1f / %.1f", st->pmu_mips[0], st->pmu_mips[1]);   /* hardware counters, per core */
+    lv_label_set_text_fmt(s4_tile_val[0], "%.1f / %.1f", st->pmu_mips[0], st->pmu_mips[1]);   /* hardware counters: SYS (core 0) / AI (core 1) */
     uint32_t used_kb = st->psram_total_kb > st->psram_free_kb ? st->psram_total_kb - st->psram_free_kb : 0;
-    lv_label_set_text_fmt(s4_tile_val[1], "%.1f/%.1f MB", used_kb / 1024.0, st->psram_total_kb / 1024.0);
+    lv_label_set_text_fmt(s4_tile_val[1], "%.1f / %.1f MB", used_kb / 1024.0, st->psram_total_kb / 1024.0);   /* "7.8 / 7.8 MB" is 70 of 75 px */
     if (isfinite(st->chip_temp_c)) {
         bool us = (units_t)st->units == UNITS_US;
         lv_label_set_text_fmt(s4_tile_val[2], "%.0f \xC2\xB0%c", us ? st->chip_temp_c * 9.0f / 5.0f + 32.0f : st->chip_temp_c, us ? 'F' : 'C');
