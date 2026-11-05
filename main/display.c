@@ -733,7 +733,7 @@ static void refresh_sched(const sched_system_t *sys)
 {
     /* per-core CPU load of the jobs, U = sum(C_max / T); amber above the rate-monotonic bound, red if the
        response-time analysis says some job can miss its deadline */
-    lv_label_set_text_fmt(s4_load, "core load %d%% / %d%%", (int)(sys->util[0] * 100.0f + 0.5f), (int)(sys->util[1] * 100.0f + 0.5f));
+    lv_label_set_text_fmt(s4_load, "SYS/AI %d%% / %d%%", (int)(sys->util[0] * 100.0f + 0.5f), (int)(sys->util[1] * 100.0f + 0.5f));   /* job load per core, same order as the MIPS tile; "100% / 100%" is 115 of 116 px */
     bool over = sys->util[0] > sys->rm_bound[0] || sys->util[1] > sys->rm_bound[1];
     lv_obj_set_style_text_color(s4_load, lv_color_hex(!sys->schedulable ? C_BAD : over ? C_WARN : C_MUTED), 0);
 
