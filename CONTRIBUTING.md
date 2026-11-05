@@ -12,15 +12,18 @@ python3 -m unittest discover -s tests -v             # report tool
 python3 tools/check_docs.py                          # Markdown links and images
 idf.py set-target esp32s3 && idf.py build            # firmware
 cargo test --manifest-path desktop/app/src-tauri/Cargo.toml   # desktop app, needs Rust
+make -C tests/fuzz CC=clang                                   # libFuzzer over the input parsers, needs clang with libFuzzer (Linux)
 ```
 
-If you change a file in `ml/onboard/`, regenerate `main/ml_params.h` with `python3 tools/gen_ml_params.py ml/onboard main/ml_params.h`; for `ml/onboard/rev/`, run `python3 tools/gen_ml_params.py ml/onboard/rev main/ml_params_rev.h MLR`. CI fails if a header and its files disagree.
+The firmware source is grouped by subsystem under `main/` (`obd/`, `model/`, `analysis/`, `ui/`, `storage/`, `net/`, `system/`); [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) says what each holds and how data moves between them.
+
+If you change a file in `ml/onboard/`, regenerate `main/model/ml_params.h` with `python3 tools/gen_ml_params.py ml/onboard main/model/ml_params.h`; for `ml/onboard/rev/`, run `python3 tools/gen_ml_params.py ml/onboard/rev main/model/ml_params_rev.h MLR`. CI fails if a header and its files disagree.
 
 ## Sending a change
 
 1. Open an issue first for anything bigger than a fix, so we can agree on the approach.
 2. Keep a pull request to one change. Update the docs in the same pull request.
-3. Wait for CI. It builds the firmware with Wi-Fi clock sync on and off, runs the host tests and the Python tests, and checks the docs. The `desktop` workflow builds the app and runs its tests on Windows, macOS and Linux when `desktop/` changes.
+3. Wait for CI. It builds the firmware with Wi-Fi clock sync on and off, runs the host tests, the fuzz harness and the Python tests, runs CodeQL, and checks the docs. Every pull request is reviewed by the code owner before it merges. The `desktop` workflow builds the app and runs its tests on Windows, macOS and Linux when `desktop/` changes.
 4. Say what you tested on a real board, if anything. "Compiles" and "ran on a car" are different claims, and the README keeps them apart.
 
 ## Style

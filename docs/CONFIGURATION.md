@@ -82,10 +82,10 @@ BOOT is on GPIO0. A tap shows the next page. Holding it for 2 seconds powers the
 
 ## Session CSV columns
 
-The header is the `CSV_HEADER` string in `main/sdlog.c`, 92 columns in this order:
+The header is the `CSV_HEADER` string in `main/storage/sdlog.c`, 92 columns in this order:
 
 1. `seq`, `uptime_ms`, `epoch_ms`
-2. 70 PID columns, from `fuel_sys1_status` to `odometer_km`, in the order of `OBD_FIELDS` in `main/obd_fields.h`
+2. 70 PID columns, from `fuel_sys1_status` to `odometer_km`, in the order of `OBD_FIELDS` in `main/obd/obd_fields.h`
 3. `adapter_voltage_v`, `mil_on`, `dtc_count`, `dtcs`, `pending_dtcs`, `permanent_dtcs`
 4. `custom_1` to `custom_8`
 5. `fuel_lph_calc`, `fuel_src`, `trip_km`, `trip_fuel_l`: the fuel rate in L/h, where it came from (`pid`, `maf`, `model` or empty), and the drive's distance and fuel so far. Economy is `trip_km / trip_fuel_l` in km/L

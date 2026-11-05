@@ -1,6 +1,6 @@
 """Give a replay session the .pat file the board would have written, and fix its CSV window_seq column.
 
-Feeds the session CSV rows, in order, through a port of main/pattern.c (pattern_feed) exactly as
+Feeds the session CSV rows, in order, through a port of main/analysis/pattern.c (pattern_feed) exactly as
 main/elm327.c pattern_step() does: one sample per logged row, fed BEFORE the row is written, clock =
 uptime_ms, a signal is valid only if its CSV cell is non-empty (an unsupported PID such as maf_gps or
 intake_temp_c stays missing). The pattern model starts fresh (pattern_init), as on a board
@@ -45,7 +45,7 @@ def sax(x):
 
 
 class PatternC:
-    """pattern_init / pattern_feed from main/pattern.c."""
+    """pattern_init / pattern_feed from main/analysis/pattern.c."""
 
     def __init__(self):
         self.centroid = np.zeros((K, FEATURES), dtype=np.float32)
@@ -158,7 +158,7 @@ class PatternC:
 
 
 def pat_line(r):
-    # main/sdlog.c sdlog_write_pattern_window()
+    # main/storage/sdlog.c sdlog_write_pattern_window()
     s = (f"{r['window_seq']},{r['start_ms']},{r['end_ms']},{r['samples']},{r['pattern_id']},"
          f"{float(r['dist']):.3f},{float(r['novelty']):.3f},{1 if r['spawned'] else 0},{r['sax_rpm']},{r['sax_speed']}")
     return s + "".join(f",{float(v):.4g}" for v in r["features"]) + "\n"

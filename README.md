@@ -272,7 +272,7 @@ Each window was labelled from the raw OBD signals, independently of the model: s
 | Guided Grad-CAM | Multiplies Grad-CAM by guided backpropagation<sup>[[22]](#ref-22),[[23]](#ref-23)</sup>, the descendant of the deconvnet ("reverse convolution") that maps a decision back onto the input. It passes only positive gradients back through each ReLU, which gives a map of input signal × second. |
 | Linear probe on the embedding<sup>[[24]](#ref-24)</sup> | Fits a logistic regression on the 64-value embedding that both heads read, to test whether a concept such as "foot on the gas" is present in it. PCA and t-SNE<sup>[[25]](#ref-25)</sup> draw the embedding in 2-D for viewing only. Distances in t-SNE are not to scale. |
 
-<p align="center"><img src="docs/images/rev-embedding.png" width="900" alt="R.E.V's 64-value embedding drawn with PCA and t-SNE, factory head against final head on the same points. Accelerating, braking and foot-on-gas cruising sit in separate regions. With the factory head 811 of 2,023 labelled windows are wrong, 759 of them cruising called braking; with the final head 91 are wrong, 28 of them cruising called braking"></p>
+<p align="center"><img src="docs/images/rev-pca.png" width="900" alt="R.E.V's 64-value embedding drawn with PCA, factory head against final head on the same points. The points are the same on both sides; only the layer that reads them changed"></p>
 
 What it found:
 
@@ -280,8 +280,6 @@ What it found:
 - **What the head reacted to.** On the wrong windows Guided Grad-CAM puts 62 % of the evidence on speed and 17 % on throttle, strongest in the newest second. A steady speed with a small throttle opening looked like the start of a stop. Two things in the data make that easy: outside one data set there is no brake-switch signal (see the limits above), and my car cruises at about 8 % throttle against 5.5 % closed, which is close together on a throttle scale learned from other cars.
 
 Since the information was already in the embedding, only the classifier head needed correcting. The final R.E.V changes 108 of the head's 256 int8 weights and 3 of its 4 biases, 126 bytes of the 65,648-byte model. The convolutions, the embedding and the estimate head are unchanged, so what R.E.V has learned in a car (which sits on that embedding) stays valid.
-
-<p align="center"><img src="docs/images/rev-gradcam.png" width="900" alt="Grad-CAM on R.E.V, factory against final, on two held-out drives. On foot-on-gas cruising every second pushed toward braking in the factory model and toward cruising in the final one. On real braking both push toward braking, the final one with a smaller margin. Guided Grad-CAM shows the factory model's braking evidence on cruising windows sat mostly on speed in the newest seconds, and almost none of it is left in the final model"></p>
 
 On two drives from 4 November 2026 that took no part in the correction:
 
@@ -470,12 +468,12 @@ What 2.5.1 cannot do yet, and what is being built for it:
 
 | Path | What it holds |
 |---|---|
-| `main/` | firmware source |
+| `main/` | firmware source, grouped by subsystem: `obd/`, `model/`, `analysis/`, `ui/`, `storage/`, `net/`, `system/` (map in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)) |
 | `ml/onboard/` | the shipped models (CarMind E.V, and CarMind R.E.V in `rev/`), their normalisation and export records |
 | `samples/replay/` | two replay sessions from a public dataset, in the board's file format |
 | `schema/` | JSON schema of the session files |
-| `tests/host/` | unit tests that run on a computer, including R.E.V's learners |
-| `tools/` | `ocm_report.py` (SD card sessions to reports) and the generator for `main/ml_params.h` and `main/ml_params_rev.h` |
+| `tests/host/`, `tests/fuzz/` | unit tests that run on a computer, including R.E.V's learners, and a libFuzzer harness over the input parsers |
+| `tools/` | `ocm_report.py` (SD card sessions to reports) and the generator for `main/model/ml_params.h` and `main/model/ml_params_rev.h` |
 | `desktop/` | the desktop app (Rust and Tauri), its icons and design previews |
 | `dashboard/` | Docker Compose file and Dashy configuration |
 | `docs/` | configuration, model notes, field checks, screen designs and figures |

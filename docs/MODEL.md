@@ -72,9 +72,9 @@ R.E.V is new. It has not been checked on a car yet, so E.V stays the default. Wi
 | `ml/onboard/norm.json` | channel order, means, standard deviations and which channels were trained |
 | `ml/onboard/targets.json` | class names, estimate names, means and standard deviations |
 | `ml/onboard/export.json` | model name, file sizes and hashes, target chip and quantisation type |
-| `main/ml_params.h` | generated from the files above by `tools/gen_ml_params.py` |
+| `main/model/ml_params.h` | generated from the files above by `tools/gen_ml_params.py` |
 | `ml/onboard/rev/` | the same four files for CarMind R.E.V |
-| `main/ml_params_rev.h` | generated from them by `tools/gen_ml_params.py ml/onboard/rev main/ml_params_rev.h MLR` |
+| `main/model/ml_params_rev.h` | generated from them by `tools/gen_ml_params.py ml/onboard/rev main/model/ml_params_rev.h MLR` |
 
 ## Data
 

@@ -20,14 +20,14 @@ The USB port carries the logs and the authenticated setup door described under "
 
 ## Checks on outside input
 
-Everything that arrives from outside is checked before it is used. `main/harden.c` holds the rules, and `tests/host` tests them.
+Everything that arrives from outside is checked before it is used. `main/system/harden.c` holds the rules, and `tests/host` tests them.
 
 - Clock: SNTP replies are not authenticated. A time outside 2026-01-01 to 2099-12-31 is refused, the previous clock is restored, and the board logs a warning.
 - Wi-Fi entries, from `wifi.csv`, `config.json` or the build settings: the SSID must be 1 to 32 bytes, the password empty or 8 to 64 bytes, and neither may contain control characters. A `wifi.csv` line longer than the read buffer is dropped whole.
 - Wi-Fi connection: the board asks for WPA2 or better whenever a password is set, and uses protected management frames when the access point offers them.
 - Model input: a value the adapter reports as not-a-number or infinity is treated as a missing sample. Any other value is limited to 100 standard deviations.
 - `config.json`: files over 4 KB are ignored, numbers must fall in their documented range, `rev` must fit in 32 bits, and `timezone` may hold only letters, digits and `<>+-,.:/`.
-- USB door (`main/usb_door.c`): nothing changes on the board until the app has shown it either the 6-digit code from the board's screen (3 tries per code) or an HMAC-SHA256 of a fresh random challenge keyed with the paired app's token. Pairing values are checked for length and characters before they are stored, file names are checked before the card is read, and everything is refused while the car link is up.
+- USB door (`main/system/usb_door.c`): nothing changes on the board until the app has shown it either the 6-digit code from the board's screen (3 tries per code) or an HMAC-SHA256 of a fresh random challenge keyed with the paired app's token. Pairing values are checked for length and characters before they are stored, file names are checked before the card is read, and everything is refused while the car link is up.
 - Build: stack protector on every function, a TLS client only with renegotiation off, and no soft-AP or enterprise Wi-Fi code.
 
 These checks stop malformed or hostile data from corrupting logs, the clock or the model input. They do not make a stolen board or card safe.
@@ -60,7 +60,7 @@ They do not stop someone who has the board from querying it. See the first item 
 
 ## Supply chain
 
-Releases are built by the `release` workflow from a tagged commit and carry `SHA256SUMS`. Every GitHub Action used by the workflows is pinned to a commit, the ESP-IDF build image is pinned by digest, and the OpenSSF Scorecard workflow reviews the repository weekly. The firmware depends on ESP-IDF, ESP-DL, LVGL, esp_lvgl_port, led_strip and cJSON, fetched by the IDF component manager at build time. Their versions are in `main/idf_component.yml`.
+Releases are built by the `release` workflow from a tagged commit and carry `SHA256SUMS` and a Sigstore provenance bundle (`opencarmind-<version>.intoto.jsonl`, also registered as a GitHub attestation). Every GitHub Action used by the workflows is pinned to a commit, the ESP-IDF build image is pinned by digest, Python test dependencies are pinned by hash (`tests/requirements.txt`), Dependabot proposes updates weekly, CodeQL analyses every commit, a libFuzzer harness (`tests/fuzz`) runs over the input parsers on every change, and the OpenSSF Scorecard workflow reviews the repository weekly. The firmware depends on ESP-IDF, ESP-DL, LVGL, esp_lvgl_port, led_strip and cJSON, fetched by the IDF component manager at build time. Their versions are in `main/idf_component.yml`.
 
 The desktop app is built from pinned GitHub Actions and the npm lockfile for the Tauri command-line tool. Its Rust crates are resolved when it is built, because `Cargo.lock` is not committed yet.
 

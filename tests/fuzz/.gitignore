@@ -1,0 +1,5 @@
+crash-*
+leak-*
+timeout-*
+corpus/
+fuzz_parsers

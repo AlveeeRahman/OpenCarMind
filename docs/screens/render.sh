@@ -1,7 +1,7 @@
 #!/bin/sh
 # Renders every screen in screens.html to docs/images/<id>.png (dark) and <id>-light.png at the
 # panel's 2x size (344x640). The light variant applies the firmware's light palette by remapping
-# every dark-theme colour, the same thing main/display.c does at 06:00.
+# every dark-theme colour, the same thing main/ui/display.c does at 06:00.
 # Needs Google Chrome; run from the repository root:  sh docs/screens/render.sh
 set -e
 CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
@@ -13,7 +13,7 @@ import re, sys, os
 tmp = sys.argv[1]
 src = open('docs/screens/screens.html').read()
 head = src[:src.index('<body>') + 6].replace('.row{display:flex;gap:24px;padding:24px}', '.row{display:block;padding:0}').replace('body{margin:0;background:#0A0A0A', 'body{margin:0;background:#000000')
-# dark -> light palette, mirrors THEME_DARK / THEME_LIGHT in main/display.c. One pass, so a light value that equals
+# dark -> light palette, mirrors THEME_DARK / THEME_LIGHT in main/ui/display.c. One pass, so a light value that equals
 # another dark value (dark muted becomes #4A4A4A, which is also the dark border) is never remapped twice.
 MAP = {'#000000':'#F5F5F5', '#050505':'#FFFFFF', '#F2ECE1':'#101418', '#B8B8B8':'#4A4A4A', '#8CC8FF':'#1F4FC2',
        '#56F487':'#1B6B2A', '#FCCA21':'#6B4A00', '#E64343':'#C62828', '#4A4A4A':'#8C8C8C', '#7A7A7A':'#6E6E6E',

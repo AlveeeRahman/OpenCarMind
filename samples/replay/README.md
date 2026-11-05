@@ -10,8 +10,8 @@ to try the file format, the training loaders and your own dashboards without dri
 
 Each session has three files, as on the card:
 
-- `sNNNNNN.csv`: the board's 88-column session CSV. The header is byte-identical to `CSV_HEADER` in `main/sdlog.c`.
-- `sNNNNNN.pat`: one row per closed 10 s pattern window, written by a port of `main/pattern.c`.
+- `sNNNNNN.csv`: the board's 88-column session CSV. The header is byte-identical to `CSV_HEADER` in `main/storage/sdlog.c`.
+- `sNNNNNN.pat`: one row per closed 10 s pattern window, written by a port of `main/analysis/pattern.c`.
 - `sNNNNNN.json`: session metadata. Its `replay` block names the source, the vehicle, the citation and the column
   mapping, so a replay can never be mistaken for a drive this board recorded.
 

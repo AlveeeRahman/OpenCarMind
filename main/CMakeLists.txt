@@ -1,36 +1,22 @@
 idf_component_register(
     SRCS "app_main.c"
-         "obd_ble.c"
-         "adapter_match.c"
-         "econ.c"
-         "obd_fresh.c"
-         "rev_torque.c"
-         "rev_tank.c"
-         "units.c"
-         "harden.c"
-         "power_state.c"
-         "uploader.c"
-         "usb_door.c"
-         "elm327.c"
-         "sdlog.c"
-         "display.c"
-         "wifi_sync.c"
-         "status_led.c"
-         "custom_pids.c"
-         "fault_engine.c"
-         "pattern.c"
-         "cpu_monitor.c"
-         "wifi_creds.c"
-         "events.c"
-         "remote_config.c"
-         "sched_mon.c"
-         "sys_mode.c"
-         "ml_infer.cpp"
-         "rev_learn.c"
-         "rev_cal.c"
-         "rev_state.c"
-         "rev_task.c"
-    INCLUDE_DIRS "."
+         # OBD-II: Bluetooth LE adapter, ELM327 protocol, field table, custom PIDs
+         "obd/obd_ble.c" "obd/elm327.c" "obd/adapter_match.c" "obd/obd_fresh.c" "obd/custom_pids.c"
+         # On-board models: ESP-DL inference, CarMind R.E.V learners (fuel, airflow, tank, calibration), physics torque
+         "model/ml_infer.cpp" "model/rev_task.c" "model/rev_learn.c" "model/rev_cal.c" "model/rev_state.c"
+         "model/rev_tank.c" "model/rev_torque.c"
+         # Derived values: fuel economy, fault engine, pattern windows, units
+         "analysis/econ.c" "analysis/fault_engine.c" "analysis/pattern.c" "analysis/units.c"
+         # Screen and LED
+         "ui/display.c" "ui/status_led.c"
+         # SD card: session logs, event log, config.json
+         "storage/sdlog.c" "storage/events.c" "storage/remote_config.c"
+         # Network: Wi-Fi credentials, clock sync, upload client
+         "net/wifi_creds.c" "net/wifi_sync.c" "net/uploader.c"
+         # System: scheduler, modes, power, counters, input checks, USB door
+         "system/sched_mon.c" "system/sys_mode.c" "system/power_state.c" "system/cpu_monitor.c"
+         "system/harden.c" "system/usb_door.c"
+    INCLUDE_DIRS "." "obd" "model" "analysis" "ui" "storage" "net" "system"
     REQUIRES bt nvs_flash driver esp_driver_tsens perfmon esp_wifi esp_netif esp_event esp_http_client mbedtls esp_driver_usb_serial_jtag
              esp_lcd fatfs sdmmc vfs esp_timer esp_driver_gpio
              esp_driver_spi esp_driver_sdmmc esp_driver_ledc

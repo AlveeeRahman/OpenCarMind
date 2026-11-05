@@ -168,7 +168,7 @@ menu "OBD Logger Configuration"
             default y
             help
                 Loads ml/onboard/onboard.espdl (ESP-DL) at boot and writes one line per pattern window to
-                sNNNNNN.ml.csv. Regenerate main/ml_params.h with tools/gen_ml_params.py when the model changes.
+                sNNNNNN.ml.csv. Regenerate main/model/ml_params.h with tools/gen_ml_params.py when the model changes.
         config CARMIND_ML_SELFTEST
             bool "Run the model's embedded self-test and one timed inference at boot"
             depends on CARMIND_ML_ENABLE

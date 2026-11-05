@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Generate a model header from an exported on-board model folder (norm.json, targets.json, export.json, onboard.espdl).
 
-  python3 tools/gen_ml_params.py ml/onboard main/ml_params.h                    CarMind E.V, names ML_*
-  python3 tools/gen_ml_params.py ml/onboard/rev main/ml_params_rev.h MLR        CarMind R.E.V, names MLR_*
+  python3 tools/gen_ml_params.py ml/onboard main/model/ml_params.h                    CarMind E.V, names ML_*
+  python3 tools/gen_ml_params.py ml/onboard/rev main/model/ml_params_rev.h MLR        CarMind R.E.V, names MLR_*
 
 The header carries everything the firmware needs to build the model input and read its outputs exactly as the
 model was trained: channel order, normalisation, which channels the model ever saw valid, window length, class
