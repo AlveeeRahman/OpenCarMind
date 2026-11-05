@@ -296,7 +296,7 @@ Not checked yet: R.E.V over many drives and other cars, the corrected R.E.V on t
 
 ## Next board: ESP-Mosaico with the ESP32-S31
 
-<p align="center"><img src="docs/images/mosaico-rev.png" width="900" alt="Concept: OpenCarMind with CarMind R.E.V on ESP-Mosaico, three 480 by 480 screens: drive, AI and learning"></p>
+<p align="center"><img src="docs/images/mosaico-rev.png" width="900" alt="Concept: OpenCarMind with CarMind R.E.V on ESP-Mosaico, three 480 by 480 screens in the dark, light and dark themes: drive gauges, what R.E.V sees and estimates, and what it has learned"></p>
 
 The next board is Espressif's ESP-Mosaico<sup>[[12]](#ref-12)</sup>, built on the ESP32-S31, with a 480 × 480 touch screen, Bluetooth Classic, a motion sensor and a small battery. I have one on order, and the concept above (a render with example values) shows CarMind R.E.V on it. The full board comparison is in the [detailed README](https://github.com/AlveeeRahman/OpenCarMind/blob/rev-c2/README.md#next-board-esp-mosaico-with-the-esp32-s31).
 

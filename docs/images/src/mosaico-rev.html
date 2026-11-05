@@ -23,6 +23,28 @@ h1{margin:0;font-size:31px;font-weight:800;display:inline-block}
 .bar{height:7px;border-radius:4px;background:#4A4A4A;margin-top:8px;overflow:hidden}
 .bar i{display:block;height:100%;background:#8CC8FF;border-radius:4px}
 .tag{font-size:11px;font-weight:700;letter-spacing:.06em;border:1.5px solid currentColor;border-radius:6px;padding:1px 6px;margin-left:8px}
+
+/* the middle device in the light theme: the same rules, colours mapped as main/display.c does */
+.theme-light h1{margin:0;font-size:31px;font-weight:800;display:inline-block}
+.theme-light .scr{width:100%;height:100%;box-sizing:border-box;border-radius:28px;background:#FFFFFF;padding:20px 22px;text-align:left;position:relative}
+.theme-light .top{display:flex;justify-content:space-between;align-items:center;font-size:19px;font-weight:700}
+.theme-light .muted{color:#4A5563}
+.theme-light .small{font-size:13px}
+.theme-light .card{background:#FCFCFC;border:1.5px solid #8C8C8C;border-radius:16px;padding:12px 16px;margin-top:12px}
+.theme-light .light{border-color:#EA6A12}
+.theme-light .lbl{font-size:12px;letter-spacing:.09em;color:#4A5563;font-weight:600}
+.theme-light .light .lbl{color:#EA6A12}
+.theme-light .est{border-color:#BE123C}
+.theme-light .est .lbl{color:#BE123C}
+.theme-light .amber{color:#DD6E0E}
+.theme-light .green{color:#15803D}
+.theme-light .orange{color:#F59A2E}
+.theme-light .kv{display:flex;justify-content:space-between;align-items:baseline;margin-top:9px;font-size:16px}
+.theme-light .big{font-size:26px;font-weight:600}
+.theme-light .bar{height:7px;border-radius:4px;background:#8C8C8C;margin-top:8px;overflow:hidden}
+.theme-light .bar i{display:block;height:100%;background:#3B82F6;border-radius:4px}
+.theme-light .tag{font-size:11px;font-weight:700;letter-spacing:.06em;border:1.5px solid currentColor;border-radius:6px;padding:1px 6px;margin-left:8px}
+.theme-light .scr{color:#15202D}
 </style></head><body><div class="wrap">
 <h1>OpenCarMind with CarMind R.E.V on ESP-Mosaico</h1><span class="sub">Concept for the next board: ESP32-S31, 480 × 480 touch display, IMU, battery</span>
 <div class="row">
@@ -39,10 +61,10 @@ h1{margin:0;font-size:31px;font-weight:800;display:inline-block}
     <div class="bar"><i style="width:47%;background:#56F487"></i></div><div class="small muted" style="margin-top:6px">tank size learned on the board: 50 L</div></div>
 </div></div><div class="cap">Drive: gauges, what the model sees, and the learned tank</div></div>
 
-<div class="col"><div class="dev"><div class="scr">
+<div class="col"><div class="dev theme-light"><div class="scr">
   <div class="top"><span>AI <span class="tag orange">R.E.V</span></span><span class="small muted">142 checks · 2.9 ms</span></div>
   <div class="card light"><div class="kv" style="margin-top:0"><span><span class="lbl">AI SEES</span> <b style="font-size:20px;margin-left:6px">Cruising</b></span><span class="small">87 % sure</span></div>
-    <div class="small" style="color:#B8B8B8;margin-top:4px">fixed in v1: learns in the car once the IMU gives it labels</div></div>
+    <div class="small" style="color:#4A5563;margin-top:4px">fixed in v1: learns in the car once the IMU gives it labels</div></div>
   <div class="card est"><div class="lbl">AI ESTIMATES</div>
     <div class="kv"><span>Brake pressure</span><span class="big">6.3 <span class="small muted">bar</span></span></div>
     <div class="kv"><span>Engine torque <span class="tag amber">PHYSICS</span></span><span class="big amber">85 <span class="small">N m</span></span></div>
