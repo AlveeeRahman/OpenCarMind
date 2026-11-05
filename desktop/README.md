@@ -1,6 +1,6 @@
 # Desktop app
 
-Status: preview, version 2.5.1, released together with the firmware of the same number. The app imports drives from the board over the USB cable and shows them. It can also open an SD card directly. In 2.5.0 the board's Wi-Fi only sets its clock: the Wi-Fi upload is being reworked (see the main README, Limitations and future work), so the app opens no network port.
+Status: preview, version 2.5.1, released together with the firmware of the same number. The app imports drives from the board over the USB cable and shows them. It can also open an SD card directly. In 2.5.x the board's Wi-Fi only sets its clock: the Wi-Fi upload is being reworked (see the main README, Limitations and future work), so the app opens no network port.
 
 Built with Rust and Tauri for Windows, macOS (Apple silicon and Intel) and Linux. All the setup lives in the app: it writes the board's Wi-Fi networks, settings and pairing file to the SD card. The board itself has no console and accepts no incoming connections.
 
@@ -30,7 +30,7 @@ Each build runs the Rust unit tests on its own system first. They check the sess
 
 More on the Board page, all over the cable:
 
-- On-board model shows whether the board runs CarMind E.V (the default) or CarMind R.E.V, which keeps learning your car's fuel use, and switches between them.
+- On-board model shows whether the board runs CarMind R.E.V (the default on a new board since 2.5.1), which keeps learning your car's fuel use and engine size, or the fixed CarMind E.V, and switches between them.
 - Import drives over USB copies new drives from the card into the app's drives folder, at about 15 KB/s.
 - Flash the firmware installs the firmware that ships with the app. The board keeps its Wi-Fi networks and pairing.
 
@@ -42,7 +42,7 @@ To read a card on its own, choose Open card folder on the Overview and pick the 
 
 Over USB: the board accepts setup commands only after the app shows it the code from the board's screen, or, once paired, an HMAC-SHA256 of a fresh random challenge keyed with the app's token. The app does the work and the board only stores or applies what it receives (`main/usb_door.h`).
 
-Over Wi-Fi (off in 2.5.0, kept for the reworked upload): the board is the client and the app is the server. The app makes a self-signed certificate and a random token on first run and keeps them in its data folder. Pairing hands both to the board over the cable, so they never cross the network in the clear. The board then trusts only that certificate (TLS 1.2), sends the token with every request, and appends each session file from the point the app already has. A pass that is cut off resumes where it stopped, and no byte is stored twice. Details and the protocol are in `main/uploader.h`.
+Over Wi-Fi (off in 2.5.x, kept for the reworked upload): the board is the client and the app is the server. The app makes a self-signed certificate and a random token on first run and keeps them in its data folder. Pairing hands both to the board over the cable, so they never cross the network in the clear. The board then trusts only that certificate (TLS 1.2), sends the token with every request, and appends each session file from the point the app already has. A pass that is cut off resumes where it stopped, and no byte is stored twice. Details and the protocol are in `main/uploader.h`.
 
 With the upload back on, your firewall must let the app accept connections on port 8787. Allow it for private networks only. Windows normally asks the first time. macOS can block an app it has not approved without asking, so if no drives arrive, add OpenCarMind under System Settings, Network, Firewall, Options. On Linux, open the port if a firewall is active, for example `sudo ufw allow from 192.168.0.0/16 to any port 8787 proto tcp`, and add yourself to the `dialout` group (`uucp` on Arch) so the app can open the USB port: `sudo usermod -aG dialout $USER`, then log out and in.
 

@@ -581,6 +581,11 @@ async fn board_rev_reset(port: String, what: String) -> Result<(), String> {
     blocking(move || board::rev_reset(&port, &what)).await
 }
 
+#[tauri::command]
+async fn board_reboot(port: String) -> Result<(), String> {
+    blocking(move || board::reboot(&port)).await
+}
+
 async fn blocking<T: Send + 'static>(f: impl FnOnce() -> Result<T, String> + Send + 'static) -> Result<T, String> {
     tauri::async_runtime::spawn_blocking(f).await.map_err(|e| format!("background task failed: {e}"))?
 }
@@ -604,7 +609,7 @@ async fn board_request_code(port: String) -> Result<(), String> {
 #[tauri::command]
 async fn board_pair(state: tauri::State<'_, AppState>, port: String, code: String) -> Result<String, String> {
     // Pairing is what lets the board accept this app's USB commands. The address is stored for the Wi-Fi upload, which
-    // is off in 2.5.0, so a computer without a network address pairs with the loopback address.
+    // is off in 2.5.x, so a computer without a network address pairs with the loopback address.
     let host = receiver::local_address().unwrap_or_else(|| "127.0.0.1".to_string());
     if state.rx.token.is_empty() {
         return Err("the receiver could not start, so there is nothing to pair with".into());
@@ -845,6 +850,7 @@ pub fn run() {
             board_rev_status,
             board_rev_reset,
             board_rev_fillups,
+            board_reboot,
             fillups_load,
             fillups_save
         ])
