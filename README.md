@@ -81,6 +81,8 @@ Every periodic job has a period and a deadline. The scheduler in `main/sched_mon
 
 ## The screens
 
+<p align="center"><img src="docs/images/lcd-amoled.png" width="900" alt="Made for LCD, Feels like AMOLED: true black on a backlit screen"></p>
+
 <p align="center">
 <img src="docs/images/dash.png" width="190" alt="Page 1: dashboard">
 <img src="docs/images/internals.png" width="190" alt="Page 3: internals and recent events, including Safe to turn off">
@@ -96,13 +98,15 @@ Every periodic job has a period and a deadline. The scheduler in `main/sched_mon
 
 Pages 1, 3, 4 and 5 in the dark and light themes (renders, not photos). Page 2 is plain text and has its own picture at [docs/images/details.png](docs/images/details.png).
 
-Tap BOOT to change page. Hold it for 2 seconds to power off: the board saves and closes the drive first. Hold it for 8 seconds to forget the saved adapter.
+The dark theme is pure black, because on an LCD any tint in the background glows through the backlight. Text and colours are bright enough to read at a glance, and every status colour comes with a word.
 
-1. Dashboard: RPM, speed, engine temperature, battery, fuel economy and fuel level.
+Tap BOOT to change page. Hold it for 2 seconds to power off. The screen says "Turning off" while it saves and closes the drive, then "Off, safe to unplug", and the backlight and LED go dark. Hold it for 8 seconds to forget the saved adapter.
+
+1. Dashboard: RPM, speed, engine temperature, battery, fuel economy and fuel level, with a CPU bar and an estimated power bar.
 2. Details: adapter, VIN, protocol, trouble codes, clock, SD state and fuel used.
 3. Internals: twelve extra fields, up to eight custom PIDs, and recent events, including "Safe to turn off".
-4. Faults: ranked trouble codes with severity, description and likely cause.
-5. System: CPU and memory, the jobs and their deadlines, what the model sees and its three estimates.
+4. Faults: ranked trouble codes with severity, description and likely cause, plus the connection and MIL status line.
+5. System: instructions per second on each core (hardware counters), PSRAM in use, chip temperature, uptime, the jobs and their deadlines, what the model sees and its three estimates.
 
 The screen is light from 06:00 to 17:00 and dark otherwise. `theme_mode`, the hours and the time zone are set in `config.json` (see [docs/CONFIGURATION.md](docs/CONFIGURATION.md)).
 

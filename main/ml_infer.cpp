@@ -490,13 +490,16 @@ extern "C" int ml_get_last_probs(float *out, int max)
 static uint32_t selftest(void)
 {
 #if CONFIG_CARMIND_ML_SELFTEST
-    /* ESP-DL compares the model's output on its embedded test input with ESP-PPQ's simulation to 1 LSB. The S3 drifts
-       about 2 % inside the trunk (measured), so a mismatch here is reported, not treated as a failure. */
+    /* ESP-DL compares the model's output on its embedded test input with ESP-PPQ's PC simulation, to 1 LSB of the raw
+       int16 value, and stops at the first mismatch. The S3 trunk differs from the simulation by several percent (the
+       PC side computes w8a16 layers in float32, the S3 in 40-bit integers), so a mismatch is reported, not treated as
+       a failure; the replay agreement with the desktop model is the real check. */
     esp_err_t st = s_model->test();
     int64_t t1 = esp_timer_get_time();
     s_model->run();
     uint32_t us = (uint32_t)(esp_timer_get_time() - t1);
-    ESP_LOGI(TAG, "%s self-test %s (1-LSB check), one inference %lu us", MODELS[s_active].name, st == ESP_OK ? "exact" : "within drift",
+    ESP_LOGI(TAG, "%s self-test %s, one inference %lu us", MODELS[s_active].name,
+             st == ESP_OK ? "exact (within 1 LSB)" : "differs from the PC simulation by more than 1 LSB (first value in the ESP-DL log above)",
              (unsigned long)us);
     return us;
 #else
@@ -533,10 +536,12 @@ static void announce(void)
 
 /* NVS namespace "ml", key "model": a u8 of its own, not inside remote_config_t, whose blob is accepted only at its exact size
    (remote_config.c), so a new field there would reset every user's settings. */
+/* A new board (nothing stored yet) starts on CarMind R.E.V when this firmware carries it, else on E.V. A board that
+   already stored a choice keeps it. */
 static int stored_model(void)
 {
     nvs_handle_t h;
-    uint8_t v = ML_MODEL_EV;
+    uint8_t v = ml_model_available(ML_MODEL_REV) ? ML_MODEL_REV : ML_MODEL_EV;
     if (nvs_open("ml", NVS_READONLY, &h) == ESP_OK) { nvs_get_u8(h, "model", &v); nvs_close(h); }
     return v < ML_MODEL_COUNT && ml_model_available(v) ? (int)v : (int)ML_MODEL_EV;
 }

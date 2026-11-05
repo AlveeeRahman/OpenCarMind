@@ -100,7 +100,9 @@ typedef struct {
     int64_t      sys_popup_until_ms;
     bool         sys_popup_error;
     uint8_t      cpu_pct[2];    /* load per core, from FreeRTOS run-time stats */
-    uint32_t     heap_free_kb, psram_free_kb;
+    uint32_t     heap_free_kb, psram_free_kb, psram_total_kb;
+    float        chip_temp_c;   /* die temperature from the ESP32-S3 sensor, NAN if it is unavailable */
+    float        pmu_mips[2];   /* instructions retired per second per core, millions, Xtensa PMU (cpu_monitor.c) */
     float        power_w;       /* estimate from datasheet currents, see cpu_monitor.c */
     int16_t      pattern_id;    /* last closed window */
     float        pattern_novelty;
@@ -108,6 +110,7 @@ typedef struct {
     uint8_t      pattern_used;
     uint8_t      hold_pct;      /* 0..100 ring while BOOT is held, 0 = hidden */
     uint8_t      hold_stage;    /* 0 none, 1 power-off armed, 2 forget armed */
+    uint8_t      shutdown_stage; /* 0 running, 1 saving before power-off, 2 off: screen says so, then fades out */
     uint8_t      units;         /* units_t: display units, see units.h */
 } app_status_t;
 

@@ -8,6 +8,7 @@
 #include "esp_log.h"
 #include "esp_check.h"
 #include "esp_timer.h"
+#include "driver/gpio.h"
 #include "esp_attr.h"
 #include "remote_config.h"
 #include "esp_lcd_panel_io.h"
@@ -78,10 +79,22 @@ static void dc_remove_flag(lv_obj_t *o, lv_obj_flag_t f) { if (lv_obj_has_flag_a
 
 static const char *TAG = "display";
 
-/* palette: two themes, switched by time of day (light 06:00-17:00 by default) or by remote config */
-typedef struct { uint32_t bg, tile, text, muted, accent, ok, warn, bad, border; } theme_t;
-static const theme_t THEME_DARK  = {0x0B0F14, 0x151B23, 0xE5E7EB, 0x7B8794, 0x22D3EE, 0x22C55E, 0xF59E0B, 0xEF4444, 0x3A4552};
-static const theme_t THEME_LIGHT = {0xF5F3EE, 0xFFFFFF, 0x15181E, 0x5B6470, 0x0E7490, 0x15803D, 0xB45309, 0xDC2626, 0xD9D3C9};
+/* palette for a backlit IPS LCD, switched by time of day (light 06:00-17:00 by default) or by remote config.
+ * An LCD's black is backlight leaking through, so the dark theme uses pure neutral black: any tint (the old navy) glows
+ * as a blue field. Foregrounds are light and fairly unsaturated, and blue is never used for small text on black
+ * (short-wavelength text is the hardest to focus). Status colours follow ISO 2575 tell-tales: red danger, yellow and
+ * amber caution, green normal, and every status also carries a word. Text is at least 4.5:1 on bg and tile in both
+ * themes, dim (an idle link) at least 3:1. Dark tiles are near-black (#050505): a grey fill reads as a lit panel
+ * on this backlight, so tiles are drawn by their borders. Page 5 gives each of its seven sections its own colour,
+ * placed by enumerating all arrangements: in dark, no two sections closer than 15.4 (OKLab x100) for normal vision and
+ * every pair that touches at least 8.4 for colour-blind readers; in light, at least 14.7 for normal vision. Each
+ * section has a caption, so colour is never the only cue. All values stay distinct after RGB565. */
+typedef struct { uint32_t bg, tile, text, muted, accent, ok, warn, bad, border, dim, violet, blue, amber, sev_high, teal, pink,
+                 orange, red, sage; } theme_t;
+static const theme_t THEME_DARK  = {0x000000, 0x050505, 0xF2ECE1, 0xB8B8B8, 0x8CC8FF, 0x56F487, 0xFCCA21, 0xE64343, 0x4A4A4A, 0x7A7A7A,
+                                    0xAD8DFD, 0x38B8F6, 0xF2A13A, 0xF08E54, 0x72ECE4, 0xFE86C2, 0xFE860F, 0xFD122E, 0x6CB35D};
+static const theme_t THEME_LIGHT = {0xF5F5F5, 0xFFFFFF, 0x101418, 0x4A4A4A, 0x1F4FC2, 0x1B6B2A, 0x6B4A00, 0xC62828, 0x8C8C8C, 0x6E6E6E,
+                                    0x5517A5, 0x196EA9, 0x8F5200, 0xA84300, 0x034239, 0x971C65, 0xA65F00, 0xD4002A, 0x40731A};
 static const theme_t *T = &THEME_DARK;
 #define C_BG      (T->bg)
 #define C_TILE    (T->tile)
@@ -92,6 +105,16 @@ static const theme_t *T = &THEME_DARK;
 #define C_WARN    (T->warn)
 #define C_BAD     (T->bad)
 #define C_BORDER  (T->border)
+#define C_DIM     (T->dim)
+#define C_VIOLET  (T->violet)
+#define C_BLUE    (T->blue)
+#define C_TEAL    (T->teal)
+#define C_PINK    (T->pink)
+#define C_ORANGE  (T->orange)
+#define C_RED     (T->red)
+#define C_SAGE    (T->sage)
+#define C_AMBER   (T->amber)      /* an estimated value (no PID behind it) */
+#define C_SEV_HIGH (T->sev_high)  /* high-severity fault: orange, ISO 2575 caution, between C_WARN and C_BAD */
 
 static lv_display_t *s_disp;
 static esp_lcd_panel_handle_t s_panel;
@@ -100,17 +123,18 @@ static int s_shown_page = -1;
 
 /* ---- widgets, page 0 ---- */
 static lv_obj_t *scr0, *bar_top, *lbl_ble, *lbl_sd, *lbl_wifi, *lbl_clock;
+static lv_obj_t *off_panel, *off_title, *off_text;   /* power-off overlay */
 static lv_obj_t *lbl_clock_bold;   /* the same text 1 px to the right: faux bold, the fonts have no bold weight */
 static lv_obj_t *lbl_rpm, *bar_rpm, *lbl_speed, *lbl_state;
 static lv_obj_t *tile_val[4], *tile_cap[4], *cap_speed;
 static int s_units_p0 = -1, s_units_p2 = -1;      /* units the captions show; -1 forces a refresh after a (re)build */
-static lv_obj_t *lbl_foot, *bar_cpu;
+static lv_obj_t *lbl_foot, *bar_cpu, *lbl_pow, *bar_pow, *lbl_cpu_val, *lbl_pow_val;
 /* ---- widgets, page 1 ---- */
 static lv_obj_t *scr1, *lbl_info;
 /* ---- widgets, page 2 (internals) ---- */
 #define N_PAGES 5
 #define P2_STD 12
-#define P2_CUSTOM 6   /* 2 x 3 rows: y 196..288, dots at 308 */
+#define P2_CUSTOM 6   /* 2 x 3 rows: y 212..291, footer 292..307, dots 308..314 */
 #define P2_EVENTS 5
 static lv_obj_t *scr2, *p2_val[P2_STD], *p2_cap[P2_STD], *p2_cval[P2_CUSTOM], *p2_ccap[P2_CUSTOM], *p2_foot;
 static lv_obj_t *p2_ev_cap, *p2_ev_line[P2_EVENTS];
@@ -219,7 +243,8 @@ static lv_obj_t *make_tile(lv_obj_t *parent, int x, int y, int w, int h, const c
     lv_obj_set_pos(t, x, y);
     lv_obj_set_size(t, w, h);
     lv_obj_set_style_bg_color(t, lv_color_hex(C_TILE), 0);
-    lv_obj_set_style_border_width(t, 0, 0);
+    lv_obj_set_style_border_width(t, 1, 0);                    /* the outline keeps tiles visible on the light page */
+    lv_obj_set_style_border_color(t, lv_color_hex(C_BORDER), 0);
     lv_obj_set_style_radius(t, 8, 0);
     lv_obj_set_style_pad_all(t, 4, 0);
     lv_obj_remove_flag(t, LV_OBJ_FLAG_SCROLLABLE);
@@ -241,7 +266,9 @@ static void build_page0(void)
     lv_obj_set_pos(bar_top, 0, 0);
     lv_obj_set_size(bar_top, 172, 22);
     lv_obj_set_style_bg_color(bar_top, lv_color_hex(C_TILE), 0);
-    lv_obj_set_style_border_width(bar_top, 0, 0);
+    lv_obj_set_style_border_width(bar_top, 1, 0);
+    lv_obj_set_style_border_side(bar_top, LV_BORDER_SIDE_BOTTOM, 0);
+    lv_obj_set_style_border_color(bar_top, lv_color_hex(C_BORDER), 0);
     lv_obj_set_style_radius(bar_top, 0, 0);
     lv_obj_set_style_pad_all(bar_top, 2, 0);
     lv_obj_remove_flag(bar_top, LV_OBJ_FLAG_SCROLLABLE);
@@ -295,24 +322,30 @@ static void build_page0(void)
     }
 
     /* connection state line (shown while not logging) */
-    /* single status line; long text scrolls instead of wrapping into the footer */
-    lbl_state = make_label(scr0, &lv_font_montserrat_14, C_WARN);
-    lv_obj_set_width(lbl_state, 160);
-    lv_label_set_long_mode(lbl_state, LV_LABEL_LONG_SCROLL_CIRCULAR);
-    lv_obj_set_style_text_align(lbl_state, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_align(lbl_state, LV_ALIGN_TOP_MID, 0, 262);
 
-    /* footer: CPU load bar (max of both cores) with a small label; dots sit at bottom right */
-    lbl_foot = make_label(scr0, &lv_font_montserrat_12, C_MUTED);
-    lv_obj_align(lbl_foot, LV_ALIGN_BOTTOM_LEFT, 8, -16);
-    bar_cpu = lv_bar_create(scr0);
-    lv_obj_set_size(bar_cpu, 112, 6);
-    lv_obj_align(bar_cpu, LV_ALIGN_BOTTOM_LEFT, 8, -6);
-    lv_bar_set_range(bar_cpu, 0, 100);
-    lv_obj_set_style_bg_color(bar_cpu, lv_color_hex(C_TILE), LV_PART_MAIN);
-    lv_obj_set_style_bg_color(bar_cpu, lv_color_hex(C_MUTED), LV_PART_INDICATOR);
-    lv_obj_set_style_radius(bar_cpu, 3, LV_PART_MAIN);
-    lv_obj_set_style_radius(bar_cpu, 3, LV_PART_INDICATOR);
+    /* footer: two rows above the page dots (y 308), each a name, a short bar and a value in their own columns
+       (x 8-48 | 52-112 | 116-164), so text and bar never overlap. CPU is both cores together, out of 100 %; Power is
+       the estimated board draw (cpu_monitor.c) on a 0-1 W bar, amber because it is an estimate. */
+    static const char *names[2] = {"CPU", "Power"};
+    lv_obj_t **bars[2] = {&bar_cpu, &bar_pow}, **vals[2] = {&lbl_cpu_val, &lbl_pow_val}, **nms[2] = {&lbl_foot, &lbl_pow};
+    for (int i = 0; i < 2; i++) {
+        int y = 266 + i * 20;
+        *nms[i] = make_label(scr0, &lv_font_montserrat_12, C_MUTED);
+        lv_label_set_text(*nms[i], names[i]);
+        lv_obj_set_pos(*nms[i], 8, y);
+        *bars[i] = lv_bar_create(scr0);
+        lv_obj_set_size(*bars[i], 60, 8);
+        lv_obj_set_pos(*bars[i], 52, y + 4);
+        lv_bar_set_range(*bars[i], 0, 100);
+        lv_obj_set_style_bg_color(*bars[i], lv_color_hex(C_BORDER), LV_PART_MAIN);
+        lv_obj_set_style_bg_color(*bars[i], lv_color_hex(i ? C_AMBER : C_ACCENT), LV_PART_INDICATOR);
+        lv_obj_set_style_radius(*bars[i], 4, LV_PART_MAIN);
+        lv_obj_set_style_radius(*bars[i], 4, LV_PART_INDICATOR);
+        *vals[i] = make_label(scr0, &lv_font_montserrat_12, C_TEXT);
+        lv_obj_set_size(*vals[i], 48, 15);
+        lv_obj_set_pos(*vals[i], 116, y);
+        lv_obj_set_style_text_align(*vals[i], LV_TEXT_ALIGN_RIGHT, 0);
+    }
 }
 
 static void build_page1(void)
@@ -352,7 +385,7 @@ static void build_banner(void)
     lv_obj_set_style_radius(banner, 0, 0);
     lv_obj_set_style_pad_all(banner, 4, 0);
     lv_obj_remove_flag(banner, LV_OBJ_FLAG_SCROLLABLE);
-    banner_lbl = make_label(banner, &lv_font_montserrat_14, 0xFFFFFF);
+    banner_lbl = make_label(banner, &lv_font_montserrat_14, C_BG);   /* screen background on red: 5:1 in both themes */
     lv_obj_set_width(banner_lbl, 160);
     lv_label_set_long_mode(banner_lbl, LV_LABEL_LONG_WRAP);
     lv_obj_set_style_text_align(banner_lbl, LV_TEXT_ALIGN_CENTER, 0);
@@ -368,7 +401,7 @@ static void build_banner(void)
     lv_obj_set_style_radius(prompt, 0, 0);
     lv_obj_set_style_pad_all(prompt, 4, 0);
     lv_obj_remove_flag(prompt, LV_OBJ_FLAG_SCROLLABLE);
-    prompt_lbl = make_label(prompt, &lv_font_montserrat_14, 0x000000);
+    prompt_lbl = make_label(prompt, &lv_font_montserrat_14, C_BG);
     lv_obj_set_width(prompt_lbl, 160);
     lv_label_set_long_mode(prompt_lbl, LV_LABEL_LONG_WRAP);
     lv_obj_set_style_text_align(prompt_lbl, LV_TEXT_ALIGN_CENTER, 0);
@@ -384,7 +417,7 @@ static void build_banner(void)
     lv_obj_set_style_radius(popup, 0, 0);
     lv_obj_set_style_pad_all(popup, 3, 0);
     lv_obj_remove_flag(popup, LV_OBJ_FLAG_SCROLLABLE);
-    popup_lbl = make_label(popup, &lv_font_montserrat_12, 0x000000);
+    popup_lbl = make_label(popup, &lv_font_montserrat_12, C_BG);
     lv_obj_set_width(popup_lbl, 164);
     lv_label_set_long_mode(popup_lbl, LV_LABEL_LONG_WRAP);
     lv_obj_set_style_text_align(popup_lbl, LV_TEXT_ALIGN_CENTER, 0);
@@ -409,6 +442,21 @@ static void build_banner(void)
     lv_obj_set_style_text_align(hold_lbl, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_center(hold_lbl);
     lv_obj_add_flag(hold_arc, LV_OBJ_FLAG_HIDDEN);
+
+    /* power-off overlay: the whole screen, so turning off is never mistaken for a frozen page */
+    off_panel = lv_obj_create(lv_layer_top());
+    lv_obj_set_size(off_panel, LV_PCT(100), LV_PCT(100));
+    lv_obj_set_style_bg_color(off_panel, lv_color_hex(C_BG), 0);
+    lv_obj_set_style_bg_opa(off_panel, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(off_panel, 0, 0);
+    lv_obj_set_style_radius(off_panel, 0, 0);
+    lv_obj_remove_flag(off_panel, LV_OBJ_FLAG_SCROLLABLE);
+    off_title = make_label(off_panel, &lv_font_montserrat_24, C_TEXT);
+    lv_obj_align(off_title, LV_ALIGN_CENTER, 0, -28);
+    off_text = make_label(off_panel, &lv_font_montserrat_16, C_WARN);
+    lv_obj_set_style_text_align(off_text, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(off_text, LV_ALIGN_CENTER, 0, 24);
+    lv_obj_add_flag(off_panel, LV_OBJ_FLAG_HIDDEN);
 }
 
 static void build_page3(void)
@@ -447,14 +495,21 @@ static void build_page3(void)
         lv_label_set_long_mode(f_cause[c], LV_LABEL_LONG_DOT);
         lv_obj_align(f_cause[c], LV_ALIGN_BOTTOM_LEFT, 0, 0);
     }
-    f_pos = make_label(scr3, &lv_font_montserrat_12, C_MUTED);
-    lv_obj_align(f_pos, LV_ALIGN_BOTTOM_LEFT, 8, -4);
+    f_pos = make_label(scr3, &lv_font_montserrat_12, C_MUTED);   /* which faults are showing, top right */
+    lv_obj_set_size(f_pos, 80, 15);
+    lv_obj_set_pos(f_pos, 84, 6);
+    lv_obj_set_style_text_align(f_pos, LV_TEXT_ALIGN_RIGHT, 0);
+    /* connection state and the MIL / DTC alert (moved here from page 1); long text scrolls, left of the page dots */
+    lbl_state = make_label(scr3, &lv_font_montserrat_14, C_WARN);
+    lv_obj_set_width(lbl_state, 104);
+    lv_label_set_long_mode(lbl_state, LV_LABEL_LONG_SCROLL_CIRCULAR);
+    lv_obj_set_pos(lbl_state, 8, 300);
 }
 
 static void fill_card(int c, const fault_report_t *r, int idx)
 {
     const fault_t *f = &r->faults[idx];
-    uint32_t sev_col = f->severity >= SEV_CRITICAL ? C_BAD : f->severity == SEV_HIGH ? 0xF97316 : f->severity == SEV_MEDIUM ? C_WARN : C_MUTED;
+    uint32_t sev_col = f->severity >= SEV_CRITICAL ? C_BAD : f->severity == SEV_HIGH ? C_SEV_HIGH : f->severity == SEV_MEDIUM ? C_WARN : C_MUTED;
     lv_obj_remove_flag(f_card[c], LV_OBJ_FLAG_HIDDEN);
     lv_obj_set_style_border_color(f_card[c], lv_color_hex(sev_col), 0);
     lv_label_set_text_fmt(f_code[c], "%s%s", f->code, f->is_new ? " *" : "");
@@ -476,7 +531,7 @@ static void refresh_page3(const app_status_t *st)
 
     if (r->n == 0) {
         for (int c = 0; c < F_CARDS; c++) lv_obj_add_flag(f_card[c], LV_OBJ_FLAG_HIDDEN);
-        lv_label_set_text_fmt(f_pos, "s%06lu  %lu rows", (unsigned long)st->session_id, (unsigned long)st->rows_written);
+        lv_label_set_text_fmt(f_pos, "%lu rows", (unsigned long)st->rows_written);
         return;
     }
     /* pairs: the first pair is always the two most important; further pairs rotate every 6 s */
@@ -489,18 +544,14 @@ static void refresh_page3(const app_status_t *st)
         else lv_obj_add_flag(f_card[c], LV_OBJ_FLAG_HIDDEN);
     }
     int last = first + F_CARDS < r->n ? first + F_CARDS : r->n;
-    lv_label_set_text_fmt(f_pos, "%d-%d / %d   * = new", first + 1, last, r->n);
+    lv_label_set_text_fmt(f_pos, "%d-%d / %d", first + 1, last, r->n);   /* "*" after a code marks a new fault */
 }
 
-/* page 4: four fixed tiles, each with its own colour, three event lines coloured by level, then two live strips:
- * the soft real-time scheduler (one row per registered job) and the on-board model.
- * Section colours: title cyan, CPU/power violet, memory blue, links green, uptime amber, scheduler cyan, AI pink. */
+/* page 4: four fixed tiles, three event lines coloured by level, then two live strips: the soft real-time scheduler
+ * (one row per registered job) and the on-board model. Tiles: CPU violet, PSRAM aqua / TEMP green, UPTIME pink.
+ * Strips: jobs sky, the classifier orange, the estimator red. Violet and sky, the closest pair for colour-blind
+ * readers, never touch. */
 #define S4_JOBS  3
-#define C_VIOLET 0xA78BFA
-#define C_BLUE   0x60A5FA
-#define C_GREEN  0x34D399
-#define C_AMBER  0xFBBF24
-#define C_PINK   0xF472B6
 static lv_obj_t *s4_tile_val[4], *s4_est_val[3], *s4_est_info;
 static lv_obj_t *s4_job_dot[S4_JOBS], *s4_job_name[S4_JOBS], *s4_job_bar[S4_JOBS], *s4_job_val[S4_JOBS];
 static lv_obj_t *s4_load, *s4_ml_class, *s4_ml_bar, *s4_ml_prob, *s4_ml_counts, *s4_ml_hist[ML_N_CLASSES];
@@ -552,8 +603,8 @@ static void build_page4(void)
     s4_head = make_label(scr4, &lv_font_montserrat_14, C_ACCENT);
     lv_label_set_text(s4_head, "System");
     lv_obj_set_pos(s4_head, 8, 4);
-    static const char *caps[4] = {"CPU / POWER", "HEAP / PSRAM", "LINKS", "UPTIME / FW"};
-    static const uint32_t cols[4] = {C_VIOLET, C_BLUE, C_GREEN, C_AMBER};
+    static const char *caps[4] = {"MIPS 0 / 1", "PSRAM", "TEMP", "UPTIME / FW"};    /* CPU % and power are on page 1 */
+    const uint32_t cols[4] = {C_VIOLET, C_TEAL, C_SAGE, C_PINK};            /* TL TR / BL BR */
     for (int i = 0; i < 4; i++) {
         int x = 4 + (i % 2) * 83, y = 24 + (i / 2) * 46;
         lv_obj_t *t = lv_obj_create(scr4);
@@ -575,7 +626,7 @@ static void build_page4(void)
     }
     /* what the model estimates, y 241..305 (content area 156 x 58): three rows, label left and value right.
        The recent events moved to the internals page. */
-    lv_obj_t *est = s4_frame(241, 64, C_VIOLET, "AI ESTIMATES");
+    lv_obj_t *est = s4_frame(241, 64, C_RED, "AI ESTIMATES");
     s4_est_info = s4_label(est, &lv_font_montserrat_12, C_MUTED, 96, -2, 60, 15);    /* right of the caption, never over it */
     lv_obj_set_style_text_align(s4_est_info, LV_TEXT_ALIGN_RIGHT, 0);
     static const char *est_names[3] = {"Brake pressure", "Engine torque", "Fuel rate"};
@@ -588,7 +639,7 @@ static void build_page4(void)
     }
 
     /* scheduler strip, y 118..182 (content area 156 x 56): dot | name | time used vs. time allowed | last time or problem count */
-    lv_obj_t *sch = s4_frame(118, 64, C_ACCENT, "JOBS");
+    lv_obj_t *sch = s4_frame(118, 64, C_BLUE, "JOBS");
     s4_load = s4_label(sch, &lv_font_montserrat_12, C_MUTED, 40, -2, 116, 15);
     lv_obj_set_style_text_align(s4_load, LV_TEXT_ALIGN_RIGHT, 0);
     for (int i = 0; i < S4_JOBS; i++) {
@@ -608,7 +659,7 @@ static void build_page4(void)
     }
 
     /* AI strip, y 185..238 (content area 156 x 45) */
-    lv_obj_t *ai = s4_frame(185, 53, C_PINK, "AI SEES");
+    lv_obj_t *ai = s4_frame(185, 53, C_ORANGE, "AI SEES");
     s4_ml_class = s4_label(ai, &lv_font_montserrat_14, C_TEXT, 54, -3, 102, 17);
     lv_label_set_long_mode(s4_ml_class, LV_LABEL_LONG_DOT);
     s4_ml_bar = s4_bar(ai, 0, 19, 58, 6, 100);
@@ -728,7 +779,7 @@ static void refresh_ml(const sched_system_t *sys)
 
     for (int k = 0; k < ML_N_CLASSES; k++) {
         lv_bar_set_value(s4_ml_hist[k], have ? (int32_t)(p[k] * 100.0f + 0.5f) : 0, LV_ANIM_OFF);
-        lv_obj_set_style_bg_color(s4_ml_hist[k], lv_color_hex(have && k == m.last_class ? C_PINK : C_MUTED), LV_PART_INDICATOR);
+        lv_obj_set_style_bg_color(s4_ml_hist[k], lv_color_hex(have && k == m.last_class ? C_ACCENT : C_MUTED), LV_PART_INDICATOR);
     }
 }
 
@@ -778,12 +829,13 @@ static void refresh_est(const app_status_t *st)
 
 static void refresh_page4(const app_status_t *st)
 {
-    static const char *wifi_txt[] = {"off", "scan", "..", "on", "idle"};
-    lv_label_set_text_fmt(s4_tile_val[0], "%u%%/%u%% %.1fW", st->cpu_pct[0], st->cpu_pct[1], st->power_w);
-    lv_label_set_text_fmt(s4_tile_val[1], "%luK %luK", (unsigned long)st->heap_free_kb, (unsigned long)st->psram_free_kb);
-    lv_label_set_text_fmt(s4_tile_val[2], "B:%s S:%s W:%s",
-        st->ble == BLE_ST_LOGGING ? "ok" : st->ble == BLE_ST_LOCKED ? "LOCK" : st->ble >= BLE_ST_CONNECTING ? ".." : "scan",
-        st->sd_mounted ? "ok" : "--", wifi_txt[st->wifi]);
+    lv_label_set_text_fmt(s4_tile_val[0], "%.1f / %.1f", st->pmu_mips[0], st->pmu_mips[1]);   /* hardware counters, per core */
+    uint32_t used_kb = st->psram_total_kb > st->psram_free_kb ? st->psram_total_kb - st->psram_free_kb : 0;
+    lv_label_set_text_fmt(s4_tile_val[1], "%.1f/%.1f MB", used_kb / 1024.0, st->psram_total_kb / 1024.0);
+    if (isfinite(st->chip_temp_c)) {
+        bool us = (units_t)st->units == UNITS_US;
+        lv_label_set_text_fmt(s4_tile_val[2], "%.0f \xC2\xB0%c", us ? st->chip_temp_c * 9.0f / 5.0f + 32.0f : st->chip_temp_c, us ? 'F' : 'C');
+    } else lv_label_set_text(s4_tile_val[2], "--");
     lv_label_set_text_fmt(s4_tile_val[3], "%lum  v" CARMIND_VERSION, (unsigned long)(esp_timer_get_time() / 60000000));
     sched_system_t sys;
     sched_get_system(&sys);
@@ -805,7 +857,8 @@ static void build_page2(void)
         lv_obj_set_pos(t, x, y);
         lv_obj_set_size(t, 53, 44);
         lv_obj_set_style_bg_color(t, lv_color_hex(C_TILE), 0);
-        lv_obj_set_style_border_width(t, 0, 0);
+        lv_obj_set_style_border_width(t, 1, 0);
+        lv_obj_set_style_border_color(t, lv_color_hex(C_BORDER), 0);
         lv_obj_set_style_radius(t, 6, 0);
         lv_obj_set_style_pad_all(t, 3, 0);
         lv_obj_remove_flag(t, LV_OBJ_FLAG_SCROLLABLE);
@@ -817,12 +870,13 @@ static void build_page2(void)
         lv_obj_align(p2_val[i], LV_ALIGN_BOTTOM_LEFT, 0, 1);
     }
     for (int i = 0; i < P2_CUSTOM; i++) {
-        int x = 4 + (i % 2) * 83, y = 214 + (i / 2) * 28;
+        int x = 4 + (i % 2) * 83, y = 212 + (i / 2) * 27;
         lv_obj_t *t = lv_obj_create(scr2);
         lv_obj_set_pos(t, x, y);
-        lv_obj_set_size(t, 81, 26);
+        lv_obj_set_size(t, 81, 25);
         lv_obj_set_style_bg_color(t, lv_color_hex(C_TILE), 0);
-        lv_obj_set_style_border_width(t, 0, 0);
+        lv_obj_set_style_border_width(t, 1, 0);
+        lv_obj_set_style_border_color(t, lv_color_hex(C_BORDER), 0);
         lv_obj_set_style_radius(t, 6, 0);
         lv_obj_set_style_pad_all(t, 2, 0);
         lv_obj_remove_flag(t, LV_OBJ_FLAG_SCROLLABLE);
@@ -841,7 +895,7 @@ static void build_page2(void)
         lv_label_set_long_mode(p2_ev_line[i], LV_LABEL_LONG_DOT);
     }
     p2_foot = make_label(scr2, &lv_font_montserrat_12, C_MUTED);
-    lv_obj_align(p2_foot, LV_ALIGN_BOTTOM_LEFT, 8, -4);
+    lv_obj_set_pos(p2_foot, 8, 292);                                /* one line above the page dots (y 308) */
 }
 
 static void refresh_page2(const app_status_t *st)
@@ -882,10 +936,10 @@ static void refresh_page2(const app_status_t *st)
         else lv_label_set_text(p2_cval[i], "--");
     }
 
-    /* recent events fill the space under the custom tiles: caption plus as many lines as fit above the footer (y 298) */
+    /* recent events fill the space under the custom tiles: caption plus as many lines as fit above the footer (y 292) */
     int shown = o->custom_count < P2_CUSTOM ? o->custom_count : P2_CUSTOM;
-    int top = 214 + ((shown + 1) / 2) * 28;
-    int fit = (298 - (top + 16)) / 15;
+    int top = 212 + ((shown + 1) / 2) * 27;
+    int fit = (292 - (top + 16)) / 15;
     if (fit > P2_EVENTS) fit = P2_EVENTS;
     if (fit < 1) lv_obj_add_flag(p2_ev_cap, LV_OBJ_FLAG_HIDDEN);
     else { lv_obj_remove_flag(p2_ev_cap, LV_OBJ_FLAG_HIDDEN); lv_obj_set_pos(p2_ev_cap, 6, top); }
@@ -968,10 +1022,10 @@ static void refresh_cb(lv_timer_t *t)
     }
 
     /* status icons */
-    lv_obj_set_style_text_color(lbl_ble, lv_color_hex(st.ble == BLE_ST_LOGGING ? C_OK : st.ble == BLE_ST_LOCKED ? C_BAD : st.ble >= BLE_ST_CONNECTING ? C_WARN : C_MUTED), 0);
+    lv_obj_set_style_text_color(lbl_ble, lv_color_hex(st.ble == BLE_ST_LOGGING ? C_OK : st.ble == BLE_ST_LOCKED ? C_BAD : st.ble >= BLE_ST_CONNECTING ? C_WARN : st.ble == BLE_ST_IDLE ? C_DIM : C_MUTED), 0);
     lv_obj_set_style_text_color(lbl_sd, lv_color_hex(st.sd_mounted ? C_OK : C_BAD), 0);
     lv_obj_set_style_text_color(lbl_wifi, lv_color_hex(st.wifi == WIFI_ST_CONNECTED ? C_OK :
-                                                       st.wifi == WIFI_ST_CONNECTING ? C_WARN : C_MUTED), 0);
+                                                       st.wifi == WIFI_ST_CONNECTING ? C_WARN : st.wifi == WIFI_ST_DISABLED ? C_DIM : C_MUTED), 0);
 
     if (st.time_synced || st.clock_estimated) {
         time_t now = time(NULL);
@@ -1002,7 +1056,7 @@ static void refresh_cb(lv_timer_t *t)
 
     if (live && OBD_HAS(o, F_coolant)) {
         float c = o->f[F_coolant];
-        lv_label_set_text_fmt(tile_val[0], "%d", (int)c);
+        lv_label_set_text_fmt(tile_val[0], "%d", (int)lroundf(un == UNITS_US ? c * 9.0f / 5.0f + 32.0f : c));   /* limits stay in C */
         lv_obj_set_style_text_color(tile_val[0], lv_color_hex(c > 105 ? C_BAD : c < 60 ? C_ACCENT : C_TEXT), 0);
     } else lv_label_set_text(tile_val[0], "--");
 
@@ -1014,6 +1068,7 @@ static void refresh_cb(lv_timer_t *t)
 
     /* economy: the drive's average, or the instant value until enough is counted; amber when it rests on the model */
     if (new_units) lv_label_set_text(tile_cap[2], un == UNITS_METRIC ? "KM/L" : un == UNITS_UK ? "MPG (UK)" : "MPG");
+    if (new_units) lv_label_set_text(tile_cap[0], un == UNITS_US ? "TEMP \xC2\xB0" "F" : "TEMP \xC2\xB0" "C");
     {
         float kpl = o->econ_trip_kpl >= 0 ? o->econ_trip_kpl : o->econ_inst_kpl;
         if (live && kpl >= 0) {
@@ -1031,11 +1086,20 @@ static void refresh_cb(lv_timer_t *t)
     } else lv_obj_set_style_text_color(lbl_state, lv_color_hex(live ? C_OK : C_WARN), 0);
 
     {
-        int cpu = st.cpu_pct[0] > st.cpu_pct[1] ? st.cpu_pct[0] : st.cpu_pct[1];
+        int cpu = (st.cpu_pct[0] + st.cpu_pct[1] + 1) / 2;                 /* both cores together, out of 100 % */
+        int pw = (int)lroundf(st.power_w * 100.0f);                          /* 0-1 W bar */
         lv_bar_set_value(bar_cpu, cpu, LV_ANIM_OFF);
-        lv_obj_set_style_bg_color(bar_cpu, lv_color_hex(cpu > 85 ? C_BAD : cpu > 60 ? C_WARN : C_MUTED), LV_PART_INDICATOR);
-        if (!st.sd_mounted) lv_label_set_text_fmt(lbl_foot, "SD: %s", st.sd_error[0] ? st.sd_error : "not mounted");
-        else lv_label_set_text_fmt(lbl_foot, "CPU %u%% / %u%%   Pow %.1f W", st.cpu_pct[0], st.cpu_pct[1], st.power_w);
+        lv_bar_set_value(bar_pow, pw > 100 ? 100 : pw, LV_ANIM_OFF);
+        lv_obj_set_style_bg_color(bar_cpu, lv_color_hex(cpu > 85 ? C_BAD : cpu > 60 ? C_WARN : C_ACCENT), LV_PART_INDICATOR);
+        lv_label_set_text_fmt(lbl_cpu_val, "%d %%", cpu);
+        lv_label_set_text_fmt(lbl_pow_val, "%.2f W", st.power_w);
+        /* no SD card: the CPU row becomes the warning, across the full width */
+        bool sd = st.sd_mounted;
+        if (!sd) lv_label_set_text_fmt(lbl_foot, "SD: %s", st.sd_error[0] ? st.sd_error : "not mounted");
+        else lv_label_set_text(lbl_foot, "CPU");
+        lv_obj_set_style_text_color(lbl_foot, lv_color_hex(sd ? C_MUTED : C_WARN), 0);
+        if (sd) { lv_obj_remove_flag(bar_cpu, LV_OBJ_FLAG_HIDDEN); lv_obj_remove_flag(lbl_cpu_val, LV_OBJ_FLAG_HIDDEN); }
+        else    { lv_obj_add_flag(bar_cpu, LV_OBJ_FLAG_HIDDEN);    lv_obj_add_flag(lbl_cpu_val, LV_OBJ_FLAG_HIDDEN); }
         static uint8_t applied_bl;
         if (remote_config_get()->backlight_pct != applied_bl) { applied_bl = remote_config_get()->backlight_pct; display_set_backlight(applied_bl); }
     }
@@ -1094,7 +1158,7 @@ static void refresh_cb(lv_timer_t *t)
     if (st.sys_popup[0] && now_ms < st.sys_popup_until_ms && lv_obj_has_flag(banner, LV_OBJ_FLAG_HIDDEN)) {
         lv_label_set_text(popup_lbl, st.sys_popup);
         lv_obj_set_style_bg_color(popup, lv_color_hex(st.sys_popup_error ? C_BAD : C_WARN), 0);
-        lv_obj_set_style_text_color(popup_lbl, lv_color_hex(st.sys_popup_error ? 0xFFFFFF : 0x000000), 0);
+        lv_obj_set_style_text_color(popup_lbl, lv_color_hex(C_BG), 0);
         lv_obj_remove_flag(popup, LV_OBJ_FLAG_HIDDEN);
     } else lv_obj_add_flag(popup, LV_OBJ_FLAG_HIDDEN);
 
@@ -1105,10 +1169,20 @@ static void refresh_cb(lv_timer_t *t)
 
     if (st.hold_pct > 0) {
         lv_arc_set_value(hold_arc, st.hold_pct);
-        lv_obj_set_style_arc_color(hold_arc, lv_color_hex(st.hold_stage == 2 ? 0xD946EF : st.hold_stage == 1 ? C_BAD : C_ACCENT), LV_PART_INDICATOR);
+        lv_obj_set_style_arc_color(hold_arc, lv_color_hex(st.hold_stage == 2 ? C_VIOLET : st.hold_stage == 1 ? C_BAD : C_ACCENT), LV_PART_INDICATOR);
         lv_label_set_text(hold_lbl, st.hold_stage == 2 ? "release:\nforget\nadapter" : st.hold_stage == 1 ? "release:\npower off" : "hold...");
         lv_obj_remove_flag(hold_arc, LV_OBJ_FLAG_HIDDEN);
     } else lv_obj_add_flag(hold_arc, LV_OBJ_FLAG_HIDDEN);
+
+    if (st.shutdown_stage) {
+        lv_label_set_text(off_title, st.shutdown_stage == 1 ? "Turning off" : "Off");
+        lv_label_set_text(off_text, st.shutdown_stage == 1 ? "Saving the drive.\nDon't unplug yet." : "Safe to unplug.\nPress BOOT to start.");
+        lv_obj_set_style_text_color(off_text, lv_color_hex(st.shutdown_stage == 1 ? C_WARN : C_OK), 0);
+        lv_obj_align(off_title, LV_ALIGN_CENTER, 0, -28);
+        lv_obj_align(off_text, LV_ALIGN_CENTER, 0, 24);
+        lv_obj_add_flag(hold_arc, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_remove_flag(off_panel, LV_OBJ_FLAG_HIDDEN);
+    } else lv_obj_add_flag(off_panel, LV_OBJ_FLAG_HIDDEN);
 }
 
 static void backlight_init(void)
@@ -1208,6 +1282,21 @@ void display_set_backlight(uint8_t pct)
 {
     ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, (1023 * pct) / 100);
     ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
+}
+
+void display_fade_off(int ms)
+{
+    int start = remote_config_get()->backlight_pct, steps = ms / 20 > 0 ? ms / 20 : 1;
+    for (int i = steps - 1; i >= 0; i--) {
+        ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, (1023 * start * i) / (100 * steps));
+        ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
+        vTaskDelay(pdMS_TO_TICKS(20));
+    }
+    ledc_stop(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, 0);
+    if (s_panel) esp_lcd_panel_disp_on_off(s_panel, false);
+    gpio_set_direction(BOARD_LCD_BL, GPIO_MODE_OUTPUT);
+    gpio_set_level(BOARD_LCD_BL, 0);
+    gpio_hold_en(BOARD_LCD_BL);                                   /* the backlight stays dark while the chip sleeps */
 }
 
 void display_sleep(void)

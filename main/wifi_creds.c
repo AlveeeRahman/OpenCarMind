@@ -126,7 +126,6 @@ size_t wifi_creds_load(void)
         if (s_n == 0) write_example();
     }
     ESP_LOGI(TAG, "%u known network(s)", (unsigned)s_n);
-    for (size_t i = 0; i < s_n; i++) ESP_LOGI(TAG, "  %u: %s", (unsigned)i, s_creds[i].ssid);
     return s_n;
 }
 

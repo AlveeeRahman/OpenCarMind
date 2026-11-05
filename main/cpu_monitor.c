@@ -1,7 +1,12 @@
 #include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include <math.h>
 #include "esp_heap_caps.h"
+#include "driver/temperature_sensor.h"
+#include "esp_ipc.h"
+#include "xtensa_perfmon_access.h"
+#include "xtensa/xt_perf_consts.h"
 #include "esp_attr.h"
 #include "esp_log.h"
 #include "status.h"
@@ -74,6 +79,46 @@ static void task_stats(const TaskStatus_t *snap, UBaseType_t n, uint32_t total)
 }
 #endif
 
+/* The ESP32-S3's built-in sensor reads the die, which runs warmer than the air around the board. The -10..80 C range
+ * is the most accurate one, at most 1 C off (ESP-IDF esp_hal_ana_conv/esp32s3/temperature_sensor_periph.c). */
+static temperature_sensor_handle_t s_tsens;
+
+static float chip_temp(void)
+{
+    static bool tried;
+    if (!tried) {
+        tried = true;
+        temperature_sensor_config_t cfg = TEMPERATURE_SENSOR_CONFIG_DEFAULT(-10, 80);
+        if (temperature_sensor_install(&cfg, &s_tsens) != ESP_OK || temperature_sensor_enable(s_tsens) != ESP_OK) s_tsens = NULL;
+    }
+    float c;
+    return s_tsens && temperature_sensor_get_celsius(s_tsens, &c) == ESP_OK ? c : NAN;
+}
+
+/* Hardware performance counters. Each Xtensa LX7 core has its own PMU, so it is programmed and read on that core
+ * (core 1 through esp_ipc), with the ESP-IDF perfmon example's settings (kernelcnt 0, tracelevel -1). Counter 0 counts
+ * cycles and checks the window (240 M per second at 240 MHz); counter 1 counts retired instructions. MIPS = instructions
+ * per second, idle included, so it shows how much real work each core does. The data and instruction stall counters
+ * read 0 on this chip and are not used. 32-bit counters wrap after ~17 s; they are read and cleared every second. */
+typedef struct { uint32_t cyc, insn; } pmu_sample_t;
+
+static void pmu_setup(void *arg)
+{
+    xtensa_perfmon_stop();
+    xtensa_perfmon_init(0, XTPERF_CNT_CYCLES, XTPERF_MASK_CYCLES, 0, -1);
+    xtensa_perfmon_init(1, XTPERF_CNT_INSN, XTPERF_MASK_INSN_ALL, 0, -1);
+    xtensa_perfmon_start();
+}
+
+static void pmu_take(void *arg)
+{
+    pmu_sample_t *p = arg;
+    xtensa_perfmon_stop();
+    p->cyc = xtensa_perfmon_value(0); p->insn = xtensa_perfmon_value(1);
+    xtensa_perfmon_reset(0); xtensa_perfmon_reset(1);
+    xtensa_perfmon_start();
+}
+
 static void cpu_task(void *arg)
 {
     EXT_RAM_BSS_ATTR static TaskStatus_t snap[40];   /* PSRAM: 1.6 KB internal RAM is worth more to TLS */
@@ -82,6 +127,8 @@ static void cpu_task(void *arg)
 #endif
     uint32_t prev_idle[2] = {0, 0};
     uint32_t prev_total = 0;
+    pmu_setup(NULL);
+    esp_ipc_call_blocking(1, pmu_setup, NULL);
     for (;;) {
         vTaskDelay(pdMS_TO_TICKS(1000));
         uint32_t total = 0;
@@ -96,7 +143,14 @@ static void cpu_task(void *arg)
             /* total is the run-time clock (portGET_RUN_TIME_COUNTER_VALUE), not a sum over cores: each idle task can
                use at most dt of it */
             uint32_t per_core = dt;
+            float temp_c = chip_temp();
+            pmu_sample_t pm[2] = {0};
+            pmu_take(&pm[0]);                                   /* this task is pinned to core 0 */
+            esp_ipc_call_blocking(1, pmu_take, &pm[1]);
             STATUS_LOCK();
+            g_status.chip_temp_c = temp_c;
+            for (int c = 0; c < 2; c++)
+                g_status.pmu_mips[c] = pm[c].cyc ? (float)pm[c].insn / pm[c].cyc * CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ : 0;
             for (int c = 0; c < 2; c++) {
                 uint32_t di = idle[c] - prev_idle[c];
                 if (di > per_core) di = per_core;
@@ -104,6 +158,7 @@ static void cpu_task(void *arg)
             }
             g_status.heap_free_kb = (uint32_t)(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024);
             g_status.psram_free_kb = (uint32_t)(heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024);
+            g_status.psram_total_kb = (uint32_t)(heap_caps_get_total_size(MALLOC_CAP_SPIRAM) / 1024);
             g_status.power_w = estimate_power_w(&g_status);
             STATUS_UNLOCK();
         }

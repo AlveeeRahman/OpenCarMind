@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark light">
-<meta name="theme-color" content="#0B0F14" media="(prefers-color-scheme: dark)">
-<meta name="theme-color" content="#F5F3EE" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#15202D" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#F5F2EB" media="(prefers-color-scheme: light)">
 <title>OpenCarMind: ESP32-S3 OBD-II logger with on-board AI</title>
 <meta name="description" content="Open-source OBD-II car data logger for the ESP32-S3. Reads a Bluetooth LE ELM327 adapter, runs an 89 KB neural network on the chip, and saves every drive to an SD card. No phone, no account, no cloud.">
 <link rel="canonical" href="https://alveeerahman.github.io/OpenCarMind/">
@@ -78,9 +78,9 @@
 }
 </script>
 <style>
-  :root { --bg:#0B0F14; --panel:#151B23; --ink:#E5E7EB; --sub:#9AA4B0; --line:#26303B; --accent:#22D3EE; --ok:#22C55E; --warn:#F59E0B; --bad:#EF4444; --code:#111821; }
+  :root { --bg:#15202D; --panel:#1E2B3B; --ink:#F2ECE1; --sub:#9DA8B8; --line:#2A3A4E; --accent:#2F5FD0; --ok:#2D7A31; --warn:#F59A2E; --bad:#BF352B; --code:#15202D; }
   @media (prefers-color-scheme: light) {
-    :root { --bg:#F5F3EE; --panel:#FFFFFF; --ink:#15181E; --sub:#5B6470; --line:#D9D3C9; --accent:#0E7490; --ok:#15803D; --warn:#B45309; --bad:#DC2626; --code:#EFECE5; }
+    :root { --bg:#F5F2EB; --panel:#FFFFFF; --ink:#17212E; --sub:#57616F; --line:#C9C1B3; --accent:#2F5FD0; --ok:#2D7A31; --warn:#A85A00; --bad:#BF352B; --code:#F5F2EB; }
   }
   * { box-sizing:border-box; }
   html { scroll-behavior:smooth; }
@@ -96,7 +96,7 @@
   .hero .tag { color:var(--sub); font-size:1.15rem; max-width:46rem; margin:0 auto 1.8rem; }
   .ctas { display:flex; gap:.75rem; justify-content:center; flex-wrap:wrap; }
   .cta { display:inline-block; padding:.65rem 1.2rem; border-radius:10px; font-weight:600; border:1px solid var(--line); background:var(--panel); color:var(--ink); }
-  .cta.primary { background:var(--accent); border-color:var(--accent); color:#06222A; }
+  .cta.primary { background:var(--accent); border-color:var(--accent); color:#15202D; }
   .cta:hover { text-decoration:none; filter:brightness(1.08); }
   .banner { margin:2.2rem auto 0; max-width:64rem; }
   .banner img { width:100%; height:auto; display:block; border-radius:14px; border:1px solid var(--line); }

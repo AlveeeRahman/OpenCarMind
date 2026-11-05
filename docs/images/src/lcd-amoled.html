@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Made for LCD, Feels like AMOLED</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700&display=swap" rel="stylesheet">
+<!-- WordArt banner for the README's screens section, in the brand colours (ink #F2ECE1, cobalt #7AA2FF, amber
+     #F59A2E) on true black, the same black the LCD theme uses. Render with docs/images/render.sh. -->
+<style>
+html, body { margin: 0; background: #000000; }
+.wrap { width: 1200px; height: 260px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; }
+.art {
+  display: inline-block; white-space: nowrap; padding: 0 12px 8px;
+  font-family: 'Space Grotesk', system-ui, sans-serif; font-weight: 700; font-size: 62px; line-height: 1.1;
+  letter-spacing: -0.01em; transform: skewX(-8deg);
+  color: #F2ECE1;
+  filter: drop-shadow(2px 2px 0 #34465C) drop-shadow(2px 2px 0 #1E2B3B) drop-shadow(2px 2px 0 #15202D) drop-shadow(0 10px 18px rgba(0, 0, 0, 0.9));
+}
+.cobalt { color: #7AA2FF; }
+.amber { color: #F59A2E;
+}
+.sub { font-family: 'Space Grotesk', system-ui, sans-serif; font-weight: 700; font-size: 20px; letter-spacing: 0.16em; color: #B8B8B8; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="art">Made for <span class="cobalt">LCD,</span> Feels like <span class="amber">AMOLED</span></div>
+  <div class="sub">TRUE BLACK ON A BACKLIT SCREEN</div>
+</div>
+</body>
+</html>

@@ -104,7 +104,7 @@ function chart(title, unit, xs, ys) {
   add("line", { x1: 50, y1: H - 22, x2: W - 10, y2: H - 22, stroke: "currentColor", "stroke-opacity": 0.25 });
   add("text", { x: 50, y: H - 6, "font-size": 11, fill: "currentColor" }, `${x0.toFixed(0)} min`);
   add("text", { x: W - 10, y: H - 6, "font-size": 11, "text-anchor": "end", fill: "currentColor" }, `${x1.toFixed(0)} min`);
-  add("polyline", { points: pts.map(([x, y]) => `${px(x).toFixed(1)},${py(y).toFixed(1)}`).join(" "), fill: "none", stroke: "#0f766e", "stroke-width": 1.8, "stroke-linejoin": "round" });
+  add("polyline", { points: pts.map(([x, y]) => `${px(x).toFixed(1)},${py(y).toFixed(1)}`).join(" "), fill: "none", stroke: getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#2f5fd0", "stroke-width": 1.8, "stroke-linejoin": "round" });
   return el("div", { className: "chart" }, svg);
 }
 
