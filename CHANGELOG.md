@@ -7,6 +7,9 @@
 - Desktop app: model selector on the Board page and a Fuel page with the fill-up log, fuel per drive and in total (km/L, L/100 km, mpg), and R.E.V's learning status.
 - Scheduler: the `rev` job is the first user of the CPU reservation (2 % of core 1). Host tests: a new `make -C tests/host rev` target (109 checks) next to the 321 existing ones.
 - Kconfig `CARMIND_REV_ENABLE` (default on) keeps an E.V-only build possible.
+- Boot: R.E.V's learned-state file is read by the R.E.V task instead of at start-up, which overflowed the 3.5 KB main task stack (seen on the board as three panics and safe mode right after the model self-test).
+- Page 5: beside "AI ESTIMATES" only the time since the model's last answer, which no longer runs into the caption. The estimated fuel rate follows the display units: L/h in metric, gal/h (US or imperial gallon) otherwise.
+- README: workflow figures redrawn with larger text, and new figures for how the models are made and how R.E.V learns.
 
 - Model renamed to CarMind E.V (was Edge Model 1).
 - Model documentation shortened to what users of the board need; the training details are kept privately.
