@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>What changes with CarMind R.E.V</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<!-- The app panels use the desktop app's own stylesheet and markup (desktop/app/ui/index.html); their text follows
+     showModel() and renderRev() in desktop/app/ui/app.js. The two board screens are renders from docs/screens/screens.html. -->
+<link rel="stylesheet" href="../../../desktop/app/ui/style.css">
+<style>
+html,body{margin:0;background:#ffffff;color:#102a43;font-family:Inter,system-ui,sans-serif}
+.canvas{width:900px;height:520px;box-sizing:border-box;padding:12px 14px;display:flex;gap:14px;background:#ffffff}
+.shot{display:flex;flex-direction:column;gap:6px;width:226px}
+.shot img{width:226px;height:420px;border-radius:12px;display:block}
+.tag{font:700 14px/18px Inter,sans-serif;color:#102a43}
+.tag small{display:block;font:500 13px/17px Inter,sans-serif;color:#486581}
+/* the light palette of desktop/app/ui/style.css, so the render does not follow the renderer's dark mode */
+.app{--bg:#f4f7f6;--card:#fff;--ink:#17302d;--muted:#46615d;--line:#d3e0dd;--teal:#0f766e;--warn-bg:#fdf0d5;--warn-ink:#7a4a06;color:var(--ink);flex:1;display:flex;flex-direction:column;gap:6px;min-width:0}
+.scale{width:594px;transform:scale(.66);transform-origin:top left}
+.slot{overflow:hidden}
+.app .panel{margin:0;max-width:none}
+.app .panel h2{margin-top:12px}
+.app .sub{margin:4px 0 8px}
+.app .list li{padding:6px 0}
+.foot{font:500 13px/17px Inter,sans-serif;color:#486581;margin-top:auto}
+</style>
+</head>
+<body>
+<div class="canvas">
+  <div class="shot"><div class="tag">Before: CarMind E.V<small>page 5, main, 2.4.0</small></div><img src="../system.png" alt=""></div>
+  <div class="shot"><div class="tag">After: CarMind R.E.V<small>page 5, this branch, 2.5.0</small></div><img src="../system-rev.png" alt=""></div>
+  <div class="app">
+    <div class="tag">Desktop app<small>Board page and Fuel page, new in 2.5.0</small></div>
+    <div class="slot" id="slot1"><div class="scale">
+      <div class="panel">
+        <h2>On-board model</h2>
+        <p class="sub">CarMind E.V is the fixed model the board has always run. CarMind R.E.V is about half the size and keeps learning your car's fuel use while you drive. R.E.V is new; E.V stays the default.</p>
+        <p class="sub">The board runs CarMind R.E.V, learning on.</p>
+        <div class="row"><label for="model-pick">Model</label><select id="model-pick"><option value="ev">CarMind E.V</option><option value="rev" selected>CarMind R.E.V</option></select><button id="model-switch">Switch</button></div>
+      </div>
+    </div></div>
+    <div class="slot" id="slot2"><div class="scale">
+      <div class="panel">
+        <h2>CarMind R.E.V learning</h2>
+        <p class="sub">Read from the board over the cable. Learning runs only while R.E.V is the model on the board; the fill-up correction applies to both models.</p>
+        <ul class="list">
+          <li>Model on the board: CarMind R.E.V. Learning on. Saved to the card: yes.</li>
+          <li>Fuel estimate: 0 updates kept, 0 resets to factory, 18 labelled moments learned.</li>
+          <li>If airflow data dropped out now, the board would use: model estimate.</li>
+          <li>Airflow constant k = 2.225e-4 g/s per %-rpm (factory value until 20 rows). It implies about 2.3 L of engine displacement.</li>
+          <li>Fill-up correction x1.000: 0 tanks used, 0 skipped, 1 entry on the board.</li>
+        </ul>
+        <div class="row"><button id="rev-refresh">Refresh from the board</button><select aria-label="What to reset"><option>learned fuel estimate</option></select><button id="rev-reset">Reset to factory</button></div>
+      </div>
+    </div></div>
+    <div class="foot">Renders, not photos. Example values.</div>
+  </div>
+</div>
+<script>
+// a scaled panel keeps its unscaled layout height: size each slot to the scaled height once fonts and styles are in
+function fit() { for (const s of document.querySelectorAll('.slot')) s.style.height = s.firstElementChild.getBoundingClientRect().height + 'px'; }
+window.addEventListener('load', () => document.fonts.ready.then(fit));
+</script>
+</body>
+</html>
