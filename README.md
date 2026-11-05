@@ -225,11 +225,11 @@ The [model card](MODEL_CARD.md) puts every step from E.V to the final R.E.V in o
 
 ### The test drives
 
-I drove my car twice to test the models, and not the way I usually drive. I drove rough, switched cruise control on and off at speed, and did sudden acceleration and brake checks between traffic lights. One drive includes a long stop while police dealt with an emergency on the road. None of the models on `main` had seen these drives. I score them as if they came from a car the models never met: nothing carries over from my earlier drives, and every learner starts from its factory state.
+Two additional drives serve as a held-out test set. They cover frequent stops, an extended idle, steady cruising with and without cruise control, and hard acceleration and braking. No model on `main` saw these drives during training or tuning. They are scored as data from an unseen vehicle: no per-vehicle settings carry over, and every learner starts from its factory state.
 
-<p align="center"><img src="docs/images/test-drives-timeline.png" width="900" alt="My two test drives: speed, throttle, accelerator pedal and engine rpm against time, with bands for stops at traffic lights, a long stop for a police emergency, steady holds and holds with the foot off the pedal"></p>
+<p align="center"><img src="docs/images/test-drives-timeline.png" width="900" alt="Two held-out test drives: speed, throttle, accelerator pedal and engine rpm over time, with bands for stops, an extended stop, steady holds and holds with the pedal released"></p>
 
-A comparison with my everyday drives is in [docs/TEST_DRIVES.md](docs/TEST_DRIVES.md).
+Method and a comparison with routine driving: [docs/TEST_DRIVES.md](docs/TEST_DRIVES.md).
 
 ### CarMind R.E.V results so far
 
