@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="CarMind R.E.V (old)">
+  <title>CarMind R.E.V (old)</title>
+  <rect x="16" y="16" width="480" height="480" rx="108" fill="#0E8C6C"/><rect x="17.5" y="17.5" width="477" height="477" rx="106.5" fill="none" stroke="#FFFFFF" stroke-opacity="0.16" stroke-width="10"/>
+  <g transform="translate(75.7 185.7) scale(1.406) skewX(-10)" fill="#FFFFFF">
+    <path d="M0 0H22V100H0Z M0 0H40A30.5 30.5 0 0 1 40 61H0Z M22 22V39H40A8.5 8.5 0 0 0 40 22Z M28 55H58L76.9 100H46.9Z"/>
+    <path transform="translate(90 0)" d="M0 0H100V22H0Z M0 39H44.4V61H0Z M0 78H92.8L102 100H0Z M70 0H100L127 64.3L154 0H184L142 100H112Z"/>
+    <rect x="144.4" y="39" width="22" height="22" rx="3" fill="#F59A2E"/>
+  </g>
+</svg>

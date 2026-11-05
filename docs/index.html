@@ -153,7 +153,7 @@
       <a class="cta" href="https://github.com/AlveeeRahman/OpenCarMind">Source on GitHub</a>
       <a class="cta" href="#adapters">Check your adapter</a>
     </div>
-    <figure class="banner"><img src="assets/banner.png" alt="OpenCarMind: an open-source OBD2 logger for the ESP32, with TinyML on the board" width="2560" height="840"></figure>
+    <figure class="banner"><img src="assets/banner.png" alt="OpenCarMind: an open-source OBD2 logger for the ESP32, with TinyML on the board" width="3840" height="1260"></figure>
   </header>
 
   <section id="how">
@@ -203,8 +203,8 @@
     <h2>The models</h2>
     <p>With every OBD row, the model on the board classifies the last 5 seconds as stopped, braking, accelerating or cruising, and estimates brake pressure, flywheel torque and fuel rate, which OBD does not report. Both models are small quantised 1-D convolutional networks run by ESP-DL<sup><a href="#r1">[1]</a></sup>. You choose between them in the desktop app, and new boards start on R.E.V.</p>
     <div class="grid">
-      <div class="card"><h3><img src="assets/carmind-rev.svg" alt="" width="40" height="40" style="vertical-align:-12px;margin-right:10px">CarMind R.E.V</h3><p>19,815 parameters, about 66 KB and 2.9 ms per run. It keeps learning your car: its fuel estimate, and an airflow constant that also gives the engine size, so its torque estimate learns your engine too. Replayed on the chip, it got 94.7 % of the labelled windows from two test drives of my car right.</p></div>
-      <div class="card"><h3><img src="assets/carmind-ev.svg" alt="" width="40" height="40" style="vertical-align:-12px;margin-right:10px">CarMind E.V</h3><p>38,679 parameters, about 89 KB and 3.5 ms per run. Fixed and tested: on data held out from training it scores a manoeuvre macro-F1 of 0.887 on the public KIA drives and places 96.1 % of windows from 37 unseen VED cars in an allowed class.</p></div>
+      <div class="card"><h3><img src="assets/carmind-rev-small.svg" alt="" width="40" height="40" style="vertical-align:-12px;margin-right:10px">CarMind R.E.V</h3><p>19,815 parameters, about 66 KB and 2.9 ms per run. It keeps learning your car: its fuel estimate, and an airflow constant that also gives the engine size, so its torque estimate learns your engine too. Replayed on the chip, it got 94.7 % of the labelled windows from two test drives of my car right.</p></div>
+      <div class="card"><h3><img src="assets/carmind-ev-small.svg" alt="" width="40" height="40" style="vertical-align:-12px;margin-right:10px">CarMind E.V</h3><p>38,679 parameters, about 89 KB and 3.5 ms per run. Fixed and tested: on data held out from training it scores a manoeuvre macro-F1 of 0.887 on the public KIA drives and places 96.1 % of windows from 37 unseen VED cars in an allowed class.</p></div>
     </div>
     <figure class="fig"><img src="images/leaders.png" alt="CarMind model leaders: R.E.V 95.1 percent of held-out windows from two drives of my car, R.E.V (old) 78.3, E.V 78.9, with per-class scores, KIA test accuracy and fuel R squared" loading="lazy" width="3200" height="1580"></figure>
     <p>Limits: outside one data set there is no brake-switch signal, so braking and cruising are partly ambiguous. No diesel car is in the data. Brake pressure is the weakest estimate.</p>

@@ -1,12 +1,13 @@
 #!/bin/sh
-# Renders the sources in docs/images/src to PNG with headless Chrome (2x). Needs Google Chrome and internet for the fonts.
+# Renders the sources in docs/images/src to PNG with headless Chrome at 3x, so the figures stay sharp when the README
+# is zoomed (SCALE=2 sh docs/images/render.sh for smaller files). Needs Google Chrome and internet for the fonts.
 # Run from the repository root:  sh docs/images/render.sh
 set -e
 CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 [ -x "$CHROME" ] || CHROME="$(command -v google-chrome || command -v chromium || true)"
 [ -n "$CHROME" ] || { echo "Chrome not found"; exit 1; }
 shot() {  # name width height output [background]
-  "$CHROME" --headless=new --disable-gpu --hide-scrollbars --force-device-scale-factor=2 --window-size="$2,$3" \
+  "$CHROME" --headless=new --disable-gpu --hide-scrollbars --force-device-scale-factor="${SCALE:-3}" --window-size="$2,$3" \
     ${5:+--default-background-color=$5} --virtual-time-budget=8000 --screenshot="$4" "file://$PWD/docs/images/src/$1.html" >/dev/null 2>&1
   echo "rendered $4"
 }

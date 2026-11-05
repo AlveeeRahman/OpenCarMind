@@ -13,6 +13,7 @@ A new brand, a screen made for the LCD, and a visible power-off.
 - **New boards start on CarMind R.E.V** when the firmware carries it. A board that already chose a model keeps it.
 - **Fixes**: the status LED no longer drops a frame when the button and the LED task update it at once ("RMT transaction is busy"). The boot log no longer lists the saved Wi-Fi networks. The model self-test log says plainly when the board differs from the PC simulation.
 - **Figures**: the seven workflow figures were redrawn with straight connectors and larger text, the three README GIFs re-rendered with the brand fonts, and the screen mock-ups and the Mosaico concept updated to the new colours.
+- **Model marks at small sizes**: each mark has a small variant (`carmind-*-small.svg`, letters filling the tile) for the figures, tags, tables and GIFs, where the full mark's letters were only a few pixels tall. All marks come from `assets/logo/make_marks.py`. Figures render at 3x so they stay sharp when zoomed, and the GIF badges are supersampled.
 
 ## 2.5.1
 
