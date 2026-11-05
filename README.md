@@ -246,13 +246,51 @@ The network itself never changes on the board. Each learner changes only when th
 
 When the car reports neither fuel rate nor airflow, the board uses whichever estimate (factory, learned or airflow model) has had the lowest running error on your car so far, and shows it in amber. What R.E.V learned is saved to the SD card every 5 minutes while you drive and when the drive ends, the tank size in a file of its own. The fill-up correction is also kept in flash, so it survives a missing card. The fuel read-out and the airflow constant learn only while R.E.V is the selected model, while the tank size and the fill-up correction learn with either. Safe mode turns all learning off.
 
+### Looking inside R.E.V with explainable AI
+
+On R.E.V's first drives in my car, the screen said "braking" while I held a steady speed with my foot on the gas. Across all 14 of my recorded drives, 78 % of those steady, foot-on-gas windows were called braking. E.V does the same (79 %), so this is not a side effect of pruning. To find out why, I replayed the drives on a computer and opened up the small R.E.V network (19,815 parameters) with explainable-AI (XAI) methods. Everything in this section is about R.E.V. E.V was not analysed this way and still has this error.
+
+Each window was labelled from the raw OBD signals, independently of the model: stopped, braking (slowing with the throttle closed), accelerating, or cruising (steady speed with the throttle open). The rest (coasting, unclear) were left out of the scores.
+
+| Method | What it shows |
+|---|---|
+| Grad-CAM<sup>[[21]](#ref-21)</sup> | Takes the last convolutional block's output (32 channels × 5 one-second steps), weights each channel by the average gradient of the target score and sums the channels. That gives how much each second pushed the decision. The target here is the braking score minus the cruising score. |
+| Guided Grad-CAM | Multiplies Grad-CAM by guided backpropagation<sup>[[22]](#ref-22),[[23]](#ref-23)</sup>, the descendant of the deconvnet ("reverse convolution") that maps a decision back onto the input. It passes only positive gradients back through each ReLU, which gives a map of input signal × second. |
+| Linear probe on the embedding<sup>[[24]](#ref-24)</sup> | Fits a logistic regression on the 64-value embedding that both heads read, to test whether a concept such as "foot on the gas" is present in it. PCA and t-SNE<sup>[[25]](#ref-25)</sup> draw the embedding in 2-D for viewing only. Distances in t-SNE are not to scale. |
+
+<p align="center"><img src="docs/images/rev-embedding.png" width="900" alt="R.E.V's 64-value embedding drawn with PCA and t-SNE, factory head against final head on the same points. Accelerating, braking and foot-on-gas cruising sit in separate regions. With the factory head 811 of 2,023 labelled windows are wrong, 759 of them cruising called braking; with the final head 91 are wrong, 28 of them cruising called braking"></p>
+
+What it found:
+
+- **The embedding already knew.** A linear probe tells foot on the gas from a closed throttle at steady speed with 93 % balanced accuracy (5-fold cross-validation, 1,003 windows), and in the PCA and t-SNE views cruising has a region of its own. Because the embedding is the same in both models, the figure shows where each head draws its lines on the same points: the factory head calls most of the cruising region braking, and the final head does not. But the factory head's braking-versus-cruising direction was at right angles to that "foot on the gas" direction (cosine 0.002). The convolutions saw the difference, and the 4-class head did not use it.
+- **What the head reacted to.** On the wrong windows Guided Grad-CAM puts 62 % of the evidence on speed and 17 % on throttle, strongest in the newest second. A steady speed with a small throttle opening looked like the start of a stop. Two things in the data make that easy: outside one data set there is no brake-switch signal (see the limits above), and my car cruises at about 8 % throttle against 5.5 % closed, which is close together on a throttle scale learned from other cars.
+
+Since the information was already in the embedding, only the classifier head needed correcting. The final R.E.V changes 108 of the head's 256 int8 weights and 3 of its 4 biases, 126 bytes of the 65,648-byte model. The convolutions, the embedding and the estimate head are unchanged, so what R.E.V has learned in a car (which sits on that embedding) stays valid.
+
+<p align="center"><img src="docs/images/rev-gradcam.png" width="900" alt="Grad-CAM on R.E.V, factory against final, on two held-out drives. On foot-on-gas cruising every second pushed toward braking in the factory model and toward cruising in the final one. On real braking both push toward braking, the final one with a smaller margin. Guided Grad-CAM shows the factory model's braking evidence on cruising windows sat mostly on speed in the newest seconds, and almost none of it is left in the final model"></p>
+
+On two drives from 4 November 2026 that took no part in the correction:
+
+| Raw-signal label | Factory R.E.V | Final R.E.V |
+|---|---|---|
+| Cruising, foot on the gas (168 windows) | 10.7 % right | 87.5 % right |
+| Braking (95) | 98.9 % | 96.8 % |
+| Accelerating (100) | 88.0 % | 91.0 % |
+| Stopped | 97.7 % | 98.6 % |
+| All labelled windows | 78.3 % | 95.1 % |
+| Public KIA test set, accuracy | 88.9 % | 87.1 % |
+| KIA test set, braking recall | 80.5 % | 83.7 % |
+| KIA test set, cruising recall | 90.3 % | 84.7 % |
+
+The cost is on the KIA car, whose cruising recall drops 5.6 points, and real braking now wins by a smaller margin. The labels come from a rule on the raw signals, which cannot see the brake pedal, and all the gains are measured on one car, mine. The final R.E.V (model hash `6e6d698c44c5`) runs on my board now and goes into a release after a test drive. A lasting fix is to learn each car's closed-throttle position on the board, so the throttle scale fits the car.
+
 ## Status
 
 What has been checked, on the bench or in the code: the build (with Wi-Fi clock sync on and off), the model's identity hash, the host unit tests (524 checks, 176 of them for R.E.V's learners, the torque physics, the tank learner and the fill-up calibration, the rest including a simulated drive for the power-off line, the adapter profile chooser, and the fuel, economy and units logic), the automatic switch to miles and mpg with a US Wi-Fi access point, kept after a reboot, the 10-second save and the "Safe to turn off" event on a board with an SD card, and the HTTPS date parsing and host-name rules of the time server. CI builds the desktop app and runs its unit tests on Windows, macOS and Linux. Nobody has opened the app on a real machine yet.
 
 Known security limits are listed in [SECURITY.md](SECURITY.md#known-limits).
 
-I have driven the board with the drive-end, power-off, fuel economy and units features, and they all worked. R.E.V has run on the board through a 23-minute synthetic drive fed into the firmware's own OBD path: no missed deadlines, the learned airflow constant within 1 % of the true one, and two bugs in how missing readings were handled, both fixed. What has not been checked: CarMind R.E.V in a car (it has not been driven, and its learning results so far come from [replay on a computer](#carmind-rev-results-so-far) and that synthetic drive), the HTTPS clock against a real time server on the board, CarMind E.V on the road (it was flashed after that drive), other boards, any adapter other than the LELink, and what the screens do on a board without a panel. The checks that need a car or a card are listed in [docs/FIELD_CHECKS.md](docs/FIELD_CHECKS.md), with empty result tables for users to fill in.
+I have driven the board with the drive-end, power-off, fuel economy and units features, and they all worked. R.E.V has run on the board through a 23-minute synthetic drive fed into the firmware's own OBD path: no missed deadlines, the learned airflow constant within 1 % of the true one, and two bugs in how missing readings were handled, both fixed. On 4 November 2026 I drove R.E.V for the first time, two drives of about 23 minutes: the fuel read-out kept 4 refits with no reset, and the learned read-out's running error was 39 % below the factory one's. The same drives showed the classifier error described in [Looking inside R.E.V](#looking-inside-rev-with-explainable-ai). What has not been checked: R.E.V over many drives and other cars (its wider learning results come from [replay on a computer](#carmind-rev-results-so-far) and that synthetic drive), the HTTPS clock against a real time server on the board, CarMind E.V on the road (it was flashed after that drive), other boards, any adapter other than the LELink, and what the screens do on a board without a panel. The checks that need a car or a card are listed in [docs/FIELD_CHECKS.md](docs/FIELD_CHECKS.md), with empty result tables for users to fill in.
 
 ## Next board: ESP-Mosaico with the ESP32-S31
 
@@ -313,7 +351,7 @@ The Mosaico also changes how you use the logger. Your adapter lives in the car, 
 
 What 2.5.0 cannot do yet, and what is being built for it:
 
-- **CarMind R.E.V has not been driven.** Its learning has been checked in replay on a computer, on recorded drives fed through the board, and in host tests. Its first drive in a car is next, before any release.
+- **CarMind R.E.V has had two drives, in one car.** Its learning has otherwise been checked in replay on a computer, on recorded drives fed through the board, and in host tests. Both models call steady foot-on-gas cruising "braking" on my car. R.E.V's corrected classifier head fixes most of it and ships after a test drive, and E.V keeps the error for now.
 - **Torque is a physics estimate, not a measurement.** Its one check with true torque is a single public car, and that car's "truth" is its engine computer's own torque model. Accessories such as the air conditioning are not modelled, the efficiency is a typical value the board cannot learn without a torque sensor, it reads high at a standstill in Drive (so the screen shows "idle"), and it is for petrol engines only.
 - **The tank size needs driving to settle.** About 10 litres with the level between 10 % and 95 % before it shows anything, more on cars whose level reading jumps. A fuel sender that is not linear with the tank's shape is not modelled, and the range runs to an empty reading, not to the reserve below it.
 - **The manoeuvre classifier and brake pressure do not learn in the car.** Nothing in OBD gives a label for them. A self-check of the classifier (CarMind R.E.V 2) and accelerometer labels on the ESP-Mosaico are the routes being worked on.
@@ -324,7 +362,7 @@ What 2.5.0 cannot do yet, and what is being built for it:
 
 - The ESP-Mosaico (ESP32-S31) port described above, and a build without a display.
 - Code-signed installers.
-- CarMind R.E.V on a car: a drive, and its learning checked against the replay results, before it goes into a release.
+- CarMind R.E.V's corrected classifier head in a release, after a test drive, and a per-car closed-throttle baseline learned on the board.
 - More regularised models, to fit more cars.
 - CarMind R.E.V 2: a forecast of the next moment's manoeuvre, learned on the board, as a self-check that lets the classifier learn in the car.
 - A faster version built on a Jetson.
@@ -370,6 +408,16 @@ What 2.5.0 cannot do yet, and what is being built for it:
 <a id="ref-19"></a>[19] J. Iyengar and M. Thomson, Eds., "QUIC: A UDP-based multiplexed and secure transport," RFC 9000, IETF, 2021. [rfc-editor.org](https://www.rfc-editor.org/rfc/rfc9000)
 
 <a id="ref-20"></a>[20] P. Kumar and B. Dezfouli, "Implementation and analysis of QUIC for MQTT," arXiv preprint, 2018. [arXiv:1810.07730](https://arxiv.org/abs/1810.07730)
+
+<a id="ref-21"></a>[21] R. R. Selvaraju, M. Cogswell, A. Das, R. Vedantam, D. Parikh and D. Batra, "Grad-CAM: Visual explanations from deep networks via gradient-based localization," in *Proc. IEEE Int. Conf. on Computer Vision (ICCV)*, 2017. [arXiv:1610.02391](https://arxiv.org/abs/1610.02391)
+
+<a id="ref-22"></a>[22] M. D. Zeiler and R. Fergus, "Visualizing and understanding convolutional networks," in *Proc. European Conf. on Computer Vision (ECCV)*, 2014. [arXiv:1311.2901](https://arxiv.org/abs/1311.2901)
+
+<a id="ref-23"></a>[23] J. T. Springenberg, A. Dosovitskiy, T. Brox and M. Riedmiller, "Striving for simplicity: The all convolutional net," in *ICLR Workshop*, 2015. [arXiv:1412.6806](https://arxiv.org/abs/1412.6806)
+
+<a id="ref-24"></a>[24] G. Alain and Y. Bengio, "Understanding intermediate layers using linear classifier probes," arXiv preprint, 2016. [arXiv:1610.01644](https://arxiv.org/abs/1610.01644)
+
+<a id="ref-25"></a>[25] L. van der Maaten and G. Hinton, "Visualizing data using t-SNE," *Journal of Machine Learning Research*, vol. 9, pp. 2579–2605, 2008.
 
 ## Repository layout
 
