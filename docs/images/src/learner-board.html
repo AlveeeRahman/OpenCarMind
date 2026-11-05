@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Fuel learner leaderboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<!-- README leaderboard: the five fuel learners on the same benchmark (31 VED cars never seen in training, airflow hidden).
+     Numbers as published in CHANGELOG.md 2.5.1 and MODEL_CARD.md. Render with docs/images/render.sh. -->
+<style>
+html, body { margin: 0; background: #F5F2EB; font-family: 'IBM Plex Sans', system-ui, sans-serif; color: #17212E; }
+.wrap { width: 1600px; box-sizing: border-box; padding: 40px 48px 34px; }
+.head { display: flex; align-items: baseline; gap: 14px; }
+h1 { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 34px; margin: 0; }
+.snap { font-size: 19px; color: #57616F; }
+.table { margin-top: 26px; background: #FFFFFF; border: 1.5px solid #C9C1B3; border-radius: 18px; overflow: hidden; }
+.tr { display: grid; grid-template-columns: 70px 74px minmax(0, 1fr) 250px 150px 210px 200px; align-items: center; gap: 0 18px; padding: 0 30px; min-height: 92px; border-top: 1px solid #E6E1D7; }
+.th { min-height: 62px; border-top: none; background: #FBF9F5; font-size: 17px; color: #57616F; }
+.th .sort::after { content: " \2193"; }
+.rank { font-size: 21px; color: #57616F; }
+.logo { width: 52px; height: 52px; border-radius: 12px; display: flex; align-items: center; justify-content: center; border: 1.5px solid #E6E1D7; font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 18px; color: #57616F; background: #FBF9F5; }
+.logo.ocm { background: #15202D; border-color: #15202D; }
+.logo img { width: 38px; height: 38px; }
+.nm { font-size: 22px; font-weight: 600; }
+.sub { font-size: 16px; color: #57616F; margin-top: 3px; display: flex; align-items: center; gap: 8px; }
+.sub .d { width: 9px; height: 9px; border-radius: 5px; }
+.tag { font-weight: 600; }
+.score { text-align: right; }
+.score .n { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 30px; }
+.bar { height: 8px; border-radius: 4px; background: #E6E1D7; margin-top: 6px; overflow: hidden; }
+.bar i { display: block; height: 100%; border-radius: 4px; background: #2F5FD0; }
+.num { text-align: right; font-size: 21px; }
+.ok { color: #2D7A31; font-weight: 600; } .bad { color: #BF352B; font-weight: 600; }
+.ctx { display: flex; gap: 28px; margin-top: 22px; font-size: 17px; color: #57616F; }
+.ctx b { color: #17212E; font-weight: 600; }
+.ctx .r { margin-left: auto; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head"><h1>Fuel learner leaderboard</h1><span class="snap">31 VED cars never seen in training, airflow hidden · replay</span></div>
+  <div class="table">
+    <div class="tr th"><span>Rank</span><span></span><span>Learner</span><span class="sort" style="text-align:right">R², 1 % bad labels</span><span style="text-align:right">R², clean</span><span style="text-align:right">Worse cars, clean / bad</span><span style="text-align:right">Method</span></div>
+
+    <div class="tr"><span class="rank">#1</span><span class="logo ocm"><img src="../../../assets/logo/opencarmind-logo.svg" alt=""></span>
+      <div><div class="nm">CarMind R.E.V learner 2.5.1</div><div class="sub">OpenCarMind <span class="d" style="background:#2D7A31"></span><span class="tag" style="color:#2D7A31">Shipped</span></div></div>
+      <div class="score"><span class="n">0.867</span><div class="bar"><i style="width:86.7%"></i></div></div>
+      <span class="num">0.867</span><span class="num ok">0 / 0</span><span class="num">robust least squares</span></div>
+
+    <div class="tr"><span class="rank">#2</span><span class="logo">AN</span>
+      <div><div class="nm">ANIL</div><div class="sub">learn2learn <span class="d" style="background:#9372C8"></span><span class="tag" style="color:#6A4FA0">Meta-learning</span></div></div>
+      <div class="score"><span class="n">0.774</span><div class="bar"><i style="width:77.4%"></i></div></div>
+      <span class="num">0.778</span><span class="num">2 / 3</span><span class="num">gradient steps</span></div>
+
+    <div class="tr"><span class="rank">#3</span><span class="logo">—</span>
+      <div><div class="nm">No learning</div><div class="sub">factory read-out <span class="d" style="background:#948D81"></span><span class="tag" style="color:#57616F">Baseline</span></div></div>
+      <div class="score"><span class="n">0.709</span><div class="bar"><i style="width:70.9%"></i></div></div>
+      <span class="num">0.709</span><span class="num">baseline</span><span class="num">fixed</span></div>
+
+    <div class="tr"><span class="rank">#4</span><span class="logo ocm"><img src="../../../assets/logo/opencarmind-logo.svg" alt=""></span>
+      <div><div class="nm">CarMind R.E.V learner 2.5.0</div><div class="sub">OpenCarMind <span class="d" style="background:#7A5600"></span><span class="tag" style="color:#7A5600">Replaced</span></div></div>
+      <div class="score"><span class="n">0.696</span><div class="bar"><i style="width:69.6%"></i></div></div>
+      <span class="num">0.867</span><span class="num bad">0 / 15</span><span class="num">least squares</span></div>
+
+    <div class="tr"><span class="rank">#5</span><span class="logo">MS</span>
+      <div><div class="nm">Meta-SGD</div><div class="sub">learn2learn <span class="d" style="background:#9372C8"></span><span class="tag" style="color:#6A4FA0">Meta-learning</span></div></div>
+      <div class="score"><span class="n">0.151</span><div class="bar"><i style="width:15.1%"></i></div></div>
+      <span class="num">0.197</span><span class="num bad">20 / 22</span><span class="num">learned step sizes</span></div>
+  </div>
+  <div class="ctx"><span><b>Why it wins:</b> the shipped learner keeps all of its clean-label gain when 1 % of the labels are wrong.</span><span class="r">Worse cars: more than 10 % worse than no learning.</span></div>
+</div>
+</body>
+</html>

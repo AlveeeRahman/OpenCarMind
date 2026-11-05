@@ -203,6 +203,10 @@ The models were trained on public data, the HCRL Driving Dataset (Kwak, Woo and 
 
 ### CarMind R.E.V results so far
 
+<p align="center"><img src="docs/images/leaders.png" width="900" alt="CarMind model leaders: final R.E.V, first R.E.V and E.V with per-class and fuel scores"></p>
+
+<p align="center"><img src="docs/images/learner-board.png" width="900" alt="Fuel learner leaderboard on 31 unseen VED cars with the airflow hidden"></p>
+
 R.E.V's on-board learning has so far been tested only in replay: recorded drives played back through the learners on a computer, with the float version of the network rather than the quantised version on the chip, and with the airflow reading hidden. It has not run on the chip or in a car yet. On test cars that took no part in training:
 
 | What learns | Test cars | Factory | After on-board learning | Cars better |
