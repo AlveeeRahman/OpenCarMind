@@ -19,7 +19,7 @@ The board writes everything under `/sdcard/obd/`.
 | `custom_pids.csv` | up to 8 custom PIDs (you create it) |
 | `clock.txt` | the time at the last save, so the clock can resume after a power cut |
 
-A new session starts at every power cycle. Everything is flushed to the card at least every 10 seconds (`SDLOG_SYNC_PERIOD_S`). The newest save line on page 3 shows live whether you can cut the power (`main/power_state.c`): green "Safe to turn off" once no car data has arrived for 5 seconds, the last of it is on the card and no upload is running, and red "Not safe: logging", "Not safe: saving" or "Not safe: upload" until then. The AI model runs once per row of car data, so it has stopped by the time the line turns green.
+A new session starts at every power cycle. Everything is flushed to the card at least every 10 seconds (`SDLOG_SYNC_PERIOD_S`). The newest save line on page 3 shows live whether you can cut the power (`main/system/power_state.c`): green "Safe to turn off" once no car data has arrived for 5 seconds, the last of it is on the card and no upload is running, and red "Not safe: logging", "Not safe: saving" or "Not safe: upload" until then. The AI model runs once per row of car data, so it has stopped by the time the line turns green.
 
 ## Wi-Fi networks
 
@@ -40,7 +40,7 @@ The board has no battery for its clock. Every save writes the time to `/sdcard/o
 
 ## Setup over USB with the desktop app
 
-With the desktop app, the SD card can stay in the board. The app talks to it over the USB cable through an authenticated door (`main/usb_door.h`), prepares everything itself, and sends the board only finished values to store or apply:
+With the desktop app, the SD card can stay in the board. The app talks to it over the USB cable through an authenticated door (`main/system/usb_door.h`), prepares everything itself, and sends the board only finished values to store or apply:
 
 - Pairing: the first time, the board shows a 6-digit code on its screen and you type it into the app (3 tries per code, a new code at most every 5 seconds). The app then sends its address, port, certificate and token. Later connections prove themselves with an HMAC of a fresh random challenge, keyed with that token, so no code is needed.
 - Wi-Fi networks, the time zone and the settings in the table below.

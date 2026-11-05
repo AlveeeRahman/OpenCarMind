@@ -61,7 +61,7 @@ pub fn to_l_per_100km(value: f64, unit: &str) -> Result<f64, String> {
     }
 }
 
-/// The list the board takes (main/usb_door.c REV-FILLUPS), with the board's own plausibility rules checked first.
+/// The list the board takes (main/system/usb_door.c REV-FILLUPS), with the board's own plausibility rules checked first.
 pub fn board_fill_list(log: &FillLog) -> Result<serde_json::Value, String> {
     if log.entries.len() > FILLUPS_MAX {
         return Err(format!("the board keeps the last {FILLUPS_MAX} fill-ups; delete older ones first"));

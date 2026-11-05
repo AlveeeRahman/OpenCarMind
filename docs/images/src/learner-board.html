@@ -20,6 +20,8 @@ h1 { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 34px
 .logo { width: 52px; height: 52px; border-radius: 12px; display: flex; align-items: center; justify-content: center; border: 1.5px solid #E6E1D7; font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 18px; color: #57616F; background: #FBF9F5; }
 .logo.ocm { background: #15202D; border-color: #15202D; }
 .logo img { width: 38px; height: 38px; }
+.logo.badge { border: none; background: none; }
+.logo.badge img { width: 56px; height: 56px; display: block; }
 .nm { font-size: 22px; font-weight: 600; }
 .sub { font-size: 16px; color: #57616F; margin-top: 3px; display: flex; align-items: center; gap: 8px; }
 .sub .d { width: 9px; height: 9px; border-radius: 5px; }
@@ -41,10 +43,10 @@ h1 { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 34px
   <div class="table">
     <div class="tr th"><span>Rank</span><span></span><span>Learner</span><span class="sort" style="text-align:right">R², 1 % bad labels</span><span style="text-align:right">R², clean</span><span style="text-align:right">Worse cars, clean / bad</span><span style="text-align:right">Method</span></div>
 
-    <div class="tr"><span class="rank">#1</span><span class="logo ocm"><img src="../../../assets/logo/opencarmind-logo.svg" alt=""></span>
-      <div><div class="nm">CarMind R.E.V learner 2.5.1</div><div class="sub">OpenCarMind <span class="d" style="background:#2D7A31"></span><span class="tag" style="color:#2D7A31">Shipped</span></div></div>
+    <div class="tr"><span class="rank">#1</span><span class="logo badge"><img src="../../../assets/logo/carmind-rev.svg" alt=""></span>
+      <div><div class="nm">Huber RLS</div><div class="sub">CarMind R.E.V <span class="d" style="background:#2D7A31"></span><span class="tag" style="color:#2D7A31">Shipped</span></div></div>
       <div class="score"><span class="n">0.867</span><div class="bar"><i style="width:86.7%"></i></div></div>
-      <span class="num">0.867</span><span class="num ok">0 / 0</span><span class="num">robust least squares</span></div>
+      <span class="num">0.867</span><span class="num ok">0 / 0</span><span class="num">Huber-weighted, outliers dropped</span></div>
 
     <div class="tr"><span class="rank">#2</span><span class="logo">AN</span>
       <div><div class="nm">ANIL</div><div class="sub">learn2learn <span class="d" style="background:#9372C8"></span><span class="tag" style="color:#6A4FA0">Meta-learning</span></div></div>
@@ -56,10 +58,10 @@ h1 { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 34px
       <div class="score"><span class="n">0.709</span><div class="bar"><i style="width:70.9%"></i></div></div>
       <span class="num">0.709</span><span class="num">baseline</span><span class="num">fixed</span></div>
 
-    <div class="tr"><span class="rank">#4</span><span class="logo ocm"><img src="../../../assets/logo/opencarmind-logo.svg" alt=""></span>
-      <div><div class="nm">CarMind R.E.V learner 2.5.0</div><div class="sub">OpenCarMind <span class="d" style="background:#7A5600"></span><span class="tag" style="color:#7A5600">Replaced</span></div></div>
+    <div class="tr"><span class="rank">#4</span><span class="logo badge"><img src="../../../assets/logo/carmind-rev-old.svg" alt=""></span>
+      <div><div class="nm">Plain RLS</div><div class="sub">CarMind R.E.V (old) <span class="d" style="background:#7A5600"></span><span class="tag" style="color:#7A5600">Replaced</span></div></div>
       <div class="score"><span class="n">0.696</span><div class="bar"><i style="width:69.6%"></i></div></div>
-      <span class="num">0.867</span><span class="num bad">0 / 15</span><span class="num">least squares</span></div>
+      <span class="num">0.867</span><span class="num bad">0 / 15</span><span class="num">plain, fading memory</span></div>
 
     <div class="tr"><span class="rank">#5</span><span class="logo">MS</span>
       <div><div class="nm">Meta-SGD</div><div class="sub">learn2learn <span class="d" style="background:#9372C8"></span><span class="tag" style="color:#6A4FA0">Meta-learning</span></div></div>

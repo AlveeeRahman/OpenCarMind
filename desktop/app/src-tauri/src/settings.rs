@@ -11,7 +11,7 @@ const SETTINGS: [(&str, f64, f64); 7] = [
     ("day_end_hour", 0.0, 23.0),
 ];
 
-/// Validates a Wi-Fi entry the way the board does (main/harden.c), plus no comma in the SSID because wifi.csv splits
+/// Validates a Wi-Fi entry the way the board does (main/system/harden.c), plus no comma in the SSID because wifi.csv splits
 /// each line at the first comma.
 pub fn wifi_entry_ok(ssid: &str, password: &str) -> Result<(), String> {
     let bad = |s: &str| s.chars().any(|c| c.is_control());
@@ -24,12 +24,12 @@ pub fn wifi_entry_ok(ssid: &str, password: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Same rule as the board (main/harden.c): a POSIX TZ string of 3 to 47 characters from letters, digits and <>+-,.:/
+/// Same rule as the board (main/system/harden.c): a POSIX TZ string of 3 to 47 characters from letters, digits and <>+-,.:/
 pub fn timezone_ok(tz: &str) -> bool {
     (3..=47).contains(&tz.len()) && tz.chars().all(|c| c.is_ascii_alphanumeric() || "<>+-,.:/".contains(c))
 }
 
-/// The board's rule for the one time server it may contact (main/harden.c harden_hostname_ok): a DNS name, 4 to 63
+/// The board's rule for the one time server it may contact (main/system/harden.c harden_hostname_ok): a DNS name, 4 to 63
 /// characters, letters, digits and hyphens in dot-separated labels, at least one dot and one letter, no IP, port or scheme.
 pub fn hostname_ok(h: &str) -> bool {
     let b = h.as_bytes();
