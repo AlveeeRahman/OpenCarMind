@@ -35,23 +35,27 @@ Wi-Fi is the only radio besides Bluetooth, and it is optional. It sets the clock
 
 ## How it works
 
-<p align="center"><img src="docs/images/workflow/tool.png" width="900" alt="OpenCarMind workflow: car engine computer, BLE OBD-II adapter, ESP32-S3 board, on-chip model, SD card, your computer"></p>
+<p align="center"><img src="docs/images/workflow/tool.png" width="900" alt="How it works: the engine computer answers OBD-II requests through a Bluetooth LE adapter. the ESP32-S3 board reads the car, runs the AI model and saves each drive to the SD card every 10 s. a paired board sends drives to the desktop app over Wi-Fi when parked at home, or you take the card out"></p>
 
 The board asks the engine computer for every field it supports, shows the live values on its screen and writes each drive to the SD card as its own session. The model runs on the chip while you drive. At home, a paired board sends the new data to the desktop app over Wi-Fi. Without pairing, take the card out and open the files on your computer.
 
 ### On-board inference
 
-<p align="center"><img src="docs/images/workflow/inference.png" width="900" alt="On-board inference: a row arrives, the 5 s window is binned, the model task runs, one line goes to the SD file and the screen"></p>
+<p align="center"><img src="docs/images/workflow/inference.png" width="900" alt="On-board inference: an OBD row arrives, the last 5 s are binned, the model task runs E.V or R.E.V, and the answer goes to the .ml.csv file, the screen and, for R.E.V, its learner. the OBD task never waits"></p>
 
 When an OBD row arrives, the board cuts the last 5 seconds into five one-second bins that end at that moment. Each bin takes the latest value, held for up to 3 seconds if a channel was not read in time. The model runs in its own task, so logging never waits for it. Every row adds one line to the drive's `.ml.csv` file, and the newest answer shows on page 5.
 
-On my car, a row arrives every 1.35 to 1.65 seconds, so a 5 s window holds about three rows. One run of the model takes about 3.5 ms on the ESP32-S3, measured at the boot self-test.
+Only one of the two models runs at a time, E.V or R.E.V. With R.E.V selected, the same run also feeds its fuel learner, described [below](#how-rev-learns-on-the-board).
+
+On my car, a row arrives every 1.35 to 1.65 seconds, so a 5 s window holds about three rows. One run of E.V takes about 3.5 ms on the ESP32-S3, measured at the boot self-test. R.E.V's time per run on the chip has not been measured yet.
 
 ### Scheduler and safety
 
-<p align="center"><img src="docs/images/workflow/scheduler.png" width="900" alt="Scheduler: deadlines, timing, load check, watchdog, safe mode, save every 10 s"></p>
+<p align="center"><img src="docs/images/workflow/scheduler.png" width="900" alt="Scheduler and safety: the OBD poll, the model and R.E.V learning are timed on every run and checked once a minute. a hung step makes the watchdog restart the board, and three bad restarts in a row start safe mode with logging still on"></p>
 
 Open-source loggers usually treat timing as someone else's problem. Here every periodic job (the OBD poll and the model) has a period and a deadline. The scheduler in `main/sched_mon.c` records each run's response time and CPU time, counts misses and stalls (a job is stalled when it misses three periods, or for the model, which the car's row rate paces, a whole 10-second window), and once a minute checks per-core load against the rate-monotonic bound of Liu and Layland<sup>[[4]](#ref-4)</sup> and the worst-case response time of each job from the analysis of Joseph and Pandya<sup>[[5]](#ref-5)</sup>. Steps that talk to the adapter feed the task watchdog, so a step that never returns resets the board. After three abnormal resets in a row the board starts in safe mode: the model stays off and logging keeps going.
+
+R.E.V adds a third job, its learning. It has no deadline the car depends on, so it runs on a budget instead: it earns about 2 % of one core over time and spends it in short bursts. It also runs at a lower priority than the OBD poll and the model on the same core, so either of them takes the core back at once. When the budget runs out, the learner waits, and rows that arrive meanwhile are dropped from its small queue: learning loses a sample rather than holding anything up. The same once-a-minute check covers it, and safe mode turns learning off along with the model.
 
 ## The screens
 
@@ -162,6 +166,18 @@ Limits:
 
 Trained on public data, the HCRL Driving Dataset (Kwak, Woo and Kim, PST 2016)<sup>[[7]](#ref-7)</sup> and the Vehicle Energy Dataset (Oh, LeBlanc and Peng, 2020, Apache-2.0)<sup>[[8]](#ref-8)</sup>, plus drives from my own car.
 
+### How the models are made
+
+<p align="center"><img src="docs/images/workflow/training.png" width="900" alt="How the models are made: drive data trains E.V quantisation-aware, which is tested on held-out drives and unseen cars. E.V is then pruned to about half and retrained as the teacher of R.E.V, which is tested on unseen cars with the airflow reading hidden"></p>
+
+Training happens off the board, once per release. The board only runs the result.
+
+E.V is trained quantisation-aware: during training it already sees the rounding of the low-bit integer arithmetic the chip uses, so the version on the chip scores like the one on a computer. It is then tested on drives held out from training and on cars it never saw.
+
+R.E.V starts from E.V's design. Its network is pruned to about half the parameters, then retrained with E.V as its teacher (knowledge distillation) on a wider set of public drives. It is tested on cars it never saw with the airflow reading hidden, because that is the case its learners on the board exist for.
+
+The training code and data stay in a private repository. This one holds the trained files.
+
 The shipped files are in [ml/onboard](ml/onboard). `tools/gen_ml_params.py` turns them into `main/ml_params.h`, which holds the channel order, normalisation, class names and the model's hash. [docs/MODEL.md](docs/MODEL.md) lists the inputs and outputs.
 
 ### Two models: CarMind E.V and CarMind R.E.V
@@ -174,6 +190,18 @@ The firmware carries two models, and one runs at a time.
 To switch, connect the board to the desktop app with the USB cable, open the Board page and pick the model under "On-board model". The board keeps the choice after a restart, and you can switch back at any time; what R.E.V learned is kept on the SD card. Fill-ups go on the app's Fuel page, which also shows the fuel used per drive and in total, and what R.E.V has learned. The fill-up correction works with both models.
 
 R.E.V is new and has not been checked on a car yet, so E.V stays the default. Its files are in [ml/onboard/rev](ml/onboard/rev).
+
+### How R.E.V learns on the board
+
+<p align="center"><img src="docs/images/workflow/rev-learning.png" width="900" alt="How R.E.V learns: the car's reported fuel rate trains a small linear layer that goes live only if it beats the current one on held-back rows. engine load and rpm teach one airflow constant per car. fill-ups from the desktop app scale the fuel totals. when the car reports neither fuel rate nor airflow, the board picks the estimate with the lowest running error and shows it in amber"></p>
+
+The network itself never changes on the board. R.E.V keeps three small learners next to it, and each one changes only when the car gives it something to check against.
+
+- **Fuel estimate.** Whenever the car reports its fuel rate, or its airflow, from which the fuel rate follows, the board averages it over the same 5 s window the model saw and pairs it with the network's internal features. A small linear layer on those features is refit from the pairs, with older rows slowly fading so it can follow the car as it ages. A refit goes live only if it beats the current layer on recent rows it was not fitted on, and only if it has not wandered too far from the factory layer. If the live layer falls behind the factory one, the board resets it.
+- **Airflow constant.** While the airflow sensor works, the board learns one number for your car that links airflow to engine load and rpm, a standard engine relation. When the sensor drops out, this gives a physics-based fuel estimate.
+- **Fill-up correction.** You enter fill-ups on the app's Fuel page. From one full tank to the next, the board compares the litres you pumped with the fuel it counted, and scales its fuel figures to match. Implausible entries are ignored, and this works with both models.
+
+When the car reports neither fuel rate nor airflow, the board uses whichever estimate (factory, learned or airflow model) has had the lowest running error on your car so far, and shows it in amber. What R.E.V learned is saved to the SD card every 5 minutes while you drive and when the drive ends. The fill-up correction is also kept in flash.
 
 ## Status
 

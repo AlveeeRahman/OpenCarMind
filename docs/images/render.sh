@@ -10,10 +10,12 @@ shot() {  # name width height output [background]
     ${5:+--default-background-color=$5} --virtual-time-budget=8000 --screenshot="$4" "file://$PWD/docs/images/src/$1.html" >/dev/null 2>&1
   echo "rendered $4"
 }
-shot tool 1472 480 docs/images/workflow/tool.png
-shot inference 1472 480 docs/images/workflow/inference.png
-shot local 1472 480 docs/images/workflow/local-first.png
-shot sync 1472 480 docs/images/workflow/wifi-link.png
-shot scheduler 1472 480 docs/images/workflow/scheduler.png
+shot tool 1200 600 docs/images/workflow/tool.png
+shot inference 1200 640 docs/images/workflow/inference.png
+shot local 1200 600 docs/images/workflow/local-first.png
+shot sync 1200 690 docs/images/workflow/wifi-link.png
+shot scheduler 1200 720 docs/images/workflow/scheduler.png
+shot rev-learning 1200 1060 docs/images/workflow/rev-learning.png
+shot training 1200 620 docs/images/workflow/training.png
 shot banner 1280 420 docs/images/banner.png
 shot logo 512 512 assets/logo/opencarmind-logo.png 00000000

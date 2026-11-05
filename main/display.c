@@ -575,7 +575,7 @@ static void build_page4(void)
     /* what the model estimates, y 241..305 (content area 156 x 58): three rows, label left and value right.
        The recent events moved to the internals page. */
     lv_obj_t *est = s4_frame(241, 64, C_VIOLET, "AI ESTIMATES");
-    s4_est_info = s4_label(est, &lv_font_montserrat_12, C_MUTED, 66, -2, 90, 15);
+    s4_est_info = s4_label(est, &lv_font_montserrat_12, C_MUTED, 96, -2, 60, 15);    /* right of the caption, never over it */
     lv_obj_set_style_text_align(s4_est_info, LV_TEXT_ALIGN_RIGHT, 0);
     static const char *est_names[3] = {"Brake pressure", "Engine torque", "Fuel rate"};
     for (int i = 0; i < 3; i++) {
@@ -731,9 +731,11 @@ static void refresh_ml(const sched_system_t *sys)
     }
 }
 
-static void refresh_est(void)
+static void refresh_est(units_t un)
 {
-    static const char *unit[3] = {"bar", "Nm", "L/h"};
+    /* fuel rate follows the display units like the economy tile: L/h in metric, gal/h (US or imperial gallon) otherwise */
+    double gal = un == UNITS_US ? 3.785411784 : un == UNITS_UK ? 4.54609 : 1.0;
+    const char *unit[3] = {"bar", "Nm", un == UNITS_METRIC ? "L/h" : "gal/h"};
     static const char *fmt[3] = {"%.1f %s", "%.0f %s", "%.1f %s"};
     ml_stats_t m;
     ml_get_stats(&m);
@@ -742,21 +744,17 @@ static void refresh_est(void)
     bool fresh = have && age_ms < 3000;                 /* the model runs every second; older means paused or no data */
     for (int i = 0; i < 3; i++) {
         char buf[24];
-        if (have) snprintf(buf, sizeof buf, fmt[i], (double)m.last_est[i], unit[i]); else snprintf(buf, sizeof buf, "--");
+        if (have) snprintf(buf, sizeof buf, fmt[i], (double)m.last_est[i] / (i == 2 ? gal : 1.0), unit[i]); else snprintf(buf, sizeof buf, "--");
         lv_label_set_text(s4_est_val[i], buf);
         lv_obj_set_style_text_color(s4_est_val[i], lv_color_hex(fresh ? C_TEXT : C_MUTED), 0);
     }
-    char info[32];
-    if (!m.ready) snprintf(info, sizeof info, "model off");
-    else if (!have) snprintf(info, sizeof info, "waiting");
-    else if (fresh && m.model == ML_MODEL_REV && (age_ms / 3000 + esp_timer_get_time() / 3000000) % 2) {
-        /* R.E.V: every other 3 s, the fuel learning: commits / resets, and the fill-up factor */
-        rev_status_t rs;
-        rev_get_status(&rs);
-        snprintf(info, sizeof info, "learn %lu/%lu x%.2f", (unsigned long)rs.commits, (unsigned long)rs.resets, (double)rs.cal);
-    }
-    else if (fresh) snprintf(info, sizeof info, "#%lu  %.1f s", (unsigned long)m.windows, (double)age_ms / 1000.0);
-    else snprintf(info, sizeof info, "paused %lu s", (unsigned long)(age_ms / 1000));
+    /* beside the caption only the time since the model's last answer: grey while it runs, amber when it has paused */
+    char info[16];
+    if (!m.ready) snprintf(info, sizeof info, "off");
+    else if (!have) snprintf(info, sizeof info, "--");
+    else if (age_ms < 10000) snprintf(info, sizeof info, "%.1f s", (double)age_ms / 1000.0);
+    else if (age_ms < 600000) snprintf(info, sizeof info, "%lu s", (unsigned long)(age_ms / 1000));
+    else snprintf(info, sizeof info, "%lu min", (unsigned long)(age_ms / 60000));
     lv_label_set_text(s4_est_info, info);
     lv_obj_set_style_text_color(s4_est_info, lv_color_hex(fresh ? C_MUTED : C_WARN), 0);
 }
@@ -774,7 +772,7 @@ static void refresh_page4(const app_status_t *st)
     sched_get_system(&sys);
     refresh_sched(&sys);
     refresh_ml(&sys);
-    refresh_est();
+    refresh_est((units_t)st->units);
 }
 
 static void build_page2(void)
