@@ -47,7 +47,7 @@ const char *fuel_src_name(fuel_src_t s)
 
 bool econ_src_is_estimate(fuel_src_t s) { return s == FUEL_MODEL || s == FUEL_PHYS || s == FUEL_LEARNED; }
 
-static bool maf_valid(bool ok, float g) { return ok && !(g < 0 || g > 655.35f); }   /* as econ_fuel_lph always tested it */
+static bool maf_valid(bool ok, float g) { return ok && g >= 0 && g < 655.0f; }   /* 0xFFFF (655.35 g/s) is a sensor fault, not air */
 static bool est_valid(bool ok, float lph) { return ok && lph >= 0 && lph < 100; }
 
 float econ_fuel_pick(const econ_in_t *in, fuel_src_t *src)

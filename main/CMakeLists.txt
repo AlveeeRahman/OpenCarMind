@@ -3,6 +3,7 @@ idf_component_register(
          "obd_ble.c"
          "adapter_match.c"
          "econ.c"
+         "obd_fresh.c"
          "units.c"
          "harden.c"
          "power_state.c"

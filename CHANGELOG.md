@@ -11,6 +11,8 @@
 - Page 5: beside "AI ESTIMATES" only the time since the model's last answer, which no longer runs into the caption. The estimated fuel rate follows the display units: L/h in metric, gal/h (US or imperial gallon) otherwise.
 - Page 5: the brake row reads "holding" while the model sees the car stopped, since the pressure a driver holds at a standstill cannot be read from OBD. Moving, it shows the estimate in bar.
 - Version 2.5.0 for the firmware and the desktop app on this branch, so its logs and session files are not mistaken for 2.4.0.
+- Fix: a PID that stopped answering kept its last value, marked valid, until the drive ended, so the fuel picker stayed on a frozen MAF and R.E.V learned from it. Each field now has the time of its last good read and counts as missing after 3 poll cycles (at least 4 s) in the fast tier, or 3 trips round the slow list (at least 10 s). The CSV leaves such a field empty instead of repeating it. Found in a 23-minute synthetic drive replayed through the board.
+- Fix: MAF 0xFFFF (655.35 g/s), a sensor fault, was accepted as a reading; it is now ignored like a missing MAF.
 - README: workflow figures redrawn with larger text, and new figures for how the models are made and how R.E.V learns.
 
 - Model renamed to CarMind E.V (was Edge Model 1).

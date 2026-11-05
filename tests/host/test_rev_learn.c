@@ -474,6 +474,12 @@ static void test_picker(void)
     econ_in_t in = {.prefer = FUEL_LEARNED, .model_ok = true, .model_lph = 3.0f, .learned_ok = true, .learned_lph = 2.5f,
                     .phys_ok = true, .phys_maf_gps = 4.44f};
     CHECK(econ_fuel_pick(&in, &src) == 2.5f && src == FUEL_LEARNED);
+    {   /* MAF 0xFFFF (655.35 g/s) is a sensor fault: the picker falls through to the physics estimate */
+        econ_in_t m = {.maf_ok = true, .maf_gps = 655.35f, .prefer = FUEL_PHYS, .phys_ok = true, .phys_maf_gps = 4.44f};
+        CHECK(econ_fuel_pick(&m, &src) > 0 && src == FUEL_PHYS);
+        m.maf_gps = 12.0f;
+        CHECK(econ_fuel_pick(&m, &src) > 0 && src == FUEL_MAF);
+    }
     in.prefer = FUEL_PHYS;
     CHECK(fabsf(econ_fuel_pick(&in, &src) - 1.4595f) < 0.001f && src == FUEL_PHYS);   /* airflow through the MAF formula */
     in.lambda_ok = true; in.lambda = 0.0f;

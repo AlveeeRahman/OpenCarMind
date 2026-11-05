@@ -15,6 +15,7 @@
 #include "elm327.h"
 #include "obd_ble.h"
 #include "econ.h"
+#include "obd_fresh.h"
 #include "status.h"
 #include "sdlog.h"
 #include "custom_pids.h"
@@ -276,6 +277,11 @@ static float raw_value(const field_def_t *d, const uint8_t *b, int n)
     return NAN;
 }
 
+/* Freshness (obd_fresh.h): when each field was last read, which fields are in the fast tier, and the typical cycle. obd task only. */
+static uint32_t s_field_ms[F_COUNT];
+static uint64_t s_fast_fields[2];
+static uint32_t s_cycle_ms = 1500;
+
 /* Query one PID and store every table field it carries. Returns false when nothing decoded. */
 static bool poll_pid(uint8_t pid)
 {
@@ -291,6 +297,7 @@ static bool poll_pid(uint8_t pid)
         /* lambda sensors 0x24..0x2B report 0xFFFF for "not used"; O2 voltage PIDs 0xFF too */
         g_status.obd.f[i] = raw * FIELDS[i].scale + FIELDS[i].offset;
         OBD_SET(&g_status.obd, i);
+        s_field_ms[i] = (uint32_t)(esp_timer_get_time() / 1000);
         any = true;
     }
     STATUS_UNLOCK();
@@ -600,6 +607,12 @@ static void obd_task(void *arg)
             else if (nr < 160) raw[nr++] = pid;
         }
         ESP_LOGI(TAG, "polling %d fast, %d slow, %d raw-only PIDs, %u custom", nf, ns, nr, (unsigned)s_custom_n);
+        s_fast_fields[0] = s_fast_fields[1] = 0;
+        for (int i = 0; i < F_COUNT; i++)
+            for (int k = 0; k < nf; k++)
+                if (FIELDS[i].pid == fast[k]) { s_fast_fields[i / 64] |= 1ULL << (i % 64); break; }
+        s_cycle_ms = 1500;
+        int64_t last_cycle_us = 0;
 
         STATUS_LOCK();
         g_status.ble = BLE_ST_LOGGING;
@@ -676,8 +689,21 @@ static void obd_task(void *arg)
             if (any_ok) {
                 consecutive_fail = 0;
                 last_ok = esp_timer_get_time();
+                if (last_cycle_us) {                        /* typical cycle, for the freshness limits */
+                    int64_t c = (last_ok - last_cycle_us) / 1000;
+                    if (c > 0 && c < 60000) s_cycle_ms = (uint32_t)(0.8f * (float)s_cycle_ms + 0.2f * (float)c);
+                }
+                last_cycle_us = last_ok;
                 obd_values_t snap;
-                STATUS_LOCK(); snap = g_status.obd; STATUS_UNLOCK();
+                /* a field that stopped answering is missing, not frozen at its last value: the fuel picker, R.E.V and the model
+                   then see the gap (a stale MAF kept the picker on MAF and fed R.E.V a frozen label before) */
+                uint32_t slow_cycles = (uint32_t)((total_slow + SLOW_PER_CYCLE - 1) / SLOW_PER_CYCLE);
+                STATUS_LOCK();
+                int gone = obd_fresh_expire(g_status.obd.valid, s_fast_fields, s_field_ms, F_COUNT, (uint32_t)(last_ok / 1000),
+                                            s_cycle_ms, slow_cycles);
+                snap = g_status.obd;
+                STATUS_UNLOCK();
+                if (gone) ESP_LOGD(TAG, "%d field(s) stopped answering", gone);
                 {
                     /* fuel and economy from the best source this car has; older cars fall back, missing stays missing */
                     ml_stats_t ms;
