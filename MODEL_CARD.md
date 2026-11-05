@@ -116,5 +116,17 @@ Public data, the HCRL Driving Dataset (Kwak, Woo and Kim, PST 2016) and the Vehi
 - The classifier gains are measured on one car, mine, with labels from a rule on the raw signals, which cannot see the brake pedal.
 - Outside one data set there is no brake-switch signal, so braking and cruising stay partly ambiguous. Brake pressure (R² 0.46 for E.V) is the weakest estimate.
 - No diesel car is in the data. Physics torque is for petrol engines and was checked on one public car. R.E.V learns the engine size the physics uses (about 2.1 L on my car's last two drives), not the torque itself. A learned torque read-out from cars that report torque (PIDs 0x62 and 0x63) is planned, not built. Cars without those PIDs, like my Sentra, have no torque label, so physics or an accelerometer label stays needed there.
-- The chip's built-in self-test stops at its first mismatch: one of the 64 trunk features, 7.8 % off the PC simulation, so the rest go unchecked by it. Likely cause, not yet confirmed: the simulation rounds in 32-bit float, the chip accumulates in 40-bit integers. The classifier-head correction is ruled out, since it changed nothing upstream of those features. Results tagged **C** are measured on the chip and include the difference. Results tagged **Q** come from the PC simulation.
 - CarMind E.V still calls steady cruising "braking". Only R.E.V got the corrected head.
+
+## Technical notes
+
+### The chip's self-test and the PC simulation
+
+ESP-DL stores one sample input in the model file, together with the answer the PC simulation gives for it. At every boot the board runs that sample and compares raw int16 values, allowing 1 step. It stops at the first value that is further off. This is a check of the arithmetic, not a test of the model on a car.
+
+- On CarMind R.E.V 2.5.1 the first value it compares, one of the 64 trunk features, is 7.8 % off the PC simulation (299 steps of 1/512). The other features and both heads go unchecked by it.
+- This is not new. Earlier exports failed the same way, by about 3.5 %, so the mismatch is systematic rather than caused by one export.
+- The classifier-head correction is ruled out: it changed 126 bytes, all after those features.
+- Likely cause, not yet confirmed: the PC simulation rounds in 32-bit float, while the ESP32-S3 accumulates in 40-bit integers, and small differences add up through the network's layers. The stored sample is also random noise rather than a driving window.
+- Results tagged **C** are measured on the chip and include the difference. Results tagged **Q** come from the PC simulation. Where both exist they agree closely: 94.7 % (C) against 95.1 % (Q) on my car's test windows.
+- Next: export with a real driving window as the sample and a check after every layer, to find where the difference starts.
