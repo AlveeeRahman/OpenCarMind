@@ -744,7 +744,9 @@ static void refresh_est(units_t un)
     bool fresh = have && age_ms < 3000;                 /* the model runs every second; older means paused or no data */
     for (int i = 0; i < 3; i++) {
         char buf[24];
-        if (have) snprintf(buf, sizeof buf, fmt[i], (double)m.last_est[i] / (i == 2 ? gal : 1.0), unit[i]); else snprintf(buf, sizeof buf, "--");
+        if (!have) snprintf(buf, sizeof buf, "--");
+        else if (i == 0 && m.last_class == 0) snprintf(buf, sizeof buf, "holding");    /* stopped: hold pressure is not observable */
+        else snprintf(buf, sizeof buf, fmt[i], (double)m.last_est[i] / (i == 2 ? gal : 1.0), unit[i]);
         lv_label_set_text(s4_est_val[i], buf);
         lv_obj_set_style_text_color(s4_est_val[i], lv_color_hex(fresh ? C_TEXT : C_MUTED), 0);
     }

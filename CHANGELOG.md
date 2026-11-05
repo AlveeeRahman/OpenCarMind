@@ -9,6 +9,8 @@
 - Kconfig `CARMIND_REV_ENABLE` (default on) keeps an E.V-only build possible.
 - Boot: R.E.V's learned-state file is read by the R.E.V task instead of at start-up, which overflowed the 3.5 KB main task stack (seen on the board as three panics and safe mode right after the model self-test).
 - Page 5: beside "AI ESTIMATES" only the time since the model's last answer, which no longer runs into the caption. The estimated fuel rate follows the display units: L/h in metric, gal/h (US or imperial gallon) otherwise.
+- Page 5: the brake row reads "holding" while the model sees the car stopped, since the pressure a driver holds at a standstill cannot be read from OBD. Moving, it shows the estimate in bar.
+- Version 2.5.0 for the firmware and the desktop app on this branch, so its logs and session files are not mistaken for 2.4.0.
 - README: workflow figures redrawn with larger text, and new figures for how the models are made and how R.E.V learns.
 
 - Model renamed to CarMind E.V (was Edge Model 1).
