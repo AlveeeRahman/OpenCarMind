@@ -4,6 +4,8 @@
 
 A new brand, a screen made for the LCD, and a visible power-off.
 
+- Page 1 labels the coolant CAR TEMP and page 5 labels the chip's own temperature SYS TEMP.
+- Light theme reworked for the LCD: pure white view with tiles drawn by their borders, brand navy text, a light blue accent, warm oranges in place of dark browns, a coral power bar, and vivid section colours on page 5. The Mosaico concept shows its three screens in the dark, light and dark themes.
 - **Brand**: a new night-drive palette (navy, warm ink, cobalt, amber) across the README, the website, the desktop app and its icons, and a sharper vector logo. Banner chips now read ESP32-S3, Bluetooth LE, TinyML, Desktop app and Active Learning.
 - **Screen colours for a backlit LCD**: the dark theme is pure black, because any tint in the background glows through the backlight. Text is 4.5:1 or more on every background in both themes. Page 5 gives each of its seven sections its own colour (classifier orange, estimator red), checked for normal and colour-blind vision.
 - **Power-off you can see**: holding BOOT shows "Turning off" while the drive is saved, then "Off, safe to unplug". The backlight fades and the LED stays dark in deep sleep.
