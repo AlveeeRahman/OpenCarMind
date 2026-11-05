@@ -199,6 +199,8 @@ Limits:
 
 The models were trained on public data, the HCRL Driving Dataset (Kwak, Woo and Kim, PST 2016)<sup>[[7]](#ref-7)</sup> and the Vehicle Energy Dataset (Oh, LeBlanc and Peng, 2020, Apache-2.0)<sup>[[8]](#ref-8)</sup>, plus drives from my own car.
 
+The [model card](MODEL_CARD.md) puts every step from E.V to the final R.E.V in one table: size, speed, classifier and fuel-learner scores, before and after, with a key to each metric and where it was measured.
+
 ### CarMind R.E.V results so far
 
 R.E.V's on-board learning has so far been tested only in replay: recorded drives played back through the learners on a computer, with the float version of the network rather than the quantised version on the chip, and with the airflow reading hidden. It has not run on the chip or in a car yet. On test cars that took no part in training:
