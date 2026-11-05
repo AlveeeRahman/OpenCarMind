@@ -118,7 +118,7 @@ static const theme_t *T = &THEME_DARK;
 #define C_RED     (T->red)
 #define C_SAGE    (T->sage)
 #define C_AMBER   (T->amber)      /* an estimated value (no PID behind it) */
-#define C_POWER   (T->power)      /* the power bar on page 1: amber in dark, coral red next to the teal CPU bar in light */
+#define C_POWER   (T->power)      /* the power bar on page 1: amber in dark, coral red next to the blue CPU bar in light */
 #define C_SEV_HIGH (T->sev_high)  /* high-severity fault: orange, ISO 2575 caution, between C_WARN and C_BAD */
 
 static lv_display_t *s_disp;
@@ -633,7 +633,7 @@ static void build_page4(void)
     s4_head = make_label(scr4, &lv_font_montserrat_14, C_ACCENT);
     lv_label_set_text(s4_head, "System");
     lv_obj_set_pos(s4_head, 8, 4);
-    static const char *caps[4] = {"MIPS 0 / 1", "PSRAM", "SYS TEMP", "UPTIME / FW"};    /* SYS TEMP = the chip's own sensor, page 1 TEMP = coolant */
+    static const char *caps[4] = {"MIPS 0 / 1", "PSRAM", "SYS TEMP", "UPTIME / FW"};    /* SYS TEMP = the chip's own sensor, page 1 CAR TEMP = coolant */
     const uint32_t cols[4] = {C_VIOLET, C_TEAL, C_SAGE, C_PINK};            /* TL TR / BL BR */
     for (int i = 0; i < 4; i++) {
         int x = 4 + (i % 2) * 83, y = 24 + (i / 2) * 46;
