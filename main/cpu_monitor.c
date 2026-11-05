@@ -129,8 +129,12 @@ static void cpu_task(void *arg)
     uint32_t prev_total = 0;
     pmu_setup(NULL);
     esp_ipc_call_blocking(1, pmu_setup, NULL);
+    /* fixed-rate release (the FreeRTOS form of clock_nanosleep with TIMER_ABSTIME): a relative vTaskDelay would start
+       each second only after the previous loop ended, so the period would stretch with the loop time and preemption.
+       MIPS stays exact either way (instructions over the cycles actually counted); this keeps the screen's cadence. */
+    TickType_t release = xTaskGetTickCount();
     for (;;) {
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        vTaskDelayUntil(&release, pdMS_TO_TICKS(1000));
         uint32_t total = 0;
         UBaseType_t n = uxTaskGetSystemState(snap, 40, &total);
         uint32_t idle[2] = {0, 0};
