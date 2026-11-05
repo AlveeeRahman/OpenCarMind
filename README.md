@@ -178,9 +178,9 @@ The [model card](MODEL_CARD.md) puts every step from E.V to the final R.E.V in o
 
 ### CarMind R.E.V results so far
 
-<p align="center"><img src="docs/images/leaders.png" width="900" alt="CarMind model leaders. Final R.E.V 2.5.1: 95.1 percent of held-out windows right on two drives of my car, cruising 87.5, braking 96.8, accelerating 91.0, stopped 98.6, KIA test accuracy 87.1, fuel R squared 0.867 learned and 0.867 with 1 percent bad labels. First R.E.V 2.5.0: 78.3 percent, cruising 10.7. E.V 2.4.0: does not learn, KIA macro-F1 0.887, fuel R squared 0.947 on KIA and 0.688 with no airflow"></p>
+<p align="center"><img src="docs/images/leaders.png" width="900" alt="CarMind model leaders. R.E.V: 95.1 percent of held-out windows right on two drives of my car, cruising 87.5, braking 96.8, accelerating 91.0, stopped 98.6, KIA test accuracy 87.1, fuel R squared 0.867 learned and 0.867 with 1 percent bad labels. R.E.V (old): 78.3 percent, cruising 10.7. E.V: 78.9 percent held-out, cruising 13.7, does not learn"></p>
 
-<p align="center"><img src="docs/images/learner-board.png" width="900" alt="Fuel learner leaderboard on 31 unseen VED cars with the airflow hidden, ranked by R squared with 1 percent bad labels: R.E.V learner 2.5.1 0.867, ANIL 0.774, no learning 0.709, R.E.V learner 2.5.0 0.696, Meta-SGD 0.151"></p>
+<p align="center"><img src="docs/images/learner-board.png" width="900" alt="Fuel learner leaderboard on 31 unseen VED cars with the airflow hidden, ranked by R squared with 1 percent bad labels: Huber RLS (R.E.V) 0.867, ANIL 0.774, no learning 0.709, Plain RLS (R.E.V old) 0.696, Meta-SGD 0.151"></p>
 
 R.E.V's learners have been tested in replay on recorded drives from public test cars, through the firmware's own code with faulty readings mixed in, and on two drives in my car. On cars it never saw, learning in the car made its fuel estimate clearly better than the factory one when the airflow reading was missing. The tables are in the [detailed README](https://github.com/AlveeeRahman/OpenCarMind/blob/rev-c2/README.md#carmind-rev-results-so-far).
 
