@@ -26,7 +26,9 @@ h1 { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 38px
 .bar { height: 8px; border-radius: 4px; background: #E6E1D7; margin-top: 6px; overflow: hidden; }
 .bar i { display: block; height: 100%; border-radius: 4px; background: #F2A35E; }
 .num { text-align: center; font-size: 25px; }
-.num small, .size small { display: block; font-size: 14px; color: #57616F; margin-top: 2px; }
+.num, .size, .score { position: relative; line-height: 1.1; }
+.num small, .size small { position: absolute; left: 0; right: 0; top: 100%; display: block; font-size: 14px; line-height: 1.2; color: #57616F; margin-top: 3px; font-weight: 400; }
+.score .bar { position: absolute; left: 0; right: 0; top: 100%; margin-top: 8px; }
 .size { text-align: center; }
 .size .n2 { font-size: 25px; }
 .hi { color: #1A47E0; font-weight: 700; }
