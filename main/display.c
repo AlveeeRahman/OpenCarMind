@@ -869,7 +869,7 @@ static void refresh_page4(const app_status_t *st)
 {
     lv_label_set_text_fmt(s4_tile_val[0], "%.1f / %.1f", st->pmu_mips[0], st->pmu_mips[1]);   /* hardware counters: SYS (core 0) / AI (core 1) */
     uint32_t used_kb = st->psram_total_kb > st->psram_free_kb ? st->psram_total_kb - st->psram_free_kb : 0;
-    lv_label_set_text_fmt(s4_tile_val[1], "%.1f/%.1f MB", used_kb / 1024.0, st->psram_total_kb / 1024.0);
+    lv_label_set_text_fmt(s4_tile_val[1], "%.1f / %.1f MB", used_kb / 1024.0, st->psram_total_kb / 1024.0);   /* "7.8 / 7.8 MB" is 70 of 75 px */
     if (isfinite(st->chip_temp_c)) {
         bool us = (units_t)st->units == UNITS_US;
         lv_label_set_text_fmt(s4_tile_val[2], "%.0f \xC2\xB0%c", us ? st->chip_temp_c * 9.0f / 5.0f + 32.0f : st->chip_temp_c, us ? 'F' : 'C');
