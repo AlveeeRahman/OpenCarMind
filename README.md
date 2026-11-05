@@ -29,12 +29,13 @@ Version 2.5.1. Licence: MIT. Website: <https://alveeerahman.github.io/OpenCarMin
     - 8.1 [Adapter compatibility](#adapter-compatibility)
 9. [Build and flash](#build-and-flash)
 10. [The models](#the-models)
-    - 10.1 [CarMind R.E.V results so far](#carmind-rev-results-so-far)
-    - 10.2 [How the models are made](#how-the-models-are-made)
-    - 10.3 [What R.E.V learns](#what-rev-learns)
-    - 10.4 [How R.E.V learns on the board](#how-rev-learns-on-the-board)
-    - 10.5 [Looking inside R.E.V with explainable AI](#looking-inside-rev-with-explainable-ai)
-    - 10.6 [How R.E.V got better, step by step](#how-rev-got-better-step-by-step)
+    - 10.1 [The test drives](#the-test-drives)
+    - 10.2 [CarMind R.E.V results so far](#carmind-rev-results-so-far)
+    - 10.3 [How the models are made](#how-the-models-are-made)
+    - 10.4 [What R.E.V learns](#what-rev-learns)
+    - 10.5 [How R.E.V learns on the board](#how-rev-learns-on-the-board)
+    - 10.6 [Looking inside R.E.V with explainable AI](#looking-inside-rev-with-explainable-ai)
+    - 10.7 [How R.E.V got better, step by step](#how-rev-got-better-step-by-step)
 11. [Status](#status)
 12. [Next board: ESP-Mosaico with the ESP32-S31](#next-board-esp-mosaico-with-the-esp32-s31)
     - 12.1 [How the S3 and the S31 are compatible](#how-the-s3-and-the-s31-are-compatible)
@@ -207,6 +208,14 @@ On first boot the board connects to the strongest nearby adapter that looks like
 Both models are small quantised 1-D convolutional networks run by ESP-DL<sup>[[6]](#ref-6)</sup>: 8-bit weights and 16-bit activations, which makes them small and fast enough for a microcontroller. With every OBD row the selected model classifies the last 5 seconds and estimates brake pressure, flywheel torque and fuel rate. They were trained on public data, the HCRL Driving Dataset<sup>[[7]](#ref-7)</sup> and the Vehicle Energy Dataset<sup>[[8]](#ref-8)</sup>, plus drives from my own car. Scores on held-out drives and unseen cars are in the [detailed README](https://github.com/AlveeeRahman/OpenCarMind/blob/rev-c2/README.md#the-models).
 
 The [model card](MODEL_CARD.md) puts every step from E.V to the final R.E.V in one table: size, speed, classifier and fuel-learner scores, before and after, with a key to each metric and where it was measured.
+
+### The test drives
+
+I drove my car twice to test the models, and not the way I usually drive. I drove rough, switched cruise control on and off at speed, and did sudden acceleration and brake checks between traffic lights. None of the models on `main` had seen these drives. I score them as if they came from a car the models never met: nothing carries over from my earlier drives, and every learner starts from its factory state.
+
+<p align="center"><img src="docs/images/test-drives-timeline.png" width="900" alt="My two test drives: speed, throttle, accelerator pedal and engine rpm against time, with bands for stops at traffic lights, steady holds and holds with the foot off the pedal"></p>
+
+A comparison with my everyday drives is in [docs/TEST_DRIVES.md](docs/TEST_DRIVES.md).
 
 ### CarMind R.E.V results so far
 
