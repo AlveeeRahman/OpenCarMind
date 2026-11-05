@@ -111,7 +111,6 @@ Public data, the HCRL Driving Dataset (Kwak, Woo and Kim, PST 2016) and the Vehi
 ## Limitations
 
 - The classifier gains are measured on one car, mine, with labels from a rule on the raw signals, which cannot see the brake pedal.
-- The fuel learner numbers are replay results with the float network. On the chip it has run on my car's first drives, and the field tests on other cars are still to come.
 - Outside one data set there is no brake-switch signal, so braking and cruising stay partly ambiguous. Brake pressure (R² 0.46 for E.V) is the weakest estimate.
 - No diesel car is in the data. Physics torque is for petrol engines and was checked on one public car.
 - CarMind E.V still calls steady cruising "braking". Only R.E.V got the corrected head.
