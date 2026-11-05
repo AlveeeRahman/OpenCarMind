@@ -167,6 +167,8 @@ On first boot the board connects to the strongest nearby adapter that looks like
 
 ## The models
 
+<p align="center"><img src="docs/images/ev-multihead.gif" width="900" alt="Animated, CarMind E.V in four steps: five seconds of driving from 10 OBD signals cut into one-second bins, one shared trunk of 1-D convolutions, two heads (a manoeuvre class of stopped, braking, accelerating or cruising, and estimates of brake pressure, torque and fuel rate), and the answer for every OBD row on the road"></p>
+
 Both models are small quantised 1-D convolutional networks run by ESP-DL<sup>[[6]](#ref-6)</sup>: 8-bit weights and 16-bit activations, which makes them small and fast enough for a microcontroller. With every OBD row the selected model classifies the last 5 seconds and estimates brake pressure, flywheel torque and fuel rate. They were trained on public data, the HCRL Driving Dataset<sup>[[7]](#ref-7)</sup> and the Vehicle Energy Dataset<sup>[[8]](#ref-8)</sup>, plus drives from my own car. Scores on held-out drives and unseen cars are in the [detailed README](https://github.com/AlveeeRahman/OpenCarMind/blob/rev-c2/README.md#the-models).
 
 ### CarMind R.E.V results so far
@@ -180,6 +182,8 @@ R.E.V's learners have been tested in replay on recorded drives from public test 
 E.V is trained so that the version on the chip scores like the one on a computer. R.E.V starts from E.V's design, is pruned to about half the parameters, and learns from E.V as its teacher on a wider set of public drives. The training code and data stay in a private repository. The shipped files are in [ml/onboard](ml/onboard) and [ml/onboard/rev](ml/onboard/rev), and [docs/MODEL.md](docs/MODEL.md) lists their inputs and outputs.
 
 ### What R.E.V learns
+
+<p align="center"><img src="docs/images/workflow/rev-learning.png" width="900" alt="How CarMind R.E.V keeps learning in the car. The frozen network gives 64 features. Manoeuvre class and brake pressure are fixed, engine torque is a physics estimate sized from the airflow constant, and the fuel rate's read-out is refit on the board and goes live only if it is better on held-back rows. An airflow constant is learned from load and rpm, fill-ups give one calibration factor, and the tank size is learned from the fuel level"></p>
 
 The network itself never changes in the car, which protects it from forgetting what it learned in training<sup>[[9]](#ref-9)</sup>. Small parts on top of it learn, each only from something the car gives it to check against.
 
@@ -195,7 +199,7 @@ The network itself never changes in the car, which protects it from forgetting w
 
 ### How R.E.V learns on the board
 
-<p align="center"><img src="docs/images/workflow/rev-learning.png" width="900" alt="How CarMind R.E.V keeps learning in the car. The frozen network gives 64 features. Manoeuvre class and brake pressure are fixed, engine torque is a physics estimate sized from the airflow constant, and the fuel rate's read-out is refit on the board and goes live only if it is better on held-back rows. An airflow constant is learned from load and rpm, fill-ups give one calibration factor, and the tank size is learned from the fuel level"></p>
+<p align="center"><img src="docs/images/rev-learner.gif" width="900" alt="Animated, R.E.V's fuel learner in five steps: the network stays frozen and only the 65-weight fuel read-out learns, every label passes a gate that drops implausible ones, unusual labels count less and old drives fade, a refit every 30 windows goes live only if it wins on the last 150, and the learned estimate follows the true fuel rate better than the factory one"></p>
 
 The last layer, which turns the network's features into a fuel rate, is refit from your car's own readings. A refit goes live only if it beats the current one on recent driving, and the board goes back to the factory version if learning ever makes things worse. Since 2.5.1 the learner ignores implausible readings and gives less weight to unusual ones<sup>[[10]](#ref-10)</sup>, so a faulty sensor cannot spoil what it learned. When the car reports neither fuel rate nor airflow, the board uses whichever estimate has been most accurate on your car so far and shows it in amber. What R.E.V learned is saved to the SD card while you drive.
 
