@@ -12,7 +12,7 @@ OpenCarMind is an open-source OBD2 logger and dashboard for the ESP32, with Tiny
 
 It ships two on-board models, and you choose between them in the desktop app. CarMind E.V is fixed and tested. CarMind R.E.V is my first model that keeps learning in your car: the board itself updates part of the model from what your car reports while you drive, with no computer or cloud in the loop.
 
-Version 2.5.1. Licence: MIT. Website: <https://alveeerahman.github.io/OpenCarMind/>. Downloads for the firmware and the desktop app are on the [Releases page](https://github.com/AlveeeRahman/OpenCarMind/releases/latest). The full methods, metrics and results behind CarMind R.E.V are in the [detailed README on the `rev-c2` branch](https://github.com/AlveeeRahman/OpenCarMind/blob/rev-c2/README.md).
+Version 2.5.1. Licence: MIT. Website: <https://alveeerahman.github.io/OpenCarMind/>. Downloads for the firmware and the desktop app are on the [Releases page](https://github.com/AlveeeRahman/OpenCarMind/releases/latest).
 
 ## Contents
 
