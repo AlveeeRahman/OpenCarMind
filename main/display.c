@@ -87,14 +87,18 @@ static const char *TAG = "display";
  * themes, dim (an idle link) at least 3:1. Dark tiles are near-black (#050505): a grey fill reads as a lit panel
  * on this backlight, so tiles are drawn by their borders. Page 5 gives each of its seven sections its own colour,
  * placed by enumerating all arrangements: in dark, no two sections closer than 15.4 (OKLab x100) for normal vision and
- * every pair that touches at least 8.4 for colour-blind readers; in light, at least 14.7 for normal vision. Each
- * section has a caption, so colour is never the only cue. All values stay distinct after RGB565. */
+ * every pair that touches at least 8.4 for colour-blind readers. Light uses the same hues deepened to saturated mid tones
+ * on pure white (bg #FFFFFF, tiles #FCFCFC, the same on the RGB565 panel, so tiles are drawn by their borders as in
+ * dark), brand navy text, a light blue accent, light warm oranges, no near-black tints that read as mud on the LCD:
+ * body colours at least 4.5:1 on the white tile, the accent and the two oranges at least 3:1 (large numbers, bars, bold heads). The dark theme's pastels
+ * would be 1.4 to 2.6:1 on white. Each section has a caption, so colour is never the only cue. All values stay
+ * distinct after RGB565. */
 typedef struct { uint32_t bg, tile, text, muted, accent, ok, warn, bad, border, dim, violet, blue, amber, sev_high, teal, pink,
-                 orange, red, sage; } theme_t;
+                 orange, red, sage, power; } theme_t;
 static const theme_t THEME_DARK  = {0x000000, 0x050505, 0xF2ECE1, 0xB8B8B8, 0x8CC8FF, 0x56F487, 0xFCCA21, 0xE64343, 0x4A4A4A, 0x7A7A7A,
-                                    0xAD8DFD, 0x38B8F6, 0xF2A13A, 0xF08E54, 0x72ECE4, 0xFE86C2, 0xFE860F, 0xFD122E, 0x6CB35D};
-static const theme_t THEME_LIGHT = {0xF5F5F5, 0xFFFFFF, 0x101418, 0x4A4A4A, 0x1F4FC2, 0x1B6B2A, 0x6B4A00, 0xC62828, 0x8C8C8C, 0x6E6E6E,
-                                    0x5517A5, 0x196EA9, 0x8F5200, 0xA84300, 0x034239, 0x971C65, 0xA65F00, 0xD4002A, 0x40731A};
+                                    0xAD8DFD, 0x38B8F6, 0xF2A13A, 0xF08E54, 0x72ECE4, 0xFE86C2, 0xFE860F, 0xFD122E, 0x6CB35D, 0xF2A33A};
+static const theme_t THEME_LIGHT = {0xFFFFFF, 0xFCFCFC, 0x15202D, 0x4A5563, 0x3B82F6, 0x15803D, 0xB45309, 0xC62828, 0x8C8C8C, 0x6B7280,
+                                    0x7C3AED, 0x1D4ED8, 0xDD6E0E, 0xC2410C, 0x0E7490, 0xA21CAF, 0xEA6A12, 0xBE123C, 0x4D7C0F, 0xE5484D};
 static const theme_t *T = &THEME_DARK;
 #define C_BG      (T->bg)
 #define C_TILE    (T->tile)
@@ -114,6 +118,7 @@ static const theme_t *T = &THEME_DARK;
 #define C_RED     (T->red)
 #define C_SAGE    (T->sage)
 #define C_AMBER   (T->amber)      /* an estimated value (no PID behind it) */
+#define C_POWER   (T->power)      /* the power bar on page 1: amber in dark, coral red next to the teal CPU bar in light */
 #define C_SEV_HIGH (T->sev_high)  /* high-severity fault: orange, ISO 2575 caution, between C_WARN and C_BAD */
 
 static lv_display_t *s_disp;
@@ -340,7 +345,7 @@ static void build_page0(void)
     lv_obj_set_pos(lbl_speed, 6, 107);
 
     /* 2x2 tiles */
-    static const char *caps[4] = {"TEMP " "\xC2\xB0" "C", "BATTERY V", "KM/L", "FUEL %"};   /* TEMP = coolant, as car dashboards show it */
+    static const char *caps[4] = {"CAR TEMP " "\xC2\xB0" "C", "BATTERY V", "KM/L", "FUEL %"};   /* CAR TEMP = coolant, as car dashboards show it */
     for (int i = 0; i < 4; i++) {
         int x = 8 + (i % 2) * 80, y = 156 + (i / 2) * 52;
         make_tile(scr0, x, y, 76, 48, caps[i], &tile_val[i], &tile_cap[i]);
@@ -363,7 +368,7 @@ static void build_page0(void)
         lv_obj_set_pos(*bars[i], 52, y + 4);
         lv_bar_set_range(*bars[i], 0, 100);
         lv_obj_set_style_bg_color(*bars[i], lv_color_hex(C_BORDER), LV_PART_MAIN);
-        lv_obj_set_style_bg_color(*bars[i], lv_color_hex(i ? C_AMBER : C_ACCENT), LV_PART_INDICATOR);
+        lv_obj_set_style_bg_color(*bars[i], lv_color_hex(i ? C_POWER : C_ACCENT), LV_PART_INDICATOR);
         lv_obj_set_style_radius(*bars[i], 4, LV_PART_MAIN);
         lv_obj_set_style_radius(*bars[i], 4, LV_PART_INDICATOR);
         *vals[i] = make_label(scr0, &lv_font_montserrat_12, C_TEXT);
@@ -573,7 +578,7 @@ static void refresh_page3(const app_status_t *st)
 }
 
 /* page 4: four fixed tiles, three event lines coloured by level, then two live strips: the soft real-time scheduler
- * (one row per registered job) and the on-board model. Tiles: CPU violet, PSRAM aqua / TEMP green, UPTIME pink.
+ * (one row per registered job) and the on-board model. Tiles: CPU violet, PSRAM aqua / SYS TEMP green, UPTIME pink.
  * Strips: jobs sky, the classifier orange, the estimator red. Violet and sky, the closest pair for colour-blind
  * readers, never touch. */
 #define S4_JOBS  3
@@ -628,7 +633,7 @@ static void build_page4(void)
     s4_head = make_label(scr4, &lv_font_montserrat_14, C_ACCENT);
     lv_label_set_text(s4_head, "System");
     lv_obj_set_pos(s4_head, 8, 4);
-    static const char *caps[4] = {"MIPS 0 / 1", "PSRAM", "TEMP", "UPTIME / FW"};    /* CPU % and power are on page 1 */
+    static const char *caps[4] = {"MIPS 0 / 1", "PSRAM", "SYS TEMP", "UPTIME / FW"};    /* SYS TEMP = the chip's own sensor, page 1 TEMP = coolant */
     const uint32_t cols[4] = {C_VIOLET, C_TEAL, C_SAGE, C_PINK};            /* TL TR / BL BR */
     for (int i = 0; i < 4; i++) {
         int x = 4 + (i % 2) * 83, y = 24 + (i / 2) * 46;
@@ -1094,7 +1099,7 @@ static void refresh_cb(lv_timer_t *t)
 
     /* economy: the drive's average, or the instant value until enough is counted; amber when it rests on the model */
     if (new_units) lv_label_set_text(tile_cap[2], un == UNITS_METRIC ? "KM/L" : un == UNITS_UK ? "MPG (UK)" : "MPG");
-    if (new_units) lv_label_set_text(tile_cap[0], un == UNITS_US ? "TEMP \xC2\xB0" "F" : "TEMP \xC2\xB0" "C");
+    if (new_units) lv_label_set_text(tile_cap[0], un == UNITS_US ? "CAR TEMP \xC2\xB0" "F" : "CAR TEMP \xC2\xB0" "C");
     {
         float kpl = o->econ_trip_kpl >= 0 ? o->econ_trip_kpl : o->econ_inst_kpl;
         if (live && kpl >= 0) {
