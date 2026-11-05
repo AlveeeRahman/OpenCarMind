@@ -16,6 +16,7 @@ A new brand, a screen made for the LCD, and a visible power-off.
 - **Source layout**: the firmware source is grouped by subsystem under `main/` (`obd/`, `model/`, `analysis/`, `ui/`, `storage/`, `net/`, `system/`), mapped in `docs/ARCHITECTURE.md`. No include line, function or behaviour changed. The desktop app's Rust core is split into `sessions`, `settings` and `fuel` modules.
 - **Supply chain**: CodeQL on every commit, a libFuzzer harness over the input parsers (`tests/fuzz`) in CI, Dependabot, Python test dependencies pinned by hash, the release's provenance bundle attached as a release asset, CODEOWNERS, a pull-request template, a code of conduct and `CITATION.cff`.
 - **Desktop app**: the Board page says new boards start on CarMind R.E.V, shows the running model's mark, and the header carries the brand logo.
+- **USB door**: pairing codes are drawn from the hardware RNG without modulo bias. The app says when the board's 10-minute session has ended, and can restart the board. SECURITY.md describes the clock sync as it is: one HTTPS host, certificate checked, time from the Date header.
 
 ## 2.5.1
 
