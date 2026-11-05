@@ -35,8 +35,8 @@ Version 2.5.1. Licence: MIT. Website: <https://alveeerahman.github.io/OpenCarMin
 | Status | released in 2.4.0, the default | new in 2.5.0, improved in 2.5.1 |
 | Size on the chip | about 89 KB | about 66 KB |
 | Parameters | 38,679 | 19,815 |
-| Time per run on the ESP32-S3 | about 3.5 ms | about 2.9 ms |
-| Learns in your car | nothing, the model is fixed | its fuel estimate, an airflow constant that also gives the engine size, and the fuel tank size. Engine torque comes from physics sized to your engine |
+| Time per run on the ESP32-S3 | about 3.5 ms, 2.9 ms on the bench | about 2.9 ms in the car (median), 2.2 ms on the bench |
+| Learns in your car | the model is fixed. The tank size and fill-up calibration learn with either model | its fuel estimate and an airflow constant that also gives the engine size, so its torque estimate learns your engine too. Plus the tank size and fill-up calibration, like E.V |
 | Steady cruising with your foot on the gas | can be shown as braking | corrected in 2.5.1 |
 | Fill-up calibration | yes | yes |
 | Best for | a fixed, tested model | older cars, roughly pre-2020, that have no fuel-rate PID and can lose the airflow (MAF) reading |
@@ -218,7 +218,7 @@ The network itself never changes in the car, which protects it from forgetting w
 | Airflow constant (also the engine size) | learns | airflow, engine load and rpm while the airflow sensor works |
 | Fill-up calibration, both models | learns | the litres you pump, entered in the app |
 | Fuel tank size, both models | learns | the fuel used against the drop in the fuel level |
-| Engine torque | physics, sized to your engine | the energy in the fuel minus friction, using the learned engine size |
+| Engine torque | learns, through the engine size | the energy in the fuel minus friction, using the engine size R.E.V learns. Planned: a learned torque read-out on cars that report torque (see Limitations) |
 | Manoeuvre class | fixed | nothing yet: the car gives no label for it |
 | Brake pressure | fixed | nothing: no car reports it |
 
@@ -273,7 +273,9 @@ OpenCarMind will ship a release for the ESP-Mosaico that runs CarMind R.E.V only
 
 ## Limitations and future work
 
-- **Torque is a physics estimate, not a measurement**, checked against one public car and for petrol engines only.
+- **Torque is a physics estimate, not a measurement**, checked against one public car and for petrol engines only. R.E.V learns the engine size it uses, about 2.1 L from my car's last two drives, but not the torque itself. Cars that report torque (PIDs 0x62 and 0x63) could give a learned torque read-out its label, the way the fuel read-out learns now, and then the physics would not be needed. That is planned, not built or tested. My Sentra and most pre-2020 cars report no torque, so there is no label, and physics, or the ESP-Mosaico's accelerometer as a label, stays needed there.
+- **Time per run has a long tail in the car.** The median is about 2.9 ms for R.E.V, but 14 to 16 % of runs on my last two drives took over 10 ms and the slowest 146 ms, because other jobs pre-empt the model. When the airflow sensor works, R.E.V also runs a second pass with airflow hidden for its learner, so one window costs about 5.5 ms. On the bench, with nothing else running, a run takes 2.2 ms.
+- **The chip's built-in self-test does not match the PC simulation exactly.** One output differs by 7.8 %, likely from different accumulator precision. The on-chip replay results (94.7 % on my car's test windows) are measured on the chip itself, so they include this difference.
 - **The classifier and brake pressure do not learn in the car yet.** Accelerometer labels on the ESP-Mosaico and a self-check that forecasts the next moment are the routes being worked on.
 - **No Wi-Fi upload yet.** It is being reworked so a lost packet on weak home Wi-Fi does not stall every file, as in QUIC<sup>[[13]](#ref-13)</sup>. Until then drives come over the USB cable.
 - **The clock is only as exact as one second**, and it needs a known Wi-Fi network within reach.

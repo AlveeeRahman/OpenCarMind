@@ -34,9 +34,9 @@ Evidence level, shown in the "Where" column:
 | Parameters | 38,679 | 19,815 | 19,815 |
 | Size on the chip | 89,152 bytes | 65,648 bytes | 65,648 bytes |
 | Arithmetic | int8 weights, int16 activations | int8 weights, int16 activations | int8 weights, int16 activations |
-| Time per run on the ESP32-S3 (**C**) | about 3.5 ms | about 2.9 ms | about 2.9 ms |
+| Time per run on the ESP32-S3 (**C**) | about 3.5 ms, 2.9 ms on the bench | about 2.9 ms in the car (median), 2.2 ms on the bench | the same |
 | Outputs | manoeuvre class (stopped, braking, accelerating, cruising), brake pressure, flywheel torque, fuel rate | same | same |
-| Learns in the car | nothing | fuel read-out, airflow constant, tank size | the same, outlier-robust |
+| Learns in the car | tank size and fill-up only (both models) | fuel read-out, airflow constant (engine size, which sizes the torque estimate), tank size | the same, outlier-robust |
 | Held-out windows, 2 drives of my car (**Q, D**) | 78.9 % | 78.3 % | 95.1 % |
 | Steady cruising, foot on the gas (**Q, D**) | 13.7 % right | 10.7 % right | 87.5 % right |
 
@@ -115,5 +115,7 @@ Public data, the HCRL Driving Dataset (Kwak, Woo and Kim, PST 2016) and the Vehi
 
 - The classifier gains are measured on one car, mine, with labels from a rule on the raw signals, which cannot see the brake pedal.
 - Outside one data set there is no brake-switch signal, so braking and cruising stay partly ambiguous. Brake pressure (R² 0.46 for E.V) is the weakest estimate.
-- No diesel car is in the data. Physics torque is for petrol engines and was checked on one public car.
+- No diesel car is in the data. Physics torque is for petrol engines and was checked on one public car. R.E.V learns the engine size the physics uses (about 2.1 L on my car's last two drives), not the torque itself. A learned torque read-out from cars that report torque (PIDs 0x62 and 0x63) is planned, not built. Cars without those PIDs, like my Sentra, have no torque label, so physics or an accelerometer label stays needed there.
+- In the car, time per run has a long tail: median about 2.9 ms for R.E.V, but 14 to 16 % of runs took over 10 ms (slowest 146 ms) on my last two drives, because other jobs pre-empt the model. With airflow present R.E.V runs a second pass for its learner, about 5.5 ms per window in all. Bench, nothing else running: 2.2 ms.
+- The chip's built-in self-test differs from the PC simulation by 7.8 % on one output. Results tagged **C** are measured on the chip and include it. Results tagged **Q** come from the PC simulation.
 - CarMind E.V still calls steady cruising "braking". Only R.E.V got the corrected head.
