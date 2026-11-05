@@ -8,6 +8,8 @@
 <img src="https://img.shields.io/badge/chip-ESP32--S3-lightgrey.svg" alt="ESP32-S3">
 </p>
 
+> **This is the detailed branch.** It keeps every method, metric and result behind CarMind R.E.V: the explainable-AI analysis with Grad-CAM, the classifier correction, the learner fault tests and the meta-learner comparison, and the full ESP-Mosaico notes. The short, easy-to-read README is on [`main`](https://github.com/AlveeeRahman/OpenCarMind/tree/main).
+
 OpenCarMind turns an ESP32-S3 board and a Bluetooth OBD-II adapter into a car data logger that runs a neural network on the board. It needs no phone, no account and no internet connection. Everything it records goes to an SD card in the car and, if you pair the board, to the desktop app on your own computer.
 
 It ships two on-board models, and you choose between them in the desktop app. CarMind E.V is fixed and tested. CarMind R.E.V is my first model that keeps learning in your car. It uses on-device learning, which means the board itself updates part of the model from what your car reports while you drive, with no computer or cloud in the loop.
