@@ -34,7 +34,7 @@ Evidence level, shown in the "Where" column:
 | Parameters | 38,679 | 19,815 | 19,815 |
 | Size on the chip | 89,152 bytes | 65,648 bytes | 65,648 bytes |
 | Arithmetic | int8 weights, int16 activations | int8 weights, int16 activations | int8 weights, int16 activations |
-| Time per run on the ESP32-S3 (**C**) | about 3.5 ms, 2.9 ms on the bench | about 2.9 ms in the car (median), 2.2 ms on the bench | the same |
+| Time per run on the ESP32-S3 (**C**) | about 3.5 ms in the car, 2.9 ms on the bench | about 2.9 ms in the car (median), 2.2 ms on the bench | the same |
 | Outputs | manoeuvre class (stopped, braking, accelerating, cruising), brake pressure, flywheel torque, fuel rate | same | same |
 | Learns in the car | tank size and fill-up only (both models) | fuel read-out, airflow constant (engine size, which sizes the torque estimate), tank size | the same, outlier-robust |
 | Held-out windows, 2 drives of my car (**Q, D**) | 78.9 % | 78.3 % | 95.1 % |

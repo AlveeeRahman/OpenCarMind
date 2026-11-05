@@ -35,7 +35,7 @@ Version 2.5.1. Licence: MIT. Website: <https://alveeerahman.github.io/OpenCarMin
 | Status | released in 2.4.0, the default | new in 2.5.0, improved in 2.5.1 |
 | Size on the chip | about 89 KB | about 66 KB |
 | Parameters | 38,679 | 19,815 |
-| Time per run on the ESP32-S3 | about 3.5 ms, 2.9 ms on the bench | about 2.9 ms in the car (median), 2.2 ms on the bench |
+| Time per run on the ESP32-S3 | about 3.5 ms in the car, 2.9 ms on the bench | about 2.9 ms in the car (median), 2.2 ms on the bench |
 | Learns in your car | the model is fixed. The tank size and fill-up calibration learn with either model | its fuel estimate and an airflow constant that also gives the engine size, so its torque estimate learns your engine too. Plus the tank size and fill-up calibration, like E.V |
 | Steady cruising with your foot on the gas | can be shown as braking | corrected in 2.5.1 |
 | Fill-up calibration | yes | yes |
