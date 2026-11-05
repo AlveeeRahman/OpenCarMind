@@ -68,7 +68,7 @@ const CHANNELS: [(&str, &str); 6] = [
 ];
 /// Columns that are bookkeeping, not car data.
 const NOT_DATA: [&str; 4] = ["seq", "uptime_ms", "epoch_ms", "window_seq"];
-const KNOWN_UNITS: [(&str, &str); 74] = [
+const KNOWN_UNITS: [(&str, &str); 77] = [
     ("engine_load_pct", "%"),
     ("coolant_c", "°C"),
     ("stft_b1_pct", "%"),

@@ -8,6 +8,7 @@ sdkconfig.old
 # host unit-test binary
 tests/host/carmind_tests
 tests/host/rev_tests
+tests/host/tank_tests
 # editor / OS
 .vscode/
 .DS_Store
