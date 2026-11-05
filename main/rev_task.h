@@ -56,6 +56,7 @@ void  rev_pair(const float phi[REV_NF], float y_std, float label_lph, float prio
 typedef struct {
     bool     enabled, learning, safe, saved, sd;
     uint32_t commits, resets, kept, failed, learned, pairs, dropped, saves;
+    uint32_t rejected;                 /* labels above REV_LABEL_MAX_LPH plus pairs the learner dropped as outliers */
     float    drift, mse_live, mse_prior;
     float    err[3]; uint32_t n_err[3];        /* running squared error, L/h^2: factory, learned, physics */
     rev_src_t prefer;

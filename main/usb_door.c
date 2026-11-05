@@ -182,9 +182,9 @@ static void cmd_rev_status(void)
     static const char *const src[] = {"model", "learned", "phys"};
     reply("D state model=%s enabled=%d learning=%d safe=%d sd=%d saved=%d saves=%lu row_ms=%.0f", ml_model_key(ml_model_active()),
           st.enabled, st.learning, st.safe, st.sd, st.saved, (unsigned long)st.saves, (double)st.row_ms);
-    reply("D fuel commits=%lu resets=%lu kept=%lu failed=%lu learned=%lu pairs=%lu dropped=%lu drift=%.3f mse_live=%.4f mse_factory=%.4f",
+    reply("D fuel commits=%lu resets=%lu kept=%lu failed=%lu learned=%lu pairs=%lu dropped=%lu rejected=%lu drift=%.3f mse_live=%.4f mse_factory=%.4f",
           (unsigned long)st.commits, (unsigned long)st.resets, (unsigned long)st.kept, (unsigned long)st.failed, (unsigned long)st.learned,
-          (unsigned long)st.pairs, (unsigned long)st.dropped, (double)st.drift, (double)st.mse_live, (double)st.mse_prior);
+          (unsigned long)st.pairs, (unsigned long)st.dropped, (unsigned long)st.rejected, (double)st.drift, (double)st.mse_live, (double)st.mse_prior);
     reply("D error factory=%.4f learned=%.4f phys=%.4f n_factory=%lu n_learned=%lu n_phys=%lu prefer=%s", (double)st.err[0], (double)st.err[1],
           (double)st.err[2], (unsigned long)st.n_err[0], (unsigned long)st.n_err[1], (unsigned long)st.n_err[2], src[st.prefer]);
     reply("D phys k=%.4e ready=%d rows=%lu path=%s", (double)st.k, st.k_ready, (unsigned long)st.k_rows, st.k_calc ? "calc" : "abs");

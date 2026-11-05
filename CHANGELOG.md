@@ -1,8 +1,12 @@
 # Changelog
 
-## Unreleased
+## 2.5.1
+
+CarMind R.E.V, corrected and harder to break. The model name stays CarMind R.E.V.
 
 - **CarMind R.E.V, corrected classifier head** (`6e6d698c44c5`, replaces `f70bdcd3151b`): R.E.V no longer calls steady cruising with the throttle open "braking". On two held-out drives of my car, cruising 10.7 % → 87.5 % right and all labelled windows 78.3 % → 95.1 %; on the public KIA test set accuracy 88.9 % → 87.1 %. Only the classifier head changed (126 bytes), so learned fuel, airflow and tank state carry over. See "Looking inside R.E.V with explainable AI" in the README.
+- **Outlier-robust fuel learner**: Huber weights on a running error scale, pairs with an error over 10 times that scale dropped, labels above 120 L/h ignored (also by the source picker), refits judged with the Huber loss. With 1 % implausible labels on 31 public test cars, fuel R² with the airflow hidden stays 0.867 (2.5.0: 0.696). Learned state from 2.5.0 loads unchanged. REV-STATUS reports `rejected=`.
+- **Checked against meta-learning**: ANIL and Meta-SGD (learn2learn) on the same frozen trunk scored 0.778 and 0.197 on clean labels, so the closed-form learner stays.
 - `tools/gen_ml_params.py`: the learned-state id can name an earlier model through `prior_sha256` in `export.json`, for model changes that keep the trunk and the estimate head.
 
 ## 2.5.0

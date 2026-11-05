@@ -32,9 +32,16 @@
 #define REV_GATE      0.98f         /* a candidate must be 2 % better than the live weights on the holdout */
 #define REV_DRIFT     3.0f          /* and stay within 3 x |w0| of w0 */
 #define REV_RESET     1.05f         /* live weights 5 % worse than w0 on the holdout: back to w0 */
+/* Outlier-robust learning (robust recursive least squares: Huber weights on a running residual scale, plus hard rejection).
+   s is the exponential mean of |y - phi.w_live| over REV_SCALE_ROWS pairs, seeded by the mean of the first REV_SEED_ROWS. */
+#define REV_HUBER_C   3.0f          /* a pair enters A and b with weight min(1, C s / |r|) */
+#define REV_REJECT_R  10.0f         /* |r| > R s: the pair is dropped */
+#define REV_SCALE_ROWS 200.0f
+#define REV_SEED_ROWS 30
+#define REV_LABEL_MAX_LPH 120.0f    /* labels above this (L/h) are implausible for a car and never reach a learner */
 
 /* ---------------------------------------------------------------- (a) fuel head */
-typedef struct { float phi[REV_NF]; float y; } rev_pair_t;
+typedef struct { float phi[REV_NF]; float y, h; } rev_pair_t;   /* h: Huber weight */
 
 typedef enum { REV_WAIT = 0, REV_ACCEPTED, REV_KEPT, REV_RESET_PRIOR, REV_SOLVE_FAILED } rev_commit_t;
 
@@ -48,7 +55,9 @@ typedef struct {
     int      ring_head, ring_n;
     uint32_t n;                       /* pairs seen since start: the REV_EVERY cadence */
     uint32_t commits, resets, kept, failed, learned;
-    float    mse_live, mse_cand, mse_prior;   /* of the last commit, on the holdout */
+    float    mse_live, mse_cand, mse_prior;   /* of the last commit, on the holdout (Huber loss at C s) */
+    float    s;                       /* running residual scale, standardised units; not saved, re-seeded after a boot */
+    uint32_t seen, rejected;          /* pairs taken since the scale was seeded; pairs dropped as outliers */
     float    M[REV_NF][REV_NF];       /* solve scratch */
     float    x[REV_NF];
 } rev_fuel_t;
@@ -58,8 +67,8 @@ void  rev_fuel_init(rev_fuel_t *L, const float *w0);
 void  rev_fuel_reset(rev_fuel_t *L);
 float rev_fuel_predict(const rev_fuel_t *L, const float phi[REV_NF]);         /* live head, standardised units */
 float rev_fuel_predict_prior(const rev_fuel_t *L, const float phi[REV_NF]);   /* factory head */
-/* One labelled pair (y standardised). The oldest held-out pair moves into A and b. Returns true when a commit is due. A pair
-   with a value that is not finite is ignored. */
+/* One labelled pair (y standardised). The oldest held-out pair moves into A and b with its Huber weight. Returns true when a
+   commit is due. A pair with a value that is not finite, or with a residual over REV_REJECT_R times the running scale, is ignored. */
 bool  rev_fuel_add(rev_fuel_t *L, const float phi[REV_NF], float y);
 /* Solve, gate, swap. msg (may be NULL) gets one human line. */
 rev_commit_t rev_fuel_commit(rev_fuel_t *L, char *msg, size_t msg_n);

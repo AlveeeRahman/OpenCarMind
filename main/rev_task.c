@@ -67,7 +67,7 @@ static TaskHandle_t s_task;
 static sched_job_t s_job = -1;
 static volatile bool s_learning, s_driving, s_save_req, s_reset_fuel_req;
 static volatile float s_c = 1.0f;
-static volatile uint32_t s_pairs, s_dropped, s_saves;
+static volatile uint32_t s_pairs, s_dropped, s_saves, s_implausible;
 static volatile bool s_saved_ok;
 static bool s_safe, s_ready;
 static cal_nvs_t s_nv;                                      /* the calibration read from NVS at boot, merged when the card is read */
@@ -170,10 +170,14 @@ static void rev_task(void *arg)
             /* CPU reservation: wait for budget before each bounded step; meanwhile pairs queue up (a full queue drops) */
             while (!sched_cpu_available(s_job)) vTaskDelay(pdMS_TO_TICKS(50));
             sched_begin(s_job);
-            rev_pick_score(&s_pick, m.label, true, m.prior, true, m.learned, m.phys_ok, m.phys);
+            if (m.label >= 0.0f && m.label <= REV_LABEL_MAX_LPH) {     /* an implausible label teaches nothing */
+                rev_pick_score(&s_pick, m.label, true, m.prior, true, m.learned, m.phys_ok, m.phys);
 #if CONFIG_CARMIND_REV_ENABLE
-            if (rev_fuel_add(&s_fuel, m.phi, m.y)) commit_due = true;
+                if (rev_fuel_add(&s_fuel, m.phi, m.y)) commit_due = true;
 #endif
+            } else {
+                s_implausible++;
+            }
             s_pairs++;
             dirty = true;
             sched_end(s_job);
@@ -445,8 +449,10 @@ void rev_get_status(rev_status_t *o)
     o->commits = s_fuel.commits; o->resets = s_fuel.resets; o->kept = s_fuel.kept; o->failed = s_fuel.failed; o->learned = s_fuel.learned;
     o->drift = rev_fuel_drift(&s_fuel);
     o->mse_live = s_fuel.mse_live; o->mse_prior = s_fuel.mse_prior;
+    o->rejected = s_fuel.rejected;
 #endif
     o->pairs = s_pairs; o->dropped = s_dropped; o->saves = s_saves;
+    o->rejected += s_implausible;
     for (int i = 0; i < 3; i++) { o->err[i] = s_pick.e[i]; o->n_err[i] = s_pick.n[i]; }
     o->row_ms = s_row_ms;
     o->torque_nm = s_tq_nm; o->torque_src = s_tq_src; o->torque_idle = s_tq_idle; o->torque_ok = isfinite(o->torque_nm);

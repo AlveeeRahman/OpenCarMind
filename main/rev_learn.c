@@ -27,6 +27,7 @@ void rev_fuel_reset(rev_fuel_t *L)
     L->ring_head = L->ring_n = 0;
     L->n = L->commits = L->resets = L->kept = L->failed = L->learned = 0;
     L->mse_live = L->mse_cand = L->mse_prior = 0;
+    L->s = 0; L->seen = L->rejected = 0;
 }
 
 void rev_fuel_init(rev_fuel_t *L, const float *w0)
@@ -42,8 +43,9 @@ static void fold(rev_fuel_t *L, const rev_pair_t *p)        /* a pair leaves the
 {
     for (int i = 0; i < REV_NF; i++) {
         float pi = p->phi[i];
-        for (int j = i; j < REV_NF; j++) L->A[i][j] = REV_LAMBDA * L->A[i][j] + pi * p->phi[j];
-        L->b[i] = REV_LAMBDA * L->b[i] + pi * p->y;
+        float hp = p->h * pi;
+        for (int j = i; j < REV_NF; j++) L->A[i][j] = REV_LAMBDA * L->A[i][j] + hp * p->phi[j];
+        L->b[i] = REV_LAMBDA * L->b[i] + hp * p->y;
     }
     L->learned++;
 }
@@ -51,6 +53,15 @@ static void fold(rev_fuel_t *L, const rev_pair_t *p)        /* a pair leaves the
 bool rev_fuel_add(rev_fuel_t *L, const float phi[REV_NF], float y)
 {
     if (!isfinite(y) || !finite_vec(phi, REV_NF)) return false;
+    float r = fabsf(dot(phi, L->w[L->live]) - y);
+    if (L->seen < REV_SEED_ROWS) {
+        L->s += (r - L->s) / (float)(L->seen + 1);
+    } else {
+        if (r > REV_REJECT_R * fmaxf(L->s, 1e-6f)) { L->rejected++; return false; }
+        L->s += (r - L->s) / REV_SCALE_ROWS;
+    }
+    L->seen++;
+    float h = L->seen <= REV_SEED_ROWS ? 1.0f : fminf(1.0f, REV_HUBER_C * L->s / fmaxf(r, 1e-9f));
     rev_pair_t *slot;
     if (L->ring_n == REV_HOLDOUT) {
         slot = &L->ring[L->ring_head];
@@ -62,6 +73,7 @@ bool rev_fuel_add(rev_fuel_t *L, const float phi[REV_NF], float y)
     }
     memcpy(slot->phi, phi, sizeof slot->phi);
     slot->y = y;
+    slot->h = h;
     L->n++;
     return L->n % REV_EVERY == 0 && L->ring_n == REV_HOLDOUT;
 }
@@ -82,13 +94,13 @@ static bool cholesky_solve(rev_fuel_t *L)
     return true;
 }
 
-static float holdout_mse(const rev_fuel_t *L, const float *w)
+static float holdout_mse(const rev_fuel_t *L, const float *w)         /* Huber loss at C s, so one bad label cannot decide a commit */
 {
-    float e = 0;
+    float e = 0, k = REV_HUBER_C * fmaxf(L->s, 1e-6f);
     for (int n = 0; n < L->ring_n; n++) {
         const rev_pair_t *p = &L->ring[(L->ring_head + n) % REV_HOLDOUT];
-        float d = p->y - dot(p->phi, w);
-        e += d * d;
+        float d = fabsf(p->y - dot(p->phi, w));
+        e += d <= k ? 0.5f * d * d : k * (d - 0.5f * k);
     }
     return L->ring_n ? e / (float)L->ring_n : 0.0f;
 }

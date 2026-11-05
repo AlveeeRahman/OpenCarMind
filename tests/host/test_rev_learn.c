@@ -50,18 +50,24 @@ static void car_init(float change)
 }
 
 /* ---------------------------------------------------------------- a double-precision reference, written independently:
-   full matrices, float64, the same gate, cap and reset */
+   full matrices, float64, the same gate, cap, reset, Huber weights and outlier rejection */
 typedef struct {
     double w[REV_NF], A[REV_NF][REV_NF], b[REV_NF];
-    double ring[REV_HOLDOUT][REV_NF + 1];
-    int head, n_ring, n, commits, resets;
+    double ring[REV_HOLDOUT][REV_NF + 2];          /* phi, y, Huber weight */
+    double s;
+    int head, n_ring, n, commits, resets, seen, rejected;
 } ref_t;
 static ref_t R;
 static void ref_init(void) { memset(&R, 0, sizeof R); for (int i = 0; i < REV_NF; i++) R.w[i] = MLR_W0[i]; }
 static double ref_mse(const double *w)
 {
     double e = 0;
-    for (int k = 0; k < R.n_ring; k++) { double s = 0; for (int i = 0; i < REV_NF; i++) s += R.ring[k][i] * w[i]; double d = R.ring[k][REV_NF] - s; e += d * d; }
+    double kk = REV_HUBER_C * fmax(R.s, 1e-6);
+    for (int k = 0; k < R.n_ring; k++) {
+        double s = 0; for (int i = 0; i < REV_NF; i++) s += R.ring[k][i] * w[i];
+        double d = fabs(R.ring[k][REV_NF] - s);
+        e += d <= kk ? 0.5 * d * d : kk * (d - 0.5 * kk);
+    }
     return e / R.n_ring;
 }
 static int ref_commit(double cand[REV_NF])         /* 1 accepted, 2 reset, 0 kept, -1 failed */
@@ -87,18 +93,26 @@ static int ref_commit(double cand[REV_NF])         /* 1 accepted, 2 reset, 0 kep
 }
 static int ref_add(const float *phi, float y)      /* returns the commit outcome, or 3 when no commit was due */
 {
+    double pr = 0; for (int i = 0; i < REV_NF; i++) pr += R.w[i] * phi[i];
+    double r = fabs(pr - y);
+    if (R.seen < REV_SEED_ROWS) R.s += (r - R.s) / (R.seen + 1);
+    else {
+        if (r > REV_REJECT_R * fmax(R.s, 1e-6)) { R.rejected++; return 3; }
+        R.s += (r - R.s) / REV_SCALE_ROWS;
+    }
+    R.seen++;
+    double h = R.seen <= REV_SEED_ROWS ? 1.0 : fmin(1.0, REV_HUBER_C * R.s / fmax(r, 1e-9));
+    double *p;
     if (R.n_ring == REV_HOLDOUT) {
-        double *p = R.ring[R.head];
-        for (int i = 0; i < REV_NF; i++) { for (int j = 0; j < REV_NF; j++) R.A[i][j] = REV_LAMBDA * R.A[i][j] + p[i] * p[j]; R.b[i] = REV_LAMBDA * R.b[i] + p[i] * p[REV_NF]; }
-        for (int i = 0; i < REV_NF; i++) p[i] = phi[i];
-        p[REV_NF] = y;
+        p = R.ring[R.head];
+        for (int i = 0; i < REV_NF; i++) { for (int j = 0; j < REV_NF; j++) R.A[i][j] = REV_LAMBDA * R.A[i][j] + p[REV_NF + 1] * p[i] * p[j]; R.b[i] = REV_LAMBDA * R.b[i] + p[REV_NF + 1] * p[i] * p[REV_NF]; }
         R.head = (R.head + 1) % REV_HOLDOUT;
     } else {
-        double *p = R.ring[(R.head + R.n_ring) % REV_HOLDOUT];
-        for (int i = 0; i < REV_NF; i++) p[i] = phi[i];
-        p[REV_NF] = y;
+        p = R.ring[(R.head + R.n_ring) % REV_HOLDOUT];
         R.n_ring++;
     }
+    for (int i = 0; i < REV_NF; i++) p[i] = phi[i];
+    p[REV_NF] = y; p[REV_NF + 1] = h;
     R.n++;
     if (R.n % REV_EVERY == 0 && R.n_ring == REV_HOLDOUT) { double c[REV_NF]; return ref_commit(c); }
     return 3;
@@ -228,6 +242,51 @@ static void test_float_vs_double(void)
     CHECK(solves > 100);
     CHECK(same * 100 >= solves * 99);
     CHECK(worst < 1e-3);
+}
+
+/* 7. bad labels: the same car with 1 % of its labels replaced by an implausible value (a stuck MAF reading of 655 g/s gives
+   215 L/h, about 100 standard units). The shipped learner made 0 commits on a real drive with 8 such labels in 898. The
+   robust learner must keep learning, reject them, and end as good as on clean labels. */
+static double stream_bad(int rows, double noise, int every_bad, float bad_y)
+{
+    double e = 0;
+    float phi[REV_NF];
+    char msg[96];
+    for (int i = 0; i < rows; i++) {
+        features(phi);
+        float y = head(W_CAR, phi) + (float)(noise * nrand());
+        double d = rev_fuel_predict(&L, phi) - y;                          /* scored against the true label */
+        e += d * d;
+        float yl = every_bad && i % every_bad == every_bad / 2 ? bad_y : y;
+        if (rev_fuel_add(&L, phi, yl)) rev_fuel_commit(&L, msg, sizeof msg);
+    }
+    return e / rows;
+}
+
+static void test_bad_labels(void)
+{
+    car_features_init();
+    rev_fuel_init(&L, MLR_W0); rng = 4242; car_init(1.0f);
+    for (int d = 0; d < 6; d++) stream_bad(500, 0.1, 0, 0);
+    double clean = stream_bad(500, 0.1, 0, 0);
+    uint32_t clean_commits = L.commits;
+
+    rev_fuel_init(&L, MLR_W0); rng = 4242; car_init(1.0f);
+    for (int d = 0; d < 6; d++) stream_bad(500, 0.1, 100, 100.0f);
+    double bad = stream_bad(500, 0.1, 100, 100.0f);
+    if (verbose) fprintf(stderr, "bad labels: clean %.4f (%u commits), 1 %% bad %.4f (%u commits, %u rejected), drift %.3f\n",
+                         clean, clean_commits, bad, L.commits, L.rejected, (double)rev_fuel_drift(&L));
+    CHECK(L.commits > 0);
+    CHECK(L.rejected >= 30);                                               /* 35 bad labels; the first 30 pairs seed the scale */
+    CHECK(bad < 1.10 * clean);
+    CHECK(rev_fuel_drift(&L) < REV_DRIFT);
+    float phi[REV_NF]; features(phi);
+    CHECK(isfinite(rev_fuel_predict(&L, phi)));
+
+    /* the scale is seeded, not trusted from the start: a reset clears it */
+    rev_fuel_reset(&L);
+    CHECK(L.s == 0.0f && L.seen == 0 && L.rejected == 0);
+    rev_fuel_reset(&L);
 }
 
 /* 5. persistence */
@@ -626,6 +685,7 @@ int main(void)
           MLR_TRAINED[9] == 0 && MLR_NORM_MEAN[3] > 0 && MLR_EST_MEAN[2] > 0 && MLR_CLASSES[0] && MLR_ESTIMATES[2]);
     test_fuel_head();
     test_float_vs_double();
+    test_bad_labels();
     test_state();
     test_labels();
     test_physics();

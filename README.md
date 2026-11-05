@@ -12,18 +12,20 @@ OpenCarMind turns an ESP32-S3 board and a Bluetooth OBD-II adapter into a car da
 
 It ships two on-board models, and you choose between them in the desktop app. CarMind E.V is fixed and tested. CarMind R.E.V is my first model that keeps learning in your car. It uses on-device learning, which means the board itself updates part of the model from what your car reports while you drive, with no computer or cloud in the loop.
 
-Version 2.5.0. Licence: MIT. Website: <https://alveeerahman.github.io/OpenCarMind/>. Downloads for the firmware and the desktop app are on the [Releases page](https://github.com/AlveeeRahman/OpenCarMind/releases/latest).
+Version 2.5.1. Licence: MIT. Website: <https://alveeerahman.github.io/OpenCarMind/>. Downloads for the firmware and the desktop app are on the [Releases page](https://github.com/AlveeeRahman/OpenCarMind/releases/latest).
 
 ## Choose your model
 
 | | CarMind E.V | CarMind R.E.V |
 |---|---|---|
-| Status | released in 2.4.0, the default | new in 2.5.0, in its first drives |
+| Status | released in 2.4.0, the default | new in 2.5.0, corrected classifier and outlier-proof learner in 2.5.1 |
 | Size on the chip | 89,152 bytes (about 89 KB) | 65,648 bytes (about 66 KB) |
 | Parameters | 38,679 | 19,815 |
 | Arithmetic on the chip | int8 weights, int16 activations | int8 weights, int16 activations |
 | Time per run on the ESP32-S3 | about 3.5 ms, measured at the boot self-test | about 2.9 ms at the boot self-test, plus a second run with airflow hidden while the car reports MAF |
 | Learns in your car | nothing, the model is fixed | its fuel-rate read-out (the last layer, which turns the network's features into a fuel rate), an airflow constant that also gives the engine size, and the fuel tank size. Engine torque comes from physics sized to your engine |
+| Steady cruising, foot on the gas (my car) | called braking on 79 % of windows | corrected in 2.5.1: 87.5 % right on two held-out drives, up from 10.7 % |
+| Bad fuel labels (1 % implausible, 31 public test cars) | not affected, nothing learns | 2.5.1 rejects them: fuel R² stays 0.867 (2.5.0: 0.696) |
 | Fill-up calibration | yes | yes |
 | Best for | a fixed, tested model | older cars, roughly pre-2020, that have no fuel-rate PID and can lose the airflow (MAF) reading |
 | Model hash | `dfa9af416dfb` | `6e6d698c44c5` |
@@ -238,7 +240,7 @@ Teaching the manoeuvre classifier in the car is the goal of [CarMind R.E.V 2](#p
 
 The network itself never changes on the board. Each learner changes only when the car gives it something to check against.
 
-- **Fuel-rate read-out.** A linear read-out, also called a linear probe, is a single layer of weights that turns the network's internal 64-value feature vector into one number, here the fuel rate. R.E.V refits only this layer. Whenever the car reports its fuel rate, or its airflow, from which the fuel rate follows, the board averages it over the same 5 s the model saw and pairs it with the feature vector. The read-out is refit from these pairs by least squares, with older rows slowly fading so it can follow the car as it ages. A refit goes live only if it beats the live read-out on recent rows held back from the fit, and only if it has not drifted too far from the factory read-out. If the live read-out falls behind the factory one, the board resets it.
+- **Fuel-rate read-out.** A linear read-out, also called a linear probe, is a single layer of weights that turns the network's internal 64-value feature vector into one number, here the fuel rate. R.E.V refits only this layer. Whenever the car reports its fuel rate, or its airflow, from which the fuel rate follows, the board averages it over the same 5 s the model saw and pairs it with the feature vector. The read-out is refit from these pairs by least squares, with older rows slowly fading so it can follow the car as it ages. A refit goes live only if it beats the live read-out on recent rows held back from the fit, and only if it has not drifted too far from the factory read-out. If the live read-out falls behind the factory one, the board resets it. Since 2.5.1 the fit is outlier-robust: each pair is weighted down when its error is large next to the running typical error (a Huber weight), a pair more than 10 times that typical error is dropped, labels above 120 L/h never reach the learner, and the held-back rows judge a refit with the same Huber loss<sup>[[26]](#ref-26)</sup>.
 - **Airflow constant.** While the airflow sensor works, the board learns one number k for your car in airflow ≈ k × absolute load × rpm, a standard engine relation. When the sensor drops out, this gives a physics-based fuel estimate. Cars that do not report absolute load (PID 0x43) use calculated load instead, which is experimental and not yet tested on data.
 - **Fill-up calibration.** You enter fill-ups on the app's Fuel page. From one full tank to the next, the board compares the litres you pumped with the fuel it counted, and scales its fuel figures to match. Implausible entries are ignored, and this works with both models.
 - **Engine torque, with physics as the teacher.** Most older cars do not report torque, and the network's torque head learned it from one car, so its numbers do not scale with engine size. R.E.V shows a physics estimate instead: the energy flowing in with the fuel, times a typical indicated efficiency, divided by engine speed, minus friction, which grows with engine size. The engine size comes from the learned airflow constant, so the estimate adapts to your engine without a torque sensor. In a decel fuel cut it shows engine braking, and at a standstill it shows "idle", because idling in Drive is where this model reads high. A car that reports actual and reference torque (PIDs 0x62 and 0x63) is used directly. Checked against the measured torque of one public car: R² 0.81 to 0.85 while moving. Petrol engines only.
@@ -284,9 +286,31 @@ On two drives from 4 November 2026 that took no part in the correction:
 
 The cost is on the KIA car, whose cruising recall drops 5.6 points, and real braking now wins by a smaller margin. The labels come from a rule on the raw signals, which cannot see the brake pedal, and all the gains are measured on one car, mine. The final R.E.V (model hash `6e6d698c44c5`) replaces the first one (`f70bdcd3151b`) in the firmware on `main`. What R.E.V has already learned in a car carries over, because the trunk and the estimate head it learns from did not change. It has not been test-driven yet. A lasting fix is to learn each car's closed-throttle position on the board, so the throttle scale fits the car.
 
+### How R.E.V got better, step by step
+
+R.E.V started as a smaller E.V that learns. These steps, each checked before the next, are what make it more than that.
+
+1. **2.5.0, first release.** Compressed from E.V to half the parameters, with its fuel read-out, airflow constant and tank size learning in the car, and torque from physics.
+2. **First drives in my car, 4 November 2026.** The learners worked (4 refits kept, none reset, the learned fuel read-out's running error 39 % below the factory one), and the classifier said "braking" while I cruised. E.V does the same.
+3. **Explainable AI.** Grad-CAM, Guided Grad-CAM and an embedding probe showed the cause was the classifier head, not the convolutions (above).
+4. **A corrected classifier head.** 126 bytes of the model changed, with the trunk and the estimate head left alone, so what R.E.V already learned in a car stays valid. Held-out drives: 78.3 % → 95.1 % of labelled windows right.
+5. **Fault injection on the learner.** I replayed the drives through the firmware's own learner code with bad labels mixed in. Eight implausible labels out of 898 stopped all learning for the drive, or pushed the read-out most of the way to its drift limit. On 31 public test cars, 1 % bad labels left the learned estimate worse than no learning.
+6. **An outlier-robust learner.** Huber weights on a running error scale, hard rejection and a label cap, from robust recursive least squares<sup>[[26]](#ref-26)</sup>. The same drive replayed through the new code: all 8 bad labels rejected, 10 refits, drift 0.22.
+7. **Checked against meta-learning.** I compared it with two open-source meta-learners from the learn2learn library<sup>[[27]](#ref-27)</sup>, ANIL<sup>[[28]](#ref-28)</sup> and Meta-SGD<sup>[[29]](#ref-29)</sup>, meta-trained on other VED cars to adapt the same fuel head, on the same frozen trunk and the same 31 test cars:
+
+| Fuel learner, airflow hidden | Fuel R², clean labels | Fuel R², 1 % bad labels | Cars more than 10 % worse than no learning (clean / bad) |
+|---|---|---|---|
+| No learning (factory read-out) | 0.709 | 0.709 | |
+| 2.5.0 learner | 0.867 | 0.696 | 0 / 15 |
+| ANIL | 0.778 | 0.774 | 2 / 3 |
+| Meta-SGD | 0.197 | 0.151 | 20 / 22 |
+| **2.5.1 learner** | **0.867** | **0.867** | **0 / 0** |
+
+The meta-learners adapt the head with a few gradient steps on the latest 150 windows. R.E.V's learner solves the fit exactly over about 1,000 windows of memory, pulled toward the factory read-out, which suits a 65-weight head and a microcontroller. Meta-SGD's learned step sizes did not carry over to cars it had not seen and made the estimate diverge.
+
 ## Status
 
-What has been checked, on the bench or in the code: the build (with Wi-Fi clock sync on and off), the model's identity hash, the host unit tests (524 checks, 176 of them for R.E.V's learners, the torque physics, the tank learner and the fill-up calibration, the rest including a simulated drive for the power-off line, the adapter profile chooser, and the fuel, economy and units logic), the automatic switch to miles and mpg with a US Wi-Fi access point, kept after a reboot, the 10-second save and the "Safe to turn off" event on a board with an SD card, and the HTTPS date parsing and host-name rules of the time server. CI builds the desktop app and runs its unit tests on Windows, macOS and Linux. Nobody has opened the app on a real machine yet.
+What has been checked, on the bench or in the code: the build (with Wi-Fi clock sync on and off), the model's identity hash, the host unit tests (530 checks, 182 of them for R.E.V's learners, including bad-label and fault cases, the torque physics, the tank learner and the fill-up calibration, the rest including a simulated drive for the power-off line, the adapter profile chooser, and the fuel, economy and units logic), the automatic switch to miles and mpg with a US Wi-Fi access point, kept after a reboot, the 10-second save and the "Safe to turn off" event on a board with an SD card, and the HTTPS date parsing and host-name rules of the time server. CI builds the desktop app and runs its unit tests on Windows, macOS and Linux. Nobody has opened the app on a real machine yet.
 
 Known security limits are listed in [SECURITY.md](SECURITY.md#known-limits).
 
@@ -349,14 +373,13 @@ The Mosaico also changes how you use the logger. Your adapter lives in the car, 
 
 ## Limitations and future work
 
-What 2.5.0 cannot do yet, and what is being built for it:
+What 2.5.1 cannot do yet, and what is being built for it:
 
 - **CarMind R.E.V has had two drives, in one car.** Its learning has otherwise been checked in replay on a computer, on recorded drives fed through the board, and in host tests. Both models call steady foot-on-gas cruising "braking" on my car. R.E.V's corrected classifier head, in the firmware on `main`, fixes most of it, and E.V keeps the error for now.
 - **Torque is a physics estimate, not a measurement.** Its one check with true torque is a single public car, and that car's "truth" is its engine computer's own torque model. Accessories such as the air conditioning are not modelled, the efficiency is a typical value the board cannot learn without a torque sensor, it reads high at a standstill in Drive (so the screen shows "idle"), and it is for petrol engines only.
 - **The tank size needs driving to settle.** About 10 litres with the level between 10 % and 95 % before it shows anything, more on cars whose level reading jumps. A fuel sender that is not linear with the tank's shape is not modelled, and the range runs to an empty reading, not to the reserve below it.
-- **The fuel learner trusts any finite label.** In a replay of 31 public test cars with the airflow hidden, replacing 1 % of the labels with implausible values (such as the 215 L/h a stuck airflow reading of 655 g/s gives) made the learned fuel estimate worse than the factory one (R² 0.709 without learning, 0.696 with it), and 15 of the 31 cars more than 10 % worse. A version that weights and rejects outliers keeps R² at 0.867 with the same bad labels and is being compared before it ships.
 - **The manoeuvre classifier and brake pressure do not learn in the car.** Nothing in OBD gives a label for them. A self-check of the classifier (CarMind R.E.V 2) and accelerometer labels on the ESP-Mosaico are the routes being worked on.
-- **No Wi-Fi upload in 2.5.0.** Sending drives over TCP and TLS stalls the whole stream when one packet is lost on a weak home Wi-Fi link, the problem known as head-of-line blocking. The upload is being reworked so that each file travels on its own stream, as in QUIC<sup>[[19]](#ref-19)</sup>, which removes that stall<sup>[[20]](#ref-20)</sup>, while keeping resume from the last byte and the pinned certificate. It will come back once it is measured against today's path on a lossy link. Until then drives come over the USB cable.
+- **No Wi-Fi upload yet.** Sending drives over TCP and TLS stalls the whole stream when one packet is lost on a weak home Wi-Fi link, the problem known as head-of-line blocking. The upload is being reworked so that each file travels on its own stream, as in QUIC<sup>[[19]](#ref-19)</sup>, which removes that stall<sup>[[20]](#ref-20)</sup>, while keeping resume from the last byte and the pinned certificate. It will come back once it is measured against today's path on a lossy link. Until then drives come over the USB cable.
 - **The clock is only as exact as one second.** It comes from the time server's HTTP Date header, which has one-second resolution, enough for drive logs. It needs a known Wi-Fi network within reach. Without one, the board keeps the time it saved to the card.
 
 ## Planned
@@ -364,7 +387,7 @@ What 2.5.0 cannot do yet, and what is being built for it:
 - The ESP-Mosaico (ESP32-S31) port described above, and a build without a display.
 - Code-signed installers.
 - A test drive of the corrected R.E.V before it goes into a release, and a per-car closed-throttle baseline learned on the board.
-- A fuel learner that ignores implausible labels, compared against meta-learning methods for on-board learning.
+- A trunk meta-trained for on-board learning, as in OML<sup>[[30]](#ref-30)</sup>, once the classifier can learn in the car. It changes the embedding, so the classifier correction would be redone with it.
 - More regularised models, to fit more cars.
 - CarMind R.E.V 2: a forecast of the next moment's manoeuvre, learned on the board, as a self-check that lets the classifier learn in the car.
 - A faster version built on a Jetson.
@@ -420,6 +443,16 @@ What 2.5.0 cannot do yet, and what is being built for it:
 <a id="ref-24"></a>[24] G. Alain and Y. Bengio, "Understanding intermediate layers using linear classifier probes," arXiv preprint, 2016. [arXiv:1610.01644](https://arxiv.org/abs/1610.01644)
 
 <a id="ref-25"></a>[25] L. van der Maaten and G. Hinton, "Visualizing data using t-SNE," *Journal of Machine Learning Research*, vol. 9, pp. 2579–2605, 2008.
+
+<a id="ref-26"></a>[26] B. Kovačević, Z. Banjac and I. Kostić Kovačević, "Robust adaptive filtering using recursive weighted least squares with combined scale and variable forgetting factors," *EURASIP Journal on Advances in Signal Processing*, 2016. [doi:10.1186/s13634-016-0341-3](https://doi.org/10.1186/s13634-016-0341-3)
+
+<a id="ref-27"></a>[27] S. M. R. Arnold, P. Mahajan, D. Datta, I. Bunner and K. S. Zarkias, "learn2learn: A library for meta-learning research," arXiv preprint, 2020. [arXiv:2008.12284](https://arxiv.org/abs/2008.12284)
+
+<a id="ref-28"></a>[28] A. Raghu, M. Raghu, S. Bengio and O. Vinyals, "Rapid learning or feature reuse? Towards understanding the effectiveness of MAML," in *ICLR*, 2020. [arXiv:1909.09157](https://arxiv.org/abs/1909.09157)
+
+<a id="ref-29"></a>[29] Z. Li, F. Zhou, F. Chen and H. Li, "Meta-SGD: Learning to learn quickly for few-shot learning," arXiv preprint, 2017. [arXiv:1707.09835](https://arxiv.org/abs/1707.09835)
+
+<a id="ref-30"></a>[30] K. Javed and M. White, "Meta-learning representations for continual learning," in *NeurIPS*, 2019. [arXiv:1905.12588](https://arxiv.org/abs/1905.12588)
 
 ## Repository layout
 
