@@ -508,12 +508,21 @@ static void test_picker(void)
     CHECK(fabsf(econ_maf_lph(14.5f, true, 3.0f, 4) - 3600.0f / 832.0f / 3.0f) < 0.001f);
 }
 
-/* ---------------------------------------------------------------- torque from physics (expected values: the float C
-   reference in carmind-ml REV_FRAMEWORK.md 8.11, which matches the Python double version to 3 decimals) */
+/* ---------------------------------------------------------------- torque from physics (expected values: a float C
+   reference that matches a double-precision version to 3 decimals) */
 static void phys_for(rev_phys_t *P, float vd_l)
 {
     rev_phys_init(P);
     P->abs.k = vd_l * 1.184f / 12000.0f; P->abs.n = P->abs.n_sig = 100; P->abs.sxx = 1;
+}
+
+static void test_phys_maf_fault(void)
+{
+    rev_phys_t P; rev_phys_init(&P);
+    float est;
+    CHECK(!rev_phys_row(&P, 1000, true, 40, false, 0, true, 2000, true, 655.35f, &est));   /* 0xFFFF never teaches k */
+    CHECK(P.n == 0 && P.abs.n == 0);
+    CHECK(rev_phys_row(&P, 2000, true, 40, false, 0, true, 2000, true, 15.0f, &est));
 }
 
 static void test_torque(void)
@@ -622,6 +631,7 @@ int main(void)
     test_physics();
     test_calibration();
     test_picker();
+    test_phys_maf_fault();
     test_torque();
     test_tank_file();
     printf("%d checks, %d failures\n", checks, fails);

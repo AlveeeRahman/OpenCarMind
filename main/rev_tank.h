@@ -1,6 +1,4 @@
-/* CarMind R.E.V tank level learner. PROPOSAL for OpenCarMind main/rev_tank.c/.h (rev-v1); pure C, no ESP-IDF, host-tested.
- * Python mirror and validation: carmind-ml/src/carmindformer/regen_tank.py; design: docs/carmind-rev/REV_FRAMEWORK.md,
- * section "Tank level learner".
+/* CarMind R.E.V tank level learner. Pure C, no ESP-IDF, host-tested (tests/host/test_rev_tank.c).
  *
  * Learns C_R, the tank's capacity in RAW counted litres per 100 % of the fuel level sender (PID 0x2F), from the level against
  * the litres the board counts (the same raw litres rev_cal_row() integrates, before the fill-up factor c). True litres are
@@ -20,10 +18,10 @@
 #define REV_TANK_LO         10.0f    /* % : level band used for the slope (reserve and end stop below)                  */
 #define REV_TANK_HI         95.0f    /* % : above it the sender rests on its top stop for several litres after a full fill */
 #define REV_TANK_TOP        98.5f    /* % : an anchor at or above this is "on the top stop"                               */
-#define REV_TANK_K          6        /* level samples per anchor (about 1 min at the Sentra's 10.8 s poll of 0x2F)        */
+#define REV_TANK_K          6        /* level samples per anchor (about 1 min at a 10 s poll of 0x2F)        */
 #define REV_TANK_FILL       8.0f     /* % : restart jump that is a fill-up                                                */
 #define REV_TANK_BREAK      8.0f     /* % : fall while parked that closes the segment (fuel taken, sender fault). Not lower: */
-                                     /*     random parking offsets of 2-3 % would break most drives (regen_tank.py probe)  */
+                                     /*     random parking offsets of 2-3 % would break most drives  */
 #define REV_TANK_SIGMAS     4.0f     /* the fill and break thresholds rise to this many RMS of ordinary restart jumps      */
 #define REV_TANK_STOP_S     60.0f    /* s : engine off this long inside a drive counts as a restart                       */
 #define REV_TANK_MIN_SEG_L  0.5f     /* raw litres a segment must span to be folded                                       */

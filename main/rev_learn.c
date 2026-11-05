@@ -226,7 +226,7 @@ bool rev_phys_row(rev_phys_t *P, int64_t t_ms, bool abs_ok, float abs_load, bool
 {
     float x;
     uint8_t path;
-    if (!maf_ok || !isfinite(maf) || maf < 0 || maf > 655.35f) return false;
+    if (!maf_ok || !isfinite(maf) || maf < 0 || maf >= 655.0f) return false;   /* 0xFFFF (655.35 g/s) is a sensor fault */
     if (!phys_x(abs_ok, abs_load, load_ok, load, rpm_ok, rpm, &x, &path)) return false;
     if (P->n && t_ms - P->t_ms[(P->head - 1 + REV_PHYS_RING) % REV_PHYS_RING] > 10000) P->n = 0;   /* a gap: start the window over */
     P->t_ms[P->head] = t_ms; P->x[P->head] = x; P->y[P->head] = maf; P->path[P->head] = path;

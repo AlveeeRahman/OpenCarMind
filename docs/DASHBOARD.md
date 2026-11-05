@@ -49,6 +49,6 @@ For each session: start time (or "clock not set" when the board never reached Wi
 
 Checked: `ocm_report.py` on the two replay sessions in `samples/replay` (it runs, the reports render, and no report contains an external address), and the YAML of `docker-compose.yml` and `conf.yml` parses. The widget names and options come from the Dashy documentation. Not checked: the containers themselves. Docker was not available where this was written, so Dashy has not been started with this configuration. The model band was tested on a fixture `.ml.csv` that uses the firmware's column names, not on a file recorded by a board.
 
-## Automatic upload over Wi-Fi
+## Automatic upload over Wi-Fi (off in 2.5.0)
 
-Pair the board with the desktop app ([desktop/README.md](../desktop/README.md)). The board then sends new data to the app over TLS every 10 seconds while parked, and the app stores it per board in its data folder. Point `ocm_report.py` at that folder to feed Dashy: `python3 tools/ocm_report.py <app data>/received/<board>/sessions dashboard/site --watch 30`.
+In 2.5.0 drives reach the app over the USB cable; the Wi-Fi upload is being reworked. With it on, a board paired with the desktop app ([desktop/README.md](../desktop/README.md)) sends new data to the app over TLS every 10 seconds while parked, and the app stores it per board in its data folder. Point `ocm_report.py` at that folder to feed Dashy: `python3 tools/ocm_report.py <app data>/received/<board>/sessions dashboard/site --watch 30`.

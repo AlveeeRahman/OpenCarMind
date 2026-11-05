@@ -15,6 +15,9 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 pub const PORT: u16 = 8787;
+/// 2.5.0: the board sends nothing over Wi-Fi (CONFIG_OCM_WIFI_UPLOAD off), so the app opens no port. The upload is being
+/// reworked into a transfer without head-of-line blocking; drives come over the USB cable meanwhile.
+pub const WIFI_UPLOAD: bool = false;
 const MAX_BODY: usize = 64 * 1024;
 const MAX_CONNECTIONS: usize = 8;
 
@@ -151,8 +154,12 @@ impl Receiver {
         };
         let r = Arc::new(Receiver { dir: folder, token, cert_pem, status: Mutex::new(status), seen: Mutex::new(HashMap::new()), active: AtomicUsize::new(0) });
         if let Ok((_, cert_der, key_der, _)) = ident {
-            let r2 = r.clone();
-            std::thread::spawn(move || r2.serve(cert_der, key_der));
+            if WIFI_UPLOAD {
+                let r2 = r.clone();
+                std::thread::spawn(move || r2.serve(cert_der, key_der));
+            } else {
+                r.status.lock().unwrap().error = Some("off in 2.5.0: drives come over the USB cable while the Wi-Fi upload is reworked".into());
+            }
         }
         r
     }

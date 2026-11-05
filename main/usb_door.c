@@ -188,6 +188,20 @@ static void cmd_rev_status(void)
     reply("D phys k=%.4e ready=%d rows=%lu path=%s", (double)st.k, st.k_ready, (unsigned long)st.k_rows, st.k_calc ? "calc" : "abs");
     reply("D cal c=%.4f fill_rev=%lu used=%d skipped=%d fills=%d", (double)st.cal, (unsigned long)st.fill_rev, st.used, st.skipped, st.fills);
     reply("D life litres=%.3f km=%.3f", st.life_l, st.life_km);
+    {
+        static const char *const tsrc[] = {"none", "pid", "rate", "maf", "k"};
+        reply("D torque ok=%d nm=%.1f src=%s idle=%d vd_l=%.2f", st.torque_ok, st.torque_ok ? (double)st.torque_nm : 0.0,
+              tsrc[st.torque_src < 5 ? st.torque_src : 0], st.torque_idle, (double)st.vd_l);
+        const rev_tank_out_t *t = &st.tank;
+        reply("D tank have=%d ready=%d cap_raw_l=%.2f rel_se=%.4f band_l=%.2f span_pct=%.1f level=%.1f left_raw_l=%.2f range_km=%.0f segs=%lu fills=%lu",
+              t->have, t->ready, (double)t->cap_raw_l, (double)t->rel_se, (double)t->band_l, (double)t->span_pct, (double)t->level,
+              (double)t->left_raw_l, (double)t->range_km, (unsigned long)st.tank_segs, (unsigned long)st.tank_fills);
+        for (uint32_t i = 0; i < st.tank_sug_n && i < REV_TANK_SUGGEST; i++) {
+            const rev_tank_fill_t *f = &st.tank_sug[i];
+            reply("D tankfill seq=%lu session=%lu before=%.1f after=%.1f raw_l=%.2f ready=%d top=%d", (unsigned long)f->seq,
+                  (unsigned long)f->session, (double)f->before, (double)f->after, (double)f->raw_l, f->ready, f->top);
+        }
+    }
     rev_interval_t iv;
     for (int i = 0; rev_get_interval(i, &iv); i++)
         reply("D iv id=%lu from=%lu to=%lu pumped=%.3f board=%.3f trip=%d why=%d", (unsigned long)iv.fill_id, (unsigned long)iv.from_session,
@@ -341,7 +355,11 @@ static void handle(char *line, char *buf, char *b64)
         cmd_rev_fillups(buf);
     } else if (!strcmp(cmd, "REV-RESET")) {
         if (a1 && rev_reset(a1)) reply("OK REV-RESET %s", a1);
-        else reply("ERR usage: REV-RESET fuel|phys|cal|all (not in safe mode)");
+        else reply("ERR usage: REV-RESET fuel|phys|cal|tank|all (not in safe mode)");
+    } else if (!strcmp(cmd, "REV-TANK-ACK")) {
+        if (!a1) { reply("ERR usage: REV-TANK-ACK <seq>"); return; }
+        rev_tank_suggestions_ack((uint32_t)strtoul(a1, NULL, 10));
+        reply("OK REV-TANK-ACK");
     } else if (!strcmp(cmd, "REBOOT")) {
         reply("OK REBOOT");
         vTaskDelay(pdMS_TO_TICKS(300));

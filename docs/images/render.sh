@@ -13,7 +13,7 @@ shot() {  # name width height output [background]
 shot tool 1200 600 docs/images/workflow/tool.png
 shot inference 1200 640 docs/images/workflow/inference.png
 shot local 1200 600 docs/images/workflow/local-first.png
-shot sync 1200 690 docs/images/workflow/wifi-link.png
+shot clock 1200 700 docs/images/workflow/clock.png
 shot scheduler 1200 720 docs/images/workflow/scheduler.png
 shot rev-learning 1200 1600 docs/images/workflow/rev-learning.png
 shot training 1200 740 docs/images/workflow/training.png

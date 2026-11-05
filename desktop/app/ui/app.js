@@ -253,7 +253,7 @@ $("#wifi-add").addEventListener("click", () => {
   const ssid = $("#ssid").value, pass = $("#wpass").value;
   if (!ssid || ssid.length > 32 || ssid.includes(",")) return msg("#board-msg", "A network name has 1 to 32 characters and no comma.", true);
   if (pass && (pass.length < 8 || pass.length > 64)) return msg("#board-msg", "A Wi-Fi password has 8 to 64 characters. Leave it empty for an open network.", true);
-  step(`Adding ${ssid}...`, async () => { await invoke("board_setup", { port: port(), networks: [[ssid, pass]], settings: {}, timezone: null }); $("#ssid").value = ""; $("#wpass").value = ""; await loadWifi(); msg("#board-msg", `Saved ${ssid} on the board.`); });
+  step(`Adding ${ssid}...`, async () => { await invoke("board_setup", { port: port(), networks: [[ssid, pass]], settings: {}, timezone: null, timeHost: null }); $("#ssid").value = ""; $("#wpass").value = ""; await loadWifi(); msg("#board-msg", `Saved ${ssid} on the board.`); });
 });
 
 $("#settings tbody").replaceChildren(...Object.entries(SETTINGS).map(([k, [lo, hi]]) => el("tr", {},
@@ -263,7 +263,7 @@ $("#settings tbody").replaceChildren(...Object.entries(SETTINGS).map(([k, [lo, h
 $("#settings-save").addEventListener("click", () => {
   const settings = {};
   for (const k of Object.keys(SETTINGS)) { const v = document.getElementById("set-" + k).value; if (v !== "") settings[k] = Number(v); }
-  step("Sending...", async () => msg("#board-msg", await invoke("board_setup", { port: port(), networks: [], settings, timezone: $("#tz").value || null })));
+  step("Sending...", async () => msg("#board-msg", await invoke("board_setup", { port: port(), networks: [], settings, timezone: $("#tz").value || null, timeHost: $("#thost").value || null })));
 });
 
 window.__TAURI__.event.listen("import-progress", (e) => { const p = e.payload; $("#import-progress").textContent = `${p.file}: ${Math.round(100 * p.done / Math.max(p.total, 1))} %`; });
@@ -480,6 +480,8 @@ function renderFuel() {
 
 function renderRev() {
   const st = group("state"), f = group("fuel"), er = group("error"), ph = group("phys"), cal = group("cal"), life = group("life");
+  const tq = group("torque"), tk = group("tank");
+  const fills = (fuel.status || []).filter((g) => g.group === "tankfill").map((g) => g.fields);
   if (!st) { $("#rev-status").replaceChildren(el("li", { textContent: "Connect the board on the Board page, then refresh." })); return; }
   const n = (v, d) => Number(v).toFixed(d);
   const items = [`Model on the board: ${MODEL_NAME[st.model] || st.model}. Learning ${st.learning === "1" ? "on" : "off"}${st.safe === "1" ? " (safe mode)" : ""}. Saved to the card: ${st.saved === "1" ? "yes" : "not yet"}.`];
@@ -491,6 +493,18 @@ function renderRev() {
   if (er) items.push(`If airflow data dropped out now, the board would use: ${SOURCE[er.prefer] || er.prefer}.`);
   if (ph) items.push(`Airflow constant k = ${Number(ph.k).toExponential(3)} g/s per %-rpm${ph.ready === "1" ? `, learned from ${ph.rows} rows` : " (factory value until 20 rows)"}${ph.path === "calc" ? ", from calculated load (experimental)" : ""}. It implies about ${(12000 * Number(ph.k) / 1.184).toFixed(1)} L of engine displacement.`);
   if (cal) items.push(`Fill-up correction x${n(cal.c, 3)}: ${cal.used} tank${cal.used === "1" ? "" : "s"} used, ${cal.skipped} skipped, ${cal.fills} entr${cal.fills === "1" ? "y" : "ies"} on the board.`);
+  if (tq) {
+    const src = { pid: "the car's own torque reading", rate: "physics, from the fuel rate", maf: "physics, from the airflow", k: "physics, from the airflow constant" };
+    items.push(tq.ok === "1"
+      ? `Engine torque now: ${tq.idle === "1" ? "idle" : `${Number(tq.nm).toFixed(0)} N m`} (${src[tq.src] || tq.src}). Engine size used: ${Number(tq.vd_l).toFixed(1)} L.`
+      : `Engine torque: no value yet (it needs a running engine and an airflow or fuel-rate reading). Engine size used: ${Number(tq.vd_l).toFixed(1)} L.`);
+  }
+  if (tk) {
+    const c = cal ? Number(cal.c) : 1, u = userUnits();
+    if (tk.ready === "1") items.push(`Fuel tank: about ${volume(Number(tk.cap_raw_l) * c, u)}, ${volume(Number(tk.left_raw_l) * c, u)} left${Number(tk.range_km) >= 0 ? `, range ${U.dist(Number(tk.range_km), u).toFixed(0)} ${U.distLabel(u)}` : ""}.`);
+    else items.push(`Fuel tank: learning its size, ${Number(tk.band_l).toFixed(1)} of 10 L of driving counted (needs the fuel level between 10 % and 95 %).`);
+  }
+  for (const s of fills) items.push(`The board saw a fill-up (fuel level ${Number(s.before).toFixed(0)} % to ${Number(s.after).toFixed(0)} %${s.ready === "1" ? `, about ${volume(Number(s.raw_l) * (cal ? Number(cal.c) : 1), userUnits())}` : ""}). Enter the litres from the pump receipt below; the board does not use its own guess for the correction.`);
   if (life && Number(life.litres) > 0.02) {
     const k = Number(life.km) / Number(life.litres), u = userUnits();
     items.push(`Counted by the board since it started: ${volume(Number(life.litres), u)} over ${U.dist(Number(life.km), u).toFixed(0)} ${U.distLabel(u)}, ${k.toFixed(1)} km/L, ${U.l100(k).toFixed(1)} L/100 km, ${U.mpg(k, u).toFixed(1)} ${U.mpgLabel(u)}.`);

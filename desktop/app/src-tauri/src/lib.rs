@@ -143,6 +143,9 @@ const KNOWN_UNITS: [(&str, &str); 74] = [
     ("fuel_lph_raw", "L/h"),
     ("fuel_cal", ""),
     ("trip_fuel_raw_l", "L"),
+    ("torque_nm", "N m"),
+    ("tank_left_l", "L"),
+    ("tank_range_km", "km"),
 ];
 
 fn unit_of(name: &str) -> &'static str {
@@ -386,9 +389,33 @@ pub fn timezone_ok(tz: &str) -> bool {
     (3..=47).contains(&tz.len()) && tz.chars().all(|c| c.is_ascii_alphanumeric() || "<>+-,.:/".contains(c))
 }
 
-/// Checks the settings and time zone the way the board does and turns them into a config.json object.
-fn config_object(settings: &std::collections::HashMap<String, f64>, timezone: Option<String>) -> Result<Option<serde_json::Value>, String> {
+/// The board's rule for the one time server it may contact (main/harden.c harden_hostname_ok): a DNS name, 4 to 63
+/// characters, letters, digits and hyphens in dot-separated labels, at least one dot and one letter, no IP, port or scheme.
+pub fn hostname_ok(h: &str) -> bool {
+    let b = h.as_bytes();
+    if !(4..=63).contains(&b.len()) || !h.contains('.') || !b.iter().any(|c| c.is_ascii_alphabetic()) {
+        return false;
+    }
+    h.split('.').all(|l| !l.is_empty() && !l.starts_with('-') && !l.ends_with('-') && l.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-'))
+}
+
+/// Checks the settings, time zone and time server the way the board does and turns them into a config.json object.
+/// time_host "default" sends "", which puts the board back on its built-in time server.
+fn config_object(
+    settings: &std::collections::HashMap<String, f64>,
+    timezone: Option<String>,
+    time_host: Option<String>,
+) -> Result<Option<serde_json::Value>, String> {
     let mut map = serde_json::Map::new();
+    if let Some(h) = time_host.map(|t| t.trim().to_ascii_lowercase()).filter(|t| !t.is_empty()) {
+        if h == "default" {
+            map.insert("time_host".into(), serde_json::json!(""));
+        } else if hostname_ok(&h) {
+            map.insert("time_host".into(), serde_json::json!(h));
+        } else {
+            return Err(format!("time server '{h}' is not a host name such as www.google.com (no https://, port or IP address)"));
+        }
+    }
     if let Some(tz) = timezone.map(|t| t.trim().to_string()).filter(|t| !t.is_empty()) {
         if !timezone_ok(&tz) {
             return Err(format!("time zone '{tz}' is not a POSIX time zone such as CST6CDT,M3.2.0,M11.1.0"));
@@ -576,14 +603,20 @@ async fn board_request_code(port: String) -> Result<(), String> {
 
 #[tauri::command]
 async fn board_pair(state: tauri::State<'_, AppState>, port: String, code: String) -> Result<String, String> {
-    let host = receiver::local_address().ok_or("this computer has no network address. Connect it to the Wi-Fi the board will use")?;
+    // Pairing is what lets the board accept this app's USB commands. The address is stored for the Wi-Fi upload, which
+    // is off in 2.5.0, so a computer without a network address pairs with the loopback address.
+    let host = receiver::local_address().unwrap_or_else(|| "127.0.0.1".to_string());
     if state.rx.token.is_empty() {
         return Err("the receiver could not start, so there is nothing to pair with".into());
     }
     let (token, cert) = (state.rx.token.clone(), state.rx.cert_pem.clone());
     let h = host.clone();
     blocking(move || board::pair(&port, &code, &h, receiver::PORT, &token, &cert)).await?;
-    Ok(format!("Paired. The board will send its drives to {host}:{} when it is parked on Wi-Fi.", receiver::PORT))
+    if receiver::WIFI_UPLOAD {
+        Ok(format!("Paired. The board will send its drives to {host}:{} when it is parked on Wi-Fi.", receiver::PORT))
+    } else {
+        Ok("Paired. The board now accepts this app's commands over the cable. Import drives over USB: the Wi-Fi upload is being reworked.".into())
+    }
 }
 
 #[tauri::command]
@@ -602,11 +635,12 @@ async fn board_setup(
     networks: Vec<(String, String)>,
     settings: std::collections::HashMap<String, f64>,
     timezone: Option<String>,
+    time_host: Option<String>,
 ) -> Result<String, String> {
     for (ssid, password) in &networks {
         wifi_entry_ok(ssid, password)?;
     }
-    let config = config_object(&settings, timezone)?;
+    let config = config_object(&settings, timezone, time_host)?;
     blocking(move || board::setup(&port, &networks, config.as_ref())).await
 }
 
@@ -882,6 +916,18 @@ mod tests {
         assert_eq!(s.fuel_source, None);
         assert_eq!(unit_of("odometer_km"), "km");
         assert_eq!(unit_of("not_a_column"), "");
+    }
+
+    #[test]
+    fn time_server_names() {
+        assert!(hostname_ok("www.google.com") && hostname_ok("my-broker.example.workers.dev"));
+        assert!(!hostname_ok("localhost") && !hostname_ok("192.168.1.10") && !hostname_ok("a.b") && !hostname_ok("https://x.com"));
+        assert!(!hostname_ok("x.com:443") && !hostname_ok("-x.com") && !hostname_ok("x-.com") && !hostname_ok("x..com") && !hostname_ok(".x.com"));
+        let none = std::collections::HashMap::new();
+        assert_eq!(config_object(&none, None, Some("WWW.Google.com".into())).unwrap().unwrap()["time_host"], "www.google.com");
+        assert_eq!(config_object(&none, None, Some("default".into())).unwrap().unwrap()["time_host"], "");
+        assert!(config_object(&none, None, Some("http://x".into())).is_err());
+        assert!(config_object(&none, None, Some("  ".into())).unwrap().is_none());
     }
 
     #[test]

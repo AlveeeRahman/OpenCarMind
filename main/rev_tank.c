@@ -1,4 +1,4 @@
-/* CarMind R.E.V tank level learner. PROPOSAL for OpenCarMind main/rev_tank.c. See rev_tank.h. Single precision only. */
+/* CarMind R.E.V tank level learner, see rev_tank.h. Single precision only. */
 #include "rev_tank.h"
 #include <math.h>
 #include <string.h>

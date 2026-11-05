@@ -1,6 +1,6 @@
 /* Host tests for the proposed rev_tank.c, in the style of OpenCarMind tests/host/test_rev_learn.c.
  *   cc -std=c11 -Wall -Wextra -O1 -o test_rev_tank test_rev_tank.c rev_tank.c -lm && ./test_rev_tank
- *   ./test_rev_tank replay rows.csv      (rows exported by regen_tank.py: restart,session,dt,lph,kph,running,level)
+ *   ./test_rev_tank replay rows.csv      (rows: restart,session,dt,lph,kph,running,level)
  * A synthetic car with a known tank, a double-precision reference written independently (batch fixed-effects regression),
  * fill-up suggestions, engine-off level changes, the band, the ready flag, range, persistence checks. */
 #include <stdio.h>
@@ -73,7 +73,7 @@ static void test_clean_tank(void)
 static void test_noisy_with_fills(void)
 {
     rev_tank_t t; rev_tank_init(&t);
-    car_t c = {47.6, 47.6, 0, 1.6, 0.885, 0.0, 0, 8};                           /* the owner's measured noise: SD 1.6 %, rho 0.885 */
+    car_t c = {47.6, 47.6, 0, 1.6, 0.885, 0.0, 0, 8};                           /* sender noise: SD 1.6 %, lag-1 correlation 0.885 */
     double xc = 0; ns = 0; cur_seg = 0;
     int fills = 0; uint32_t s = 1;
     bool ready_early = false;
@@ -175,7 +175,7 @@ static void test_suggestions_do_not_touch_c(void)
     CHECK(sizeof(rev_tank_t) < 512);                                           /* small enough to save on every state write */
 }
 
-/* ---- replay of real rows exported by regen_tank.py, for the C-vs-Python comparison */
+/* ---- replay of exported rows, for comparing against a reference implementation */
 static int replay(const char *path)
 {
     FILE *f = fopen(path, "r");

@@ -23,7 +23,7 @@ Version 2.5.0, in testing. The released version is 2.4.0 with CarMind E.V, on `m
 | Parameters | 38,679 | 19,815 |
 | Arithmetic on the chip | int8 weights, int16 activations | int8 weights, int16 activations |
 | Time per run on the ESP32-S3 | about 3.5 ms, measured at the boot self-test | about 2.9 ms at the boot self-test, plus a second run with airflow hidden while the car reports MAF |
-| Learns in your car | nothing, the model is fixed | its fuel-rate read-out (the last layer, which turns the network's features into a fuel rate) and an airflow constant. Engine torque and fuel tank size are being added |
+| Learns in your car | nothing, the model is fixed | its fuel-rate read-out (the last layer, which turns the network's features into a fuel rate), an airflow constant that also gives the engine size, and the fuel tank size. Engine torque comes from physics sized to your engine |
 | Fill-up calibration | yes | yes |
 | Best for | a fixed, tested model | older cars, roughly pre-2020, that have no fuel-rate PID and can lose the airflow (MAF) reading |
 | Model hash | `dfa9af416dfb` | `f70bdcd3151b` |
@@ -47,7 +47,7 @@ Renders, not photos. Left: page 5 with CarMind E.V on `main`. Middle: page 5 on 
 - **A fault engine** that ranks trouble codes by severity and groups codes that share a cause.
 - **Dark and light screen themes**, switched by time of day or fixed in a settings file.
 - **A soft real-time scheduler** that times every job against its deadline and restarts the board if a step hangs.
-- **Optional Wi-Fi**: it sets the clock and, once paired, sends new drives to the desktop app on your computer.
+- **Optional Wi-Fi, for the clock only**: one HTTPS request to one time server, with its certificate checked. The default is a public server, and you can choose your own in the desktop app. Drives reach your computer over the USB cable while the Wi-Fi upload is reworked (see [Limitations and future work](#limitations-and-future-work)).
 - **A desktop app** for Windows, macOS and Linux that receives the drives, charts them, shows fuel and economy per drive, switches the on-board model, takes your fill-ups, and lists every value the car reported, including what the screen has no room for (odometer, oil temperature, hybrid battery and more on newer cars).
 
 ## Local-first
@@ -56,13 +56,13 @@ Renders, not photos. Left: page 5 with CarMind E.V on `main`. Middle: page 5 on 
 
 Most car loggers stream your driving to a server and do the thinking there. OpenCarMind does the thinking on the board, in the way TinyML work runs networks on microcontrollers<sup>[[1]](#ref-1)–[[3]](#ref-3)</sup>. The models are 89 KB (E.V) and 66 KB (R.E.V), one run takes about 3.5 ms (E.V) or 2.9 ms (R.E.V), and neither needs a network. R.E.V's learning also happens on the board, and what it learns stays on your SD card. Your data is plain CSV, JSON and text on a card you hold. Nothing leaves the car unless you copy the card or pair the board with your own computer.
 
-Wi-Fi is the only radio besides Bluetooth, and it is optional. It sets the clock from a public time server, and once you pair the board with the desktop app it sends new drive data to that app every 10 seconds while the car is parked at home. Nothing goes to a cloud. You can compile Wi-Fi out with one setting (`OCM_WIFI_CLOCK_SYNC`).
+Wi-Fi is the only radio besides Bluetooth, and it is optional. In 2.5.0 it does one thing: while the car is parked on a known network, the board sends one HTTPS request to one time server and reads the time from the reply. The server must present a certificate for exactly that host name, chained to a trusted root, and a time outside 2026 to 2099 is refused. Apart from joining the network (DHCP) and looking up that one host name (DNS), it sends nothing, and it listens on no port. Nothing goes to a cloud. You can compile Wi-Fi out with one setting (`OCM_WIFI_CLOCK_SYNC`).
 
 ## How it works
 
 <p align="center"><img src="docs/images/workflow/tool.png" width="900" alt="How it works: the engine computer answers OBD-II requests through a Bluetooth LE adapter. the ESP32-S3 board reads the car, runs the AI model and saves each drive to the SD card every 10 s. a paired board sends drives to the desktop app over Wi-Fi when parked at home, or you take the card out"></p>
 
-The board asks the engine computer for every field it supports, shows the live values on its screen and writes each drive to the SD card as its own session. The model runs on the chip while you drive. At home, a paired board sends the new data to the desktop app over Wi-Fi. Without pairing, take the card out and open the files on your computer.
+The board asks the engine computer for every field it supports, shows the live values on its screen and writes each drive to the SD card as its own session. The model runs on the chip while you drive. At home, the desktop app imports new drives over the USB cable, or you take the card out and open the files on your computer.
 
 ### On-board inference
 
@@ -122,9 +122,9 @@ The board never talks to Dashy. Data reaches your computer by SD card or through
 
 ## Desktop app
 
-<p align="center"><img src="docs/images/workflow/wifi-link.png" width="900" alt="Wi-Fi link: pair once over USB with a code from the board's screen, the board stores it, joins your Wi-Fi when parked, sends over TLS to your app every 10 seconds, and the desktop app keeps and charts the drives"></p>
+<p align="center"><img src="docs/images/workflow/clock.png" width="900" alt="Clock over Wi-Fi: parked on a known network, the board sends one HTTPS request to one time server, checks that its certificate chains to a trusted root and names that host, reads the Date header, and sets the clock only if the time is between 2026 and 2099. No SNTP, no upload, no open port"></p>
 
-The app in [desktop/](desktop/README.md) runs on Windows, macOS and Linux. Over the board's USB cable it pairs with the board (you type a code from the board's screen once), sets its Wi-Fi networks, time zone and settings, imports drives from the card and flashes new firmware, so the SD card never has to come out. After that, the board sends new data to the app over TLS every 10 seconds while the car is parked at home, and the app shows the drives and their charts. In 2.5.0 the Board page also switches the on-board model, and a Fuel page keeps your fill-up log, shows the fuel used per drive and in total, and reads what R.E.V has learned from the board. GitHub Actions builds the installers. [docs/DASHBOARD.md](docs/DASHBOARD.md) has the setup, the details of how the data reaches Dashy, and what has and has not been tested.
+The app in [desktop/](desktop/README.md) runs on Windows, macOS and Linux. Over the board's USB cable it pairs with the board (you type a code from the board's screen once), sets its Wi-Fi networks, time zone, time server and settings, imports drives from the card and flashes new firmware, so the SD card never has to come out. The app shows the drives and their charts. Pairing also protects these USB commands: the board answers only an app it has paired with. The time server is any host name you trust that serves HTTPS. Type "default" to go back to the built-in one. In 2.5.0 the Board page also switches the on-board model, and a Fuel page keeps your fill-up log, shows the fuel used per drive and in total, and reads what R.E.V has learned from the board. GitHub Actions builds the installers. [docs/DASHBOARD.md](docs/DASHBOARD.md) has the setup, the details of how the data reaches Dashy, and what has and has not been tested.
 
 ## Hardware
 
@@ -225,8 +225,8 @@ Continual learning means a model keeps learning after it ships, from new data, w
 | Fuel rate | learned on the board | the car's own fuel rate (PID 0x5E) or, failing that, fuel worked out from the airflow sensor |
 | Airflow constant, the fuel estimate when MAF is missing | learned on the board | airflow, absolute load and rpm while the airflow sensor works |
 | Fill-up calibration, for both models | learned on the board | the litres you pump, entered on the app's Fuel page |
-| Engine torque | being added | physics as the teacher: the energy flow of the fuel and the engine speed, minus friction that scales with engine size, with the engine size taken from the learned airflow constant. On cars that report true torque (PIDs 0x62 and 0x63), those readings win |
-| Fuel tank size | being added | the fuel used against the drop in fuel level, which gives litres left, range and automatic fill-up detection |
+| Engine torque | estimated from physics, sized to your engine | physics as the teacher: the energy flow of the fuel and the engine speed, minus friction that scales with engine size, with the engine size taken from the learned airflow constant. On cars that report true torque (PIDs 0x62 and 0x63), those readings win |
+| Fuel tank size | learned on the board, both models | the fuel used against the drop in fuel level, which gives litres left and range once it is sure, and suggests fill-ups it sees |
 | Manoeuvre class (AI SEES) | fixed | nothing yet. The car gives no label for it: checking it needs an accelerometer or a self-check |
 | Brake pressure | fixed | nothing. No car reports brake pressure, so there is no label to learn from |
 
@@ -234,23 +234,25 @@ Teaching the manoeuvre classifier in the car is the goal of [CarMind R.E.V 2](#p
 
 ### How R.E.V learns on the board
 
-<p align="center"><img src="docs/images/workflow/rev-learning.png" width="900" alt="How CarMind R.E.V keeps learning in the car. The frozen network gives 64 features. Manoeuvre class and brake pressure are fixed in v1, engine torque is being added with physics as the teacher, and the fuel rate's linear read-out is fine-tuned on the board: the car's fuel rate is paired with the features, the read-out is refit by least squares and goes live only if it is better on held-back rows. An airflow constant is learned from load and rpm, fill-ups give one calibration factor, and tank size is being added. With no fuel rate and no MAF the board shows the estimate with the lowest running error, in amber"></p>
+<p align="center"><img src="docs/images/workflow/rev-learning.png" width="900" alt="How CarMind R.E.V keeps learning in the car. The frozen network gives 64 features. Manoeuvre class and brake pressure are fixed in v1, engine torque is a physics estimate sized from the airflow constant, and the fuel rate's linear read-out is fine-tuned on the board: the car's fuel rate is paired with the features, the read-out is refit by least squares and goes live only if it is better on held-back rows. An airflow constant is learned from load and rpm, fill-ups give one calibration factor, and the tank size is learned from the fuel level. With no fuel rate and no MAF the board shows the estimate with the lowest running error, in amber"></p>
 
 The network itself never changes on the board. Each learner changes only when the car gives it something to check against.
 
 - **Fuel-rate read-out.** A linear read-out, also called a linear probe, is a single layer of weights that turns the network's internal 64-value feature vector into one number, here the fuel rate. R.E.V refits only this layer. Whenever the car reports its fuel rate, or its airflow, from which the fuel rate follows, the board averages it over the same 5 s the model saw and pairs it with the feature vector. The read-out is refit from these pairs by least squares, with older rows slowly fading so it can follow the car as it ages. A refit goes live only if it beats the live read-out on recent rows held back from the fit, and only if it has not drifted too far from the factory read-out. If the live read-out falls behind the factory one, the board resets it.
 - **Airflow constant.** While the airflow sensor works, the board learns one number k for your car in airflow ≈ k × absolute load × rpm, a standard engine relation. When the sensor drops out, this gives a physics-based fuel estimate. Cars that do not report absolute load (PID 0x43) use calculated load instead, which is experimental and not yet tested on data.
 - **Fill-up calibration.** You enter fill-ups on the app's Fuel page. From one full tank to the next, the board compares the litres you pumped with the fuel it counted, and scales its fuel figures to match. Implausible entries are ignored, and this works with both models.
+- **Engine torque, with physics as the teacher.** Most older cars do not report torque, and the network's torque head learned it from one car, so its numbers do not scale with engine size. R.E.V shows a physics estimate instead: the energy flowing in with the fuel, times a typical indicated efficiency, divided by engine speed, minus friction, which grows with engine size. The engine size comes from the learned airflow constant, so the estimate adapts to your engine without a torque sensor. In a decel fuel cut it shows engine braking, and at a standstill it shows "idle", because idling in Drive is where this model reads high. A car that reports actual and reference torque (PIDs 0x62 and 0x63) is used directly. Checked against the measured torque of one public car: R² 0.81 to 0.85 while moving. Petrol engines only.
+- **Fuel tank size.** The board compares the drop in the fuel level reading with the litres it counts and learns how many litres the tank holds. Once it is sure (about 10 litres of driving with the level between 10 % and 95 %), the details page shows litres left and range. A jump in the level after a stop is offered to the app as a possible fill-up, but only litres you type from a pump receipt change the fill-up correction, so the board never corrects itself with its own guess. This works with both models.
 
-When the car reports neither fuel rate nor airflow, the board uses whichever estimate (factory, learned or airflow model) has had the lowest running error on your car so far, and shows it in amber. What R.E.V learned is saved to the SD card every 5 minutes while you drive and when the drive ends. The fill-up correction is also kept in flash, so it survives a missing card. Learning runs only while R.E.V is the selected model, and safe mode turns it off.
+When the car reports neither fuel rate nor airflow, the board uses whichever estimate (factory, learned or airflow model) has had the lowest running error on your car so far, and shows it in amber. What R.E.V learned is saved to the SD card every 5 minutes while you drive and when the drive ends, the tank size in a file of its own. The fill-up correction is also kept in flash, so it survives a missing card. The fuel read-out and the airflow constant learn only while R.E.V is the selected model, while the tank size and the fill-up correction learn with either. Safe mode turns all learning off.
 
 ## Status
 
-What has been checked, on the bench or in the code: the build (with Wi-Fi clock sync on and off), the model's identity hash, the host unit tests (441 checks, 111 of them for R.E.V's learners and the fill-up calibration, the rest including a simulated drive for the power-off line, the adapter profile chooser, and the fuel, economy and units logic), the automatic switch to miles and mpg with a US Wi-Fi access point, kept after a reboot, the 10-second save and the "Safe to turn off" event on a board with an SD card, and the Wi-Fi upload to a stand-in receiver with resume after a cut-off pass. CI builds the desktop app and runs its unit tests on Windows, macOS and Linux. Nobody has opened the app on a real machine yet.
+What has been checked, on the bench or in the code: the build (with Wi-Fi clock sync on and off), the model's identity hash, the host unit tests (521 checks, 173 of them for R.E.V's learners, the torque physics, the tank learner and the fill-up calibration, the rest including a simulated drive for the power-off line, the adapter profile chooser, and the fuel, economy and units logic), the automatic switch to miles and mpg with a US Wi-Fi access point, kept after a reboot, the 10-second save and the "Safe to turn off" event on a board with an SD card, and the HTTPS date parsing and host-name rules of the time server. CI builds the desktop app and runs its unit tests on Windows, macOS and Linux. Nobody has opened the app on a real machine yet.
 
 Known security limits are listed in [SECURITY.md](SECURITY.md#known-limits).
 
-The author has driven the board with the drive-end, power-off, fuel economy and units features and reported them all working. R.E.V has run on the board through a 23-minute synthetic drive fed into the firmware's own OBD path: no missed deadlines, the learned airflow constant within 1 % of the true one, and two bugs in how missing readings were handled, both fixed. What has not been checked: CarMind R.E.V in a car (it has not been driven, and its learning results so far come from [replay on a computer](#carmind-rev-results-so-far) and that synthetic drive), the engine torque and tank learners, which are still being added, CarMind E.V on the road (it was flashed after that drive), other boards, any adapter other than the LELink, and what the screens do on a board without a panel. The checks that need a car or a card are listed in [docs/FIELD_CHECKS.md](docs/FIELD_CHECKS.md), with empty result tables for users to fill in.
+The author has driven the board with the drive-end, power-off, fuel economy and units features and reported them all working. R.E.V has run on the board through a 23-minute synthetic drive fed into the firmware's own OBD path: no missed deadlines, the learned airflow constant within 1 % of the true one, and two bugs in how missing readings were handled, both fixed. What has not been checked: CarMind R.E.V in a car (it has not been driven, and its learning results so far come from [replay on a computer](#carmind-rev-results-so-far) and that synthetic drive), the HTTPS clock against a real time server on the board, CarMind E.V on the road (it was flashed after that drive), other boards, any adapter other than the LELink, and what the screens do on a board without a panel. The checks that need a car or a card are listed in [docs/FIELD_CHECKS.md](docs/FIELD_CHECKS.md), with empty result tables for users to fill in.
 
 ## Next board: ESP-Mosaico with the ESP32-S31
 
@@ -288,7 +290,7 @@ The model also needs one step. ESP-PPQ quantises for the S3 with its first SIMD 
 
 ### Continual learning on the S31
 
-CarMind R.E.V already fine-tunes on today's board, but only where the car supplies a label: its fuel-rate read-out, the airflow constant and the fill-up factor, with engine torque and tank size being added (see [What R.E.V learns](#what-rev-learns)). The manoeuvre classifier and brake pressure stay as trained, because the car gives no label for them. Learning more on the board needs two things the car rarely gives you: a label for each window, and room to keep past windows so that new drives do not erase what the model knew (catastrophic forgetting<sup>[[15]](#ref-15)</sup>). That is the gap the S31 board could close.
+CarMind R.E.V already fine-tunes on today's board, but only where the car supplies a label: its fuel-rate read-out, the airflow constant (which also gives engine size and so scales the torque estimate), the tank size and the fill-up factor (see [What R.E.V learns](#what-rev-learns)). The manoeuvre classifier and brake pressure stay as trained, because the car gives no label for them. Learning more on the board needs two things the car rarely gives you: a label for each window, and room to keep past windows so that new drives do not erase what the model knew (catastrophic forgetting<sup>[[15]](#ref-15)</sup>). That is the gap the S31 board could close.
 
 The goal on the Mosaico is to let the manoeuvre classifier learn in the car:
 
@@ -305,17 +307,26 @@ Both chips have hardware single-precision floating point and emulate double prec
 
 OpenCarMind will ship a release for the ESP-Mosaico. It will build from the same source tree as the S3 version, which stays supported, and it will handle the board differences covered above. Work starts when the author's board arrives.
 
-The Mosaico also changes how you use the logger. Your adapter lives in the car, and the Mosaico rides in your pocket. Get in, and it finds the adapter it already paired with and starts logging. Walk back inside, and it sends the drive to the desktop app over your Wi-Fi. For a long drive, power it from the car's USB port or add the Mosaico Battery Module, because the built-in 65 mAh cell is sized for finishing a save, not for a whole trip.
+The Mosaico also changes how you use the logger. Your adapter lives in the car, and the Mosaico rides in your pocket. Get in, and it finds the adapter it already paired with and starts logging. Walk back inside, and it hands the drive to the desktop app. For a long drive, power it from the car's USB port or add the Mosaico Battery Module, because the built-in 65 mAh cell is sized for finishing a save, not for a whole trip.
+
+## Limitations and future work
+
+What 2.5.0 cannot do yet, and what is being built for it:
+
+- **CarMind R.E.V has not been driven.** Its learning has been checked in replay on a computer, on recorded drives fed through the board, and in host tests. Its first drive in a car is next, before any release.
+- **Torque is a physics estimate, not a measurement.** Its one check with true torque is a single public car, and that car's "truth" is its engine computer's own torque model. Accessories such as the air conditioning are not modelled, the efficiency is a typical value the board cannot learn without a torque sensor, it reads high at a standstill in Drive (so the screen shows "idle"), and it is for petrol engines only.
+- **The tank size needs driving to settle.** About 10 litres with the level between 10 % and 95 % before it shows anything, more on cars whose level reading jumps. A fuel sender that is not linear with the tank's shape is not modelled, and the range runs to an empty reading, not to the reserve below it.
+- **The manoeuvre classifier and brake pressure do not learn in the car.** Nothing in OBD gives a label for them. A self-check of the classifier (CarMind R.E.V 2) and accelerometer labels on the ESP-Mosaico are the routes being worked on.
+- **No Wi-Fi upload in 2.5.0.** Sending drives over TCP and TLS stalls the whole stream when one packet is lost on a weak home Wi-Fi link, the problem known as head-of-line blocking. The upload is being reworked so that each file travels on its own stream, as in QUIC<sup>[[19]](#ref-19)</sup>, which removes that stall<sup>[[20]](#ref-20)</sup>, while keeping resume from the last byte and the pinned certificate. It will come back once it is measured against today's path on a lossy link. Until then drives come over the USB cable.
+- **The clock is only as exact as one second.** It comes from the time server's HTTP Date header, which has one-second resolution, enough for drive logs. It needs a known Wi-Fi network within reach. Without one, the board keeps the time it saved to the card.
 
 ## Planned
 
 - The ESP-Mosaico (ESP32-S31) port described above, and a build without a display.
 - Code-signed installers.
 - CarMind R.E.V on a car: a drive, and its learning checked against the replay results, before it goes into a release.
-- Two more learners for R.E.V, being added on this branch: engine torque with physics as the teacher, and the fuel tank size.
 - More regularised models, released by this project, to fit more cars.
 - CarMind R.E.V 2: a forecast of the next moment's manoeuvre, learned on the board, as a self-check that lets the classifier learn in the car.
-- Fill-ups sent to the board over Wi-Fi, not only over the cable.
 - A faster version built on a Jetson.
 
 ## References
@@ -355,6 +366,10 @@ The Mosaico also changes how you use the logger. Your adapter lives in the car, 
 <a id="ref-17"></a>[17] H. Cai, C. Gan, L. Zhu and S. Han, "TinyTL: Reduce activations, not trainable parameters for efficient on-device learning," in *Advances in Neural Information Processing Systems (NeurIPS)*, 2020. [arXiv:2007.11622](https://arxiv.org/abs/2007.11622)
 
 <a id="ref-18"></a>[18] J. Lin, L. Zhu, W.-M. Chen, W.-C. Wang, C. Gan and S. Han, "On-device training under 256KB memory," in *Advances in Neural Information Processing Systems (NeurIPS)*, 2022. [arXiv:2206.15472](https://arxiv.org/abs/2206.15472)
+
+<a id="ref-19"></a>[19] J. Iyengar and M. Thomson, Eds., "QUIC: A UDP-based multiplexed and secure transport," RFC 9000, IETF, 2021. [rfc-editor.org](https://www.rfc-editor.org/rfc/rfc9000)
+
+<a id="ref-20"></a>[20] P. Kumar and B. Dezfouli, "Implementation and analysis of QUIC for MQTT," arXiv preprint, 2018. [arXiv:1810.07730](https://arxiv.org/abs/1810.07730)
 
 ## Repository layout
 

@@ -22,7 +22,15 @@ Put the file named in each row on the SD card at `obd/`, boot the board and read
 | Another adapter | pair a different BLE OBD adapter | the board finds it, connects and logs rows | | | |
 | Adapter name not on the list | an adapter whose name is not in `OBD_BLE_NAME_PREFIXES` | it is not found until its name prefix is added | | | |
 
-## Wi-Fi upload to the desktop app
+## Clock and the desktop app
+
+| Check | Do this | Expected | Firmware and app | Computer | Result |
+|---|---|---|---|---|---|
+| HTTPS clock | park near a known Wi-Fi network after a boot | page 2 shows Clock: synced, and the session JSON has `"clock": "https"` | | | |
+| Your time server | set Time server on the Board page to a host you run, restart | the clock still syncs; a host without a valid certificate is refused | | | |
+| R.E.V torque and tank | drive with R.E.V selected, then open the Fuel page | torque shows on page 5 in amber (idle when stopped); the Fuel page shows the tank learning progress | | | |
+
+## Wi-Fi upload to the desktop app (not in 2.5.0)
 
 | Check | Do this | Expected | Firmware and app | Computer | Result |
 |---|---|---|---|---|---|

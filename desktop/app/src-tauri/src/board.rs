@@ -257,8 +257,8 @@ pub fn rev_fillups(port: &str, list: &serde_json::Value) -> Result<String, Strin
 }
 
 pub fn rev_reset(port: &str, what: &str) -> Result<(), String> {
-    if !["fuel", "phys", "cal", "all"].contains(&what) {
-        return Err("reset fuel, phys, cal or all".into());
+    if !["fuel", "phys", "cal", "tank", "all"].contains(&what) {
+        return Err("reset fuel, phys, cal, tank or all".into());
     }
     Door::open(port)?.call(&format!("REV-RESET {what}"), Duration::from_secs(10)).map(|_| ())
 }
