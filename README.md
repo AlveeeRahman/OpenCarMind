@@ -10,15 +10,15 @@
 
 OpenCarMind turns an ESP32-S3 board and a Bluetooth OBD-II adapter into a car data logger that runs a neural network on the board. It needs no phone, no account and no internet connection. Everything it records goes to an SD card in the car and, if you pair the board, to the desktop app on your own computer.
 
-This is the `rev-v1` branch. It ships two on-board models, and you choose between them in the desktop app. CarMind E.V is the fixed model of the released firmware. CarMind R.E.V is the project's first model that keeps learning in your car. It uses on-device learning, which means the board itself updates part of the model from what your car reports while you drive, with no computer or cloud in the loop.
+It ships two on-board models, and you choose between them in the desktop app. CarMind E.V is fixed and tested. CarMind R.E.V is my first model that keeps learning in your car. It uses on-device learning, which means the board itself updates part of the model from what your car reports while you drive, with no computer or cloud in the loop.
 
-Version 2.5.0, in testing. The released version is 2.4.0 with CarMind E.V, on `main`. Licence: MIT. Website: <https://alveeerahman.github.io/OpenCarMind/>. Downloads of 2.4.0 for the firmware and the desktop app are on the [Releases page](https://github.com/AlveeeRahman/OpenCarMind/releases/latest). The model selector and the Fuel page are only in the 2.5.0 desktop app on this branch, and the 2.5.0 firmware has to be built from this branch (see [Build and flash](#build-and-flash)).
+Version 2.5.0, not released yet: the latest release is 2.4.0, with CarMind E.V only. Licence: MIT. Website: <https://alveeerahman.github.io/OpenCarMind/>. Downloads of 2.4.0 for the firmware and the desktop app are on the [Releases page](https://github.com/AlveeeRahman/OpenCarMind/releases/latest). Until 2.5.0 is released, build its firmware from this repository (see [Build and flash](#build-and-flash)) and take the desktop app, which has the model selector and the Fuel page, from the latest `desktop` build in the Actions tab.
 
 ## Choose your model
 
 | | CarMind E.V | CarMind R.E.V |
 |---|---|---|
-| Status | released in 2.4.0, the default | new in 2.5.0, in testing, not yet driven on a car |
+| Status | released in 2.4.0, the default | new in 2.5.0, in its first drives |
 | Size on the chip | 89,152 bytes (about 89 KB) | 65,648 bytes (about 66 KB) |
 | Parameters | 38,679 | 19,815 |
 | Arithmetic on the chip | int8 weights, int16 activations | int8 weights, int16 activations |
@@ -32,9 +32,9 @@ Many older cars do not report a fuel-rate PID (0x5E), so the board works out the
 
 To switch, connect the board to the desktop app with its USB cable while the car is parked, open the Board page and pick the model under "On-board model". The board keeps the choice after a restart, and you can switch back at any time. What R.E.V learned stays on the SD card while E.V runs. More on what it learns is in [What R.E.V learns](#what-rev-learns).
 
-<p align="center"><img src="docs/images/rev-changes.png" width="900" alt="Renders of what changes with R.E.V. Board page 5 with CarMind E.V on main and with CarMind R.E.V on this branch, which adds a Learning job, shows only the time since the last answer beside AI ESTIMATES and reads holding in the brake row while stopped. The desktop app's On-board model panel on the Board page and the CarMind R.E.V learning panel on the Fuel page"></p>
+<p align="center"><img src="docs/images/rev-changes.png" width="900" alt="Renders of what changes with R.E.V. Board page 5 with CarMind E.V in 2.4.0 and with CarMind R.E.V in 2.5.0, which adds a Learning job, shows only the time since the last answer beside AI ESTIMATES and reads holding in the brake row while stopped. The desktop app's On-board model panel on the Board page and the CarMind R.E.V learning panel on the Fuel page"></p>
 
-Renders, not photos. Left: page 5 with CarMind E.V on `main`. Middle: page 5 on this branch with R.E.V selected. It adds a third job, "Learning". On 2.5.0, with either model, the AI ESTIMATES header shows only the time since the model's last answer, and the brake row reads "holding" while the model sees the car stopped. Right: the model selector on the desktop app's Board page and R.E.V's learning status on its Fuel page, shown after a board's first minute on R.E.V. All values are examples.
+Renders, not photos. Left: page 5 with CarMind E.V in 2.4.0. Middle: page 5 in 2.5.0 with R.E.V selected. It adds a third job, "Learning". On 2.5.0, with either model, the AI ESTIMATES header shows only the time since the model's last answer, and the brake row reads "holding" while the model sees the car stopped. Right: the model selector on the desktop app's Board page and R.E.V's learning status on its Fuel page, shown after a board's first minute on R.E.V. All values are examples.
 
 ## What you get
 
@@ -180,7 +180,7 @@ CarMind E.V takes about 89 KB on the chip and about 3.5 ms per run on the ESP32-
 | Test set | Manoeuvre | Fuel R² |
 |---|---|---|
 | Public KIA drives | macro-F1 0.887 | 0.947 |
-| Two drives of the author's car | 98.5 % in an allowed class | 0.884 |
+| Two drives of my car | 98.5 % in an allowed class | 0.884 |
 | 37 VED cars the model never saw | 96.1 % in an allowed class | 0.940 (0.688 with MAF hidden) |
 
 Limits:
@@ -252,13 +252,13 @@ What has been checked, on the bench or in the code: the build (with Wi-Fi clock 
 
 Known security limits are listed in [SECURITY.md](SECURITY.md#known-limits).
 
-The author has driven the board with the drive-end, power-off, fuel economy and units features and reported them all working. R.E.V has run on the board through a 23-minute synthetic drive fed into the firmware's own OBD path: no missed deadlines, the learned airflow constant within 1 % of the true one, and two bugs in how missing readings were handled, both fixed. What has not been checked: CarMind R.E.V in a car (it has not been driven, and its learning results so far come from [replay on a computer](#carmind-rev-results-so-far) and that synthetic drive), the HTTPS clock against a real time server on the board, CarMind E.V on the road (it was flashed after that drive), other boards, any adapter other than the LELink, and what the screens do on a board without a panel. The checks that need a car or a card are listed in [docs/FIELD_CHECKS.md](docs/FIELD_CHECKS.md), with empty result tables for users to fill in.
+I have driven the board with the drive-end, power-off, fuel economy and units features, and they all worked. R.E.V has run on the board through a 23-minute synthetic drive fed into the firmware's own OBD path: no missed deadlines, the learned airflow constant within 1 % of the true one, and two bugs in how missing readings were handled, both fixed. What has not been checked: CarMind R.E.V in a car (it has not been driven, and its learning results so far come from [replay on a computer](#carmind-rev-results-so-far) and that synthetic drive), the HTTPS clock against a real time server on the board, CarMind E.V on the road (it was flashed after that drive), other boards, any adapter other than the LELink, and what the screens do on a board without a panel. The checks that need a car or a card are listed in [docs/FIELD_CHECKS.md](docs/FIELD_CHECKS.md), with empty result tables for users to fill in.
 
 ## Next board: ESP-Mosaico with the ESP32-S31
 
-<p align="center"><img src="docs/images/mosaico-concept.png" width="900" alt="Concept: OpenCarMind on ESP-Mosaico, three 480 by 480 screens showing the drive gauges, the model's two heads (what it sees, and each estimate over the last 30 s), and faults with the power-off line"></p>
+<p align="center"><img src="docs/images/mosaico-rev.png" width="900" alt="Concept: OpenCarMind with CarMind R.E.V on ESP-Mosaico, three 480 by 480 screens. Drive: RPM, speed, what the model sees, economy and the learned fuel tank with litres left and range. AI: what R.E.V sees and its estimates, with torque marked as a physics estimate and fuel rate as learned. Learning: the fuel read-out, the airflow constant with the engine size it implies, the tank size, and the manoeuvre class waiting for IMU labels"></p>
 
-The next board is Espressif's ESP-Mosaico<sup>[[9]](#ref-9),[[10]](#ref-10)</sup>. The author has one on order, and the concept above shows how the screens would look on its square display.
+The next board is Espressif's ESP-Mosaico<sup>[[9]](#ref-9),[[10]](#ref-10)</sup>. I have one on order, and the concept above shows how CarMind R.E.V would look on its square display. The Mosaico release will run CarMind R.E.V only. The bigger screen gives R.E.V a page of its own for what it has learned: the fuel read-out against its factory version, the engine size behind the torque estimate, the tank size, and the manoeuvre classifier, which starts learning there once the board's accelerometer labels each manoeuvre. The concept is a render with example values.
 
 If you build things with the ESP32, this is a good board to get, and the port will be easier with more people testing it. The Vision Combo Kit (Core Unit v1.2, camera module and interaction module) is 59 USD on the [ESP-Mosaico Store](https://store.mosaico.ai/products/esp-mosaico). It was on pre-order with an estimated 15-day dispatch on 3 November 2026. If you have one, open an issue or a pull request with what you find: pin maps, screen layouts, NAND logging and S31 model exports are all open. It is built on the ESP32-S31<sup>[[11]](#ref-11)</sup>: two 32-bit RISC-V cores at 320 MHz, one with a 128-bit SIMD data path, 512 KB of SRAM, Wi-Fi 6, and Bluetooth 5.4 with both LE and Classic (BR/EDR).
 
@@ -305,7 +305,7 @@ Both chips have hardware single-precision floating point and emulate double prec
 
 ### A release for the Mosaico
 
-OpenCarMind will ship a release for the ESP-Mosaico. It will build from the same source tree as the S3 version, which stays supported, and it will handle the board differences covered above. Work starts when the author's board arrives.
+OpenCarMind will ship a release for the ESP-Mosaico. It will build from the same source tree as the S3 version, which stays supported with both models, and it will handle the board differences covered above. Work starts when my board arrives.
 
 The Mosaico also changes how you use the logger. Your adapter lives in the car, and the Mosaico rides in your pocket. Get in, and it finds the adapter it already paired with and starts logging. Walk back inside, and it hands the drive to the desktop app. For a long drive, power it from the car's USB port or add the Mosaico Battery Module, because the built-in 65 mAh cell is sized for finishing a save, not for a whole trip.
 
@@ -325,7 +325,7 @@ What 2.5.0 cannot do yet, and what is being built for it:
 - The ESP-Mosaico (ESP32-S31) port described above, and a build without a display.
 - Code-signed installers.
 - CarMind R.E.V on a car: a drive, and its learning checked against the replay results, before it goes into a release.
-- More regularised models, released by this project, to fit more cars.
+- More regularised models, to fit more cars.
 - CarMind R.E.V 2: a forecast of the next moment's manoeuvre, learned on the board, as a self-check that lets the classifier learn in the car.
 - A faster version built on a Jetson.
 

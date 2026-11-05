@@ -38,7 +38,7 @@ Scores of the version on the chip, on data held out from training:
 | Test set | Manoeuvre | Fuel R² |
 |---|---|---|
 | Public KIA drives | macro-F1 0.887 | 0.947 |
-| Two drives of the author's car | 98.5 % in an allowed class | 0.884 |
+| Two drives of my car | 98.5 % in an allowed class | 0.884 |
 | 37 VED cars the model never saw | 96.1 % in an allowed class | 0.940 (0.688 with MAF hidden) |
 
 "In an allowed class" means the answer is one of the classes the labels allow for that window. Where there is no brake switch, "braking or cruising" counts as correct either way. The VED score with MAF partly measures the fuel formula, because the target is computed from MAF. The "MAF hidden" score is the one that matters, since that is when the board uses the estimate. Brake pressure (R² 0.46) is the weakest estimate.

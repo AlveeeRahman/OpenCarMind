@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>OpenCarMind with CarMind R.E.V on ESP-Mosaico</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+html,body{margin:0;background:#141414;font-family:Inter,'Helvetica Neue',Arial,sans-serif;color:#f5f5f4}
+.wrap{width:1600px;height:740px;box-sizing:border-box;padding:40px 56px}
+h1{margin:0;font-size:31px;font-weight:800;display:inline-block}
+.sub{font-size:16px;color:#b8b5ae;margin-left:16px}
+.row{display:flex;gap:56px;margin-top:34px}
+.col{width:462px;text-align:center}
+.dev{width:462px;height:462px;box-sizing:border-box;border:5px solid #f97316;border-radius:44px;background:#ece7df;padding:18px}
+.scr{width:100%;height:100%;box-sizing:border-box;border-radius:28px;background:#171717;padding:20px 22px;text-align:left;position:relative}
+.cap{margin-top:20px;font-size:16px;color:#d6d3cd}
+.top{display:flex;justify-content:space-between;align-items:center;font-size:19px;font-weight:700}
+.muted{color:#a8a29e}.small{font-size:13px}
+.card{background:#262626;border-radius:16px;padding:12px 16px;margin-top:12px}
+.light{background:#f5f2ec;color:#1c1917}
+.lbl{font-size:12px;letter-spacing:.09em;color:#a8a29e;font-weight:600}
+.light .lbl{color:#78716c}
+.amber{color:#fbbf24}.green{color:#22c55e}.orange{color:#f97316}
+.kv{display:flex;justify-content:space-between;align-items:baseline;margin-top:9px;font-size:16px}
+.big{font-size:26px;font-weight:600}
+.bar{height:7px;border-radius:4px;background:#3f3f46;margin-top:8px;overflow:hidden}
+.bar i{display:block;height:100%;background:#f97316;border-radius:4px}
+.tag{font-size:11px;font-weight:700;letter-spacing:.06em;border:1.5px solid currentColor;border-radius:6px;padding:1px 6px;margin-left:8px}
+</style></head><body><div class="wrap">
+<h1>OpenCarMind with CarMind R.E.V on ESP-Mosaico</h1><span class="sub">Concept for the next board: ESP32-S31, 480 × 480 touch display, IMU, battery</span>
+<div class="row">
+
+<div class="col"><div class="dev"><div class="scr">
+  <div class="top"><span>17:31 <span class="orange">CarMind R.E.V</span></span><span class="small muted">BT · Wi-Fi clock</span></div>
+  <div style="display:flex;gap:12px;margin-top:12px">
+    <div class="card" style="flex:1.2;margin-top:0"><div class="lbl">RPM</div><div style="font-size:58px;font-weight:500;line-height:1.05">2350</div>
+      <div class="bar"><i style="width:34%"></i></div><div class="lbl" style="margin-top:12px">SPEED km/h</div><div style="font-size:44px;font-weight:500;line-height:1.1">64</div></div>
+    <div class="card light" style="flex:1;margin-top:0"><div class="lbl">AI SEES</div><div style="font-size:24px;font-weight:700;margin-top:4px">Cruising</div><div class="small" style="color:#78716c">87 % sure</div>
+      <div class="lbl" style="margin-top:18px">ECONOMY</div><div class="big">15.8 <span class="small">km/L</span></div></div>
+  </div>
+  <div class="card"><div class="kv" style="margin-top:0"><span><span class="lbl">FUEL TANK</span></span><span class="big">23 L <span class="muted small">· 310 km</span></span></div>
+    <div class="bar"><i style="width:47%;background:#22c55e"></i></div><div class="small muted" style="margin-top:6px">tank size learned on the board: 50 L</div></div>
+</div></div><div class="cap">Drive: gauges, what the model sees, and the learned tank</div></div>
+
+<div class="col"><div class="dev"><div class="scr">
+  <div class="top"><span>AI <span class="tag orange">R.E.V</span></span><span class="small muted">142 checks · 2.9 ms</span></div>
+  <div class="card light"><div class="kv" style="margin-top:0"><span><span class="lbl">AI SEES</span> <b style="font-size:20px;margin-left:6px">Cruising</b></span><span class="small">87 % sure</span></div>
+    <div class="small" style="color:#78716c;margin-top:4px">fixed in v1: learns in the car once the IMU gives it labels</div></div>
+  <div class="card"><div class="lbl">AI ESTIMATES</div>
+    <div class="kv"><span>Brake pressure</span><span class="big">6.3 <span class="small muted">bar</span></span></div>
+    <div class="kv"><span>Engine torque <span class="tag amber">PHYSICS</span></span><span class="big amber">85 <span class="small">N m</span></span></div>
+    <div class="kv"><span>Fuel rate <span class="tag green">LEARNED</span></span><span class="big green">2.1 <span class="small">L/h</span></span></div>
+  </div>
+  <div class="small muted" style="position:absolute;left:22px;right:22px;bottom:18px">Frozen network, five one-second steps; small parts learn on the board</div>
+</div></div><div class="cap">AI: what R.E.V sees and estimates, and where each number comes from</div></div>
+
+<div class="col"><div class="dev"><div class="scr">
+  <div class="top"><span>Learning</span><span class="small green">● saved to the card</span></div>
+  <div class="card"><div class="kv" style="margin-top:0"><span>Fuel read-out</span><span>14 updates kept</span></div>
+    <div class="small muted" style="margin-top:4px">31 % lower error than factory on this car</div></div>
+  <div class="card"><div class="kv" style="margin-top:0"><span>Airflow constant</span><span>engine 2.0 L</span></div>
+    <div class="small muted" style="margin-top:4px">sizes the torque estimate to this engine</div></div>
+  <div class="card"><div class="kv" style="margin-top:0"><span>Fuel tank</span><span>50 L</span></div><div class="bar"><i style="width:100%;background:#22c55e"></i></div></div>
+  <div class="card"><div class="kv" style="margin-top:0"><span>Manoeuvre class</span><span class="orange">IMU labels</span></div>
+    <div class="small muted" style="margin-top:4px">next: the accelerometer checks each class in the car</div></div>
+</div></div><div class="cap">Learning: what R.E.V has learned, and what the IMU adds next</div></div>
+
+</div></div></body></html>
