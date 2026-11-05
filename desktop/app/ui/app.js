@@ -221,6 +221,9 @@ function showModel(m) {
   const speed = m.run_us ? `, ${(m.run_us / 1000).toFixed(1)} ms per run` : "";
   const learn = m.active === "rev" ? (m.learning ? ", learning on" : ", learning off") : "";
   msg("#model-text", `The board runs ${MODEL_NAME[m.active] || m.active}${m.loaded ? "" : " (it did not load)"}${speed}${learn}.`);
+  const badge = $("#model-badge");
+  badge.hidden = !(m.active in MODEL_NAME);
+  if (!badge.hidden) badge.src = `assets/carmind-${m.active}-small.svg`;
 }
 async function loadModel() { showModel(await invoke("board_model", { port: port() })); }
 $("#model-switch").addEventListener("click", () => {
