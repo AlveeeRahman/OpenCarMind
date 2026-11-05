@@ -25,3 +25,4 @@ shot mosaico-rev 1600 740 docs/images/mosaico-rev.png
 shot lcd-amoled 1200 260 docs/images/lcd-amoled.png
 shot leaders 1600 790 docs/images/leaders.png
 shot learner-board 1600 740 docs/images/learner-board.png
+shot board-bench 1880 860 docs/images/board-bench.png
