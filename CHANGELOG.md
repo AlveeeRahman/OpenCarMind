@@ -13,6 +13,9 @@ A new brand, a screen made for the LCD, and a visible power-off.
 - **New boards start on CarMind R.E.V** when the firmware carries it. A board that already chose a model keeps it.
 - **Fixes**: the status LED no longer drops a frame when the button and the LED task update it at once ("RMT transaction is busy"). The boot log no longer lists the saved Wi-Fi networks. The model self-test log says plainly when the board differs from the PC simulation.
 - **Figures**: the seven workflow figures were redrawn with straight connectors and larger text, the three README GIFs re-rendered with the brand fonts, and the screen mock-ups and the Mosaico concept updated to the new colours.
+- **Source layout**: the firmware source is grouped by subsystem under `main/` (`obd/`, `model/`, `analysis/`, `ui/`, `storage/`, `net/`, `system/`), mapped in `docs/ARCHITECTURE.md`. No include line, function or behaviour changed. The desktop app's Rust core is split into `sessions`, `settings` and `fuel` modules.
+- **Supply chain**: CodeQL on every commit, a libFuzzer harness over the input parsers (`tests/fuzz`) in CI, Dependabot, Python test dependencies pinned by hash, the release's provenance bundle attached as a release asset, CODEOWNERS, a pull-request template, a code of conduct and `CITATION.cff`.
+- **Desktop app**: the Board page says new boards start on CarMind R.E.V, shows the running model's mark, and the header carries the brand logo.
 
 ## 2.5.1
 
