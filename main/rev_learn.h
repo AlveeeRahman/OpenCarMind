@@ -8,8 +8,8 @@
  *     whose normal equations are (A + alpha I) w* = b + alpha w0, with A = sum lambda^(T-t) phi phi^T and b = sum lambda^(T-t) phi y.
  *     Only A and b are kept (constant memory), plus a ring of the most recent REV_HOLDOUT pairs that is held out of A and b to judge
  *     a candidate: it replaces the live weights only if it beats them on that ring by REV_GATE and stays within REV_DRIFT times
- *     |w0| of w0; if the live weights fall REV_RESET behind the factory head on the ring, they go back to w0. Same structure as the
- *     private CarMind forecaster (fc_online.c), solved every REV_EVERY pairs during drives instead of only when parked.
+ *     |w0| of w0; if the live weights fall REV_RESET behind the factory head on the ring, they go back to w0. Solved every
+ *     REV_EVERY pairs during drives.
  *     Float throughout: the S3's FPU is single precision. With alpha = 80 on the diagonal, A + alpha I has a smallest eigenvalue of
  *     at least 80, so the float Cholesky stays far inside the 2 % gate; the host test runs a double solver beside it to check.
  * (b) Airflow constant. Absolute load (PID 0x43) is the air mass per intake stroke over the mass the cylinder holds at standard
@@ -78,7 +78,7 @@ bool rev_label_mean(const rev_label_t *r, int64_t end_ms, float *out);
 
 /* ---------------------------------------------------------------- (b) airflow constant */
 #define REV_PHYS_K0        2.225e-4f   /* g/s per %-rpm: median over the training cars, about a 2.25 L engine */
-#define REV_PHYS_LAMBDA    0.99        /* chosen on the validation cars: memory about 100 rows, 2.3 min */
+#define REV_PHYS_LAMBDA    0.99        /* memory about 100 rows, 2.3 min */
 #define REV_PHYS_MIN_ROWS  20          /* rows with real airflow before a learned k is trusted */
 #define REV_PHYS_X_MIN     3000.0f     /* %-rpm: below this the engine is off or the row says nothing about k */
 #define REV_PHYS_BINS      4           /* calculated-load path: rpm bins, edges 1500, 2500, 3500 */

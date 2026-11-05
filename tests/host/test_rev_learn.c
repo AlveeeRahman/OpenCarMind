@@ -1,7 +1,6 @@
 /* Host tests for CarMind R.E.V (main/rev_learn.c, rev_cal.c, rev_state.c) and the fuel source picker in econ.c.
  * Separate from test_main.c, which needs sys_event. Build and run:  make -C tests/host rev
- * Mirrors the private CarMind forecaster's test (tests/host/test_fc_online.c): a synthetic car whose fuel head differs from the
- * factory prior, the gate, the reset, persistence with damaged files, plus a double-precision reference solver beside the
+ * Covers a synthetic car whose fuel head differs from the factory prior, the gate, the reset, persistence with damaged files, plus a double-precision reference solver beside the
  * board's float one. */
 #include <stdio.h>
 #include <stdbool.h>
@@ -48,8 +47,8 @@ static void car_init(float change)
     W_CAR[64] = MLR_W0[64] + change * 0.3f;
 }
 
-/* ---------------------------------------------------------------- a double-precision reference, written independently in
-   the shape of carmind-ml regen_sim.py FuelLearner: full matrices, float64, the same gate, cap and reset */
+/* ---------------------------------------------------------------- a double-precision reference, written independently:
+   full matrices, float64, the same gate, cap and reset */
 typedef struct {
     double w[REV_NF], A[REV_NF][REV_NF], b[REV_NF];
     double ring[REV_HOLDOUT][REV_NF + 1];
