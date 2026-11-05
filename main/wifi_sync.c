@@ -7,7 +7,7 @@
  * Time comes from ONE server (remote_config_time_host(), default CONFIG_OCM_TIME_HTTPS_HOST): one HTTPS HEAD request,
  * the server's certificate checked against ESP-IDF's root bundle and its name, the time read from the Date header.
  * Apart from DHCP and the DNS lookup of that name, nothing else leaves the board; it listens on no port. The upload to
- * the desktop app is compiled out unless CONFIG_OCM_WIFI_UPLOAD (off in 2.5.0). */
+ * the desktop app is compiled out unless CONFIG_OCM_WIFI_UPLOAD (off in 2.5.x). */
 #include <string.h>
 #include <stdio.h>
 #include <time.h>

@@ -1,0 +1,27 @@
+# Dependabot keeps the pinned GitHub Actions, the desktop app's crates and npm packages, and the test tooling current.
+# Every pull request it opens still goes through CI (host tests, firmware build, desktop build) before it can merge.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+  - package-ecosystem: cargo
+    directory: /desktop/app/src-tauri
+    schedule:
+      interval: weekly
+  - package-ecosystem: npm
+    directory: /desktop/app
+    schedule:
+      interval: weekly
+  - package-ecosystem: pip
+    directory: /tests
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /dashboard
+    schedule:
+      interval: monthly

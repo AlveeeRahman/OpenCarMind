@@ -268,7 +268,11 @@ static void handle(char *line, char *buf, char *b64)
     }
     if (!strcmp(cmd, "CODE")) {
         if (s_code_made && t - s_code_made < 5000) { reply("ERR wait a few seconds"); return; }
-        snprintf(s_code, sizeof s_code, "%06lu", (unsigned long)(esp_random() % 1000000UL));
+        /* esp_random() is the chip's hardware RNG, true random while Bluetooth or Wi-Fi runs (both start before this task,
+           app_main.c). Draw until the word falls inside the largest multiple of 10^6, so every code is equally likely. */
+        uint32_t r;
+        do r = esp_random(); while (r >= 4294000000UL);
+        snprintf(s_code, sizeof s_code, "%06lu", (unsigned long)(r % 1000000UL));
         s_code_made = t;
         s_code_until = t + CODE_MS;
         s_code_tries = CODE_TRIES;

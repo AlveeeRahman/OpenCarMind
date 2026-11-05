@@ -11,6 +11,9 @@ A new brand, a screen made for the LCD, and a visible power-off.
 - **Page 5**: instructions per second on each core from the chip's hardware counters, PSRAM used out of total, the chip's own temperature (°C or °F), uptime.
 - **Page 3**: the pattern line sits above the page dots.
 - **New boards start on CarMind R.E.V** when the firmware carries it. A board that already chose a model keeps it.
+- **Supply chain**: CodeQL on every commit, a libFuzzer harness over the input parsers (`tests/fuzz`) in CI, Dependabot, Python test dependencies pinned by hash, the release's provenance bundle attached as a release asset, CODEOWNERS, a pull-request template, a code of conduct and `CITATION.cff`.
+- **USB door**: pairing codes are drawn from the hardware RNG without modulo bias. The desktop app says when the board's 10-minute session has ended, and can restart the board. SECURITY.md describes the clock sync as it is: one HTTPS host, certificate checked, time from the Date header.
+- **Desktop app wording**: the Board page no longer says E.V is the default; new boards start on CarMind R.E.V since 2.5.1.
 - **Fixes**: the status LED no longer drops a frame when the button and the LED task update it at once ("RMT transaction is busy"). The boot log no longer lists the saved Wi-Fi networks. The model self-test log says plainly when the board differs from the PC simulation.
 - **Figures**: the seven workflow figures were redrawn with straight connectors and larger text, the three README GIFs re-rendered with the brand fonts, and the screen mock-ups and the Mosaico concept updated to the new colours.
 

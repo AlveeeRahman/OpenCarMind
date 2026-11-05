@@ -207,7 +207,7 @@ async function connect() {
   }
 }
 
-/* ---- On-board model: CarMind E.V (default) or CarMind R.E.V, switched over the cable and kept by the board ---- */
+/* ---- On-board model: CarMind R.E.V (the default on a new board) or CarMind E.V, switched over the cable and kept by the board ---- */
 let boardModel = null;
 function showModel(m) {
   boardModel = m;
@@ -228,7 +228,7 @@ $("#model-switch").addEventListener("click", () => {
   if (!boardModel) return msg("#model-text", "Connect first.", true);
   if (want === boardModel.active) return msg("#model-text", `${MODEL_NAME[want]} is already running.`);
   $("#model-confirm-text").textContent = want === "rev"
-    ? "Switch to CarMind R.E.V? It is new. It learns this car's fuel use while you drive and from your fill-ups. You can switch back to E.V at any time; what R.E.V learned is kept."
+    ? "Switch to CarMind R.E.V? It learns this car's fuel use and engine size while you drive, and from your fill-ups. You can switch back to E.V at any time; what R.E.V learned is kept."
     : "Switch back to CarMind E.V? R.E.V stops learning, and what it learned is kept on the card for later.";
   $("#model-confirm").hidden = false;
 });
@@ -282,6 +282,9 @@ $("#flash").addEventListener("click", () => {
   if (!confirm("Flash the firmware that came with this app? Keep the cable in until it finishes.")) return;
   $("#flash-log").textContent = "";
   step("Flashing... this takes about 30 seconds.", async () => msg("#board-msg", await invoke("board_flash", { port: port() })));
+});
+$("#reboot").addEventListener("click", () => {
+  step("Restarting the board...", async () => { await invoke("board_reboot", { port: port() }); showTools(false); $("#pair-box").hidden = true; msg("#board-msg", "The board is restarting. It keeps its networks, settings, pairing and what it learned. Connect again in a few seconds."); });
 });
 
 async function refreshReceiver() {
