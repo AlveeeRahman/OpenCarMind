@@ -38,12 +38,12 @@ jobs:
         run: python -m py_compile tools/ocm_report.py tools/gen_ml_params.py tools/check_docs.py
       - name: Unit tests
         run: python -m unittest discover -s tests -p "test_*.py" -v
-      - name: main/ml_params.h and main/ml_params_rev.h match the shipped model files
+      - name: main/model/ml_params.h and ml_params_rev.h match the shipped model files
         run: |
           python tools/gen_ml_params.py ml/onboard "$RUNNER_TEMP/ml_params.h"
-          diff main/ml_params.h "$RUNNER_TEMP/ml_params.h"
+          diff main/model/ml_params.h "$RUNNER_TEMP/ml_params.h"
           python tools/gen_ml_params.py ml/onboard/rev "$RUNNER_TEMP/ml_params_rev.h" MLR
-          diff main/ml_params_rev.h "$RUNNER_TEMP/ml_params_rev.h"
+          diff main/model/ml_params_rev.h "$RUNNER_TEMP/ml_params_rev.h"
       - name: Report tool on the replay sessions
         run: |
           python tools/ocm_report.py samples/replay/obd dashboard/site
@@ -54,8 +54,26 @@ jobs:
         run: python tools/check_docs.py
       - name: Dashboard configuration parses
         run: |
-          pip install pyyaml==6.0.2
+          pip install --require-hashes -r tests/requirements.txt
           python -c "import yaml; [yaml.safe_load(open(f)) for f in ('dashboard/docker-compose.yml', 'dashboard/dashy/conf.yml')]"
+
+  fuzz:
+    # libFuzzer over the input parsers (tests/fuzz): a short run on every change, with AddressSanitizer and UBSan.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: make -C tests/fuzz CC=clang RUNS=50000
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: fuzz-crashes
+          path: |
+            tests/fuzz/crash-*
+            tests/fuzz/leak-*
+            tests/fuzz/timeout-*
+          if-no-files-found: ignore
 
   firmware:
     runs-on: ubuntu-24.04

@@ -1,0 +1,23 @@
+cff-version: 1.2.0
+message: If you use OpenCarMind or the CarMind models in research, please cite this repository.
+title: "OpenCarMind: an open-source OBD2 logger for the ESP32 with TinyML on the board"
+type: software
+authors:
+  - family-names: Rahman
+    given-names: Alvee
+version: 2.5.1
+date-released: 2026-11-05
+license: MIT
+repository-code: https://github.com/AlveeeRahman/OpenCarMind
+url: https://alveeerahman.github.io/OpenCarMind/
+keywords:
+  - OBD-II
+  - ESP32-S3
+  - TinyML
+  - on-device learning
+  - automotive data logging
+abstract: >-
+  Firmware, desktop app and model card for an ESP32-S3 car data logger that runs a quantised
+  convolutional network on the chip. The CarMind R.E.V model keeps learning the car it rides in,
+  with an outlier-robust recursive least-squares read-out for fuel rate and a learned airflow
+  constant that sizes a physics torque estimate.
