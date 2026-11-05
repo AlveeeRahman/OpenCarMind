@@ -677,7 +677,7 @@ static void build_page4(void)
 
     /* scheduler strip, y 118..182 (content area 156 x 56): dot | name | time used vs. time allowed | last time or problem count */
     lv_obj_t *sch = s4_frame(118, 64, C_BLUE, "JOBS");
-    s4_load = s4_label(sch, &lv_font_montserrat_12, C_MUTED, 40, -2, 116, 15);
+    s4_load = s4_label(sch, &lv_font_montserrat_12, C_MUTED, 36, -2, 120, 15);   /* right of "JOBS" (33 px) */
     lv_obj_set_style_text_align(s4_load, LV_TEXT_ALIGN_RIGHT, 0);
     for (int i = 0; i < S4_JOBS; i++) {
         int y = 12 + i * 14;
@@ -733,7 +733,7 @@ static void refresh_sched(const sched_system_t *sys)
 {
     /* per-core CPU load of the jobs, U = sum(C_max / T); amber above the rate-monotonic bound, red if the
        response-time analysis says some job can miss its deadline */
-    lv_label_set_text_fmt(s4_load, "core load %d%% / %d%%", (int)(sys->util[0] * 100.0f + 0.5f), (int)(sys->util[1] * 100.0f + 0.5f));
+    lv_label_set_text_fmt(s4_load, "SYS/AI  %d%% / %d%%", (int)(sys->util[0] * 100.0f + 0.5f), (int)(sys->util[1] * 100.0f + 0.5f));   /* job load per core, same order as the MIPS tile; "SYS/AI  100% / 100%" is 118 of 120 px */
     bool over = sys->util[0] > sys->rm_bound[0] || sys->util[1] > sys->rm_bound[1];
     lv_obj_set_style_text_color(s4_load, lv_color_hex(!sys->schedulable ? C_BAD : over ? C_WARN : C_MUTED), 0);
 
