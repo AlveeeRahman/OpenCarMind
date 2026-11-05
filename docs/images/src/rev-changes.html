@@ -14,6 +14,7 @@ html,body{margin:0;background:#ffffff;color:#17212E;font-family:Inter,system-ui,
 .shot img{width:226px;height:420px;border-radius:12px;display:block}
 .tag{font:700 14px/18px Inter,sans-serif;color:#17212E}
 .tag small{display:block;font:500 13px/17px Inter,sans-serif;color:#4A5668}
+.shot .tag img{display:inline-block;border-radius:5px}   /* the model badge sits in the line, unlike the screenshots */
 /* the light palette of desktop/app/ui/style.css, so the render does not follow the renderer's dark mode */
 .app{--bg:#F5F2EB;--card:#fff;--ink:#17212E;--muted:#57616F;--line:#C9C1B3;--accent:#2F5FD0;--warn-bg:#FBF0D2;--warn-ink:#6B4B00;color:var(--ink);flex:1;display:flex;flex-direction:column;gap:6px;min-width:0}
 .scale{width:594px;transform:scale(.66);transform-origin:top left}
@@ -27,8 +28,8 @@ html,body{margin:0;background:#ffffff;color:#17212E;font-family:Inter,system-ui,
 </head>
 <body>
 <div class="canvas">
-  <div class="shot"><div class="tag"><img src="../../../assets/logo/carmind-ev.svg" alt="" style="width:20px;height:20px;vertical-align:-5px;margin-right:6px">Before: CarMind E.V<small>page 5, 2.4.0</small></div><img src="../system.png" alt=""></div>
-  <div class="shot"><div class="tag"><img src="../../../assets/logo/carmind-rev.svg" alt="" style="width:20px;height:20px;vertical-align:-5px;margin-right:6px">After: CarMind R.E.V<small>page 5, 2.5.0</small></div><img src="../system-rev.png" alt=""></div>
+  <div class="shot"><div class="tag"><img src="../../../assets/logo/carmind-ev-small.svg" alt="" style="width:20px;height:20px;vertical-align:-5px;margin-right:6px">Before: CarMind E.V<small>page 5, 2.4.0</small></div><img src="../system.png" alt=""></div>
+  <div class="shot"><div class="tag"><img src="../../../assets/logo/carmind-rev-small.svg" alt="" style="width:20px;height:20px;vertical-align:-5px;margin-right:6px">After: CarMind R.E.V<small>page 5, 2.5.0</small></div><img src="../system-rev.png" alt=""></div>
   <div class="app">
     <div class="tag">Desktop app<small>Board page and Fuel page, new in 2.5.0</small></div>
     <div class="slot" id="slot1"><div class="scale">
