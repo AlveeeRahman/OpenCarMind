@@ -38,15 +38,15 @@ h1 { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 38px
 </style></head>
 <body>
 <div class="wrap">
-  <div class="head"><h1>On-board benchmark</h1><span class="snap">Two unseen test drives, 1,119 labelled windows · scores from the same int8 files run on a computer · size, RAM and time measured on the ESP32-S3</span></div>
+  <div class="head"><h1>On-board benchmark</h1><span class="snap">Two unseen test drives, 1,119 labelled windows · every number measured on the ESP32-S3</span></div>
   <div class="table">
     <div class="tr th"><span>Rank</span><span></span><span style="text-align:left">Model</span><span class="grp">Accuracy ↓</span><span>Stopped recall</span><span>Braking recall</span><span>Accel. recall</span><span>Cruising recall</span><span>Macro-F1</span><span>ROC-AUC</span><span>Model size</span><span>RAM</span><span>ms per run</span><span>Params</span><span>Learns in car</span></div>
 <div class="tr">
   <span class="rank">#1</span><span class="logo badge"><img src="../../../assets/logo/carmind-rev-small.svg" alt=""></span>
   <div><div class="nm">CarMind R.E.V</div><div class="sub">OpenCarMind <span class="d ship"></span><span class="tag ship">Shipped</span></div></div>
-  <div class="score"><span class="n"><span class="hi">94.5</span></span><div class="bar"><i style="width:94.5%"></i></div></div>
-  <span class="num">99.4</span><span class="num">98.4</span><span class="num">87.7</span><span class="num"><span class="hi">88.9</span></span>
-  <span class="num"><span class="hi">0.925</span></span>
+  <div class="score"><span class="n"><span class="hi">93.8</span></span><div class="bar"><i style="width:93.8%"></i></div></div>
+  <span class="num">99.4</span><span class="num">98.4</span><span class="num">86.0</span><span class="num"><span class="hi">87.7</span></span>
+  <span class="num"><span class="hi">0.917</span></span>
   <span class="num"><span class="hi">0.995</span></span>
   <div class="size"><span class="n2">64 KB</span><small>−26 % vs E.V</small></div>
   <span class="num">60 KB<small>20 int + 40 PSRAM</small></span>
@@ -70,10 +70,10 @@ h1 { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 38px
 <div class="tr">
   <span class="rank">#3</span><span class="logo">TC</span>
   <div><div class="nm">TCN</div><div class="sub">Bai et al. 2018 · public data <span class="d base"></span><span class="tag base">Baseline</span></div></div>
-  <div class="score"><span class="n">79.9</span><div class="bar"><i style="width:79.9%"></i></div></div>
-  <span class="num"><span class="hi">100.0</span></span><span class="num">90.2</span><span class="num">67.6</span><span class="num">51.0</span>
-  <span class="num">0.739</span>
-  <span class="num">0.972</span>
+  <div class="score"><span class="n">80.2</span><div class="bar"><i style="width:80.2%"></i></div></div>
+  <span class="num"><span class="hi">100.0</span></span><span class="num">89.3</span><span class="num">67.6</span><span class="num">52.2</span>
+  <span class="num">0.742</span>
+  <span class="num">0.971</span>
   <div class="size"><span class="n2">57 KB</span><small>−34 % vs E.V</small></div>
   <span class="num">59 KB<small>11 int + 48 PSRAM</small></span>
   <span class="num">2.65</span>
@@ -84,9 +84,9 @@ h1 { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 38px
   <span class="rank">#4</span><span class="logo badge"><img src="../../../assets/logo/carmind-ev-small.svg" alt=""></span>
   <div><div class="nm">CarMind E.V</div><div class="sub">OpenCarMind <span class="d fixed"></span><span class="tag fixed">Fixed</span></div></div>
   <div class="score"><span class="n">73.5</span><div class="bar"><i style="width:73.5%"></i></div></div>
-  <span class="num">99.2</span><span class="num">99.2</span><span class="num">88.3</span><span class="num">14.6</span>
+  <span class="num">99.2</span><span class="num">99.2</span><span class="num">87.7</span><span class="num">14.6</span>
   <span class="num">0.657</span>
-  <span class="num">0.982</span>
+  <span class="num">0.981</span>
   <div class="size"><span class="n2">87 KB</span><small>reference</small></div>
   <span class="num">84 KB<small>21 int + 63 PSRAM</small></span>
   <span class="num">2.91</span>
@@ -109,10 +109,10 @@ h1 { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 38px
 <div class="tr">
   <span class="rank">#6</span><span class="logo">GR</span>
   <div><div class="nm">GRU</div><div class="sub">public data <span class="d base"></span><span class="tag base">Baseline</span></div></div>
-  <div class="score"><span class="n">38.0</span><div class="bar"><i style="width:38.0%"></i></div></div>
-  <span class="num">0.8</span><span class="num"><span class="hi">100.0</span></span><span class="num">82.7</span><span class="num">47.8</span>
-  <span class="num">0.434</span>
-  <span class="num">0.947</span>
+  <div class="score"><span class="n">40.7</span><div class="bar"><i style="width:40.7%"></i></div></div>
+  <span class="num">7.4</span><span class="num"><span class="hi">100.0</span></span><span class="num">82.7</span><span class="num">46.8</span>
+  <span class="num">0.465</span>
+  <span class="num">0.945</span>
   <div class="size"><span class="n2">43 KB</span><small>−51 % vs E.V</small></div>
   <span class="num">68 KB<small>10 int + 58 PSRAM</small></span>
   <span class="num">5.86</span>
@@ -128,6 +128,6 @@ h1 { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 38px
   <span class="num"></span><span class="num"></span><span class="num"></span><span class="num"></span><span class="num"></span>
 </div>
   </div>
-  <div class="ctx"><span><b>How:</b> the windows of both drives replayed through each model; labels from a rule on the raw OBD signals with the closed-throttle level read from each drive, as for an unseen vehicle. Recall: the share of each class called correctly. ROC-AUC: one class against the rest, averaged over the four classes. Baselines were trained from scratch on public data only. <b style="color:#1A47E0">Blue:</b> best in the column.</span></div>
+  <div class="ctx"><span><b>How:</b> each model flashed in turn and the windows of both drives replayed through the chip; labels from a rule on the raw OBD signals with the closed-throttle level read from each drive, as for an unseen vehicle. Recall: the share of each class called correctly. ROC-AUC: one class against the rest, averaged over the four classes. Baselines were trained from scratch on public data only. <b style="color:#1A47E0">Blue:</b> best in the column.</span></div>
 </div>
 </body></html>

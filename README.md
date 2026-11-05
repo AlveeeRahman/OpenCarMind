@@ -235,7 +235,7 @@ Method and a comparison with routine driving: [docs/TEST_DRIVES.md](docs/TEST_DR
 
 <p align="center"><img src="docs/images/leaders.png" width="900" alt="CarMind model leaders: the models on main, tested on two drives they never saw, scored as an unknown car. R.E.V: 94.5 percent of windows right, cruising 88.9, braking 98.4, accelerating 87.7, stopped 99.4, earlier held-out drives 95.1, KIA test 87.1, fuel R squared 0.867 learned on 31 cars. R.E.V (old): 71.8 percent, cruising 7.9. E.V: 73.5 percent, cruising 14.6, does not learn"></p>
 
-<p align="center"><img src="docs/images/board-bench.png" width="900" alt="On-board benchmark on two unseen test drives, 1,119 labelled windows. Accuracy, recall per class, macro-F1 and ROC-AUC: CarMind R.E.V 94.5 percent, macro-F1 0.925, ROC-AUC 0.995, cruising recall 88.9; MLP 81.0; TCN 79.9; CarMind E.V 73.5; CarMind R.E.V (old) 71.8; GRU 38.0; always stopped baseline 44.9. Size, RAM and time per run measured on the ESP32-S3"></p>
+<p align="center"><img src="docs/images/board-bench.png" width="900" alt="On-board benchmark on two unseen test drives, 1,119 labelled windows, every number measured on the ESP32-S3. Accuracy, recall per class, macro-F1 and ROC-AUC: CarMind R.E.V 93.8 percent, macro-F1 0.917, ROC-AUC 0.995, cruising recall 87.7; MLP 81.0; TCN 80.2; CarMind E.V 73.5; CarMind R.E.V (old) 71.8; GRU 40.7; always stopped baseline 44.9"></p>
 
 <p align="center"><img src="docs/images/learner-board.png" width="900" alt="Fuel learner leaderboard on 31 unseen VED cars with the airflow hidden, ranked by R squared with 1 percent bad labels: Huber RLS (R.E.V) 0.867, ANIL 0.774, no learning 0.709, Plain RLS (R.E.V old) 0.696, Meta-SGD 0.151"></p>
 
