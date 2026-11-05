@@ -20,6 +20,9 @@ void sys_event(event_level_t level, const char *fmt, ...)
     (void)level; (void)fmt;
 }
 
+/* Results go into a volatile sink so the compiler keeps every call. */
+static volatile int sink;
+
 /* The first byte picks the parser, the rest is its input; a NUL-terminated copy serves the string parsers. */
 int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 {
@@ -33,30 +36,30 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
     s[n] = 0;
 
     switch (which) {
-    case 0: { int64_t e; harden_http_date(s, &e); break; }
-    case 1: harden_hostname_ok(s); break;
+    case 0: { int64_t e; sink ^= harden_http_date(s, &e); break; }
+    case 1: sink ^= harden_hostname_ok(s); break;
     case 2: {
         char *comma = memchr(s, ',', n);
-        if (comma) { *comma = 0; harden_wifi_cred_ok(s, comma + 1); } else harden_wifi_cred_ok(s, "");
+        if (comma) { *comma = 0; sink ^= harden_wifi_cred_ok(s, comma + 1); } else sink ^= harden_wifi_cred_ok(s, "");
         break;
     }
-    case 3: harden_timezone_ok(s); break;
+    case 3: sink ^= harden_timezone_ok(s); break;
     case 4: {
         uint8_t bytes[8] = {0x1A, 0xF8, 0x80, 0x05, 0x00, 0xFF, 0x7F, 0x01};
         float v;
-        custom_pid_eval(s, bytes, (int)(n % 9), &v);
+        sink ^= custom_pid_eval(s, bytes, (int)(n % 9), &v);
         break;
     }
     case 5: {
         adapter_uuid_t u;
-        adapter_uuid_parse(s, &u);
-        adapter_name_matches((const char *)in, n, "OBD,LELink,Vgate,vLinker");
-        adapter_name_looks_obd((const char *)in, n);
+        sink ^= adapter_uuid_parse(s, &u);
+        sink ^= adapter_name_matches((const char *)in, n, "OBD,LELink,Vgate,vLinker");
+        sink ^= adapter_name_looks_obd((const char *)in, n);
         break;
     }
     case 6: {
         char out[128];
-        dtc_bytes_to_string(in, (int)(n > 64 ? 64 : n), out, sizeof out);
+        sink ^= dtc_bytes_to_string(in, (int)(n > 64 ? 64 : n), out, sizeof out);
         break;
     }
     default: {
