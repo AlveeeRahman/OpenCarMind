@@ -53,17 +53,29 @@ void status_get(app_status_t *out)
 
 /* BOOT button (GPIO0): tap = next page; hold 2 s = power off (deep sleep, BOOT wakes);
  * hold 8 s = forget the saved adapter. RESET is wired to the chip enable pin and always reboots. */
+static void set_shutdown(uint8_t stage)
+{
+    STATUS_LOCK(); g_status.shutdown_stage = stage; STATUS_UNLOCK();
+}
+
+/* Power-off you can see: "Turning off / Saving the drive" (LED breathes amber, caution: do not unplug) until the drive and
+   the learned state are on the card, then "Off / Safe to unplug" for 1.5 s, then the backlight fades to black and the LED
+   goes dark. Both pins are held low through deep sleep, so neither lights up again until BOOT wakes the board. */
 static void power_off(void)
 {
-    /* Logging already stopped when the hold passed 2 s; wait for the drive to be saved and closed, then sleep. */
+    set_shutdown(1);
+    /* Logging already stopped when the hold passed 2 s; wait for the drive to be saved and closed. */
     if (!elm_wait_stopped(4000)) ESP_LOGW(TAG, "poll loop still busy after 4 s; saving what is logged");
     rev_flush(2000);                   /* the learned fuel state, before the card is unmounted */
-    ESP_LOGW(TAG, "powering off (deep sleep); press BOOT to wake");
-    status_led_set(0, 0, 0);
-    display_sleep();
     sdlog_prepare_sleep();
+    set_shutdown(2);
+    ESP_LOGW(TAG, "powering off (deep sleep); press BOOT to wake");
+    vTaskDelay(pdMS_TO_TICKS(1500));   /* long enough to read "Off" */
     while (gpio_get_level(BOARD_BUTTON) == 0) vTaskDelay(pdMS_TO_TICKS(50));   /* wait for release */
-    vTaskDelay(pdMS_TO_TICKS(200));
+    display_fade_off(600);
+    status_led_off_for_sleep();
+    gpio_deep_sleep_hold_en();
+    vTaskDelay(pdMS_TO_TICKS(100));
     esp_sleep_enable_ext0_wakeup(BOARD_BUTTON, 0);
     esp_deep_sleep_start();
 }
@@ -126,9 +138,10 @@ static void button_task(void *arg)
     }
 }
 
-/* RGB LED language (few fixed meanings, per the HIG haptics rules):
- *   colour  = the screen you are on: dashboard cyan, details blue, internals violet,
+/* RGB LED language (few fixed meanings, per the HIG haptics rules), in the brand palette:
+ *   colour  = the screen you are on: dashboard cobalt, details violet, internals green, system warm white,
  *             faults amber (red when a HIGH/CRITICAL fault is present)
+ *   power-off: amber breathing while the drive is saved (do not unplug), then dark
  *   pattern = the process: slow blink = searching for the adapter / waiting for the ECU,
  *             steady = logging
  *   overrides: steady red = critical alarm, fast red blink = adapter locked, white = button held,
@@ -141,6 +154,12 @@ static void led_task(void *arg)
         tick++;
         EXT_RAM_BSS_ATTR static app_status_t st;
         status_get(&st);
+        if (st.shutdown_stage == 1) {                                     /* saving before power-off: amber breathing */
+            int ph = tick % 20; float l = 0.2f + 0.8f * (ph < 10 ? ph / 10.0f : (20 - ph) / 10.0f);
+            status_led_set((uint8_t)(245 * l), (uint8_t)(154 * l), (uint8_t)(46 * l));
+            continue;
+        }
+        if (st.shutdown_stage == 2) { status_led_set(0, 0, 0); continue; }
         if (st.hold_pct) continue;                                       /* button task owns the LED while held */
 
         int64_t now_ms = esp_timer_get_time() / 1000;
@@ -149,14 +168,14 @@ static void led_task(void *arg)
 
         uint8_t r = 0, g = 0, b = 0;
         switch (display_current_page()) {
-        case 0:  r = 0;   g = 211; b = 238; break;                       /* cyan */
-        case 1:  r = 40;  g = 90;  b = 255; break;                       /* blue */
-        case 2:  r = 150; g = 60;  b = 255; break;                       /* violet */
+        case 0:  r = 60;  g = 110; b = 255; break;                       /* cobalt */
+        case 1:  r = 150; g = 90;  b = 240; break;                       /* violet */
+        case 2:  r = 70;  g = 170; b = 90;  break;                       /* green */
         case 3:                                                           /* faults */
-            if (st.faults.max_severity >= SEV_HIGH) { r = 255; g = 0;   b = 0; }
-            else                                    { r = 245; g = 158; b = 11; }
+            if (st.faults.max_severity >= SEV_HIGH) { r = 240; g = 70;  b = 60; }
+            else                                    { r = 245; g = 154; b = 46; }
             break;
-        default: r = 200; g = 200; b = 200; break;                        /* system: white */
+        default: r = 230; g = 215; b = 190; break;                        /* system: warm white */
         }
         float level = 1.0f;
         if (st.ble < BLE_ST_LOGGING) level = (tick / 5) % 2 ? 1.0f : 0.0f;                 /* slow blink: searching / init */
@@ -183,6 +202,9 @@ void app_main(void)
         gettimeofday(&tv, NULL);
         if (tv.tv_sec > 1700000000) { STATUS_LOCK(); g_status.time_synced = true; STATUS_UNLOCK(); }
     }
+    gpio_deep_sleep_hold_dis();       /* a power-off held the backlight and LED pins low: release them */
+    gpio_hold_dis(BOARD_LCD_BL);
+    gpio_hold_dis(BOARD_RGB_LED);
     status_led_init();
     status_led_set(64, 64, 64);
 

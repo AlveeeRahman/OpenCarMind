@@ -12,21 +12,15 @@ python3 - "$TMP" <<'PY'
 import re, sys, os
 tmp = sys.argv[1]
 src = open('docs/screens/screens.html').read()
-head = src[:src.index('<body>') + 6].replace('.row{display:flex;gap:24px;padding:24px}', '.row{display:block;padding:0}').replace('body{margin:0;background:#1a1f27', 'body{margin:0;background:#0B0F14')
-# dark -> light palette, mirrors THEME_DARK / THEME_LIGHT in main/display.c
-MAP = {'#0B0F14':'#F5F3EE', '#151B23':'#FFFFFF', '#E5E7EB':'#15181E', '#7B8794':'#5B6470', '#22D3EE':'#0E7490',
-       '#22C55E':'#15803D', '#F59E0B':'#B45309', '#EF4444':'#DC2626', '#3A4552':'#D9D3C9', '#3B4552':'#A8B0BA', '#fff':'#15181E', '#FFFFFF':'#15181E'}
+head = src[:src.index('<body>') + 6].replace('.row{display:flex;gap:24px;padding:24px}', '.row{display:block;padding:0}').replace('body{margin:0;background:#0A0A0A', 'body{margin:0;background:#000000')
+# dark -> light palette, mirrors THEME_DARK / THEME_LIGHT in main/display.c. One pass, so a light value that equals
+# another dark value (dark muted becomes #4A4A4A, which is also the dark border) is never remapped twice.
+MAP = {'#000000':'#F5F5F5', '#050505':'#FFFFFF', '#F2ECE1':'#101418', '#B8B8B8':'#4A4A4A', '#8CC8FF':'#1F4FC2',
+       '#56F487':'#1B6B2A', '#FCCA21':'#6B4A00', '#E64343':'#C62828', '#4A4A4A':'#8C8C8C', '#7A7A7A':'#6E6E6E',
+       '#AD8DFD':'#5517A5', '#72ECE4':'#034239', '#6CB35D':'#40731A', '#FE86C2':'#971C65', '#38B8F6':'#196EA9',
+       '#FE860F':'#A65F00', '#FD122E':'#D4002A', '#F2A13A':'#8F5200', '#FFF':'#101418', '#FFFFFF':'#101418'}
 def lighten(html):
-    out = html
-    for d, l in MAP.items():
-        out = re.sub(re.escape(d), l + '\u0000', out, flags=re.I)      # mark replaced values so later rules skip them
-    out = out.replace('\u0000', '')
-    # tiles need an outline on a white page
-    out = out.replace('.tile{background:#FFFFFF;', '.tile{background:#FFFFFF;border:1px solid #D9D3C9;')
-    out = out.replace('.t3{background:#FFFFFF;', '.t3{background:#FFFFFF;border:1px solid #D9D3C9;')
-    out = out.replace('.bar{height:44px;background:#FFFFFF;', '.bar{height:44px;background:#FFFFFF;border-bottom:1px solid #D9D3C9;')
-    out = out.replace('.card{margin:0 12px;background:#FFFFFF;', '.card{margin:0 12px;background:#FFFFFF;')
-    return out
+    return re.sub(r'#(?:[0-9A-Fa-f]{6}|fff)\b', lambda m: MAP.get(m.group(0).upper(), m.group(0)), html)
 for m in re.finditer(r'(<div class="scr[^"]*" id="([^"]+)"[^>]*>.*?)(?=\n<div class="scr|\n</div></body>)', src, re.S):
     page = head + '<div class="row">' + m.group(1) + '</div></body></html>'
     open(os.path.join(tmp, m.group(2) + '.html'), 'w').write(page)

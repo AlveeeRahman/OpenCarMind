@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="OpenCarMind mark: a car seen from the front with an amber chip in the windscreen, on a night-drive tile">
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="#15202D"/>
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="none" stroke="#34465C" stroke-width="6"/>
+  <path d="M152 214 C164 170 184 150 216 146 L296 146 C328 150 348 170 360 214 L382 224 C402 230 412 244 412 262 L412 318 C412 330 402 340 390 340 L122 340 C110 340 100 330 100 318 L100 262 C100 244 110 230 130 224 Z" fill="#F2ECE1"/>
+  <path d="M176 214 C186 184 198 172 222 170 L290 170 C314 172 326 184 336 214 Z" fill="#15202D"/>
+  <rect x="240" y="180" width="32" height="28" rx="5" fill="#F59A2E"/>
+  <path d="M120 262 C134 256 160 256 176 262 C170 276 150 280 128 276 Z" fill="#F59A2E"/>
+  <path d="M392 262 C378 256 352 256 336 262 C342 276 362 280 384 276 Z" fill="#F59A2E"/>
+  <rect x="196" y="292" width="120" height="14" rx="7" fill="#9DA8B8"/>
+  <rect x="122" y="340" width="56" height="38" rx="10" fill="#F2ECE1"/>
+  <rect x="334" y="340" width="56" height="38" rx="10" fill="#F2ECE1"/>
+</svg>

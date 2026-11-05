@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+A new brand, a screen made for the LCD, and a visible power-off.
+
+- **Brand**: a new night-drive palette (navy, warm ink, cobalt, amber) across the README, the website, the desktop app and its icons, and a sharper vector logo. Banner chips now read ESP32-S3, Bluetooth LE, TinyML, Desktop app and Active Learning.
+- **Screen colours for a backlit LCD**: the dark theme is pure black, because any tint in the background glows through the backlight. Text is 4.5:1 or more on every background in both themes. Page 5 gives each of its seven sections its own colour (classifier orange, estimator red), checked for normal and colour-blind vision.
+- **Power-off you can see**: holding BOOT shows "Turning off" while the drive is saved, then "Off, safe to unplug". The backlight fades and the LED stays dark in deep sleep.
+- **Page 1**: CPU (both cores, out of 100 %) and estimated power, each as a name, a bar and a value. The connection and MIL line moved to the Faults page. Coolant temperature shows in °F where the units are US.
+- **Page 5**: instructions per second on each core from the chip's hardware counters, PSRAM used out of total, the chip's own temperature (°C or °F), uptime.
+- **Page 3**: the pattern line sits above the page dots.
+- **New boards start on CarMind R.E.V** when the firmware carries it. A board that already chose a model keeps it.
+- **Fixes**: the status LED no longer drops a frame when the button and the LED task update it at once ("RMT transaction is busy"). The boot log no longer lists the saved Wi-Fi networks. The model self-test log says plainly when the board differs from the PC simulation.
+- **Figures**: the seven workflow figures were redrawn with straight connectors and larger text, the three README GIFs re-rendered with the brand fonts, and the screen mock-ups and the Mosaico concept updated to the new colours.
+
 ## 2.5.1
 
 CarMind R.E.V, corrected and harder to break. The model name stays CarMind R.E.V.

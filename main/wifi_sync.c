@@ -83,12 +83,13 @@ static wifi_cred_t *pick_network(int8_t *rssi)
         if (now_ms < c->retry_after_ms) continue;
         if (ap[i].rssi > best_rssi) { best_rssi = ap[i].rssi; best = c; }
     }
-    if (best) ESP_LOGI(TAG, "scan: %u networks, best known '%s' rssi %d", n, best->ssid, best_rssi);
+    /* network names stay out of the serial log; the screen shows the one the board joins */
+    if (best) ESP_LOGI(TAG, "scan: %u networks, a known one in range, rssi %d", n, best_rssi);
     else {
         ESP_LOGI(TAG, "scan: %u networks, none of the %u known ones in range", n, (unsigned)wifi_creds_count());
         static int listed;
-        if (listed++ % 10 == 0)      /* every 10th scan, list what is visible so a wrong SSID is easy to spot */
-            for (int i = 0; i < n && i < 12; i++) ESP_LOGI(TAG, "   visible: '%s' rssi %d ch %u", (const char *)ap[i].ssid, ap[i].rssi, ap[i].primary);
+        if (listed++ % 10 == 0)      /* every 10th scan: signal and channel of what is visible (names stay out of the log) */
+            for (int i = 0; i < n && i < 12; i++) ESP_LOGI(TAG, "   visible: rssi %d ch %u", ap[i].rssi, ap[i].primary);
     }
     if (!best || best_rssi < CONFIG_SYNC_WIFI_MIN_RSSI) return NULL;
     *rssi = best_rssi;
@@ -192,7 +193,7 @@ static bool sync_once(void)
     if (!net) return false;
     if (driving()) return false;
 
-    ESP_LOGI(TAG, "connecting to '%s' (rssi %d)", net->ssid, rssi);
+    ESP_LOGI(TAG, "connecting to a known network (rssi %d)", rssi);
     STATUS_LOCK();
     g_status.wifi = WIFI_ST_CONNECTING;
     g_status.wifi_rssi = rssi;

@@ -1,4 +1,4 @@
-<p align="center"><img src="docs/images/banner.png" width="900" alt="OpenCarMind: an open-source OBD-II logger with a local AI model"></p>
+<p align="center"><img src="docs/images/banner.png" width="900" alt="OpenCarMind: an open-source OBD2 logger for the ESP32, with TinyML on the board"></p>
 
 <p align="center">
 <a href="https://github.com/AlveeeRahman/OpenCarMind/actions/workflows/ci.yml"><img src="https://github.com/AlveeeRahman/OpenCarMind/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
@@ -10,7 +10,7 @@
 
 > **This is the detailed branch.** It keeps every method, metric and result behind CarMind R.E.V: the explainable-AI analysis with Grad-CAM, the classifier correction, the learner fault tests and the meta-learner comparison, and the full ESP-Mosaico notes. The short, easy-to-read README is on [`main`](https://github.com/AlveeeRahman/OpenCarMind/tree/main).
 
-OpenCarMind turns an ESP32-S3 board and a Bluetooth OBD-II adapter into a car data logger that runs a neural network on the board. It needs no phone, no account and no internet connection. Everything it records goes to an SD card in the car and, if you pair the board, to the desktop app on your own computer.
+OpenCarMind is an open-source OBD2 logger and dashboard for the ESP32, with TinyML on the board. It turns an ESP32-S3 board and a Bluetooth OBD-II adapter into a car data logger that runs a neural network on the chip. It needs no phone, no account and no internet connection. Everything it records goes to an SD card in the car and, if you pair the board, to the desktop app on your own computer.
 
 It ships two on-board models, and you choose between them in the desktop app. CarMind E.V is fixed and tested. CarMind R.E.V is my first model that keeps learning in your car. It uses on-device learning, which means the board itself updates part of the model from what your car reports while you drive, with no computer or cloud in the loop.
 
@@ -88,6 +88,8 @@ R.E.V adds a third job, its learning. It has no deadline the car depends on, so 
 
 ## The screens
 
+<p align="center"><img src="docs/images/lcd-amoled.png" width="900" alt="Made for LCD, Feels like AMOLED: true black on a backlit screen"></p>
+
 <p align="center">
 <img src="docs/images/dash.png" width="190" alt="Page 1: dashboard">
 <img src="docs/images/internals.png" width="190" alt="Page 3: internals and recent events, including Safe to turn off">
@@ -103,15 +105,17 @@ R.E.V adds a third job, its learning. It has no deadline the car depends on, so 
 
 Pages 1, 3, 4 and 5 in the dark and light themes, with CarMind E.V. The R.E.V version of page 5 is in [Choose your model](#choose-your-model). Page 2 is plain text (adapter, VIN, protocol, codes, clock and SD state) and has its own picture at [docs/images/details.png](docs/images/details.png). Page 3 turns its power line green only when car data has stopped, everything is on the card and no upload is running, and red with the reason otherwise ([red example](docs/images/internals-logging.png)).
 
+The dark theme is pure black, because on an LCD any tint in the background glows through the backlight. Text is 4.5:1 or more on every background in both themes, and every status colour comes with a word. Page 5 gives each of its seven sections its own colour, checked for normal and colour-blind vision.
+
 By default the screen switches by time of day. It is light from 06:00 to 17:00 and dark otherwise, in the board's time zone. Set `timezone` in `config.json` (the desktop app fills it in from your computer), because the build default is UTC. Before the clock is known the screen stays dark. Set `theme_mode` in `config.json` to 1 for always dark or 2 for always light, and `day_start_hour` and `day_end_hour` to change the hours (see [docs/CONFIGURATION.md](docs/CONFIGURATION.md)). The pictures are renders, not photographs of a panel. They come from `docs/screens/screens.html` with `sh docs/screens/render.sh`, which applies the same light colour table the firmware uses.
 
-Tap BOOT to change page. Hold it for 2 seconds to power off: logging stops as soon as the hold reaches 2 seconds, and on release the board saves and closes the drive before it turns off. Hold it for 8 seconds to forget the saved adapter instead, and logging carries on.
+Tap BOOT to change page. Hold it for 2 seconds to power off: logging stops as soon as the hold reaches 2 seconds, and on release the screen says "Turning off" while the board saves and closes the drive, then "Off, safe to unplug". The backlight fades and the LED stays dark in deep sleep. Hold it for 8 seconds to forget the saved adapter instead, and logging carries on.
 
-1. Dashboard: RPM, speed, engine temperature, battery, fuel economy and fuel level, plus Bluetooth, SD and Wi-Fi icons.
+1. Dashboard: RPM, speed, engine temperature (°F where the units are US), battery, fuel economy and fuel level, plus Bluetooth, SD and Wi-Fi icons, a CPU bar (both cores, out of 100 %) and an estimated power bar.
 2. Details: adapter, VIN, protocol, trouble codes, clock and SD state, session counters, and the fuel used this drive and in total, with the fill-up factor.
 3. Internals: twelve extra fields (timing, fuel trims, engine load, boost, catalyst temperature, rail pressure, fuel rate and more), up to eight custom PIDs, and the recent events, including "Safe to turn off".
-4. Faults: ranked trouble codes with severity, description and likely cause.
-5. System: CPU and memory, link states, the job list with deadlines (with R.E.V, a third job, "Learning"), what the model sees and its three estimates. Beside AI ESTIMATES is the time since the model's last answer, amber when the model has paused. The brake row reads "holding" while the model sees the car stopped, because the pressure a driver holds at a standstill cannot be read from OBD. The fuel rate follows the display units, L/h or gal/h.
+4. Faults: ranked trouble codes with severity, description and likely cause, plus the connection and MIL status line.
+5. System: instructions per second on each core from the chip's hardware counters, PSRAM in use, the chip's own temperature, uptime, the job list with deadlines (with R.E.V, a third job, "Learning"), what the model sees and its three estimates. Beside AI ESTIMATES is the time since the model's last answer, amber when the model has paused. The brake row reads "holding" while the model sees the car stopped, because the pressure a driver holds at a standstill cannot be read from OBD. The fuel rate follows the display units, L/h or gal/h.
 
 ## Dashboard
 
