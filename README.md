@@ -183,6 +183,8 @@ Settings, SD card files, the Wi-Fi list and the CSV columns are in [docs/CONFIGU
 
 Both models are small quantised 1-D convolutional networks run by ESP-DL<sup>[[6]](#ref-6)</sup>. Quantised means the weights are stored as 8-bit integers and the activations as 16-bit integers instead of 32-bit floats, which makes a network small and fast enough for a microcontroller. With every OBD row the selected model classifies the last 5 seconds as stopped, braking, accelerating or cruising, and estimates brake pressure, flywheel torque and fuel rate, which OBD does not report.
 
+The [model card](MODEL_CARD.md) puts every step from E.V to the final R.E.V in one table, with a key to each metric and where it was measured.
+
 CarMind E.V takes about 89 KB on the chip and about 3.5 ms per run on the ESP32-S3. Scores of the version on the chip, on data held out from training:
 
 | Test set | Manoeuvre | Fuel R² |
@@ -198,8 +200,6 @@ Limits:
 - Brake pressure (R² 0.46) is the weakest estimate.
 
 The models were trained on public data, the HCRL Driving Dataset (Kwak, Woo and Kim, PST 2016)<sup>[[7]](#ref-7)</sup> and the Vehicle Energy Dataset (Oh, LeBlanc and Peng, 2020, Apache-2.0)<sup>[[8]](#ref-8)</sup>, plus drives from my own car.
-
-The [model card](MODEL_CARD.md) puts every step from E.V to the final R.E.V in one table: size, speed, classifier and fuel-learner scores, before and after, with a key to each metric and where it was measured.
 
 ### CarMind R.E.V results so far
 
