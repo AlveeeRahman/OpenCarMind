@@ -18,6 +18,7 @@
 #include "cJSON.h"
 #include "usb_door.h"
 #include "uploader.h"
+#include "elm327.h"
 #include "wifi_creds.h"
 #include "remote_config.h"
 #include "sdlog.h"
@@ -164,6 +165,7 @@ static void cmd_model(const char *sub, const char *key)
 {
     if (sub && !strcmp(sub, "GET")) { reply_model(); return; }
     if (!sub || strcmp(sub, "SET") || !key) { reply("ERR usage: MODEL GET | MODEL SET ev|rev"); return; }
+    if (elm_drive_active()) { reply("ERR a drive is running: switch models while parked"); return; }
     int id = -1;
     for (int i = 0; i < ML_MODEL_COUNT; i++) if (!strcmp(key, ml_model_key(i))) id = i;
     if (id < 0) { reply("ERR unknown model %.8s: ev or rev", key); return; }

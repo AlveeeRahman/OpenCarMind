@@ -596,6 +596,7 @@ static void obd_task(void *arg)
             continue;
         }
 
+        s_in_drive = true;                                /* from here the model must not change (usb_door refuses MODEL SET) */
         /* Build the polling lists from what the ECU supports. */
         uint8_t fast[32], slow[160], raw[160];
         int nf = 0, ns = 0, nr = 0;
@@ -782,6 +783,8 @@ static void obd_task(void *arg)
         }
     }
 }
+
+bool elm_drive_active(void) { return s_in_drive; }
 
 void elm_init(void)
 {

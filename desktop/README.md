@@ -1,6 +1,6 @@
 # Desktop app
 
-Status: preview. Version 2.5.0 on the `rev-v1` branch (2.4.0 is the release). The app imports drives from the board over the USB cable and shows them. It can also open an SD card directly. In 2.5.0 the board's Wi-Fi only sets its clock: the Wi-Fi upload is being reworked (see the main README, Limitations and future work), so the app opens no network port.
+Status: preview, version 2.5.0, released together with the firmware of the same number. The app imports drives from the board over the USB cable and shows them. It can also open an SD card directly. In 2.5.0 the board's Wi-Fi only sets its clock: the Wi-Fi upload is being reworked (see the main README, Limitations and future work), so the app opens no network port.
 
 Built with Rust and Tauri for Windows, macOS (Apple silicon and Intel) and Linux. All the setup lives in the app: it writes the board's Wi-Fi networks, settings and pairing file to the SD card. The board itself has no console and accepts no incoming connections.
 

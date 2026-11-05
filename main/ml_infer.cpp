@@ -578,6 +578,11 @@ extern "C" bool ml_select_model(int id, char *why, size_t why_n)
     if (!ok) { sys_event(EV_WARN, "%s did not load", ml_model_name(id)); return false; }
     nvs_handle_t h;
     if (nvs_open("ml", NVS_READWRITE, &h) == ESP_OK) { nvs_set_u8(h, "model", (uint8_t)id); nvs_commit(h); nvs_close(h); }
+    /* the last answer belongs to the old model: clear it so no screen or status shows it under the new one */
+    xSemaphoreTake(s_stats_lock, portMAX_DELAY);
+    s_stats.windows = 0; s_stats.last_class = -1; s_stats.last_prob = 0; s_stats.last_at_ms = 0;
+    for (int k = 0; k < 3; k++) s_stats.last_est[k] = 0;
+    xSemaphoreGive(s_stats_lock);
     announce();
     rev_model_changed(ml_rev_active());
     return true;

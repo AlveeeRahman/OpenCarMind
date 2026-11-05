@@ -750,6 +750,9 @@ static void refresh_est(const app_status_t *st)
         else if (i == 0 && m.last_class == 0) snprintf(buf, sizeof buf, "holding");    /* stopped: hold pressure is not observable */
         else snprintf(buf, sizeof buf, fmt[i], (double)m.last_est[i] / (i == 2 ? gal : 1.0), unit[i]);
         uint32_t col = fresh ? C_TEXT : C_MUTED;
+        /* R.E.V: the fuel row is the read-out it learns on the board, once there is one */
+        if (i == 2 && have && m.model == ML_MODEL_REV && m.learned_ok && m.learned_lph >= 0)
+            snprintf(buf, sizeof buf, fmt[2], (double)m.learned_lph / gal, unit[2]);
         /* R.E.V: torque from physics (rev_torque.h), not the network's head, which was trained on one engine. Amber: an
            estimate; "idle" at a standstill, where the physics reads high (torque-converter drag is not in it) */
         if (i == 1 && m.model == ML_MODEL_REV) {
@@ -757,7 +760,7 @@ static void refresh_est(const app_status_t *st)
             if (!isfinite(tq)) snprintf(buf, sizeof buf, "--");
             else if (have && m.last_class == 0) snprintf(buf, sizeof buf, "idle");
             else snprintf(buf, sizeof buf, "%.0f Nm", (double)tq);
-            if (isfinite(tq) && st->obd.torque_src != REV_TQ_PID) col = C_AMBER;
+            if (isfinite(tq) && fresh && st->obd.torque_src != REV_TQ_PID) col = C_AMBER;
         }
         lv_label_set_text(s4_est_val[i], buf);
         lv_obj_set_style_text_color(s4_est_val[i], lv_color_hex(col), 0);
