@@ -22,7 +22,7 @@ Version 2.5.0, in testing. The released version is 2.4.0 with CarMind E.V, on `m
 | Size on the chip | 89,152 bytes (about 89 KB) | 65,648 bytes (about 66 KB) |
 | Parameters | 38,679 | 19,815 |
 | Arithmetic on the chip | int8 weights, int16 activations | int8 weights, int16 activations |
-| Time per run on the ESP32-S3 | about 3.5 ms, measured at the boot self-test | not measured yet |
+| Time per run on the ESP32-S3 | about 3.5 ms, measured at the boot self-test | about 2.9 ms at the boot self-test, plus a second run with airflow hidden while the car reports MAF |
 | Learns in your car | nothing, the model is fixed | its fuel-rate read-out (the last layer, which turns the network's features into a fuel rate) and an airflow constant. Engine torque and fuel tank size are being added |
 | Fill-up calibration | yes | yes |
 | Best for | a fixed, tested model | older cars, roughly pre-2020, that have no fuel-rate PID and can lose the airflow (MAF) reading |
@@ -34,7 +34,7 @@ To switch, connect the board to the desktop app with its USB cable while the car
 
 <p align="center"><img src="docs/images/rev-changes.png" width="900" alt="Renders of what changes with R.E.V. Board page 5 with CarMind E.V on main and with CarMind R.E.V on this branch, which adds a Learning job, shows only the time since the last answer beside AI ESTIMATES and reads holding in the brake row while stopped. The desktop app's On-board model panel on the Board page and the CarMind R.E.V learning panel on the Fuel page"></p>
 
-Renders, not photos. Left: page 5 with CarMind E.V on `main`. Middle: page 5 on this branch with R.E.V selected. It adds a third job, "Learning". On 2.5.0, with either model, the AI ESTIMATES header shows only the time since the model's last answer, and the brake row reads "holding" while the model sees the car stopped. Right: the model selector on the desktop app's Board page and R.E.V's learning status on its Fuel page, shown after a board's first minute on R.E.V. All values are examples, including the run time under AI SEES: R.E.V's time per run on the chip has not been measured yet.
+Renders, not photos. Left: page 5 with CarMind E.V on `main`. Middle: page 5 on this branch with R.E.V selected. It adds a third job, "Learning". On 2.5.0, with either model, the AI ESTIMATES header shows only the time since the model's last answer, and the brake row reads "holding" while the model sees the car stopped. Right: the model selector on the desktop app's Board page and R.E.V's learning status on its Fuel page, shown after a board's first minute on R.E.V. All values are examples.
 
 ## What you get
 
@@ -54,7 +54,7 @@ Renders, not photos. Left: page 5 with CarMind E.V on `main`. Middle: page 5 on 
 
 <p align="center"><img src="docs/images/workflow/local-first.png" width="900" alt="Local-first: no account, no cloud, AI on the chip, your SD card, optional Wi-Fi, your choice of dashboard"></p>
 
-Most car loggers stream your driving to a server and do the thinking there. OpenCarMind does the thinking on the board, in the way TinyML work runs networks on microcontrollers<sup>[[1]](#ref-1)–[[3]](#ref-3)</sup>. The models are 89 KB (E.V) and 66 KB (R.E.V), E.V runs in about 3.5 ms, and neither needs a network. R.E.V's learning also happens on the board, and what it learns stays on your SD card. Your data is plain CSV, JSON and text on a card you hold. Nothing leaves the car unless you copy the card or pair the board with your own computer.
+Most car loggers stream your driving to a server and do the thinking there. OpenCarMind does the thinking on the board, in the way TinyML work runs networks on microcontrollers<sup>[[1]](#ref-1)–[[3]](#ref-3)</sup>. The models are 89 KB (E.V) and 66 KB (R.E.V), one run takes about 3.5 ms (E.V) or 2.9 ms (R.E.V), and neither needs a network. R.E.V's learning also happens on the board, and what it learns stays on your SD card. Your data is plain CSV, JSON and text on a card you hold. Nothing leaves the car unless you copy the card or pair the board with your own computer.
 
 Wi-Fi is the only radio besides Bluetooth, and it is optional. It sets the clock from a public time server, and once you pair the board with the desktop app it sends new drive data to that app every 10 seconds while the car is parked at home. Nothing goes to a cloud. You can compile Wi-Fi out with one setting (`OCM_WIFI_CLOCK_SYNC`).
 
@@ -72,7 +72,7 @@ When an OBD row arrives, the board cuts the last 5 seconds into five one-second 
 
 Only one of the two models runs at a time, E.V or R.E.V. With R.E.V selected, the same run also feeds its fuel learner, described [below](#how-rev-learns-on-the-board). When the window holds an airflow reading, R.E.V runs the network a second time with that reading hidden, so the learner sees the case it exists for.
 
-On my car, a row arrives every 1.35 to 1.65 seconds, so a 5 s window holds about three rows. One run of E.V takes about 3.5 ms on the ESP32-S3, measured at the boot self-test. R.E.V's time per run on the chip has not been measured yet.
+On my car, a row arrives every 1.35 to 1.65 seconds, so a 5 s window holds about three rows. One run of E.V takes about 3.5 ms on the ESP32-S3 and one run of R.E.V about 2.9 ms, both measured at the boot self-test.
 
 ### Scheduler and safety
 
@@ -246,11 +246,11 @@ When the car reports neither fuel rate nor airflow, the board uses whichever est
 
 ## Status
 
-What has been checked, on the bench or in the code: the build (with Wi-Fi clock sync on and off), the model's identity hash, the host unit tests (more than 430 checks, more than 100 of them for R.E.V's learners and the fill-up calibration, the rest including a simulated drive for the power-off line, the adapter profile chooser, and the fuel, economy and units logic), the automatic switch to miles and mpg with a US Wi-Fi access point, kept after a reboot, the 10-second save and the "Safe to turn off" event on a board with an SD card, and the Wi-Fi upload to a stand-in receiver with resume after a cut-off pass. CI builds the desktop app and runs its unit tests on Windows, macOS and Linux. Nobody has opened the app on a real machine yet.
+What has been checked, on the bench or in the code: the build (with Wi-Fi clock sync on and off), the model's identity hash, the host unit tests (441 checks, 111 of them for R.E.V's learners and the fill-up calibration, the rest including a simulated drive for the power-off line, the adapter profile chooser, and the fuel, economy and units logic), the automatic switch to miles and mpg with a US Wi-Fi access point, kept after a reboot, the 10-second save and the "Safe to turn off" event on a board with an SD card, and the Wi-Fi upload to a stand-in receiver with resume after a cut-off pass. CI builds the desktop app and runs its unit tests on Windows, macOS and Linux. Nobody has opened the app on a real machine yet.
 
 Known security limits are listed in [SECURITY.md](SECURITY.md#known-limits).
 
-The author has driven the board with the drive-end, power-off, fuel economy and units features and reported them all working. What has not been checked: CarMind R.E.V in a car or on the chip (it has not been driven, its time per run has not been measured, and its learning results so far come from [replay on a computer](#carmind-rev-results-so-far)), the engine torque and tank learners, which are still being added, CarMind E.V on the road (it was flashed after that drive), other boards, any adapter other than the LELink, and what the screens do on a board without a panel. The checks that need a car or a card are listed in [docs/FIELD_CHECKS.md](docs/FIELD_CHECKS.md), with empty result tables for users to fill in.
+The author has driven the board with the drive-end, power-off, fuel economy and units features and reported them all working. R.E.V has run on the board through a 23-minute synthetic drive fed into the firmware's own OBD path: no missed deadlines, the learned airflow constant within 1 % of the true one, and two bugs in how missing readings were handled, both fixed. What has not been checked: CarMind R.E.V in a car (it has not been driven, and its learning results so far come from [replay on a computer](#carmind-rev-results-so-far) and that synthetic drive), the engine torque and tank learners, which are still being added, CarMind E.V on the road (it was flashed after that drive), other boards, any adapter other than the LELink, and what the screens do on a board without a panel. The checks that need a car or a card are listed in [docs/FIELD_CHECKS.md](docs/FIELD_CHECKS.md), with empty result tables for users to fill in.
 
 ## Next board: ESP-Mosaico with the ESP32-S31
 
@@ -311,7 +311,7 @@ The Mosaico also changes how you use the logger. Your adapter lives in the car, 
 
 - The ESP-Mosaico (ESP32-S31) port described above, and a build without a display.
 - Code-signed installers.
-- CarMind R.E.V on a car: a drive, its time per run on the chip, and its learning checked against the replay results, before it goes into a release.
+- CarMind R.E.V on a car: a drive, and its learning checked against the replay results, before it goes into a release.
 - Two more learners for R.E.V, being added on this branch: engine torque with physics as the teacher, and the fuel tank size.
 - More regularised models, released by this project, to fit more cars.
 - CarMind R.E.V 2: a forecast of the next moment's manoeuvre, learned on the board, as a self-check that lets the classifier learn in the car.
