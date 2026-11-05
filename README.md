@@ -14,6 +14,20 @@ It ships two on-board models, and you choose between them in the desktop app. Ca
 
 Version 2.5.1. Licence: MIT. Website: <https://alveeerahman.github.io/OpenCarMind/>. Downloads for the firmware and the desktop app are on the [Releases page](https://github.com/AlveeeRahman/OpenCarMind/releases/latest). The full methods, metrics and results behind CarMind R.E.V are in the [detailed README on the `rev-c2` branch](https://github.com/AlveeeRahman/OpenCarMind/blob/rev-c2/README.md).
 
+## Contents
+
+- [Choose your model](#choose-your-model)
+- [What you get](#what-you-get) and [Local-first](#local-first)
+- [How it works](#how-it-works): [on-board inference](#on-board-inference), [scheduler and safety](#scheduler-and-safety)
+- [The screens](#the-screens), [Dashboard](#dashboard), [Desktop app](#desktop-app)
+- [Hardware](#hardware): [adapter compatibility](#adapter-compatibility)
+- [Build and flash](#build-and-flash)
+- [The models](#the-models): [R.E.V results so far](#carmind-rev-results-so-far), [how the models are made](#how-the-models-are-made), [what R.E.V learns](#what-rev-learns), [how R.E.V learns on the board](#how-rev-learns-on-the-board), [explainable AI](#looking-inside-rev-with-explainable-ai), [step by step](#how-rev-got-better-step-by-step)
+- [Status](#status)
+- [Next board: ESP-Mosaico](#next-board-esp-mosaico-with-the-esp32-s31): [S3 and S31 compatibility](#how-the-s3-and-the-s31-are-compatible), [continual learning](#continual-learning-on-the-s31), [a release for the Mosaico](#a-release-for-the-mosaico)
+- [Limitations and future work](#limitations-and-future-work) and [Planned](#planned)
+- [References](#references), [Repository layout](#repository-layout), [Credits and licence](#credits-and-licence)
+
 ## Choose your model
 
 | | CarMind E.V | CarMind R.E.V |
