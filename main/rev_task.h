@@ -11,6 +11,8 @@
  * Learning (fuel head, physics) runs only while CarMind R.E.V is the selected model. Fill-up calibration applies to both models.
  * In safe mode nothing learns, the state file is not opened, and the calibration factor comes read-only from NVS. */
 #pragma once
+#include "rev_tank.h"
+#include "rev_torque.h"
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -33,7 +35,9 @@ typedef struct { bool phys_ok; float phys_maf_gps; bool learned_ok; float learne
 void  rev_drive_started(void);
 void  rev_estimates(const obd_values_t *row, rev_est_t *out);
 /* After econ picked raw_lph from src (negative = unknown): labels, physics, ledger. dt_s since the last row, 0 for the first. */
-void  rev_row(const obd_values_t *row, int64_t now_ms, fuel_src_t src, float raw_lph, float dt_s);
+void  rev_row(const obd_values_t *row, int64_t now_ms, fuel_src_t src, float raw_lph, float dt_s, bool level_fresh);
+/* After rev_row: torque (NAN when none; *idle while the car stands) and the tank figures (negative when not ready). */
+void  rev_row_outputs(float *torque_nm, uint8_t *torque_src, bool *torque_idle, float *tank_left_l, float *tank_range_km);
 void  rev_drive_ended(void);
 /* Save now and wait for it (at most timeout_ms): before deep sleep, after a fill-up or a reset. Not from the rev task. */
 void  rev_flush(uint32_t timeout_ms);
@@ -59,6 +63,9 @@ typedef struct {
     float    cal; uint32_t fill_rev; int used, skipped, fills;
     double   life_l, life_km;
     float    row_ms;                           /* mean row period of this drive, for the 0x43 polling cost */
+    rev_tank_out_t tank; uint32_t tank_segs, tank_fills, tank_sug_n, tank_sug_seq;
+    rev_tank_fill_t tank_sug[REV_TANK_SUGGEST];
+    float    torque_nm, vd_l; uint8_t torque_src; bool torque_ok, torque_idle;
 } rev_status_t;
 void  rev_get_status(rev_status_t *out);
 /* One interval of the fill-up calculation, for REV-STATUS. Returns false past the last one. */
@@ -69,6 +76,8 @@ bool  rev_get_interval(int i, rev_interval_t *out);
 bool  rev_set_fills(const rev_fill_t *fills, int n, uint32_t fill_rev, char *why, size_t why_n);
 /* "fuel", "phys", "cal" or "all": back to the factory values for that part, then save. */
 bool  rev_reset(const char *what);
+/* The app has taken the tank's fill-up suggestions up to and including seq. */
+void  rev_tank_suggestions_ack(uint32_t seq);
 
 #ifdef __cplusplus
 }

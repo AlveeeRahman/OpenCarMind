@@ -56,6 +56,11 @@ typedef struct {
     float    fuel_lph_raw;      /* negative = unknown */
     float    fuel_cal;          /* the factor in force, 1.0 without fill-ups */
     float    trip_fuel_raw_l;
+    /* R.E.V physics torque (rev_torque.h) and tank learner (rev_tank.h), both models; NAN / negative = unknown */
+    float    torque_nm;         /* 5 s mean brake torque */
+    uint8_t  torque_src;        /* rev_tq_src_t: none, pid, rate, maf, k */
+    float    tank_left_l;       /* calibrated litres left, once the tank learner is ready */
+    float    tank_range_km;
 } obd_values_t;
 
 #define OBD_HAS(v, field) (((v)->valid[(field) / 64] >> ((field) % 64)) & 1ULL)

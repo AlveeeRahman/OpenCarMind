@@ -9,6 +9,8 @@
 #include <math.h>
 #include <unistd.h>
 #include "rev_learn.h"
+#include "rev_torque.h"
+#include "rev_tank.h"
 #include "rev_cal.h"
 #include "rev_state.h"
 #include "econ.h"
@@ -506,6 +508,107 @@ static void test_picker(void)
     CHECK(fabsf(econ_maf_lph(14.5f, true, 3.0f, 4) - 3600.0f / 832.0f / 3.0f) < 0.001f);
 }
 
+/* ---------------------------------------------------------------- torque from physics (expected values: the float C
+   reference in carmind-ml REV_FRAMEWORK.md 8.11, which matches the Python double version to 3 decimals) */
+static void phys_for(rev_phys_t *P, float vd_l)
+{
+    rev_phys_init(P);
+    P->abs.k = vd_l * 1.184f / 12000.0f; P->abs.n = P->abs.n_sig = 100; P->abs.sxx = 1;
+}
+
+static void test_torque(void)
+{
+    rev_tq_t T; rev_tq_init(&T);
+    rev_phys_t P; phys_for(&P, 2.0f);
+    rev_tq_row_t r;
+    CHECK(fabsf(rev_tq_vd(&P) - 2.0f) < 1e-4f);
+    rev_tq_in_t in = {.petrol = true, .rpm_ok = true, .rpm = 2000, .maf_ok = true, .maf_gps = 6, .map_ok = true, .map_kpa = 25,
+                      .eqr_ok = true, .eqr = 0};
+    CHECK(rev_tq_row(&T, &in, &P, &r) && r.cut == REV_CUT_KNOWN && r.t_fuel == 0 &&
+          fabsf(r.t_fric - 35.539f) < 2e-3f && fabsf(r.t_b + 35.539f) < 2e-3f);                                   /* T1 */
+    rev_tq_in_t a = {.petrol = true, .rpm_ok = true, .rpm = 750, .rate_ok = true, .rate_lph = 0.8f, .map_ok = true, .map_kpa = 33};
+    CHECK(rev_tq_row(&T, &a, &P, &r) && r.src == REV_TQ_RATE && fabsf(r.t_fuel - 33.389f) < 2e-3f &&
+          fabsf(r.t_fric - 28.546f) < 2e-3f && fabsf(r.t_b - 4.843f) < 2e-3f);                                    /* T2 */
+    a.rpm = 2000; a.rate_lph = 3.0f; a.map_kpa = 45;
+    CHECK(rev_tq_row(&T, &a, &P, &r) && fabsf(r.t_b - 14.598f) < 2e-3f);                                          /* T3 */
+    a.rpm = 4000; a.rate_lph = 25.0f; a.map_kpa = 99;
+    CHECK(rev_tq_row(&T, &a, &P, &r) && fabsf(r.t_fuel - 195.641f) < 2e-2f && fabsf(r.t_fric - 38.086f) < 2e-3f &&
+          fabsf(r.t_b - 157.555f) < 2e-2f);                                                                         /* T4 */
+    float t4 = r.t_b;
+    rev_tq_in_t m = a; m.rate_ok = false; m.maf_ok = true; m.maf_gps = 85;
+    CHECK(rev_tq_row(&T, &m, &P, &r) && r.src == REV_TQ_MAF && fabsf(r.t_b - 180.574f) < 2e-2f);                 /* T5 */
+    rev_phys_t P4; phys_for(&P4, 4.0f);
+    a.rate_lph = 50.0f;
+    CHECK(rev_tq_row(&T, &a, &P4, &r) && fabsf(r.t_b - 315.111f) < 4e-2f && fabsf(r.t_b - 2 * t4) < 4e-2f);       /* T6 */
+    rev_tq_in_t k = {.petrol = true, .rpm_ok = true, .rpm = 1500, .abs_ok = true, .abs_load = 50};
+    CHECK(rev_tq_row(&T, &k, &P, &r) && r.src == REV_TQ_K && fabsf(r.t_fuel - 101.527f) < 2e-2f);                 /* T7 */
+    k.rpm = 3000;
+    CHECK(rev_tq_row(&T, &k, &P, &r) && fabsf(r.t_fuel - 101.527f) < 2e-2f);                                      /* rpm cancels */
+    k.maf_ok = true; k.maf_gps = NAN;
+    CHECK(rev_tq_row(&T, &k, &P, &r) && r.src == REV_TQ_K && fabsf(r.t_fuel - 101.527f) < 2e-2f);                 /* T11 */
+    /* T8/T9: a car that reports torque. Its convention is decided from fuel-cut rows: here they read -15 %, so 0x62 is
+       already brake torque; until decided, physics is used */
+    rev_tq_t U; rev_tq_init(&U);
+    rev_tq_in_t q = {.petrol = true, .rpm_ok = true, .rpm = 2000, .maf_ok = true, .maf_gps = 6, .eqr_ok = true, .eqr = 0,
+                     .tq_ok = true, .tq_pct = -15, .ref_ok = true, .ref_nm = 200};
+    CHECK(rev_tq_row(&U, &q, &P, &r) && r.src == REV_TQ_MAF);
+    for (int i = 1; i < REV_TQ_CONV_ROWS; i++) rev_tq_row(&U, &q, &P, &r);
+    CHECK(U.pid_conv == 2);
+    q.eqr = 1.0f; q.tq_pct = 30;
+    CHECK(rev_tq_row(&U, &q, &P, &r) && r.src == REV_TQ_PID && fabsf(r.t_b - 60.0f) < 1e-3f);                    /* T8 */
+    rev_tq_in_t slow = a; slow.rpm = 300;
+    CHECK(!rev_tq_row(&T, &slow, &P, &r));                                                                          /* T10 */
+    rev_tq_in_t c = {.petrol = true, .rpm_ok = true, .rpm = 1500, .load_ok = true, .load = 20, .speed_ok = true, .speed_kph = 50,
+                     .prev_speed_kph = 52, .maf_ok = true, .maf_gps = 5};
+    CHECK(rev_tq_row(&T, &c, &P, &r) && r.cut == REV_CUT_RULE && r.t_fuel == 0);                                  /* T12 */
+    rev_tq_in_t diesel = a; diesel.petrol = false;
+    CHECK(!rev_tq_row(&T, &diesel, &P, &r));                                                                        /* no physics */
+    /* T13/T14: the 5 s mean */
+    rev_tq_t W; rev_tq_init(&W);
+    rev_tq_row_t x = {.t_b = 40, .src = REV_TQ_MAF};
+    float tb; rev_tq_src_t src; bool show;
+    rev_tq_push(&W, 1000, &x, 30);
+    CHECK(!rev_tq_mean(&W, 1000, &tb, &src, &show));
+    rev_tq_push(&W, 2000, &x, 30);
+    CHECK(!rev_tq_mean(&W, 2000, &tb, &src, &show));
+    x.t_b = 46; rev_tq_push(&W, 4500, &x, 30);
+    CHECK(rev_tq_mean(&W, 4500, &tb, &src, &show) && fabsf(tb - 42.0f) < 1e-4f && show && src == REV_TQ_MAF);
+    rev_tq_t S; rev_tq_init(&S);
+    rev_tq_push(&S, 1000, &x, 1); rev_tq_push(&S, 2500, &x, 1); rev_tq_push(&S, 4500, &x, 1);
+    CHECK(rev_tq_mean(&S, 4500, &tb, &src, &show) && !show);                                                       /* T14 */
+    rev_tq_push(&S, 20000, &x, 30);
+    CHECK(!rev_tq_mean(&S, 20000, &tb, &src, &show));                                                               /* gap restarts */
+    rev_phys_t Pbig; phys_for(&Pbig, 12.0f);
+    CHECK(rev_tq_vd(&Pbig) == REV_TQ_VD_MAX);                                                                       /* T15 */
+    rev_phys_t P0; rev_phys_init(&P0);
+    CHECK(fabsf(rev_tq_vd(&P0) - 12000.0f * REV_PHYS_K0 / 1.184f) < 1e-4f);                                        /* k0 until learned */
+    rev_tq_in_t big = a; big.rate_lph = 99; big.rpm = 1000;
+    CHECK(rev_tq_row(&T, &big, &P, &r) && r.t_b <= 200.0f * 2.0f + 1e-3f);                                         /* clip */
+}
+
+static void test_tank_file(void)
+{
+    const char *path = "/tmp/ocm_rev_tank_test.bin";
+    char tmp[64]; snprintf(tmp, sizeof tmp, "%s.tmp", path);
+    remove(path); remove(tmp);
+    rev_tank_t a, b; rev_tank_init(&a); rev_tank_init(&b);
+    a.pxx = 12.5f; a.pxy = -3.0f; a.segs = 7; a.sug_seq = 3;
+    CHECK(sizeof(rev_tank_t) <= 1024);
+    CHECK(!rev_blob_load(path, 0x4B4E4154u, &b, sizeof b) && b.segs == 0);       /* no file: unchanged */
+    CHECK(rev_blob_save(path, 0x4B4E4154u, &a, sizeof a));
+    CHECK(rev_blob_load(path, 0x4B4E4154u, &b, sizeof b) && !memcmp(&a, &b, sizeof a) && rev_tank_valid(&b));
+    CHECK(!rev_blob_load(path, 0x12345678u, &b, sizeof b));                       /* wrong magic */
+    FILE *f = fopen(path, "r+b"); fseek(f, 12, SEEK_SET); fputc(0x5A, f); fclose(f);
+    rev_tank_init(&b);
+    CHECK(!rev_blob_load(path, 0x4B4E4154u, &b, sizeof b) && b.segs == 0);       /* flipped byte: CRC fails, unchanged */
+    rename(path, tmp);
+    CHECK(!rev_blob_load(path, 0x4B4E4154u, &b, sizeof b));                       /* only a damaged .tmp: refused */
+    remove(tmp);
+    CHECK(rev_blob_save(path, 0x4B4E4154u, &a, sizeof a) && rename(path, tmp) == 0);
+    CHECK(rev_blob_load(path, 0x4B4E4154u, &b, sizeof b) && b.segs == 7);        /* power cut before rename: .tmp is used */
+    remove(tmp);
+}
+
 int main(void)
 {
     verbose = getenv("REV_VERBOSE") != NULL;
@@ -519,6 +622,8 @@ int main(void)
     test_physics();
     test_calibration();
     test_picker();
+    test_torque();
+    test_tank_file();
     printf("%d checks, %d failures\n", checks, fails);
     return fails ? 1 : 0;
 }

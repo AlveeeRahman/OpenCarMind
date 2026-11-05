@@ -1,4 +1,5 @@
 #include <string.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
@@ -281,6 +282,7 @@ static float raw_value(const field_def_t *d, const uint8_t *b, int n)
 static uint32_t s_field_ms[F_COUNT];
 static uint64_t s_fast_fields[2];
 static uint32_t s_cycle_ms = 1500;
+static uint32_t s_level_seen_ms;                    /* fuel-level read time last given to the tank learner */
 
 /* Query one PID and store every table field it carries. Returns false when nothing decoded. */
 static bool poll_pid(uint8_t pid)
@@ -638,6 +640,7 @@ static void obd_task(void *arg)
         g_status.obd.fuel_lph_calc = -1; g_status.obd.fuel_src = 0; g_status.obd.trip_km = 0; g_status.obd.trip_fuel_l = 0;
         g_status.obd.econ_trip_kpl = -1; g_status.obd.econ_inst_kpl = -1;
         g_status.obd.fuel_lph_raw = -1; g_status.obd.fuel_cal = rev_cal_factor(); g_status.obd.trip_fuel_raw_l = 0;
+        g_status.obd.torque_nm = NAN; g_status.obd.torque_src = 0; g_status.obd.tank_left_l = -1; g_status.obd.tank_range_km = -1;
         STATUS_UNLOCK();
         rev_drive_started();
         sdlog_meta_set_ml(ml_model_key(ml_model_active()), rev_cal_factor());
@@ -733,7 +736,12 @@ static void obd_task(void *arg)
                     float dt = last_row_us ? (float)(t_us - last_row_us) / 1e6f : 0;
                     if (last_row_us) { econ_step(&trip, kph, lph, dt); econ_step(&trip_raw, kph, raw, dt); }
                     last_row_us = t_us;
-                    rev_row(&snap, t_us / 1000, src, raw, dt);   /* labels, airflow constant, ledger: before ml_feed takes the label */
+                    /* a fresh fuel-level answer this row (not one carried over), for the tank learner */
+                    bool level_fresh = OBD_HAS(&snap, F_fuel_level) && s_field_ms[F_fuel_level] != s_level_seen_ms;
+                    if (level_fresh) s_level_seen_ms = s_field_ms[F_fuel_level];
+                    rev_row(&snap, t_us / 1000, src, raw, dt, level_fresh);   /* labels, airflow constant, ledger: before ml_feed takes the label */
+                    bool tq_idle;
+                    rev_row_outputs(&snap.torque_nm, &snap.torque_src, &tq_idle, &snap.tank_left_l, &snap.tank_range_km);
                     snap.fuel_lph_raw = raw;
                     snap.fuel_cal = cal;
                     snap.trip_fuel_raw_l = (float)trip_raw.litres;
@@ -749,6 +757,8 @@ static void obd_task(void *arg)
                     g_status.obd.econ_trip_kpl = snap.econ_trip_kpl;   g_status.obd.econ_inst_kpl = snap.econ_inst_kpl;
                     g_status.obd.fuel_lph_raw = snap.fuel_lph_raw;     g_status.obd.fuel_cal = snap.fuel_cal;
                     g_status.obd.trip_fuel_raw_l = snap.trip_fuel_raw_l;
+                    g_status.obd.torque_nm = snap.torque_nm;           g_status.obd.torque_src = snap.torque_src;
+                    g_status.obd.tank_left_l = snap.tank_left_l;       g_status.obd.tank_range_km = snap.tank_range_km;
                     STATUS_UNLOCK();
                 }
                 ml_feed(&snap, esp_timer_get_time() / 1000);   /* before pattern_step: the closing row is in its second */

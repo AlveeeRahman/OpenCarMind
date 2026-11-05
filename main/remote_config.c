@@ -9,6 +9,8 @@
 #include <stdlib.h>
 #include <time.h>
 #include "harden.h"
+
+static void time_host_load(void);
 #include "units.h"
 
 static const char *TAG = "rconf";
@@ -56,11 +58,42 @@ void remote_config_init(void)
     s_cfg.timezone[sizeof s_cfg.timezone - 1] = 0;
     if (s_cfg.timezone[0] && !harden_timezone_ok(s_cfg.timezone)) s_cfg.timezone[0] = 0;
     apply_timezone();
+    time_host_load();
     ESP_LOGI(TAG, "rev %lu: poll %u ms, slow every %u, dtc %u s, backlight %u%%",
              (unsigned long)s_cfg.rev, s_cfg.poll_interval_ms, s_cfg.slow_group_every, s_cfg.dtc_interval_s, s_cfg.backlight_pct);
 }
 
 const remote_config_t *remote_config_get(void) { return &s_cfg; }
+
+static char s_time_host[64];                         /* empty = the build default */
+
+#ifndef CONFIG_OCM_TIME_HTTPS_HOST
+#define CONFIG_OCM_TIME_HTTPS_HOST "www.google.com"
+#endif
+
+const char *remote_config_time_host(void) { return s_time_host[0] ? s_time_host : CONFIG_OCM_TIME_HTTPS_HOST; }
+
+static void time_host_load(void)
+{
+    nvs_handle_t h;
+    size_t len = sizeof s_time_host;
+    s_time_host[0] = 0;
+    if (nvs_open("rconf", NVS_READONLY, &h) == ESP_OK) {
+        if (nvs_get_str(h, "thost", s_time_host, &len) != ESP_OK) s_time_host[0] = 0;
+        nvs_close(h);
+    }
+    if (s_time_host[0] && !harden_hostname_ok(s_time_host)) s_time_host[0] = 0;
+}
+
+static bool time_host_store(const char *host)
+{
+    nvs_handle_t h;
+    if (nvs_open("rconf", NVS_READWRITE, &h) != ESP_OK) return false;
+    bool ok = (host[0] ? nvs_set_str(h, "thost", host) : (nvs_erase_key(h, "thost"), ESP_OK)) == ESP_OK && nvs_commit(h) == ESP_OK;
+    nvs_close(h);
+    if (ok) strlcpy(s_time_host, host, sizeof s_time_host);
+    return ok;
+}
 uint32_t remote_config_rev(void) { return s_cfg.rev; }
 
 static bool num_in(cJSON *root, const char *key, double lo, double hi, double *out)
@@ -91,6 +124,15 @@ int remote_config_apply(cJSON *root)
             apply_timezone();
             applied++;
         } else ESP_LOGW(TAG, "timezone not valid: ignored");
+    }
+
+    cJSON *th = cJSON_GetObjectItem(root, "time_host");
+    if (cJSON_IsString(th)) {
+        /* "" goes back to the build default */
+        if ((!th->valuestring[0] || harden_hostname_ok(th->valuestring)) && time_host_store(th->valuestring)) {
+            ESP_LOGI(TAG, "time server: %s", remote_config_time_host());
+            applied++;
+        } else ESP_LOGW(TAG, "time_host not valid: ignored");
     }
 
     cJSON *units = cJSON_GetObjectItem(root, "units");

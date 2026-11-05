@@ -13,6 +13,8 @@
 
 void uploader_init(void);        /* load the pairing from NVS */
 bool uploader_configured(void);
+/* Paired AND this build sends drives over Wi-Fi (CONFIG_OCM_WIFI_UPLOAD). Pairing alone still protects the USB door. */
+bool uploader_wifi_enabled(void);
 /* Store a new pairing (replaces any earlier one). Returns false and changes nothing if a value is not valid. */
 bool uploader_pair(const char *host, unsigned port, const char *token, const char *cert_pem);
 void uploader_unpair(void);

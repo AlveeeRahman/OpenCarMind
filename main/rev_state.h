@@ -29,3 +29,9 @@ bool       rev_state_save(const char *path, const rev_fuel_t *fuel, const rev_ph
    The fuel head's w0 pointer is kept; fuel may be NULL to skip it. */
 rev_load_t rev_state_load(const char *path, rev_fuel_t *fuel, rev_phys_t *phys, rev_pick_t *pick, rev_cal_t *cal,
                           uint32_t prior_id);
+
+/* A small learner's state in a file of its own (the tank learner: /sdcard/obd/rev_tank.bin), so adding a learner does not
+ * change rev_state.bin's layout. Layout: u32 magic, u32 size, the struct, u32 CRC-32. Same tmp + fsync + rename on save; on
+ * load path, else path.tmp, each checked for magic, size and CRC. Returns false and leaves *data unchanged on any failure. */
+bool rev_blob_save(const char *path, uint32_t magic, const void *data, uint32_t size);
+bool rev_blob_load(const char *path, uint32_t magic, void *data, uint32_t size);

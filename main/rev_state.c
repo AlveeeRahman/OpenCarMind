@@ -144,3 +144,44 @@ rev_load_t rev_state_load(const char *path, rev_fuel_t *fuel, rev_phys_t *phys, 
     if (!same_model && h.fuel_size) return REV_LOAD_OTHER_MODEL;
     return how;
 }
+
+bool rev_blob_save(const char *path, uint32_t magic, const void *data, uint32_t size)
+{
+    char tmp[128];
+    snprintf(tmp, sizeof tmp, "%s.tmp", path);
+    FILE *f = fopen(tmp, "wb");
+    if (!f) return false;
+    uint32_t crc = 0;
+    bool ok = put(f, &crc, &magic, sizeof magic) && put(f, &crc, &size, sizeof size) && put(f, &crc, data, size);
+    ok = ok && fwrite(&crc, sizeof crc, 1, f) == 1;
+    ok = fflush(f) == 0 && ok;
+    fsync(fileno(f));
+    ok = fclose(f) == 0 && ok;
+    if (!ok) { remove(tmp); return false; }
+    remove(path);
+    return rename(tmp, path) == 0;
+}
+
+static bool blob_read(const char *path, uint32_t magic, void *data, uint32_t size, void *scratch)
+{
+    FILE *f = fopen(path, "rb");
+    if (!f) return false;
+    uint32_t m = 0, n = 0, stored = 0;
+    bool ok = fread(&m, sizeof m, 1, f) == 1 && fread(&n, sizeof n, 1, f) == 1 && m == magic && n == size &&
+              fread(scratch, 1, size, f) == size && fread(&stored, sizeof stored, 1, f) == 1 && fgetc(f) == EOF;
+    fclose(f);
+    if (!ok) return false;
+    uint32_t crc = rev_crc32(rev_crc32(rev_crc32(0, &m, sizeof m), &n, sizeof n), scratch, size);
+    if (crc != stored) return false;
+    memcpy(data, scratch, size);
+    return true;
+}
+
+bool rev_blob_load(const char *path, uint32_t magic, void *data, uint32_t size)
+{
+    static uint8_t scratch[1024];                    /* the caller's struct is left untouched unless a file checks out */
+    if (size > sizeof scratch) return false;
+    char tmp[128];
+    snprintf(tmp, sizeof tmp, "%s.tmp", path);
+    return blob_read(path, magic, data, size, scratch) || blob_read(tmp, magic, data, size, scratch);
+}

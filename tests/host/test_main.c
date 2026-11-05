@@ -343,6 +343,27 @@ static void test_econ(void)
 
 static void test_harden(void)
 {
+    {   /* HTTP Date (IMF-fixdate) for the HTTPS clock; expected values from Python's calendar.timegm */
+        int64_t e = 0;
+        CHECK(harden_http_date("Sun, 06 Nov 1994 08:49:37 GMT", &e) && e == 784111777LL);
+        CHECK(harden_http_date("Thu, 05 Nov 2026 00:46:41 GMT", &e) && e == 1793839601LL);
+        CHECK(harden_http_date("Tue, 29 Feb 2028 23:59:59 GMT", &e) && e == 1835481599LL);
+        CHECK(harden_http_date("Fri, 31 Dec 2099 23:59:59 GMT", &e) && e == 4102444799LL);
+        CHECK(!harden_http_date("Mon, 29 Feb 2027 12:00:00 GMT", &e));      /* not a leap year */
+        CHECK(!harden_http_date("Sun, 06 Nov 1994 08:49:37 UTC", &e));
+        CHECK(!harden_http_date("Sunday, 06-Nov-94 08:49:37 GMT", &e));     /* RFC 850 form */
+        CHECK(!harden_http_date("Sun Nov  6 08:49:37 1994", &e));           /* asctime form */
+        CHECK(!harden_http_date("Sun, 06 Foo 1994 08:49:37 GMT", &e));
+        CHECK(!harden_http_date("Sun, 32 Nov 1994 08:49:37 GMT", &e));
+        CHECK(!harden_http_date("Sun, 06 Nov 1994 24:00:00 GMT", &e));
+        CHECK(!harden_http_date("Sun, 06 Nov 1994 08:49:3x GMT", &e));
+        CHECK(!harden_http_date("", &e) && !harden_http_date(NULL, &e));
+        CHECK(harden_hostname_ok("www.google.com") && harden_hostname_ok("my-broker.example.workers.dev"));
+        CHECK(!harden_hostname_ok("localhost") && !harden_hostname_ok("192.168.1.10") && !harden_hostname_ok("a.b"));
+        CHECK(!harden_hostname_ok("https://x.com") && !harden_hostname_ok("x.com:443") && !harden_hostname_ok("-x.com"));
+        CHECK(!harden_hostname_ok("x-.com") && !harden_hostname_ok("x..com") && !harden_hostname_ok(".x.com") && !harden_hostname_ok("x.com."));
+        CHECK(!harden_hostname_ok("ex ample.com") && !harden_hostname_ok(NULL));
+    }
     CHECK(!harden_epoch_plausible(0));
     CHECK(!harden_epoch_plausible(1767225599LL));
     CHECK(harden_epoch_plausible(1767225600LL));

@@ -41,6 +41,8 @@
 
 static const char *TAG = "rev";
 #define STATE_PATH   SDLOG_DIR "/rev_state.bin"
+#define TANK_PATH    SDLOG_DIR "/rev_tank.bin"
+#define TANK_MAGIC   0x4B4E4154u                      /* "TANK" */
 #define SAVE_EVERY_MS ((int64_t)CONFIG_CARMIND_REV_SAVE_MIN * 60000)
 #define QUEUE_LEN    4
 #define CAL_MAGIC    0x31414352u                      /* "RCA1" */
@@ -71,6 +73,13 @@ static bool s_safe, s_ready;
 static cal_nvs_t s_nv;                                      /* the calibration read from NVS at boot, merged when the card is read */
 static bool s_have_nv;
 static int64_t s_drive_start_ms, s_last_row_ms;
+EXT_RAM_BSS_ATTR static rev_tank_t s_tank;           /* written by the obd and door tasks, under s_lock; both models */
+EXT_RAM_BSS_ATTR static rev_tank_t s_tank_snap;
+static rev_tq_t s_tq;                                /* obd task only */
+static float s_prev_kph = -1;
+static volatile float s_tq_nm = NAN;                 /* published by the obd task for the screen and the status view */
+static volatile uint8_t s_tq_src;
+static volatile bool s_tq_idle;
 static float s_row_ms;
 
 static bool lock(void) { return s_lock && xSemaphoreTake(s_lock, pdMS_TO_TICKS(200)) == pdTRUE; }
@@ -106,6 +115,7 @@ static void save(void)
     if (!lock()) return;
     s_phys_snap = s_phys;
     s_cal_snap = s_cal;
+    s_tank_snap = s_tank;
     unlock();
     int64_t t0 = esp_timer_get_time();
 #if CONFIG_CARMIND_REV_ENABLE
@@ -114,6 +124,7 @@ static void save(void)
     const rev_fuel_t *fuel = NULL;
 #endif
     s_saved_ok = rev_state_save(STATE_PATH, fuel, &s_phys_snap, &s_pick, &s_cal_snap, PRIOR_ID);
+    if (!rev_blob_save(TANK_PATH, TANK_MAGIC, &s_tank_snap, sizeof s_tank_snap)) ESP_LOGW(TAG, "tank state NOT saved");
     s_saves++;
     ESP_LOGI(TAG, "state %s in %lld ms", s_saved_ok ? "saved" : "NOT saved", (esp_timer_get_time() - t0) / 1000);
 }
@@ -129,6 +140,9 @@ static void load_state(void)
 #endif
     xSemaphoreTake(s_lock, portMAX_DELAY);
     rev_load_t how = rev_state_load(STATE_PATH, fuel, &s_phys, &s_pick, &s_cal, PRIOR_ID);
+    bool tank = rev_blob_load(TANK_PATH, TANK_MAGIC, &s_tank, sizeof s_tank);
+    if (tank && !rev_tank_valid(&s_tank)) { rev_tank_init(&s_tank); tank = false; }
+    rev_tank_restart(&s_tank);
     if (s_have_nv && s_nv.fill_rev > s_cal.fill_rev) { s_cal.c = s_nv.c; s_cal.fill_rev = s_nv.fill_rev; }   /* NVS is newer than the card */
 #if CONFIG_CARMIND_REV_CAL
     s_c = s_cal.c;
@@ -137,6 +151,7 @@ static void load_state(void)
     if (how == REV_LOAD_NONE) ESP_LOGI(TAG, "no learned state on the card: starting from the factory values");
     else if (how == REV_LOAD_OTHER_MODEL) sys_event(EV_INFO, "Fuel learning restarted: new R.E.V model");
     else ESP_LOGI(TAG, "learned state loaded%s", how == REV_LOAD_TMP ? " from the .tmp copy" : "");
+    if (tank) ESP_LOGI(TAG, "tank learner state loaded");
     s_saved_ok = how != REV_LOAD_NONE;
 }
 
@@ -208,6 +223,8 @@ void rev_init(void)
     rev_cal_init(&s_cal);
     rev_pick_init(&s_pick);
     rev_label_reset(&s_label);
+    rev_tank_init(&s_tank);
+    rev_tq_init(&s_tq);
 #if CONFIG_CARMIND_REV_ENABLE
     rev_fuel_init(&s_fuel, MLR_W0);
 #endif
@@ -262,7 +279,10 @@ float rev_cal_factor(void) { return s_c; }
 void rev_drive_started(void)
 {
     rev_label_reset(&s_label);
-    if (lock()) { rev_phys_new_drive(&s_phys); unlock(); }
+    if (lock()) { rev_phys_new_drive(&s_phys); rev_tank_restart(&s_tank); unlock(); }
+    rev_tq_new_drive(&s_tq);
+    s_prev_kph = -1;
+    s_tq_nm = NAN;
     s_drive_start_ms = esp_timer_get_time() / 1000;
     s_last_row_ms = 0;
     s_row_ms = 0;
@@ -310,7 +330,46 @@ void rev_estimates(const obd_values_t *row, rev_est_t *out)
     out->prefer = s == REV_SRC_PHYS ? FUEL_PHYS : s == REV_SRC_LEARNED ? FUEL_LEARNED : FUEL_MODEL;
 }
 
-void rev_row(const obd_values_t *row, int64_t now_ms, fuel_src_t src, float raw_lph, float dt_s)
+/* Torque from physics, both models: built from this row, averaged over 5 s, published for the screen and the CSV. */
+static void torque_row(const obd_values_t *row, int64_t now_ms, float kph)
+{
+    int ft = OBD_HAS(row, F_fuel_type) ? (int)row->f[F_fuel_type] : 0;
+    rev_tq_in_t in = {
+        .rpm_ok = OBD_HAS(row, F_rpm), .rpm = row->f[F_rpm],
+        .speed_ok = kph >= 0, .speed_kph = kph, .prev_speed_kph = s_prev_kph >= 0 ? s_prev_kph : kph,
+        .rate_ok = OBD_HAS(row, F_fuel_rate), .rate_lph = row->f[F_fuel_rate],
+        .maf_ok = OBD_HAS(row, F_maf), .maf_gps = row->f[F_maf],
+        .abs_ok = OBD_HAS(row, F_abs_load), .abs_load = row->f[F_abs_load],
+        .load_ok = OBD_HAS(row, F_load), .load = row->f[F_load],
+        .map_ok = OBD_HAS(row, F_map), .map_kpa = row->f[F_map],
+        .baro_ok = OBD_HAS(row, F_baro), .baro_kpa = row->f[F_baro],
+        .eqr_ok = OBD_HAS(row, F_equiv), .eqr = row->f[F_equiv],
+        .tq_ok = OBD_HAS(row, F_torque_actual), .tq_pct = row->f[F_torque_actual],
+        .ref_ok = OBD_HAS(row, F_torque_ref), .ref_nm = row->f[F_torque_ref],
+        .petrol = ft == 0 || ft == 1 || ft == 9 || ft == 16,      /* unknown, gasoline, bifuel gasoline, hybrid gasoline */
+    };
+    rev_tq_row_t r;
+    bool ok = false;
+    if (lock()) { ok = rev_tq_row(&s_tq, &in, &s_phys, &r); unlock(); }
+    if (ok) rev_tq_push(&s_tq, now_ms, &r, kph);
+    float tb; rev_tq_src_t src; bool show;
+    if (rev_tq_mean(&s_tq, now_ms, &tb, &src, &show)) { s_tq_nm = tb; s_tq_src = (uint8_t)src; s_tq_idle = !show; }
+    else s_tq_nm = NAN;
+    s_prev_kph = kph;
+}
+
+void rev_row_outputs(float *torque_nm, uint8_t *torque_src, bool *torque_idle, float *tank_left_l, float *tank_range_km)
+{
+    *torque_nm = s_tq_nm; *torque_src = s_tq_src; *torque_idle = s_tq_idle;
+    *tank_left_l = -1; *tank_range_km = -1;
+    rev_tank_out_t o;
+    if (!s_ready || !lock()) return;
+    rev_tank_get(&s_tank, &o);
+    unlock();
+    if (o.ready && isfinite(o.left_raw_l)) { *tank_left_l = o.left_raw_l * s_c; *tank_range_km = o.range_km; }
+}
+
+void rev_row(const obd_values_t *row, int64_t now_ms, fuel_src_t src, float raw_lph, float dt_s, bool level_fresh)
 {
     if (!s_ready) return;
     if (s_last_row_ms) { float gap = (float)(now_ms - s_last_row_ms); if (gap < 10000) s_row_ms = s_row_ms ? s_row_ms + (gap - s_row_ms) / 20 : gap; }
@@ -323,6 +382,14 @@ void rev_row(const obd_values_t *row, int64_t now_ms, fuel_src_t src, float raw_
         unlock();
     }
 #endif
+    /* tank level and torque run with either model, like the fill-up calibration */
+    if (lock()) {
+        if (dt_s > 0) rev_tank_row(&s_tank, dt_s, raw_lph, kph, rpm_ok && row->f[F_rpm] > 0);
+        if (level_fresh && OBD_HAS(row, F_fuel_level) && isfinite(row->f[F_fuel_level]))
+            rev_tank_level(&s_tank, sdlog_session_id(), row->f[F_fuel_level]);
+        unlock();
+    }
+    torque_row(row, now_ms, kph);
     if (!s_learning) return;
     ml_rev_in_t in = {0};
     if ((src == FUEL_PID || src == FUEL_MAF) && raw_lph >= 0) rev_label_push(&s_label, now_ms, raw_lph);
@@ -382,6 +449,7 @@ void rev_get_status(rev_status_t *o)
     o->pairs = s_pairs; o->dropped = s_dropped; o->saves = s_saves;
     for (int i = 0; i < 3; i++) { o->err[i] = s_pick.e[i]; o->n_err[i] = s_pick.n[i]; }
     o->row_ms = s_row_ms;
+    o->torque_nm = s_tq_nm; o->torque_src = s_tq_src; o->torque_idle = s_tq_idle; o->torque_ok = isfinite(o->torque_nm);
     if (lock()) {
         const rev_k_t *k = &s_phys.abs;
         if (!rev_k_ready(k)) for (int i = 0; i < REV_PHYS_BINS; i++) if (rev_k_ready(&s_phys.calc[i])) { k = &s_phys.calc[i]; o->k_calc = true; break; }
@@ -389,6 +457,10 @@ void rev_get_status(rev_status_t *o)
         o->prefer = rev_pick_choose(&s_pick, o->k_ready, o->commits > 0);
         o->cal = s_cal.c; o->fill_rev = s_cal.fill_rev; o->used = s_cal.used; o->skipped = s_cal.skipped; o->fills = s_cal.n_fills;
         o->life_l = s_cal.life_l; o->life_km = s_cal.life_km;
+        rev_tank_get(&s_tank, &o->tank);
+        o->tank_segs = s_tank.segs; o->tank_fills = s_tank.fills; o->tank_sug_n = s_tank.sug_n; o->tank_sug_seq = s_tank.sug_seq;
+        memcpy(o->tank_sug, s_tank.sug, sizeof o->tank_sug);
+        o->vd_l = rev_tq_vd(&s_phys);
         unlock();
     } else {
         o->cal = s_c;
@@ -431,17 +503,25 @@ bool rev_set_fills(const rev_fill_t *fills, int n, uint32_t fill_rev, char *why,
 #endif
 }
 
+void rev_tank_suggestions_ack(uint32_t seq)
+{
+    if (s_safe || !s_lock) return;
+    if (lock()) { rev_tank_ack(&s_tank, seq); unlock(); }
+    rev_flush(3000);
+}
+
 bool rev_reset(const char *what)
 {
     bool all = !strcmp(what, "all");
     if (s_safe || !s_lock) return false;
-    if (!all && strcmp(what, "fuel") && strcmp(what, "phys") && strcmp(what, "cal")) return false;
+    if (!all && strcmp(what, "fuel") && strcmp(what, "phys") && strcmp(what, "cal") && strcmp(what, "tank")) return false;
     if (all || !strcmp(what, "fuel")) s_reset_fuel_req = true;
     if ((all || !strcmp(what, "phys") || !strcmp(what, "cal")) && lock()) {
         if (all || !strcmp(what, "phys")) rev_phys_reset_k(&s_phys);
         if (all || !strcmp(what, "cal")) { rev_cal_reset(&s_cal); s_c = 1.0f; }
         unlock();
     }
+    if ((all || !strcmp(what, "tank")) && lock()) { rev_tank_reset(&s_tank); unlock(); }
     if (all || !strcmp(what, "cal")) cal_nvs_store(1.0f, 0);
     rev_flush(3000);
     return true;
