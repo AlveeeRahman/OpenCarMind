@@ -1,4 +1,4 @@
-/* Host tests for CarMind R.E.V (main/rev_learn.c, rev_cal.c, rev_state.c) and the fuel source picker in econ.c.
+/* Host tests for CarMind R.E.V (main/model/rev_learn.c, rev_cal.c, rev_state.c) and the fuel source picker in econ.c.
  * Separate from test_main.c, which needs sys_event. Build and run:  make -C tests/host rev
  * Covers a synthetic car whose fuel head differs from the factory prior, the gate, the reset, persistence with damaged files, plus a double-precision reference solver beside the
  * board's float one. */

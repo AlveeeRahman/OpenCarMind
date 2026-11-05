@@ -157,7 +157,7 @@ $("#open-card").addEventListener("click", async () => {
 const last = recall("folder");
 if (last) load(last);
 
-/* ---- Board page: the authenticated USB door (main/usb_door.h). The app does the work, the board stores what it gets. ---- */
+/* ---- Board page: the authenticated USB door (main/system/usb_door.h). The app does the work, the board stores what it gets. ---- */
 const SETTINGS = { poll_interval_ms: [50, 5000], slow_group_every: [1, 50], dtc_interval_s: [10, 3600], backlight_pct: [5, 100], theme_mode: [0, 2], day_start_hour: [0, 23], day_end_hour: [0, 23] };
 let current = null;
 
@@ -207,7 +207,7 @@ async function connect() {
   }
 }
 
-/* ---- On-board model: CarMind E.V (default) or CarMind R.E.V, switched over the cable and kept by the board ---- */
+/* ---- On-board model: CarMind R.E.V (the default on a new board) or CarMind E.V, switched over the cable and kept by the board ---- */
 let boardModel = null;
 function showModel(m) {
   boardModel = m;
@@ -221,6 +221,9 @@ function showModel(m) {
   const speed = m.run_us ? `, ${(m.run_us / 1000).toFixed(1)} ms per run` : "";
   const learn = m.active === "rev" ? (m.learning ? ", learning on" : ", learning off") : "";
   msg("#model-text", `The board runs ${MODEL_NAME[m.active] || m.active}${m.loaded ? "" : " (it did not load)"}${speed}${learn}.`);
+  const badge = $("#model-badge");
+  badge.hidden = !(m.active in MODEL_NAME);
+  if (!badge.hidden) badge.src = `assets/carmind-${m.active}.svg`;
 }
 async function loadModel() { showModel(await invoke("board_model", { port: port() })); }
 $("#model-switch").addEventListener("click", () => {
@@ -228,7 +231,7 @@ $("#model-switch").addEventListener("click", () => {
   if (!boardModel) return msg("#model-text", "Connect first.", true);
   if (want === boardModel.active) return msg("#model-text", `${MODEL_NAME[want]} is already running.`);
   $("#model-confirm-text").textContent = want === "rev"
-    ? "Switch to CarMind R.E.V? It is new. It learns this car's fuel use while you drive and from your fill-ups. You can switch back to E.V at any time; what R.E.V learned is kept."
+    ? "Switch to CarMind R.E.V? It learns this car's fuel use and engine size while you drive, and from your fill-ups. You can switch back to E.V at any time; what R.E.V learned is kept."
     : "Switch back to CarMind E.V? R.E.V stops learning, and what it learned is kept on the card for later.";
   $("#model-confirm").hidden = false;
 });
@@ -329,7 +332,7 @@ document.querySelector('.tab[data-page="board"]').addEventListener("click", () =
 refreshReceiver(); refreshSources();
 setInterval(() => { refreshReceiver(); refreshSources(); if (!$("#page-overview").hidden && $("#source").value && state.folder === $("#source").value) load(state.folder); }, 15000);
 
-/* ---- Fuel page: per-drive and lifetime fuel, the fill-up log (main/rev_cal.h) and R.E.V's learning status ---- */
+/* ---- Fuel page: per-drive and lifetime fuel, the fill-up log (main/model/rev_cal.h) and R.E.V's learning status ---- */
 const fuel = { log: { rev: 0, entries: [] }, editing: null, status: null, board: null };
 
 function fuelBoard() {

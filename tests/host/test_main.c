@@ -10,7 +10,7 @@
 #include "events.h"
 #include <stdarg.h>
 
-/* Host replacement for the firmware event log (main/events.c needs FreeRTOS), so custom_pids.c links. */
+/* Host replacement for the firmware event log (main/storage/events.c needs FreeRTOS), so custom_pids.c links. */
 void sys_event(event_level_t level, const char *fmt, ...)
 {
     va_list ap;

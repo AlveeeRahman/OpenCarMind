@@ -1,4 +1,4 @@
-//! Client for the board's authenticated USB door (protocol in main/usb_door.h).
+//! Client for the board's authenticated USB door (protocol in main/system/usb_door.h).
 //!
 //! The app does the work and the board only stores or applies what it is sent: the pairing, Wi-Fi networks and
 //! settings go down the cable ready to use, and session files come back in pieces the app reassembles.

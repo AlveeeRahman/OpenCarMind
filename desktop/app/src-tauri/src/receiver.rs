@@ -1,4 +1,4 @@
-//! Receives session files from OpenCarMind boards on the same network (protocol in main/uploader.h).
+//! Receives session files from OpenCarMind boards on the same network (protocol in main/net/uploader.h).
 //!
 //! TLS with a self-signed certificate made on first run. The board trusts only that certificate, which reaches it over
 //! the authenticated USB door (board.rs), together with a random token. Files are stored per board under the app data folder.
