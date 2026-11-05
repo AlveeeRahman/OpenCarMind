@@ -219,7 +219,7 @@ A comparison with my everyday drives is in [docs/TEST_DRIVES.md](docs/TEST_DRIVE
 
 ### CarMind R.E.V results so far
 
-<p align="center"><img src="docs/images/leaders.png" width="900" alt="CarMind model leaders: the models on main, tested on two drives they never saw, scored as an unknown car. R.E.V: 94.5 percent of windows right, cruising 88.9, braking 98.4, accelerating 87.7, stopped 99.4, earlier held-out drives 95.1, KIA test 87.1, fuel R squared 0.783 on the test drives and 0.867 learned on 31 cars. R.E.V (old): 71.8 percent, cruising 7.9. E.V: 73.5 percent, cruising 14.6, does not learn"></p>
+<p align="center"><img src="docs/images/leaders.png" width="900" alt="CarMind model leaders: the models on main, tested on two drives they never saw, scored as an unknown car. R.E.V: 94.5 percent of windows right, cruising 88.9, braking 98.4, accelerating 87.7, stopped 99.4, earlier held-out drives 95.1, KIA test 87.1, fuel R squared 0.867 learned on 31 cars. R.E.V (old): 71.8 percent, cruising 7.9. E.V: 73.5 percent, cruising 14.6, does not learn"></p>
 
 <p align="center"><img src="docs/images/board-bench.png" width="900" alt="On-board benchmark, every number measured on the ESP32-S3 on the same windows. Ranked by the test set of my car: CarMind R.E.V 94.7 percent, 64 KB, cruising 86.3, learns in the car; MLP 85.1; TCN 84.7; CarMind E.V 79.1; CarMind R.E.V (old) 79.1; GRU 34.3. The MLP is the smallest and fastest, E.V has the best KIA macro-F1"></p>
 
