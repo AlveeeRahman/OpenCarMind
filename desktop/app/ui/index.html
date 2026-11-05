@@ -8,7 +8,7 @@
 </head>
 <body>
 <header class="top">
-  <div class="brand"><span class="mark" aria-hidden="true"></span><span><b>Open</b>CarMind</span></div>
+  <div class="brand"><img src="assets/opencarmind-logo.svg" alt="" width="26" height="26"><span><b>Open</b>CarMind</span></div>
   <div class="status" id="status">No card folder open</div>
 </header>
 <nav class="tabs" aria-label="Pages">
@@ -105,14 +105,14 @@
     <div id="board-tools" hidden>
       <div class="panel">
         <h2>On-board model</h2>
-        <p class="sub">CarMind E.V is the fixed model the board has always run. CarMind R.E.V is about half the size and keeps learning your car's fuel use while you drive. R.E.V is new; E.V stays the default.</p>
-        <p id="model-text" class="sub" role="status" aria-live="polite">Connect to see which model runs.</p>
+        <p class="sub">CarMind R.E.V is about half the size of E.V and keeps learning your car while you drive: its fuel estimate and the engine size its torque estimate uses. CarMind E.V is the fixed, tested model. New boards start on R.E.V since 2.5.1, and the switch is one click either way.</p>
+        <p class="model-line"><img id="model-badge" src="assets/carmind-rev-small.svg" alt="" width="34" height="34" hidden><span id="model-text" class="sub" role="status" aria-live="polite">Connect to see which model runs.</span></p>
         <div class="row"><label for="model-pick">Model</label><select id="model-pick"><option value="ev">CarMind E.V</option><option value="rev">CarMind R.E.V</option></select><button id="model-switch">Switch</button></div>
         <div id="model-confirm" class="note warn" hidden><p id="model-confirm-text"></p><div class="row"><button class="primary" id="model-yes">Switch now</button><button id="model-no">Cancel</button></div></div>
       </div>
       <div class="panel">
         <h2>Wi-Fi networks on the board</h2>
-        <p class="sub">The board uses Wi-Fi to set its clock and to send its drives to this app. It joins 2.4 GHz networks only and keeps passwords in its flash as plain text, so a phone hotspot or a guest network is the better choice.</p>
+        <p class="sub">The board uses Wi-Fi to set its clock (and, once the upload is reworked, to send its drives to this app). It joins 2.4 GHz networks only and keeps passwords in its flash as plain text, so a phone hotspot or a guest network is the better choice.</p>
         <ul id="wifi-list" class="list"></ul>
         <div class="row">
           <label for="ssid">Network name</label><input id="ssid" maxlength="32" autocomplete="off">
@@ -130,13 +130,13 @@
       </div>
       <div class="panel">
         <h2>Drives on the card</h2>
-        <p class="sub">Copies new drives from the board's SD card over the cable into this app's drives folder. About 15 KB/s, so a long drive takes a few minutes. The board's Wi-Fi only sets its clock in 2.5.0; sending drives over Wi-Fi is being reworked.</p>
+        <p class="sub">Copies new drives from the board's SD card over the cable into this app's drives folder. About 15 KB/s, so a long drive takes a few minutes. The board's Wi-Fi only sets its clock in 2.5.x; sending drives over Wi-Fi is being reworked.</p>
         <div class="row"><button class="primary" id="import">Import drives over USB</button><span id="import-progress" class="sub"></span></div>
       </div>
       <div class="panel">
         <h2>Firmware</h2>
         <p id="fw-text" class="sub"></p>
-        <div class="row"><button id="flash">Flash the firmware</button></div>
+        <div class="row"><button id="flash">Flash the firmware</button><button id="reboot">Restart the board</button></div>
         <pre id="flash-log" class="sub" hidden></pre>
       </div>
     </div>
