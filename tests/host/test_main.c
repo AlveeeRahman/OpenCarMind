@@ -1,5 +1,6 @@
 /* Host unit tests for the pure-C modules: formula evaluator, custom PID loader, DTC decoding, fault engine.
  * Build and run:  make -C tests/host   (needs clang or gcc). */
+#include "ecu_select.h"
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
@@ -443,6 +444,56 @@ static void test_obd_fresh(void)
     CHECK(obd_fresh_expire(y, fast, t, 128, 99999, 1500, 1) == 0 && y[0] == 0 && y[1] == 0);
 }
 
+/* Several computers answering one broadcast request: the engine must be picked whatever the reply order. The replies are
+   in the format the adapter prints with headers on (ATH1 ATS0). */
+static void test_ecu_select(void)
+{
+    ecu_t e[8];
+    const char *orders[] = {"7E906410080000001\n7E8064100BE3EA813\n", "7E8064100BE3EA813\n7E906410080000001\n"};
+    for (int k = 0; k < 2; k++) {
+        int n = ecu_parse_replies(orders[k], false, e, 8);
+        int i = ecu_pick_engine(e, n);
+        CHECK(n == 2 && i >= 0 && strcmp(e[i].resp_id, "7E8") == 0 && strcmp(e[i].req_hdr, "7E0") == 0);
+    }
+    int n = ecu_parse_replies("7E8064100BE3EA813\n", false, e, 8);       /* one computer */
+    CHECK(n == 1 && ecu_pick_engine(e, n) == 0);
+    n = ecu_parse_replies("7E906410080000001\n", false, e, 8);           /* nobody lists RPM */
+    CHECK(n == 1 && ecu_pick_engine(e, n) == -1);
+    CHECK(ecu_pick_engine(e, 0) == -1);
+    /* a transmission listing RPM and speed does not win over 7E8 */
+    n = ecu_parse_replies("7E906410098188013\n7E8064100BE3EA813\n", false, e, 8);
+    int i = ecu_pick_engine(e, n);
+    CHECK(n == 2 && i >= 0 && strcmp(e[i].resp_id, "7E8") == 0);
+    /* 7E8 wins even with a shorter list (a transmission on 7EA) */
+    n = ecu_parse_replies("7E806410018000000\n7EA064100BE3EA813\n", false, e, 8);
+    i = ecu_pick_engine(e, n);
+    CHECK(n == 2 && i >= 0 && strcmp(e[i].resp_id, "7E8") == 0);
+    /* no 7E8: the most PIDs among computers that list RPM */
+    n = ecu_parse_replies("7E906410098188013\n7EA06410080000001\n", false, e, 8);
+    i = ecu_pick_engine(e, n);
+    CHECK(n == 2 && i >= 0 && strcmp(e[i].resp_id, "7E9") == 0 && strcmp(e[i].req_hdr, "7E1") == 0);
+    /* 29-bit: engine 18DAF110 over a transmission at 18DAF11E */
+    n = ecu_parse_replies("18DAF11E064100FFFFFFFE\n18DAF110064100BE3EA813\n", true, e, 8);
+    i = ecu_pick_engine(e, n);
+    CHECK(n == 2 && i >= 0 && strcmp(e[i].resp_id, "18DAF110") == 0 && strcmp(e[i].req_hdr, "18DA10F1") == 0);
+    /* hybrid layout: engine 7E8, hybrid control 7EA, battery 7EB */
+    n = ecu_parse_replies("7EA06410000180001\n7EB06410080000000\n7E8064100BE3EB813\n", false, e, 8);
+    i = ecu_pick_engine(e, n);
+    CHECK(n == 3 && i >= 0 && strcmp(e[i].resp_id, "7E8") == 0);
+    /* junk, "NO DATA", wrong service and out-of-range ids are ignored */
+    CHECK(ecu_parse_replies("SEARCHING...\nNO DATA\n7E8064900BE3EA813\n7DF064100BE3EA813\n", false, e, 8) == 0);
+    /* summary line */
+    bool ok[2] = {true, false};
+    n = ecu_parse_replies("7E8064100BE3EA813\n7E906410098188013\n", false, e, 8);
+    char s[64];
+    ecu_search_summary("A6", e, ok, n, 0, s, sizeof s);
+    CHECK(strcmp(s, "A6: 7E8 rpm, 7E9 -; use 7E0") == 0);
+    ecu_search_summary("A3", e, ok, 0, -1, s, sizeof s);
+    CHECK(strcmp(s, "A3: one computer; use all") == 0);
+    char t[8];
+    CHECK(ecu_search_summary("A6", e, ok, 2, 0, t, sizeof t) == 7 && t[7] == 0);
+}
+
 int main(void)
 {
     test_power_state();
@@ -456,6 +507,7 @@ int main(void)
     test_custom_csv();
     test_dtc_decode();
     test_fault_engine();
+    test_ecu_select();
     printf("%d checks, %d failures\n", checks, fails);
     return fails ? 1 : 0;
 }

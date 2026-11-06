@@ -1,6 +1,7 @@
 #include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/idf_additions.h"
 #include <math.h>
 #include "esp_heap_caps.h"
 #include "driver/temperature_sensor.h"
@@ -178,5 +179,6 @@ static void cpu_task(void *arg)
 
 void cpu_monitor_start(void)
 {
-    xTaskCreatePinnedToCore(cpu_task, "cpumon", 3072, NULL, 1, NULL, 0);
+    /* PSRAM stack: the task only reads counters and logs, never flash, and internal RAM is the scarce resource */
+    xTaskCreatePinnedToCoreWithCaps(cpu_task, "cpumon", 3072, NULL, 1, NULL, 0, MALLOC_CAP_SPIRAM);
 }

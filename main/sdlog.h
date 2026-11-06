@@ -35,6 +35,8 @@ void sdlog_meta_set_time_sync(int64_t epoch_ms, int64_t uptime_ms);
 void sdlog_meta_add_dtcs(int64_t uptime_ms, const char *dtcs);
 void sdlog_meta_set_faults(const char *insight, const char *ranked_codes, uint8_t max_severity);
 void sdlog_meta_set_custom(size_t idx, const char *cmd, const char *name, const char *unit, const char *formula, const char *header);
+/* Sets (or replaces) one top-level key of the session JSON to a JSON value given as text; invalid JSON is ignored. */
+void sdlog_meta_set_json(const char *key, const char *json);
 
 /* Raw hex of a supported PID the firmware does not decode: appended to sNNNNNN.raw as "uptime_ms,01XX,HEX". */
 void sdlog_write_raw(uint8_t pid, const char *hex);

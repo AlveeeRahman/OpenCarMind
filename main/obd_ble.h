@@ -17,3 +17,6 @@ void      obd_ble_adapter_confirmed(void);
 void      obd_ble_adapter_rejected(const char *why);
 /* Transport write used by elm327.c; splits to the ATT MTU; returns 0 on success. */
 int       obd_ble_write(const uint8_t *data, size_t len);
+/* Connection search: clears the skip list and, for 90 s, lifts the saved-adapter lock so a different adapter can be found.
+   A device must still look like an OBD adapter (name or serial service): other people's devices are never tried. */
+void      obd_ble_explore(void);
