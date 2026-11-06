@@ -85,16 +85,56 @@ static void set_hold(uint8_t pct, uint8_t stage)
     STATUS_LOCK(); g_status.hold_pct = pct; g_status.hold_stage = stage; STATUS_UNLOCK();
 }
 
+#define DOUBLE_MS      450     /* a second tap within this is a double-click */
+#define AUTO_SEARCH_MS 60000   /* no engine data this long: automatic connection search */
+#define AUTO_LINKED_MS 40000   /* a fresh adapter link gets this long to start on its own first */
+
 static void button_task(void *arg)
 {
     gpio_config_t io = { .pin_bit_mask = 1ULL << BOARD_BUTTON, .mode = GPIO_MODE_INPUT, .pull_up_en = GPIO_PULLUP_ENABLE };
     gpio_config(&io);
     int held_ms = 0;
     int64_t forget_prompt_until = 0;
+    int64_t last_tap_ms = 0;
+    int64_t bad_since = 0, last_nag = -60000, last_check = 0;
+    uint32_t auto_epoch = 0;           /* adapter connection the automatic search last ran for */
+    bool auto_scan_done = false;       /* the automatic adapter search runs once per boot */
     for (;;) {
         vTaskDelay(pdMS_TO_TICKS(20));
         bool down = gpio_get_level(BOARD_BUTTON) == 0;
         int64_t now_ms = esp_timer_get_time() / 1000;
+        if (now_ms - last_check >= 1000) {
+            last_check = now_ms;
+            STATUS_LOCK();
+            bool ok = g_status.ble == BLE_ST_LOGGING && (OBD_HAS(&g_status.obd, F_rpm) || OBD_HAS(&g_status.obd, F_speed));
+            bool prompt_busy = g_status.prompt_text[0] && now_ms < g_status.prompt_until_ms;
+            STATUS_UNLOCK();
+            if (ok || elm_exploring()) bad_since = 0;
+            else if (!bad_since) bad_since = now_ms;
+            /* automatic search after AUTO_SEARCH_MS without engine data: once per adapter connection, or once per boot
+               when no adapter is linked. The double-click starts the same search by hand at any time. */
+            if (bad_since && now_ms - bad_since > AUTO_SEARCH_MS && !elm_exploring()) {
+                if (elm_link_is_up()) {
+                    uint32_t ep = elm_link_epoch();
+                    if (now_ms - elm_link_up_ms() >= AUTO_LINKED_MS && ep != auto_epoch) {
+                        auto_epoch = ep;
+                        ESP_LOGI(TAG, "no engine data: automatic search");
+                        elm_explore();
+                    }
+                } else if (!auto_scan_done) {
+                    auto_scan_done = true;
+                    ESP_LOGI(TAG, "no adapter: automatic adapter search");
+                    elm_explore();
+                }
+            }
+            if (bad_since && now_ms - bad_since > 45000 && now_ms - last_nag > 60000 && !prompt_busy && !elm_exploring()) {
+                last_nag = now_ms;
+                STATUS_LOCK();
+                snprintf(g_status.prompt_text, sizeof g_status.prompt_text, "No engine data: auto search soon, double-click = now");
+                g_status.prompt_until_ms = now_ms + 10000;
+                STATUS_UNLOCK();
+            }
+        }
         if (down) {
             if (held_ms == 0) status_led_set(255, 255, 255);              /* press acknowledged at once */
             held_ms += 20;
@@ -111,8 +151,23 @@ static void button_task(void *arg)
         held_ms = 0;
         set_hold(0, 0);
 
-        if (held < 1000) {
+        if (held < 1000 && now_ms - last_tap_ms < DOUBLE_MS) {
+            /* double-click: search when the link is not working, else show what the link is doing */
+            last_tap_ms = 0;
+            STATUS_LOCK();
+            bool ok = g_status.ble == BLE_ST_LOGGING && (OBD_HAS(&g_status.obd, F_rpm) || OBD_HAS(&g_status.obd, F_speed));
+            STATUS_UNLOCK();
+            if (ok) {
+                char line[64];
+                elm_link_summary(line, sizeof line);
+                STATUS_LOCK();
+                snprintf(g_status.prompt_text, sizeof g_status.prompt_text, "%s", line);
+                g_status.prompt_until_ms = now_ms + 6000;
+                STATUS_UNLOCK();
+            } else elm_explore();
+        } else if (held < 1000) {
             /* tap: acknowledge a critical alarm, confirm a pending prompt, else next page */
+            last_tap_ms = now_ms;
             bool handled = false;
             STATUS_LOCK();
             if (g_status.alarm_text[0] && g_status.alarm_critical) { g_status.alarm_text[0] = 0; g_status.alarm_critical = false; handled = true; }
@@ -229,7 +284,13 @@ void app_main(void)
              (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
 
     cpu_monitor_start();
-    xTaskCreate(button_task, "button", 4096, NULL, 3, NULL);
-    xTaskCreate(led_task, "led", 4096, NULL, 2, NULL);
+    /* The button task stays in internal RAM: forgetting the adapter writes NVS, and flash writes are not allowed from a
+       PSRAM stack. The LED task only drives the LED, so its stack goes to PSRAM. A task that cannot start is an event. */
+    if (xTaskCreate(button_task, "button", 4096, NULL, 3, NULL) != pdPASS)
+        sys_event(EV_ERROR, "BOOT button task did not start (internal RAM)");
+    if (xTaskCreateWithCaps(led_task, "led", 4096, NULL, 2, NULL, MALLOC_CAP_SPIRAM) != pdPASS)
+        sys_event(EV_ERROR, "LED task did not start");
+    ESP_LOGI(TAG, "internal heap after tasks: %u (largest block %u)", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+             (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
     ESP_LOGI(TAG, "%s running", CARMIND_FW_STRING);
 }

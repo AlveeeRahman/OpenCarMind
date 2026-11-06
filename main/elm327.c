@@ -25,6 +25,8 @@
 #include "events.h"
 #include "remote_config.h"
 #include "esp_attr.h"
+#include "esp_heap_caps.h"
+#include "ecu_select.h"
 
 static const char *TAG = "elm";
 
@@ -99,6 +101,33 @@ static custom_pid_t s_custom[CUSTOM_PID_MAX];
 static size_t       s_custom_n;
 static char         s_default_header[12];   /* "7DF" or "18DB33F1" when protocol is CAN, else "" */
 static char         s_cur_header[12];
+static char         s_poll_header[12];      /* the main poll's header: the engine's physical address when several computers
+                                               answer on CAN (pick_engine_ecu), else s_default_header */
+
+/* ------------------------------------------------------------------ connection search state */
+static volatile bool     s_explore_req, s_exploring;
+static char              s_explore_hdr[12];   /* engine address found by the last search, "" = none */
+static char              s_explore_proto;     /* protocol digit that answered when auto search did not, 0 = auto */
+EXT_RAM_BSS_ATTR static char s_explore_json[256];
+static volatile uint32_t s_link_epoch;
+static volatile int64_t  s_link_up_ms;
+
+static void show_prompt(const char *text, uint32_t ms)
+{
+    STATUS_LOCK();
+    snprintf(g_status.prompt_text, sizeof g_status.prompt_text, "%s", text);
+    g_status.prompt_until_ms = esp_timer_get_time() / 1000 + ms;
+    STATUS_UNLOCK();
+}
+
+/* JSON-safe copy of an adapter reply: printable ASCII only, quotes and backslashes dropped */
+static void json_clean(char *dst, size_t n, const char *src)
+{
+    size_t k = 0;
+    for (; src && *src && k + 1 < n; src++)
+        if (*src >= 0x20 && *src < 0x7F && *src != '"' && *src != '\\') dst[k++] = *src;
+    dst[k] = 0;
+}
 
 /* ------------------------------------------------------------------ transport glue */
 void elm_rx_bytes(const uint8_t *data, size_t len)
@@ -108,6 +137,8 @@ void elm_rx_bytes(const uint8_t *data, size_t len)
 
 void elm_link_changed(bool up)
 {
+    if (up && !s_link_up) { s_link_epoch++; s_link_up_ms = esp_timer_get_time() / 1000; }
+    if (!up) s_explore_req = false;                   /* a search asked for on a link that dropped is void */
     s_link_up = up;
     if (s_rx) xStreamBufferReset(s_rx);
     if (up) xEventGroupSetBits(s_ev, LINK_UP_BIT);
@@ -346,8 +377,8 @@ static void poll_custom(size_t idx)
     if (c->header[0]) {
         if (!s_default_header[0]) return;        /* header switching only on CAN */
         set_header(c->header);
-    } else if (s_cur_header[0] && strcmp(s_cur_header, s_default_header) != 0) {
-        set_header(s_default_header);
+    } else if (strcmp(s_cur_header, s_poll_header) != 0) {
+        set_header(s_poll_header);
     }
     char resp[256];
     int rc = elm_transact(c->cmd, resp, sizeof resp, CONFIG_OBD_ELM_TIMEOUT_MS);
@@ -452,6 +483,80 @@ static bool try_protocols(char *resp, size_t sz)
     return false;
 }
 
+/* On CAN, more than one computer can answer a broadcast request (engine and transmission, hybrid systems), in either
+   order, and the poll reads the first reply. Once per connect, ask 0100 with headers on, pick the engine
+   (ecu_pick_engine) and address it physically, so every reply is the engine's. Verified with 0100 (the same list) and
+   010C (RPM) on the new address, or the poll stays on the broadcast address as before. One computer answering changes
+   nothing. A one-shot scheduler job: watched while it runs, not expected again until the next connect. */
+static void pick_engine_ecu(void)
+{
+    snprintf(s_poll_header, sizeof s_poll_header, "%s", s_default_header);
+    if (!s_default_header[0]) return;                 /* not CAN: one answer per request */
+    static sched_job_t job = -1;
+    if (job < 0) job = sched_register("ecu_pick", 10000, 10000, true);
+    sched_set_expected(job, true);
+    sched_begin(job);
+
+    bool ext29 = strlen(s_default_header) == 8;
+    char resp[256], hex[64];
+    if (s_explore_hdr[0]) {                           /* the last search found the engine here: check it still answers */
+        set_header(s_explore_hdr);
+        bool ok = strcmp(s_cur_header, s_explore_hdr) == 0 &&
+                  elm_transact("010C", resp, sizeof resp, CONFIG_OBD_ELM_TIMEOUT_MS) > 0 && !resp_is_error(resp);
+        if (ok) { collapse_hex(resp, hex, sizeof hex); ok = strncmp(hex, "410C", 4) == 0 && strlen(hex) >= 8; }
+        if (ok) {
+            snprintf(s_poll_header, sizeof s_poll_header, "%s", s_explore_hdr);
+            char j[96];
+            snprintf(j, sizeof j, "{\"result\":\"search\",\"poll_header\":\"%s\"}", s_poll_header);
+            sdlog_meta_set_json("poll_ecu", j);
+            sys_event(EV_INFO, "Polling %s (found by search)", s_poll_header);
+            sched_end(job);
+            sched_set_expected(job, false);
+            return;
+        }
+        set_header(s_default_header);
+    }
+    ecu_t ecus[8];
+    int n = 0;
+    set_header(s_default_header);
+    if (elm_transact("ATH1", resp, sizeof resp, CONFIG_OBD_ELM_TIMEOUT_MS) > 0 && strstr(resp, "OK")) {
+        sched_kick();
+        if (elm_transact("0100", resp, sizeof resp, 3000) > 0) n = ecu_parse_replies(resp, ext29, ecus, 8);
+        sched_kick();
+        elm_transact("ATH0", resp, sizeof resp, CONFIG_OBD_ELM_TIMEOUT_MS);
+    }
+    int pick = n > 1 ? ecu_pick_engine(ecus, n) : -1;
+    const char *result = n <= 1 ? "single" : pick < 0 ? "no-rpm" : "fallback";
+    if (pick >= 0) {
+        sched_kick();
+        set_header(ecus[pick].req_hdr);
+        char want[16];
+        snprintf(want, sizeof want, "4100%02X%02X%02X%02X", ecus[pick].sup01[0], ecus[pick].sup01[1], ecus[pick].sup01[2], ecus[pick].sup01[3]);
+        bool ok = strcmp(s_cur_header, ecus[pick].req_hdr) == 0 &&
+                  elm_transact("0100", resp, sizeof resp, CONFIG_OBD_ELM_TIMEOUT_MS) > 0 && !resp_is_error(resp);
+        if (ok) { collapse_hex(resp, hex, sizeof hex); ok = strcmp(hex, want) == 0; }
+        if (ok) {
+            sched_kick();
+            ok = elm_transact("010C", resp, sizeof resp, CONFIG_OBD_ELM_TIMEOUT_MS) > 0 && !resp_is_error(resp);
+            if (ok) { collapse_hex(resp, hex, sizeof hex); ok = strncmp(hex, "410C", 4) == 0 && strlen(hex) >= 8; }
+        }
+        if (ok) {
+            snprintf(s_poll_header, sizeof s_poll_header, "%s", ecus[pick].req_hdr);
+            result = "engine";
+            sys_event(EV_INFO, "Engine ECU %s picked (%d answering)", ecus[pick].resp_id, n);
+        } else {
+            set_header(s_default_header);
+            sys_event(EV_WARN, "Engine ECU %s did not verify: polling all ECUs", ecus[pick].resp_id);
+        }
+    }
+    char j[160];
+    snprintf(j, sizeof j, "{\"result\":\"%s\",\"answering\":%d,\"engine\":\"%s\",\"poll_header\":\"%s\"}",
+             result, n, pick >= 0 ? ecus[pick].resp_id : "", s_poll_header);
+    sdlog_meta_set_json("poll_ecu", j);
+    sched_end(job);
+    sched_set_expected(job, false);
+}
+
 static bool elm_initialise(void)
 {
     char resp[256];
@@ -459,6 +564,7 @@ static bool elm_initialise(void)
     STATUS_LOCK(); g_status.ble = BLE_ST_ELM_INIT; STATUS_UNLOCK();
     s_cur_header[0] = 0;
     s_default_header[0] = 0;
+    s_poll_header[0] = 0;
 
     s_resp_count = false;
     char batch[16] = "";
@@ -491,6 +597,11 @@ static bool elm_initialise(void)
         if (rc < 0) { sys_event(EV_ERROR, "OBD adapter stopped answering (%s)", init_cmds[i]); return false; }
         ESP_LOGI(TAG, "%s -> %s", init_cmds[i], resp);
     }
+    if (s_explore_proto) {                 /* auto search failed on this car before; the search found this protocol */
+        char cmd[8];
+        snprintf(cmd, sizeof cmd, "ATTP%c", s_explore_proto);
+        elm_transact(cmd, resp, sizeof resp, CONFIG_OBD_ELM_TIMEOUT_MS);
+    }
     if (elm_transact("ATI", resp, sizeof resp, CONFIG_OBD_ELM_TIMEOUT_MS) > 0) snprintf(ati, sizeof ati, "%.31s", resp);
     app_status_t st;
     status_get(&st);
@@ -504,11 +615,13 @@ static bool elm_initialise(void)
         if (rc > 0 && (tries == 2 || tries == 10) && (strstr(resp, "UNABLE") || strstr(resp, "ERROR")) &&
             try_protocols(resp, sizeof resp)) break;
         vTaskDelay(pdMS_TO_TICKS(3000));
-    } while (++tries < 20 && s_link_up && !s_halt);
+    } while (++tries < 20 && s_link_up && !s_halt && !s_explore_req);
+    if (s_explore_req) return false;                                   /* a connection search was asked for */
     if (!s_link_up || s_halt || tries >= 20) { if (s_link_up && !s_halt) sys_event(EV_WARN, "ECU not answering: ignition off?"); return false; }
 
     sdlog_begin_drive();                   /* the ECU answered: a new session if the last drive was closed */
     sdlog_meta_set_adapter(st.adapter_name, st.adapter_addr, ati, batch);
+    if (s_explore_json[0]) sdlog_meta_set_json("search", s_explore_json);
 
     char protocol[24] = "";
     if (elm_transact("ATDPN", resp, sizeof resp, CONFIG_OBD_ELM_TIMEOUT_MS) > 0) snprintf(protocol, sizeof protocol, "%.23s", resp);
@@ -532,6 +645,7 @@ static bool elm_initialise(void)
     STATUS_UNLOCK();
     sdlog_meta_set_vehicle(vin, protocol);
 
+    pick_engine_ecu();                     /* before read_supported: the PID list must be the engine's */
     read_supported();
     probe_resp_count(protocol);
     fault_engine_reset();
@@ -581,16 +695,126 @@ void elm_resume(void)
     if (s_link_up) xEventGroupSetBits(s_ev, LINK_UP_BIT);
 }
 
+/* The connection search (elm_explore): bounded, read-only, about a minute at most. Every step is an ELM transaction with
+   its own timeout and the watchdog is fed after each, so a silent car ends the search instead of hanging it. */
+static void run_explore(void)
+{
+    s_explore_req = false;
+    if (heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL) < 4096) {   /* never start optional work short of RAM */
+        show_prompt("Search postponed: memory low. Try again soon.", 10000);
+        return;
+    }
+    s_exploring = true;
+    static sched_job_t job = -1;
+    if (job < 0) job = sched_register("link_search", 90000, 90000, true);
+    sched_set_expected(job, true);
+    sched_begin(job);
+    char resp[256], hex[64], text[64], dpn[12] = "";
+    ecu_t ecus[8];
+    bool rpm_ok[8] = {0};
+    int n = 0, pick = -1;
+
+    s_cur_header[0] = 0;
+    elm_transact("ATZ", resp, sizeof resp, 4000);
+    sched_kick();
+    static const char *init[] = {"ATE0", "ATL0", "ATS0", "ATH0", "ATAT1", "ATST32"};
+    for (size_t i = 0; i < sizeof init / sizeof init[0]; i++) { elm_transact(init[i], resp, sizeof resp, CONFIG_OBD_ELM_TIMEOUT_MS); sched_kick(); }
+
+    /* 1. protocol: auto search first, then each protocol on its own (python-OBD order, CAN first) */
+    static const char order[] = "0681792345";
+    char proto = 0;
+    for (const char *p = order; *p && s_link_up && !s_halt; p++) {
+        char cmd[8];
+        if (*p == '0') snprintf(cmd, sizeof cmd, "ATSP0");
+        else snprintf(cmd, sizeof cmd, "ATTP%c", *p);
+        if (elm_transact(cmd, resp, sizeof resp, CONFIG_OBD_ELM_TIMEOUT_MS) < 0) break;
+        if (*p != '0' && strchr(resp, '?')) { snprintf(cmd, sizeof cmd, "ATSP%c", *p); elm_transact(cmd, resp, sizeof resp, CONFIG_OBD_ELM_TIMEOUT_MS); }
+        snprintf(text, sizeof text, "Searching: protocol %s...", *p == '0' ? "auto" : cmd + 4);
+        show_prompt(text, 30000);
+        sched_kick();
+        int rc = elm_transact("0100", resp, sizeof resp, *p == '0' ? 12000 : 6000);
+        sched_kick();
+        if (rc > 0 && strstr(resp, "4100")) { proto = *p; break; }
+    }
+    if (!proto) {
+        s_explore_hdr[0] = 0;
+        s_explore_proto = 0;
+        snprintf(text, sizeof text, "No computer answered on any protocol. Ignition on?");
+    } else {
+        if (elm_transact("ATDPN", resp, sizeof resp, CONFIG_OBD_ELM_TIMEOUT_MS) > 0) json_clean(dpn, sizeof dpn, resp);
+        s_explore_proto = proto == '0' ? 0 : proto;
+        char pn = dpn[0] == 'A' ? dpn[1] : dpn[0];
+        if (pn >= '6' && pn <= '9') {
+            /* 2. computers: the broadcast request with headers on, then each 11-bit physical address it missed */
+            bool ext29 = pn == '7' || pn == '9';
+            const char *func = ext29 ? "18DB33F1" : "7DF";
+            set_header(func);
+            if (elm_transact("ATH1", resp, sizeof resp, CONFIG_OBD_ELM_TIMEOUT_MS) > 0) {
+                sched_kick();
+                if (elm_transact("0100", resp, sizeof resp, 3000) > 0) n = ecu_parse_replies(resp, ext29, ecus, 8);
+                sched_kick();
+                elm_transact("ATH0", resp, sizeof resp, CONFIG_OBD_ELM_TIMEOUT_MS);
+            }
+            for (int i = 0; !ext29 && i < 8 && n < 8 && s_link_up; i++) {
+                char rid[4], req[4];
+                snprintf(rid, sizeof rid, "%03X", 0x7E8 + i);
+                snprintf(req, sizeof req, "%03X", 0x7E0 + i);
+                bool known = false;
+                for (int k = 0; k < n; k++) known |= strcmp(ecus[k].resp_id, rid) == 0;
+                if (known) continue;
+                set_header(req);
+                uint8_t b[4];
+                if (strcmp(s_cur_header, req) == 0 && elm_transact("0100", resp, sizeof resp, 1000) > 0 && !resp_is_error(resp) &&
+                    bytes_after_prefix(resp, "4100", b, sizeof b, NULL, 0) == 4) {
+                    memset(&ecus[n], 0, sizeof ecus[n]);
+                    snprintf(ecus[n].resp_id, sizeof ecus[n].resp_id, "%s", rid);
+                    snprintf(ecus[n].req_hdr, sizeof ecus[n].req_hdr, "%s", req);
+                    memcpy(ecus[n].sup01, b, 4);
+                    n++;
+                }
+                sched_kick();
+            }
+            /* 3. which of them answers RPM on its own address; the engine among those (ecu_pick_engine) */
+            ecu_t ok_e[8];
+            int map[8], m = 0;
+            for (int i = 0; i < n && s_link_up; i++) {
+                set_header(ecus[i].req_hdr);
+                if (strcmp(s_cur_header, ecus[i].req_hdr) == 0 && elm_transact("010C", resp, sizeof resp, 1500) > 0 && !resp_is_error(resp)) {
+                    collapse_hex(resp, hex, sizeof hex);
+                    rpm_ok[i] = strncmp(hex, "410C", 4) == 0 && strlen(hex) >= 8;
+                }
+                if (rpm_ok[i]) { ok_e[m] = ecus[i]; map[m++] = i; }
+                sched_kick();
+            }
+            int pk = m ? ecu_pick_engine(ok_e, m) : -1;
+            pick = pk >= 0 ? map[pk] : -1;
+            snprintf(s_explore_hdr, sizeof s_explore_hdr, "%s", pick >= 0 ? ecus[pick].req_hdr : "");
+            set_header(func);
+        } else s_explore_hdr[0] = 0;          /* J1850 / K-line: physical headers are not used, stay on broadcast */
+        ecu_search_summary(dpn, ecus, rpm_ok, n, pick, text, sizeof text);
+    }
+    char clean[64];
+    json_clean(clean, sizeof clean, text);
+    snprintf(s_explore_json, sizeof s_explore_json, "{\"protocol\":\"%s\",\"forced\":\"%c\",\"computers\":%d,\"engine\":\"%s\",\"summary\":\"%s\"}",
+             dpn, s_explore_proto ? s_explore_proto : '-', n, s_explore_hdr, clean);
+    show_prompt(text, 20000);
+    sys_event(EV_INFO, "Search: %.46s", text);
+    sched_end(job);
+    sched_set_expected(job, false);
+    s_exploring = false;
+}
+
 static void obd_task(void *arg)
 {
     for (;;) {
         xEventGroupWaitBits(s_ev, LINK_UP_BIT, pdTRUE, pdFALSE, portMAX_DELAY);
         vTaskDelay(pdMS_TO_TICKS(300));
         if (s_halt) continue;                                     /* stopped for power-off: wait for elm_resume() */
+        if (s_explore_req && s_link_up) run_explore();
 
         if (!elm_initialise()) {
             if (s_link_up) {
-                vTaskDelay(pdMS_TO_TICKS(5000));
+                vTaskDelay(pdMS_TO_TICKS(s_explore_req ? 10 : 5000));
                 if (s_link_up) xEventGroupSetBits(s_ev, LINK_UP_BIT);
             }
             continue;
@@ -648,8 +872,9 @@ static void obd_task(void *arg)
         char resp[64];
         s_in_drive = true;
 
-        while (s_link_up && !s_halt) {
+        while (s_link_up && !s_halt && !s_explore_req) {
             sched_begin(poll_job);
+            if (strcmp(s_cur_header, s_poll_header) != 0) set_header(s_poll_header);   /* the DTC read below goes to every computer */
             bool any_ok = false;
             for (int i = 0; i < nf && s_link_up && !s_halt; i++) any_ok |= poll_pid(fast[i]);
             /* a few slow PIDs per cycle, round robin; custom PIDs share the rotation */
@@ -667,7 +892,7 @@ static void obd_task(void *arg)
                 else poll_custom(idx - ns);
                 if (slow_i % total_slow == 0) slow_passes++;
             }
-            if (s_cur_header[0] && strcmp(s_cur_header, s_default_header) != 0) set_header(s_default_header);
+            if (strcmp(s_cur_header, s_poll_header) != 0) set_header(s_poll_header);
             /* raw-only PIDs: one per cycle, only every Nth pass, so the fast loop stays quick */
             if (nr > 0 && slow_passes % RAW_EVERY_SLOW_PASSES == 0 && (slow_i % SLOW_PER_CYCLE) == 0) {
                 uint8_t b[32];
@@ -686,6 +911,7 @@ static void obd_task(void *arg)
                 last_rv = now;
             }
             if (now - last_dtc > (int64_t)remote_config_get()->dtc_interval_s * 1000000LL) {
+                if (strcmp(s_cur_header, s_default_header) != 0) set_header(s_default_header);   /* codes from every computer */
                 poll_dtcs();
                 last_dtc = now;
             }
@@ -778,13 +1004,31 @@ static void obd_task(void *arg)
         end_drive(poll_job);                                       /* everything logged so far is on the card, files closed */
         s_in_drive = false;
         if (s_link_up && !s_halt) {
-            vTaskDelay(pdMS_TO_TICKS(5000));                       /* engine off: retry calmly until the ECU answers again */
+            vTaskDelay(pdMS_TO_TICKS(s_explore_req ? 10 : 5000));  /* engine off: retry calmly until the ECU answers again */
             if (s_link_up && !s_halt) xEventGroupSetBits(s_ev, LINK_UP_BIT);
         }
     }
 }
 
 bool elm_drive_active(void) { return s_in_drive; }
+
+void elm_explore(void)
+{
+    if (s_exploring) return;
+    if (!s_link_up) { obd_ble_explore(); show_prompt("Searching for an OBD adapter...", 15000); return; }
+    s_explore_req = true;
+    show_prompt("Searching protocols and computers...", 60000);
+}
+
+bool elm_exploring(void) { return s_exploring || s_explore_req; }
+bool elm_link_is_up(void) { return s_link_up; }
+int64_t elm_link_up_ms(void) { return s_link_up ? s_link_up_ms : -1; }
+uint32_t elm_link_epoch(void) { return s_link_epoch; }
+
+void elm_link_summary(char *out, size_t n)
+{
+    snprintf(out, n, "Link OK: polling %s", s_poll_header[0] ? s_poll_header : "all computers");
+}
 
 void elm_init(void)
 {

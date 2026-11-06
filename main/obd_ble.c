@@ -40,6 +40,7 @@ static uint16_t  s_conn = BLE_HS_CONN_HANDLE_NONE;
 static uint16_t  s_write_handle, s_notify_handle, s_cccd_handle;
 static bool      s_write_no_rsp, s_use_indicate;
 static bool      s_ready;
+static volatile int64_t s_explore_until;   /* esp_timer time until which the saved-adapter lock is lifted */
 static bool      s_sec_tried;
 static bool      s_pin_valid;          /* this address refused Just Works: pair it with the fixed PIN */
 static ble_addr_t s_pin_addr;
@@ -254,7 +255,8 @@ static bool is_candidate(const struct ble_gap_disc_desc *d, const struct ble_hs_
         d->event_type != BLE_HCI_ADV_RPT_EVTYPE_SCAN_RSP) return false;
     if (d->rssi < CONFIG_OBD_BLE_MIN_RSSI) return false;
 
-    if (s_have_saved) return ble_addr_cmp(&d->addr, &s_saved_addr) == 0;
+    bool exploring = esp_timer_get_time() < s_explore_until;
+    if (s_have_saved && !exploring) return ble_addr_cmp(&d->addr, &s_saved_addr) == 0;
     if (is_rejected(&d->addr)) return false;
 
     if (f->name && f->name_len &&
@@ -499,6 +501,19 @@ int obd_ble_write(const uint8_t *data, size_t len)
 }
 
 bool obd_ble_connected(void) { return s_ready; }
+
+void obd_ble_explore(void)
+{
+    portENTER_CRITICAL(&s_reject_mux);
+    memset(s_reject, 0, sizeof s_reject);
+    portEXIT_CRITICAL(&s_reject_mux);
+    s_explore_until = esp_timer_get_time() + 90LL * 1000000;
+    sys_event(EV_INFO, "Searching for an OBD adapter for 90 s");
+    if (s_conn == BLE_HS_CONN_HANDLE_NONE && !s_paused) {
+        ble_gap_disc_cancel();
+        start_scan();
+    }
+}
 
 void obd_ble_set_paused(bool paused)
 {

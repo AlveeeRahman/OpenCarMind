@@ -12,6 +12,7 @@ idf_component_register(
          "uploader.c"
          "usb_door.c"
          "elm327.c"
+         "ecu_select.c"
          "sdlog.c"
          "display.c"
          "wifi_sync.c"

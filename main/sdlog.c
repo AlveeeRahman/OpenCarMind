@@ -610,6 +610,18 @@ void sdlog_meta_add_dtcs(int64_t uptime_ms, const char *dtcs)
     xSemaphoreGive(s_lock);
 }
 
+void sdlog_meta_set_json(const char *key, const char *json)
+{
+    if (!s_meta) return;
+    cJSON *v = cJSON_Parse(json);
+    if (!v) return;
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    if (cJSON_HasObjectItem(s_meta, key)) cJSON_ReplaceItemInObject(s_meta, key, v);
+    else cJSON_AddItemToObject(s_meta, key, v);
+    meta_flush_locked();
+    xSemaphoreGive(s_lock);
+}
+
 void sdlog_meta_set_custom(size_t idx, const char *cmd, const char *name, const char *unit, const char *formula, const char *header)
 {
     if (!s_meta) return;
