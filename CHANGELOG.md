@@ -17,6 +17,7 @@ A new brand, a screen made for the LCD, and a visible power-off.
 - **Page 3**: the pattern line sits above the page dots.
 - **New boards start on CarMind R.E.V** when the firmware carries it. A board that already chose a model keeps it.
 - **Supply chain**: CodeQL, a fuzz harness over the input parsers, Dependabot, hash-pinned test dependencies and release provenance.
+- **USB door opens only with a code from the desktop tools**: HELLO now answers with a random challenge and nothing else (no firmware version, board id or pairing state). The door's code is the HMAC-SHA256 of that challenge keyed with the paired app's token, which only the desktop tools hold; the board then says who it is. The 6-digit code on the board's screen now only pairs a new computer: after it, PAIR is the one command accepted.
 - **USB door**: unbiased pairing codes. The desktop app explains an expired session and can restart the board.
 - **Desktop app**: says new boards start on R.E.V, and shows the running model's mark.
 - **Report image**: `ghcr.io/alveeerahman/opencarmind-report` serves the SD card's drives as the HTML report (`dashboard/Dockerfile`).

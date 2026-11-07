@@ -42,7 +42,7 @@ The board has no battery for its clock. Every save writes the time to `/sdcard/o
 
 With the desktop app, the SD card can stay in the board. The app talks to it over the USB cable through an authenticated door (`main/usb_door.h`), prepares everything itself, and sends the board only finished values to store or apply:
 
-- Pairing: the first time, the board shows a 6-digit code on its screen and you type it into the app (3 tries per code, a new code at most every 5 seconds). The app then sends its address, port, certificate and token. Later connections prove themselves with an HMAC of a fresh random challenge, keyed with that token, so no code is needed.
+- Pairing: the first time, the board shows a 6-digit code on its screen and you type it into the app (3 tries per code, a new code at most every 5 seconds). The app then sends its address, port, certificate and token. Later connections prove themselves with an HMAC of a fresh random challenge, keyed with that token: the app computes this code itself, and the board answers nothing else until it is right. The screen code only pairs: after it, the board accepts PAIR and nothing more.
 - Wi-Fi networks, the time zone and the settings in the table below.
 - Reading the session files from the card, so drives can be imported over the cable.
 - Flashing: the app carries the matching firmware image and Espressif's `esptool`. Flashing keeps the Wi-Fi networks and the pairing, which live in a separate flash partition.

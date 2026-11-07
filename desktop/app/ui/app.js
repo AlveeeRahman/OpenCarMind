@@ -203,7 +203,8 @@ async function connect() {
     msg("#board-msg", `Connected to board ${h.board}, firmware ${h.firmware}, paired with this app.`);
   } else {
     showTools(false); $("#pair-box").hidden = false;
-    msg("#board-msg", `Board ${h.board}, firmware ${h.firmware}. ${h.paired ? "It is paired with another app or an older install." : "It is not paired yet."} Pair it below.`);
+    msg("#board-msg", h.board ? `Board ${h.board}, firmware ${h.firmware}. ${h.paired ? "It is paired with another app or an older install." : "It is not paired yet."} Pair it below.`
+                              : "The board did not accept this app: it is not paired with this computer yet. Pair it below with the code from its screen.");
   }
 }
 
