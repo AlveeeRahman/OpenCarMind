@@ -122,22 +122,35 @@ pub fn hmac_hex(token: &str, nonce: &str) -> String {
     ring::hmac::sign(&key, nonce.as_bytes()).as_ref().iter().map(|b| format!("{b:02x}")).collect()
 }
 
-/// HELLO, then the HMAC answer when the board is already paired and this app has a token.
+/// HELLO, then the door's code: the HMAC of the board's nonce, keyed with this app's token. The board tells who it is only
+/// after that code is right; older firmware also tells it in HELLO, and both are read.
 pub fn connect(port: &str, token: &str) -> Result<Hello, String> {
     let mut door = Door::open(port)?;
     let hello = door.call("HELLO", SHORT)?.pop().unwrap_or_default();
-    let board = field(&hello, "board").unwrap_or("").to_string();
-    if !crate::receiver::valid_board(&board) {
-        return Err("the board's answer was not understood".into());
-    }
-    let paired = field(&hello, "paired") == Some("1");
-    let mut authed = false;
-    if paired && !token.is_empty() {
-        if let Some(nonce) = field(&hello, "nonce") {
-            authed = door.call(&format!("AUTH-HMAC {}", hmac_hex(token, nonce)), SHORT).is_ok();
+    let nonce = field(&hello, "nonce").ok_or("the board's answer was not understood")?.to_string();
+    let mut h = Hello {
+        firmware: field(&hello, "fw").unwrap_or("?").to_string(),
+        board: field(&hello, "board").unwrap_or("").to_string(),
+        paired: field(&hello, "paired") == Some("1"),
+        authed: false,
+    };
+    if !token.is_empty() {
+        if let Ok(lines) = door.call(&format!("AUTH-HMAC {}", hmac_hex(token, &nonce)), SHORT) {
+            apply_auth(&mut h, lines.last().map(String::as_str).unwrap_or(""));
         }
     }
-    Ok(Hello { firmware: field(&hello, "fw").unwrap_or("?").to_string(), board, paired, authed })
+    if !h.board.is_empty() && !crate::receiver::valid_board(&h.board) {
+        return Err("the board's answer was not understood".into());
+    }
+    Ok(h)
+}
+
+/// "OK AUTH fw=2.5.2 board=a1b2c3d4e5f6 paired=1" (older firmware answers a bare "OK AUTH").
+pub fn apply_auth(h: &mut Hello, ok_line: &str) {
+    h.authed = true;
+    h.paired = true;
+    if let Some(v) = field(ok_line, "fw") { h.firmware = v.to_string(); }
+    if let Some(v) = field(ok_line, "board") { h.board = v.to_string(); }
 }
 
 pub fn request_code(port: &str) -> Result<(), String> {
@@ -350,6 +363,17 @@ mod tests {
         assert_eq!(field(l, "board"), Some("a1b2c3d4e5f6"));
         assert_eq!(field(l, "paired"), Some("1"));
         assert_eq!(field(l, "missing"), None);
+    }
+
+    #[test]
+    fn auth_line_tells_who_the_board_is() {
+        let mut h = Hello { firmware: "?".into(), board: String::new(), paired: false, authed: false };
+        apply_auth(&mut h, "OK AUTH fw=2.5.2 board=a1b2c3d4e5f6 paired=1");
+        assert_eq!(h, Hello { firmware: "2.5.2".into(), board: "a1b2c3d4e5f6".into(), paired: true, authed: true });
+        let mut old = Hello { firmware: "2.2.0".into(), board: "a1b2c3d4e5f6".into(), paired: true, authed: false };
+        apply_auth(&mut old, "OK AUTH");
+        assert_eq!(old.firmware, "2.2.0");
+        assert!(old.authed);
     }
 
     #[test]

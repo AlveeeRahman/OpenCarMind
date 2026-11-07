@@ -1,11 +1,15 @@
 /* Authenticated setup door on the USB cable, used by the OpenCarMind desktop app so nobody has to open the SD card.
  *
  * Every line the app reads starts with "OCM1 "; log lines share the cable and are ignored by the app.
- *   OCM1 HELLO                       -> OCM1 OK HELLO fw=<version> board=<mac> paired=<0|1> nonce=<32 hex>
+ *   OCM1 HELLO                       -> OCM1 OK HELLO nonce=<32 hex>   (nothing else about the board)
+ *   OCM1 AUTH-HMAC <64 hex>          the door's code, computed by the desktop tools: HMAC-SHA256 of the HELLO nonce keyed
+ *                                    with the paired app's token (one try per HELLO)
+ *                                    -> OCM1 OK AUTH fw=<version> board=<mac> paired=1
+ * Pairing a new computer (someone at the board):
  *   OCM1 CODE                        shows a 6-digit code on the board's screen for 2 minutes
- *   OCM1 AUTH-CODE <code>            first pairing: proves the user can see this board (3 tries per code)
- *   OCM1 AUTH-HMAC <64 hex>          later: HMAC-SHA256 of the HELLO nonce, keyed with the paired app's token
- * After authentication (10 minutes idle closes the session):
+ *   OCM1 AUTH-CODE <code>            3 tries per code -> OCM1 OK AUTH pair-only: PAIR is then the only command accepted,
+ *                                    and a successful PAIR opens the session (the computer holds the token it sent)
+ * After AUTH-HMAC (10 minutes idle closes the session):
  *   OCM1 PAIR <host> <port> <token> <cert PEM in base64>    OCM1 UNPAIR
  *   OCM1 WIFI-LIST | WIFI-ADD <ssid b64> [password b64] | WIFI-FORGET <ssid b64>
  *   OCM1 CONFIG <config.json in base64>                      same keys as /sdcard/obd/config.json

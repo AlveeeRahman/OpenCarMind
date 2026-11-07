@@ -37,6 +37,7 @@ static const char *TAG = "door";
 #define CODE_TRIES      3
 
 static bool    s_authed;
+static bool    s_pair_only;                       /* the screen code was right: PAIR is the only command allowed */
 static int64_t s_last_ms;
 static char    s_nonce[33];
 static char    s_code[7];
@@ -262,8 +263,8 @@ static void handle(char *line, char *buf, char *b64)
         uint8_t r[16];
         esp_fill_random(r, sizeof r);
         hex(r, sizeof r, s_nonce);
-        s_authed = false;
-        reply("OK HELLO fw=%s board=%s paired=%d nonce=%s", CARMIND_VERSION, uploader_board_id(), uploader_configured() ? 1 : 0, s_nonce);
+        s_authed = false; s_pair_only = false;
+        reply("OK HELLO nonce=%s", s_nonce);        /* nothing about the board until a desktop tool has proven itself */
         return;
     }
     if (!strcmp(cmd, "CODE")) {
@@ -284,8 +285,8 @@ static void handle(char *line, char *buf, char *b64)
         if (!s_code[0] || t > s_code_until) { reply("ERR no code: send CODE first"); return; }
         if (a1 && strlen(a1) == 6 && ct_equal(a1, s_code, 6)) {
             s_code[0] = 0; show_code(false);
-            s_authed = true; s_last_ms = t;
-            reply("OK AUTH");
+            s_authed = false; s_pair_only = true; s_last_ms = t;   /* the screen code only lets a new computer pair */
+            reply("OK AUTH pair-only");
         } else if (--s_code_tries <= 0) {
             s_code[0] = 0; show_code(false);
             reply("ERR wrong code, ask for a new one");
@@ -297,18 +298,25 @@ static void handle(char *line, char *buf, char *b64)
         char want[65];
         bool ok = token[0] && s_nonce[0] && a1 && strlen(a1) == 64 && hmac_hex(token, s_nonce, want) && ct_equal(a1, want, 64);
         s_nonce[0] = 0;                              /* one try per HELLO */
-        if (ok) { s_authed = true; s_last_ms = t; reply("OK AUTH"); }
+        if (ok) {
+            s_authed = true; s_pair_only = false; s_last_ms = t;
+            reply("OK AUTH fw=%s board=%s paired=1", CARMIND_VERSION, uploader_board_id());
+        }
         else reply("ERR not accepted: send HELLO, then pair with a code if this app is new");
         return;
     }
 
-    if (!s_authed || t - s_last_ms > SESSION_IDLE_MS) { s_authed = false; reply("ERR not authenticated"); return; }
+    if ((!s_authed && !s_pair_only) || t - s_last_ms > SESSION_IDLE_MS) { s_authed = s_pair_only = false; reply("ERR not authenticated"); return; }
+    if (!s_authed && strcmp(cmd, "PAIR")) { reply("ERR pair this computer first: the screen code only allows PAIR"); return; }
     s_last_ms = t;
     if (sys_mode_get() == MODE_DRIVE) { reply("ERR busy: the car link is up, try again when parked"); return; }
 
     if (!strcmp(cmd, "PAIR")) {
         if (!a1 || !a2 || !a3 || !a4 || !unb64(a4, buf, GET_MAX)) { reply("ERR usage: PAIR <host> <port> <token> <cert b64>"); return; }
-        if (uploader_pair(a1, (unsigned)atoi(a2), a3, buf)) reply("OK PAIR");
+        if (uploader_pair(a1, (unsigned)atoi(a2), a3, buf)) {
+            s_authed = true; s_pair_only = false;   /* this computer now holds the pairing token it just sent */
+            reply("OK PAIR");
+        }
         else reply("ERR pairing values not valid");
     } else if (!strcmp(cmd, "UNPAIR")) {
         uploader_unpair();
