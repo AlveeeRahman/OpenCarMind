@@ -44,6 +44,7 @@ Version 2.5.1. Licence: MIT. Website: <https://alveeerahman.github.io/OpenCarMin
 <li><a href="#how-rev-learns-on-the-board">How R.E.V learns on the board</a></li>
 <li><a href="#looking-inside-rev-with-explainable-ai">Looking inside R.E.V with explainable AI</a></li>
 <li><a href="#how-rev-got-better-step-by-step">How R.E.V got better, step by step</a></li>
+<li><a href="#edge-learning-rev-picks-what-to-learn">Edge learning: R.E.V picks what to learn</a></li>
 </ol>
 </li>
 <li><a href="#status">Status</a></li>
@@ -288,6 +289,43 @@ Each dot is a 5-second window of my driving, placed by what the network sees. Th
 
 The numbers for each step are in the [detailed README](https://github.com/AlveeeRahman/OpenCarMind/blob/rev-c2/README.md#how-rev-got-better-step-by-step).
 
+### Edge learning: R.E.V picks what to learn
+
+<p align="center"><img src="docs/images/workflow/edge-learning.png" width="900" alt="Edge learning, in preparation. Every second R.E.V scores a window and the board computes its margin, the gap between the two highest class probabilities, and holds the window in a small buffer. About 5 s later a physics judge gives a verdict or stays undecided. When it decided, the board learns from the window if the margin is under a threshold or the board was wrong, with a ridge refit of the class read-out behind a holdout gate. When it did not decide, the board keeps the lowest-margin windows, at most 40 per drive and 5 s apart, on the SD card for a label sheet. The threshold adjusts itself to a learn budget, and a drift alarm raises the budget"></p>
+
+R.E.V's classifier does not learn in the car yet. Edge learning is how I plan to change that, and I am preparing it now. It is active learning that runs on the board itself: the board decides which windows are worth learning from, and which few are worth your time later. Nobody in the car labels anything, and no computer takes part while you drive.
+
+The phrase "edge learning" already exists as a broad term for training models on edge devices<sup>[[14]](#ref-14)</sup>. Here I use it as the name for one specific method, four rules built for a microcontroller whose teacher is free, late and sometimes silent.
+
+The teacher is a physics judge. About 5 seconds after a window, what the speed, throttle and rpm did next usually shows whether the car was stopped, braking, accelerating or cruising. Sometimes it cannot tell, and the window stays undecided. ESP-DL runs the network but does not train it<sup>[[6]](#ref-6)</sup>, so the learning happens in the class read-out, refit by least squares in C, the way the fuel read-out learns today.
+
+The four rules:
+
+1. Score every window by its margin, m = p₁ − p₂, the gap between the two highest class probabilities. A small gap means R.E.V is torn between two answers, most often braking and cruising. Margin is a standard active-learning score<sup>[[15]](#ref-15)</sup>, and the board already logs the probabilities in every `.ml.csv` line.
+2. Keep the learn rate on budget with a threshold that moves itself, $\tau \leftarrow \tau + \eta\,(b - \mathbf{1}[m < \tau])$. Here b is the share of windows to learn from, η is a small step, and the indicator 1[m < τ] is 1 when a window's margin is under the threshold. If the board learns too often, the indicator is 1 more than b of the time and τ shrinks. If it learns too rarely, τ grows. It settles where a share b of the margins fall below it. This is Robbins–Monro stochastic approximation<sup>[[16]](#ref-16)</sup> with a constant step, so τ keeps following the margins as the car or the driving changes. Žliobaitė et al. move an uncertainty threshold after every decision in a similar way for drifting data streams<sup>[[17]](#ref-17)</sup>, with a multiplicative step and no target rate. The rule stores two numbers.
+3. Learn from a window when its margin is under τ, or when the judge's verdict shows the board was wrong. The update is a ridge refit of the class read-out, with a holdout gate and one saved state per car, like the fuel learner.
+4. Keep undecided windows by margin. These are the only windows where a label costs anything, because a person has to give it. The board will write up to 40 per drive to the SD card, at least 5 s apart because windows overlap, and the desktop tools turn them into a label sheet.
+
+To test the rules before writing them for the board, I copied the board's read-out learner into Python and streamed seven drives from a second car, one R.E.V never trained on, in the order they were driven. It started from the shipped R.E.V. Each window was scored first and learned from afterwards, so no window graded a model that had already seen it.
+
+| Rule, at a 10 % learn budget | Judged windows learned | Macro recall over the stream |
+|---|---|---|
+| No learning | 0 % | 0.857 |
+| Learn every judged window (stopped ones 1 in 10, as on the board) | 56 % | 0.954 |
+| Random, 5 seeds | 5.8 % | 0.935 ± 0.008 |
+| Margin only | 5.5 % | 0.944 |
+| Margin or mistake (edge learning) | 5.7 % | 0.953 |
+
+Margin or mistake matched learning from every judged window while learning from about a tenth as many, so the board runs the solver about ten times less often. Two cautions. This is one stream of seven drives with one run of each margin rule, so the gap to random is about two standard deviations. That is a good sign, not a settled result. And a read-out adapted to the new car scored lower on other cars' validation windows, KIA from 0.778 to 0.728 and my car from 0.969 to 0.935. One saved state per car is there so that this adaptation never reaches another car's read-out.
+
+Three ideas of mine failed, and each was meant to be the new part:
+
+- Posterior flip probability. A ridge read-out is a Bayesian linear model, so I computed in closed form the chance that a read-out drawn from its posterior would change the board's answer. At ranking the board's real mistakes it scored an AUROC of 0.874, against 0.942 for plain margin. The mistakes here were systematic, such as a throttle that reads high at idle, not windows the read-out was unsure about.
+- A loss predictor after Yoo and Kweon<sup>[[18]](#ref-18)</sup>, trained on the board by the judge's late verdicts. AUROC 0.908, still below margin.
+- Learning only from high-loss windows, which are mostly the board's mistakes. At a 5 % budget it reached 0.927 against 0.943 for margin. A learner that sees mostly its own errors gets a skewed sample, the sampling bias Dasgupta describes for active learning<sup>[[19]](#ref-19)</sup>.
+
+Status: the rules run in simulation only. The board code, the buffer in PSRAM and the drift alarm are not written, and none of this is in the firmware on `main`.
+
 ## Status
 
 Checked on the bench or in code: the build, the host unit tests (including R.E.V's learners with faulty readings), the switch to miles and mpg, the 10-second save, "Safe to turn off" and the time server rules. CI builds the desktop app on Windows, macOS and Linux. I have driven the board with the drive-end, power-off, fuel economy and units features, and R.E.V on two drives in my car.
@@ -354,6 +392,18 @@ OpenCarMind will ship a release for the ESP-Mosaico that runs CarMind R.E.V only
 <a id="ref-12"></a>[12] Espressif Systems, "ESP-Mosaico," esp-dev-kits documentation. [docs.espressif.com](https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32s31/esp-mosaico/index.html)
 
 <a id="ref-13"></a>[13] J. Iyengar and M. Thomson, Eds., "QUIC: A UDP-based multiplexed and secure transport," RFC 9000, IETF, 2021. [rfc-editor.org](https://www.rfc-editor.org/rfc/rfc9000)
+
+<a id="ref-14"></a>[14] J. Zhang, Z. Qu, C. Chen, H. Wang, Y. Zhan, B. Ye and S. Guo, "Edge learning: The enabling technology for distributed big data analytics in the edge," *ACM Computing Surveys*, vol. 54, no. 7, art. 151, 2021. [doi:10.1145/3464419](https://doi.org/10.1145/3464419)
+
+<a id="ref-15"></a>[15] T. Scheffer, C. Decomain and S. Wrobel, "Active hidden Markov models for information extraction," in *Proc. Intelligent Data Analysis (IDA)*, LNCS 2189, 2001. [doi:10.1007/3-540-44816-0_31](https://doi.org/10.1007/3-540-44816-0_31)
+
+<a id="ref-16"></a>[16] H. Robbins and S. Monro, "A stochastic approximation method," *The Annals of Mathematical Statistics*, vol. 22, no. 3, pp. 400–407, 1951. [doi:10.1214/aoms/1177729586](https://doi.org/10.1214/aoms/1177729586)
+
+<a id="ref-17"></a>[17] I. Žliobaitė, A. Bifet, B. Pfahringer and G. Holmes, "Active learning with drifting streaming data," *IEEE Transactions on Neural Networks and Learning Systems*, 2014. [doi:10.1109/TNNLS.2012.2236570](https://doi.org/10.1109/TNNLS.2012.2236570)
+
+<a id="ref-18"></a>[18] D. Yoo and I. S. Kweon, "Learning loss for active learning," in *Proc. CVPR*, 2019. [arXiv:1905.03677](https://arxiv.org/abs/1905.03677)
+
+<a id="ref-19"></a>[19] S. Dasgupta, "Two faces of active learning," *Theoretical Computer Science*, 2011. [cseweb.ucsd.edu](https://cseweb.ucsd.edu/~dasgupta/papers/twoface.pdf)
 
 ## Repository layout
 
