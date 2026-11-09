@@ -16,6 +16,9 @@ bool      sdlog_saved(void);
 int64_t   sdlog_ms_since_write(void);   /* since the last row or file write, INT64_MAX before any */
 /* Flush everything to the card now and raise "Safe to turn off" (the car link dropped, or a periodic save). */
 void      sdlog_sync_now(void);
+/* While on, the periodic save waits and nothing is flushed on the side: each SD transfer needs a 4 KB DMA bounce
+   buffer in internal RAM, which the Wi-Fi driver holds while it runs (wifi_sync.c). Writes stay buffered. */
+void      sdlog_quiet(bool on);
 /* Ends the current drive: everything is saved and the session files are closed. No-op when nothing was logged yet. */
 void      sdlog_end_drive(void);
 /* Opens a new session if the last drive was ended. Called when the next drive starts without a reboot. */

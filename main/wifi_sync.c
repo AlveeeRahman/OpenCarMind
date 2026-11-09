@@ -16,6 +16,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/event_groups.h"
+#include "freertos/semphr.h"
 #include "esp_log.h"
 #include "esp_wifi.h"
 #include "esp_netif.h"
@@ -47,6 +48,16 @@ static const char *TAG = "sync";
 static EventGroupHandle_t s_ev;
 static bool s_connected;
 static int  s_last_reason;
+static bool s_up;                                  /* Wi-Fi stack initialised and started */
+static TaskHandle_t s_task;
+/* The driver holds ~50 KB of internal RAM while initialised (static RX buffers, its task); started at boot it left
+   as little as 1.7 KB free on a build with more tasks. So the radio is only initialised while a sync (and, when
+   paired, its uploads) uses it. */
+static SemaphoreHandle_t s_power;                  /* guards s_users, wifi_up() and wifi_down() */
+#define WIFI_NEED_FREE   36000                     /* internal RAM esp_wifi_init() needs, with margin (measured on the board) */
+#define WIFI_NEED_BLOCK  12000
+static int s_users;
+static esp_event_handler_instance_t s_h_wifi, s_h_ip;
 
 static void wifi_event(void *arg, esp_event_base_t base, int32_t id, void *data)
 {
@@ -184,8 +195,11 @@ static void stay_connected(void)
     }
 }
 
+static bool radio_get(void);
+static void radio_put(void);
+
 /* One attempt: scan, connect, set the clock, linger briefly, disconnect. Returns true when the clock was set. */
-static bool sync_once(void)
+static bool sync_once_up(void)
 {
     int8_t rssi = -127;
     set_wifi_state(WIFI_ST_SCANNING);
@@ -244,11 +258,20 @@ static bool sync_once(void)
     return ok;
 }
 
+static bool sync_once(void)
+{
+    if (!radio_get()) return false;
+    bool ok = sync_once_up();
+    radio_put();
+    return ok;
+}
+
 static void sync_task(void *arg)
 {
     /* A clock kept by the RTC through a software reset or deep sleep counts as set: the first drift correction is
        then a full resync interval away instead of a scan every few seconds. */
     uint32_t wait_s = clock_is_set() && !uploader_wifi_enabled() ? CONFIG_SYNC_RESYNC_INTERVAL_H * 3600U : 0;
+    if (!wait_s) vTaskDelay(pdMS_TO_TICKS(20000));   /* let the boot-time tasks take their RAM before the radio does */
     for (;;) {
         if (wait_s) vTaskDelay(pdMS_TO_TICKS(wait_s * 1000U));
         while (driving()) vTaskDelay(pdMS_TO_TICKS(2000));   /* never scan or connect while the car is being logged */
@@ -261,31 +284,108 @@ static void sync_task(void *arg)
 
 bool wifi_sync_connected(void) { return s_connected; }
 
+static bool sync_objects(void)
+{
+    if (!s_ev) s_ev = xEventGroupCreate();
+    if (!s_power) s_power = xSemaphoreCreateMutex();
+    return s_ev && s_power;
+}
+
+/* Initialise and start the station. Called with s_power held, from radio_get() only. */
+static bool wifi_up(void)
+{
+    static bool base_done;                       /* netif, event loop and the station interface: once per boot */
+    if (s_up) return true;
+    if (!base_done) {
+        if (esp_netif_init() != ESP_OK) return false;
+        esp_err_t e = esp_event_loop_create_default();
+        if (e != ESP_OK && e != ESP_ERR_INVALID_STATE) return false;
+        esp_netif_create_default_wifi_sta();
+        base_done = true;
+    }
+    /* A failed esp_wifi_init() does not free what it took (measured: about 5 KB per try, "Failed to deinit Wi-Fi
+       driver 0x3001"), so check the room first and never retry after a failure until the next boot. */
+    static bool s_init_failed;
+    uint32_t free_b = (uint32_t)heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+    uint32_t block = (uint32_t)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
+    if (s_init_failed || free_b < WIFI_NEED_FREE || block < WIFI_NEED_BLOCK) {
+        ESP_LOGW(TAG, "Wi-Fi not started: internal RAM %lu B free, block %lu B%s", (unsigned long)free_b, (unsigned long)block,
+                 s_init_failed ? ", an earlier start failed" : "");
+        return false;
+    }
+    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    esp_err_t ie = esp_wifi_init(&cfg);
+    if (ie != ESP_OK) {
+        s_init_failed = true;
+        sys_event(EV_WARN, "Wi-Fi could not start (%s, internal RAM %lu B); off until restart", esp_err_to_name(ie),
+                  (unsigned long)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+        return false;
+    }
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, wifi_event, NULL, &s_h_wifi));
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, wifi_event, NULL, &s_h_ip));
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+    if (wifi_creds_count()) apply_network(wifi_creds_get(0));
+    ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_MIN_MODEM));
+    s_up = true;                                 /* initialised: wifi_down() must undo it even if start fails */
+    if (esp_wifi_start() != ESP_OK) return false;
+    set_wifi_state(WIFI_ST_IDLE);
+    return true;
+}
+
+/* Stop and de-initialise the driver so its internal RAM comes back. The default station netif stays: its handlers
+   re-attach the driver on the next esp_wifi_start(). Called with s_power held. */
+static void wifi_down(void)
+{
+    if (!s_up) return;
+    esp_wifi_stop();
+    esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, s_h_wifi);
+    esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, s_h_ip);
+    esp_wifi_deinit();
+    s_up = false;
+    s_connected = false;
+    set_wifi_state(WIFI_ST_IDLE);
+    sdlog_quiet(false);
+}
+
+static bool radio_get(void)
+{
+    if (!sync_objects()) return false;
+    xSemaphoreTake(s_power, portMAX_DELAY);
+    if (!s_up) sdlog_quiet(true);                /* before the driver takes the RAM the SD transfers need */
+    bool ok = wifi_up();
+    if (ok) s_users++;
+    else if (s_users == 0) { wifi_down(); sdlog_quiet(false); }   /* a half-started driver still holds its RAM */
+    xSemaphoreGive(s_power);
+    return ok;
+}
+
+static void radio_put(void)
+{
+    xSemaphoreTake(s_power, portMAX_DELAY);
+    if (s_users > 0 && --s_users == 0) wifi_down();
+    xSemaphoreGive(s_power);
+}
+
+static bool task_up(void)
+{
+    if (s_task) return true;
+    if (xTaskCreatePinnedToCore(sync_task, "sync", 8192, NULL, 4, &s_task, 0) != pdPASS) {
+        sys_event(EV_ERROR, "Clock-sync task could not start (internal RAM %u B)", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+        return false;
+    }
+    return true;
+}
+
 esp_err_t wifi_sync_start(void)
 {
+    if (!sync_objects()) return ESP_FAIL;
     if (wifi_creds_load() == 0) {
         ESP_LOGW(TAG, "no Wi-Fi networks known: put wifi.csv on the SD card (see docs); the clock stays unset");
         set_wifi_state(WIFI_ST_DISABLED);
         return ESP_OK;
     }
-    s_ev = xEventGroupCreate();
-    ESP_ERROR_CHECK(esp_netif_init());
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
-    esp_netif_create_default_wifi_sta();
-    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
-    ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, wifi_event, NULL, NULL));
-    ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, wifi_event, NULL, NULL));
-
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-    apply_network(wifi_creds_get(0));
-    ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_MIN_MODEM));
-    ESP_ERROR_CHECK(esp_wifi_start());
     set_wifi_state(WIFI_ST_IDLE);
-
-    if (xTaskCreatePinnedToCore(sync_task, "sync", 8192, NULL, 4, NULL, 0) != pdPASS)
-        sys_event(EV_ERROR, "Clock-sync task could not start (internal RAM %u B)", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
-    return ESP_OK;
+    return task_up() ? ESP_OK : ESP_FAIL;       /* the radio starts only when the task syncs */
 }
 
 #else  /* CONFIG_OCM_WIFI_CLOCK_SYNC off: no Wi-Fi stack, no clock sync */
