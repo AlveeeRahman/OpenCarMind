@@ -19,6 +19,7 @@ shot scheduler 1200 800 docs/images/workflow/scheduler.png
 shot rev-learning 1200 1616 docs/images/workflow/rev-learning.png
 shot training 1200 728 docs/images/workflow/training.png
 shot edge-learning 1200 1400 docs/images/workflow/edge-learning.png
+shot edge-learning-v3 1200 1552 docs/images/workflow/edge-learning-v3.png
 # needs docs/images/system.png and system-rev.png from docs/screens/render.sh
 shot rev-changes 900 520 docs/images/rev-changes.png
 shot banner 1280 420 docs/images/banner.png

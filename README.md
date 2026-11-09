@@ -45,6 +45,7 @@ Version 2.5.1. Licence: MIT. Website: <https://alveeerahman.github.io/OpenCarMin
 <li><a href="#looking-inside-rev-with-explainable-ai">Looking inside R.E.V with explainable AI</a></li>
 <li><a href="#how-rev-got-better-step-by-step">How R.E.V got better, step by step</a></li>
 <li><a href="#edge-learning-rev-picks-what-to-learn">Edge learning: R.E.V picks what to learn</a></li>
+<li><a href="#edge-learning-beyond-the-car-where-the-information-comes-from">Edge learning beyond the car</a></li>
 </ol>
 </li>
 <li><a href="#status">Status</a></li>
@@ -326,6 +327,42 @@ Three ideas of mine failed, and each was meant to be the new part:
 
 Status: the rules run in simulation only. The board code, the buffer in PSRAM and the drift alarm are not written, and none of this is in the firmware on `main`.
 
+### Edge learning beyond the car: where the information comes from
+
+<p align="center"><img src="docs/images/workflow/edge-learning-v3.png" width="900" alt="Edge learning on three edge tasks. One recipe: a frozen network, a stream from people, weeks or drives it never saw, and a free physics rule as teacher. In the car the v1 rules raised macro recall from 0.857 to 0.953. On a phone worn on the waist they lowered it from 0.911 to 0.764, and on a household electricity meter from 0.741 to 0.712, because those teachers are wrong on the windows the model finds hard. Two fixes failed: a holdout gate labelled by the same teacher rejected none of 12 refits, and estimating each voter's accuracy from agreement broke because the voters fail together 7 to 20 times more often than independence allows. What held: a second teacher from a different sensor is nearly independent of the first, and learning only where both agree, with a smaller read-out, was safe on all three tasks"></p>
+
+Everything above was measured on one car. Before taking the rules to the board I ran them on two edge tasks that have nothing to do with driving, with the same recipe each time: a frozen network of about 10,000 weights trained on one part of the data, a stream of windows from people or weeks it never saw, a free physics rule as the teacher that abstains when unsure, and the real labels used only to score. Scores are macro recall, macro F1 and one-against-rest ROC AUC against those labels, each window scored before the device learns from it.
+
+- Activities from a phone on the waist (UCI HAR, 30 people, 6 activities, CC BY 4.0<sup>[[20]](#ref-20)</sup>). Gravity tells lying from upright, motion energy tells still from moving, and inside each group the rule decides only when one activity's training range contains the window. On the 9 new people it decides 59 % of windows and is right on 83 % of those.
+- Appliances from a household electricity meter (UCI individual household power, 4 years at one minute, CC BY 4.0<sup>[[21]](#ref-21)</sup>). Windows of 15 minutes, classes from which sub-meter was drawing, and a teacher that reads step changes in active power. It decides 79 % of windows at 88 %.
+
+v1 made both models worse. On HAR the frozen network scores 0.911 macro recall (F1 0.910, AUC 0.990). Learning from every verdict gives 0.825, and margin-or-mistake at a 10 % budget gives 0.764 (F1 0.770, AUC 0.938), below random selection at 0.878. On power: frozen 0.741, margin-or-mistake 0.712. The rule that helped in the car hunts the windows where the board and the teacher disagree, and on these tasks the board is the one that is right. Nothing in v1 could tell the two cases apart.
+
+What the damage is made of. Flipping a random 10, 20 or 30 % of the HAR teacher's verdicts did not add damage (learn-all went from 0.825 to 0.847). Driving, whose teacher's errors were never systematic, collapsed under the same flips (0.954 → 0.728). The harm is not the teacher's error rate. It is systematic error on the windows the student also finds hard, which is where the student's own margin sends the learning: the sampling bias of active learning<sup>[[19]](#ref-19)</sup> in a new coat. Selecting by disagreement is right when the teacher's errors are independent of the student's and wrong when they are not.
+
+Two obvious fixes failed, and I kept the failures.
+
+1. The board's holdout gate, which only lets a refit go live if it beats the old head on held-back windows, rejected 0 of 12 refits on HAR. The held-back windows are labelled by the same teacher, so a head that learned the teacher's mistakes scores well on them too.
+2. Three voters, no labels. On every judged window the board holds three opinions: its own answer, the teacher's verdict, and a label propagated over a graph of 32 latent prototypes linked by which state followed which. For raters whose errors are independent, each rater's accuracy can be solved from the three pairwise agreement rates alone<sup>[[22]](#ref-22),[[23]](#ref-23)</sup>, so the board could learn from the teacher only where the teacher beats it. The estimate was wrong in both directions. On HAR it rated the 83 % teacher at 92 % and above the board, and on driving it rated a perfect teacher below the board and stopped learning (0.877). The assumption is what breaks. The two voters are both wrong 7 times as often as independence predicts on HAR and 20 times on power, because the graph is built from the teacher's past verdicts and all three fail on the same hard windows.
+
+Independence can be bought, but only from a second sensor. A second teacher built from channels the first one never sees (the gyroscope for HAR, reactive power and voltage for the meter, engine rpm and load for the car) is close to independent of the first: on HAR both are wrong on 14.9 % of shared windows against 16.1 % predicted by independence, on power 6.9 % against 6.5 %. Learning from the first teacher only where the second agrees, or down-weighting where it abstains, is the only rule that was safe on all three tasks: with a smaller ridge read-out (64 random features, 66 KB, ten times the regularisation) it scores HAR 0.911, power 0.769 and driving 0.939, and forgets nothing on the other cars (0.776 and 0.960 against 0.778 and 0.969 untouched). The cost is that a second view is weak where its sensor does not carry the class: the gyroscope decides 12 % of HAR windows, the engine view rarely sees braking, and the driving score stays under v1's 0.953.
+
+Capacity and regularisation are half the story. The same v1 rule with the same teacher does 0.764 on HAR with 256 random features, 0.818 with ten times the ridge penalty, and 0.874 with 16 features. A per-prototype class offset, 768 bytes of state and no matrix, does 0.897 on HAR and 0.759 on power, and 0.924 on driving. Smaller learners take less harm from a bad teacher and less gain from a good one, and none was safe on its own: the small ones still ended below the frozen model on HAR.
+
+Then I removed the teacher. With the judge reduced to a verifier or removed, I tried the label-free methods a device could run: re-aligning the embedding's statistics toward the training statistics, the board teaching its own confident answers, entropy minimisation, consistency between consecutive windows, Saerens' label-shift EM<sup>[[24]](#ref-24)</sup> with an information-maximising correction, a contrastive codebook with a learned transition graph, and a fixed-lag smoother that lets the next two seconds of evidence teach the belief about the present<sup>[[25]](#ref-25)</sup>. The pattern was the same each time, and it has a reason. Methods that learn from the model's own current belief were safe and gained 0.009 or less, because the information they feed back is zero: the Kullback–Leibler divergence between what the device believes after an update and before it is exactly 0 at zero lag, and that prediction held (0.000 nats). Letting the future teach gained nothing either, because in this embedding the future did not disagree with the present: the smoothed and filtered beliefs agreed to within 0.002, the transitions carried 0.005 to 0.030 nats per window, and the car's braking recall stayed at 0.44 to 0.47 against the frozen 0.503 whatever the lag. The dangerous ones were the methods that moved the model with no outside information at all: one global re-alignment collapsed the meter model to a single class, and label-shift EM ran away on the car, driving one class prior to zero and the other cars' scores from 0.78 to as low as 0.53. The best label-free number of the study, 0.929 on HAR from the label-shift method, came with a lower AUC and with damage everywhere else.
+
+What a learner on a stream can know. The three sources of information a device has are the frozen network, its own stream, and whatever teaches it from outside. The stream alone told these models almost nothing they did not already know, on three tasks. An outside teacher helps exactly in proportion to how independent its errors are from the model's, and the device cannot measure that independence from voters it derived itself. A second sensor is the one way found here to buy it. So the car's result stands, and so does its explanation: the physics judge is a good teacher there because it reads the future of the car while the network reads its past, which makes their errors independent. There is a reason the self-supervised methods found nothing, and it limits every method of their kind: all of them worked on the frozen network's embedding, and a learner that only rearranges an embedding cannot see anything the network did not already extract. Self-supervised learning that adds information has to reach the representation itself, with a pretext task on the raw signal. That needs a runtime that can train, so it belongs to the Pi and Jetson tier, or to forward-only training methods for microcontrollers<sup>[[26]](#ref-26)</sup>, which are untested here. Where no such route and no independent teacher exist, the honest design is small (a per-prototype offset or a 64-feature read-out), gated by whatever second view the hardware offers, and otherwise frozen.
+
+| Tier | Example hardware | Runtime trains? | What edge learning can use |
+|---|---|---|---|
+| 0 | Arduino Nano 33, ESP32-S3 without PSRAM | no (LiteRT-Micro, ESP-DL) | prototypes, transition graph, per-prototype offsets: under 20 KB |
+| 1 | ESP32-S3 with PSRAM, ESP32-S31 | no | tier 0 plus a ridge read-out of 64 features (66 KB), behind an independent teacher |
+| 2 | Raspberry Pi, Jetson, x86 | yes (ExecuTorch, PyTorch) | tier 1 plus adaptation of the network itself from the kept windows, shipped back through the weight-search gate |
+
+The contract between tiers is 64 floats and C probabilities per window. Everything above the network is plain C on that contract, so one library runs behind any inference runtime.
+
+Status: Simulation only, on recorded data: 7 drives, 9 people, 8 weeks of one house, 13 experiments. Every number is in the private repository's `experiments/edge_learning/out/INDEX.md` with the command that made it. Nothing here is on the board.
+
 ## Status
 
 Checked on the bench or in code: the build, the host unit tests (including R.E.V's learners with faulty readings), the switch to miles and mpg, the 10-second save, "Safe to turn off" and the time server rules. CI builds the desktop app on Windows, macOS and Linux. I have driven the board with the drive-end, power-off, fuel economy and units features, and R.E.V on two drives in my car.
@@ -404,6 +441,20 @@ OpenCarMind will ship a release for the ESP-Mosaico that runs CarMind R.E.V only
 <a id="ref-18"></a>[18] D. Yoo and I. S. Kweon, "Learning loss for active learning," in *Proc. CVPR*, 2019. [arXiv:1905.03677](https://arxiv.org/abs/1905.03677)
 
 <a id="ref-19"></a>[19] S. Dasgupta, "Two faces of active learning," *Theoretical Computer Science*, 2011. [cseweb.ucsd.edu](https://cseweb.ucsd.edu/~dasgupta/papers/twoface.pdf)
+
+<a id="ref-20"></a>[20] J. Reyes-Ortiz, D. Anguita, A. Ghio, L. Oneto and X. Parra, "A public domain dataset for human activity recognition using smartphones," in *Proc. ESANN*, 2013. Data (CC BY 4.0) at [archive.ics.uci.edu/dataset/240](https://archive.ics.uci.edu/dataset/240/human+activity+recognition+using+smartphones)
+
+<a id="ref-21"></a>[21] G. Hébrail and A. Bérard, "Individual household electric power consumption," UCI Machine Learning Repository, 2012. Data (CC BY 4.0) at [archive.ics.uci.edu/dataset/235](https://archive.ics.uci.edu/dataset/235/individual+household+electric+power+consumption)
+
+<a id="ref-22"></a>[22] A. P. Dawid and A. M. Skene, "Maximum likelihood estimation of observer error-rates using the EM algorithm," *Applied Statistics*, vol. 28, no. 1, pp. 20–28, 1979. [doi:10.2307/2346806](https://doi.org/10.2307/2346806)
+
+<a id="ref-23"></a>[23] A. Jaffe, B. Nadler and Y. Kluger, "Estimating the accuracies of multiple classifiers without labeled data," in *Proc. AISTATS*, 2015. [arXiv:1407.7644](https://arxiv.org/abs/1407.7644)
+
+<a id="ref-24"></a>[24] M. Saerens, P. Latinne and C. Decaestecker, "Adjusting the outputs of a classifier to new a priori probabilities: A simple procedure," *Neural Computation*, vol. 14, no. 1, pp. 21–41, 2002. [doi:10.1162/089976602753284446](https://doi.org/10.1162/089976602753284446)
+
+<a id="ref-25"></a>[25] O. Cappé, "Online EM algorithm for hidden Markov models," *Journal of Computational and Graphical Statistics*, vol. 20, no. 3, pp. 728–749, 2011. [doi:10.1198/jcgs.2011.09109](https://doi.org/10.1198/jcgs.2011.09109)
+
+<a id="ref-26"></a>[26] F. De Vita, R. M. A. Nawaiseh, D. Bruneo, V. Tomaselli, M. Lattuada and M. Falchetto, "µ-FF: On-device Forward-Forward training algorithm for microcontrollers," in *Proc. IEEE SMARTCOMP*, 2023. [doi:10.1109/SMARTCOMP58114.2023.00024](https://doi.org/10.1109/SMARTCOMP58114.2023.00024)
 
 ## Repository layout
 
