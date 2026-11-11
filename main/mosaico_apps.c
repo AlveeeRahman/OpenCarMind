@@ -2023,7 +2023,7 @@ static void clock_show(const app_status_t *st)
     }
     ui_set_color(g_clk_time, src == CLOCK_SRC_ESTIMATED ? UI_THEME.estimate : UI_TEXT);
     int z = clock_tz_find(tz_now());
-    static const char *const SRC[] = {"Not set", "Estimated from the last save", "Set by hand", "From Wi-Fi"};
+    static const char *const SRC[] = {"Not set", "Estimated, not synced", "Set by hand", "From Wi-Fi"};
     ui_set_fmt(g_clk_src, "%s, zone %.40s", SRC[src], z >= 0 ? clock_tz(z)->label : tz_now());
     ui_set_color(g_clk_src, src == CLOCK_SRC_ESTIMATED ? UI_THEME.estimate : UI_MUTED);
 }

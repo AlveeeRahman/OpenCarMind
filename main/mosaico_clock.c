@@ -16,6 +16,7 @@
 static const char *TAG = "clock";
 
 #define RTC_NOTE_MANUAL 0x4D414E31u                 /* "MAN1": the last clock source was a by-hand set */
+#define RTC_NOTE_WIFI   0x31464957u                 /* "WIF1": the last clock source was a Wi-Fi sync */
 static RTC_NOINIT_ATTR uint32_t s_rtc_note;         /* survives a software reset, random after power-on */
 static volatile bool s_manual;
 
@@ -29,26 +30,34 @@ static clock_flags_t flags_of(const app_status_t *st)
     return f;
 }
 
+/* app_main marks any time the RTC kept through a reset as "synced". Settings must not call that "From Wi-Fi" unless the
+   last source really was Wi-Fi: with no note (an estimate, or a note lost with the RTC memory) the kept time shows as
+   estimated, amber, until Wi-Fi or a by-hand set replaces it. */
 void mosaico_clock_boot(void)
 {
-    bool note = s_rtc_note == RTC_NOTE_MANUAL;
+    bool note = s_rtc_note == RTC_NOTE_MANUAL, wifi_note = s_rtc_note == RTC_NOTE_WIFI;
     STATUS_LOCK();
+    bool kept = g_status.time_synced;
     clock_flags_t f = flags_of(&g_status);
     clock_on_boot(&f, note);
+    if (kept && !note && !wifi_note) { f.wifi = false; f.estimated = true; }
     g_status.time_synced = f.wifi;
+    g_status.clock_estimated = f.estimated;
     STATUS_UNLOCK();
+    if (kept && !note && !wifi_note) ESP_LOGI(TAG, "RTC kept the time but not its source: shown as estimated");
     s_manual = f.manual;
-    if (!s_manual) s_rtc_note = 0;
+    if (!s_manual && !(kept && wifi_note)) s_rtc_note = 0;
     if (note) ESP_LOGI(TAG, "RTC note: clock was set by hand%s", s_manual ? ", kept through the reset" : ", but no time was kept");
 }
 
 void mosaico_clock_poll(void)
 {
-    if (!s_manual) return;
     STATUS_LOCK();
     bool wifi = g_status.time_synced;
     STATUS_UNLOCK();
-    if (wifi) { s_manual = false; s_rtc_note = 0; ESP_LOGI(TAG, "Wi-Fi time replaced the time set by hand"); }
+    if (!wifi) return;
+    if (s_manual) { s_manual = false; ESP_LOGI(TAG, "Wi-Fi time replaced the time set by hand"); }
+    s_rtc_note = RTC_NOTE_WIFI;                     /* the next soft reset keeps "From Wi-Fi" */
 }
 
 clock_src_t mosaico_clock_source(const app_status_t *st)
