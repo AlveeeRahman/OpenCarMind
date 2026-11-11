@@ -1412,23 +1412,13 @@ static void ev_card_refresh(const ui_snap_t *s)
     ui_set_fmt(ev_foot, "%s  " LV_SYMBOL_RIGHT, f);
 }
 
-/* the list's header row: its own back chip (closes the list or the detail, not the app) */
+/* the list's and the detail's header: a Back (ui_back, the same place and touch area as the app pages' Back) that closes
+   the list or the detail, not the app, then the title */
 static lv_obj_t *ev_head(lv_obj_t *p, const char *title, lv_event_cb_t back)
 {
-    lv_obj_t *b = lv_obj_create(p);
-    lv_obj_remove_style_all(b);
-    lv_obj_set_pos(b, DX, DHY - 2);
-    lv_obj_set_size(b, 38, 38);
-    lv_obj_set_style_radius(b, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_color(b, lv_color_hex(UI_THEME.chip), 0);
-    lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
-    lv_obj_set_ext_click_area(b, 13);                     /* a 64 px target */
-    lv_obj_add_flag(b, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_remove_flag(b, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_event_cb(b, back, LV_EVENT_CLICKED, NULL);
-    lv_obj_center(ui_label(b, UI_THEME.f_body, UI_ORANGE, LV_SYMBOL_LEFT));
+    ui_back(p, DX, DHY - 7, DY, UI_THEME.chip, UI_ORANGE, back);
     lv_obj_t *t = ui_label(p, UI_THEME.f_value, UI_TEXT, title);
-    lv_obj_set_pos(t, DX + 48, DHY + 6);
+    lv_obj_set_pos(t, DX + UI_BACK_D + 10, DHY - 7 + (UI_BACK_D - lv_font_get_line_height(UI_THEME.f_value)) / 2);
     return t;
 }
 
@@ -1524,7 +1514,7 @@ static void ev_open(lv_event_t *e)
     ev_page = ev_screen(sm_parent);
     ev_head(ev_page, "Recent events", ev_list_back_cb);
     ev_count = ui_label(ev_page, UI_THEME.f_label, UI_MUTED, "");
-    lv_obj_align(ev_count, LV_ALIGN_TOP_RIGHT, -DX, DHY + 10);
+    lv_obj_align(ev_count, LV_ALIGN_TOP_RIGHT, -DX, DHY - 7 + (UI_BACK_D - lv_font_get_line_height(UI_THEME.f_label)) / 2);
     int cw = (DW - (UEV_FILTERS - 1) * EV_GAP) / UEV_FILTERS;
     for (int i = 0; i < UEV_FILTERS; i++) {               /* filter chips, 64 px tall */
         lv_obj_t *b = ev_chip[i] = lv_obj_create(ev_page);
@@ -2981,6 +2971,8 @@ static void pw_open(const ws_row_t *row)
     lv_obj_add_flag(pw_page, LV_OBJ_FLAG_CLICKABLE);                  /* swallows taps behind it */
     lv_obj_remove_flag(pw_page, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_event_cb(pw_page, pw_deleted, LV_EVENT_DELETE, NULL);
+    /* Back (= Cancel): the chevron left of the field, its touch area from the corner down to the message line */
+    ui_back(pw_page, 8, 42 + (ST_H - UI_BACK_D) / 2, 106, UI_THEME.track, UI_ORANGE, pw_cancel_cb);
 
     char name[40];
     ws_display_name(row->ssid, name, sizeof name);
@@ -2991,8 +2983,8 @@ static void pw_open(const ws_row_t *row)
     lv_label_set_long_mode(t, LV_LABEL_LONG_DOT);
 
     pw_ta = lv_textarea_create(pw_page);
-    lv_obj_set_pos(pw_ta, 8, 42);
-    lv_obj_set_size(pw_ta, UI_W - 16 - 64 - 8, ST_H);
+    lv_obj_set_pos(pw_ta, 8 + UI_BACK_D + 8, 42);
+    lv_obj_set_size(pw_ta, UI_W - 8 - UI_BACK_D - 8 - 8 - 64 - 8, ST_H);
     lv_textarea_set_one_line(pw_ta, true);
     lv_textarea_set_password_mode(pw_ta, true);
     lv_textarea_set_max_length(pw_ta, 64);                             /* WIFI-ADD's limit; every key is one byte */
