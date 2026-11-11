@@ -443,7 +443,24 @@ static void storage_audit(void)
 #endif
 
 /* ---------- public ---------- */
+#if !BOARD_HAS_SD
+/* sdlog_init's own writes (the FAT copy repair, the orphan reclaim and torn-entry scrub, mkdir, the empty-session prune,
+   the new session's files) run before s_ok is set, while the console's download door is already up (app_main starts
+   TinyUSB first). A download entry in that window used to reset in the middle of one of them: measured 2026-11-11, a
+   directory sector torn by a door entry a second after boot. The quiesce now waits for sdlog_init to finish. */
+static volatile bool s_initing;
+static esp_err_t sdlog_init_inner(void);
 esp_err_t sdlog_init(void)
+{
+    s_initing = true;
+    esp_err_t e = sdlog_init_inner();
+    s_initing = false;
+    return e;
+}
+static esp_err_t sdlog_init_inner(void)
+#else
+esp_err_t sdlog_init(void)
+#endif
 {
     s_lock = xSemaphoreCreateMutex();
 
@@ -903,6 +920,10 @@ void sdlog_quiesce_for_reset(void)
        take FatFs's own volume lock (ff_mutex_take, the lock every f_* call takes in lock_volume) without giving it back.
        That waits for a write in progress and keeps every later one out, whichever task makes it. Called from every
        esp_restart() (shutdown handler), the download door, and the ui-stall guard; panics cannot call it. */
+#if !BOARD_HAS_SD
+    for (int i = 0; s_initing && i < 600; i++) vTaskDelay(pdMS_TO_TICKS(10));   /* up to 6 s: mount, repair, audit */
+    if (s_initing) ESP_LOGW(TAG, "quiesce: storage still starting after 6 s");
+#endif
     if (s_quiesced || !s_ok) return;
     s_quiesced = true;
     if (s_lock && xSemaphoreTake(s_lock, pdMS_TO_TICKS(1500)) == pdTRUE) {
