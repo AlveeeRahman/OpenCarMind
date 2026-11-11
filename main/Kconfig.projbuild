@@ -171,7 +171,7 @@ menu "OBD Logger Configuration"
             depends on OCM_WIFI_CLOCK_SYNC
             default 20
             help
-                The board only uses Wi-Fi to set its clock over SNTP. Until the clock is set it looks for a known network
+                The board uses Wi-Fi to set its clock (the Date header of an HTTPS reply). Until the clock is set it looks for a known network
                 this often (never while the car is being logged).
         config SYNC_STAY_CONNECTED_S
             int "Seconds to stay connected after a successful clock sync"
@@ -289,7 +289,7 @@ menu "OBD Logger Configuration"
             default y
             help
                 Embeds ml/onboard/rev/onboard.espdl (about 64 KB of flash) next to CarMind E.V. The desktop app switches
-                between the two over USB; E.V stays the default until the user picks R.E.V. While R.E.V runs, the board learns
+                between the two over USB; a new board starts on R.E.V when it is built in (stored_model). While R.E.V runs, the board learns
                 this car's fuel use (a new read-out of the model's z feature, see rev_learn.h). Say n for an E.V-only firmware;
                 the app then shows R.E.V as not available.
         config CARMIND_REV_PHYS

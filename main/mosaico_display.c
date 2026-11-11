@@ -9,15 +9,15 @@
  * (run time over the deadline), worst run time and CPU per run; the Board app shows them.
  *
  *   task        job            period        deadline   prio  core  stack           notes
- *   obd         obd_poll       1 s (rows)    30 s       5     1     14 KB internal  ELM327 I/O, collectors, R.E.V physics
+ *   obd         obd_poll       1 s (rows)    30 s       5     1     8 KB internal   ELM327 I/O, collectors, R.E.V physics
  *   mode        -              event         -          5     0     3 KB            DRIVE / SEEK arbitration
  *   sync        -              event         -          4     0     8 KB            Wi-Fi clock
- *   ml          ml             10 s windows  10 s       3     1     6 KB PSRAM      E.V or R.E.V, one at a time
+ *   ml          ml             10 s windows  10 s       3     1     6 KB internal   E.V or R.E.V, one at a time (its .ml.csv writes)
  *   taskLVGL    ui             50 ms         50 ms      2     0     8 KB internal   this file: visible screen only
  *   rev         rev            stride        30 s       2     1     6 KB            fuel learner
  *   sdsync      -              5 s           -          2     any   6 KB            card / flash FAT saves
  *   usb_door    -              event         -          2     any   6 KB            OCM1 protocol on the CDC port
- *   board       -              2 s           -          1     0     3 KB internal   gauge, FAT free space, NVS saves
+ *   board       -              2 s           -          1     0     6 KB internal   gauge, FAT free space, NVS saves, Wi-Fi app
  *   cpumon      -              1 s           -          1     0     3 KB            CPU load, heap
  *   sched       -              1 s           -          1     0     4 KB            the monitor itself
  *
@@ -1701,7 +1701,7 @@ static void tv_scroll_cb(lv_event_t *e)
     if (lv_event_get_code(e) == LV_EVENT_SCROLL_BEGIN) pf_act(upf_scroll_begin(&s_pf));   /* the press became a swipe */
 #endif
     if (lv_event_get_code(e) != LV_EVENT_SCROLL_BEGIN || s_sliding) return;
-    if (!s_tsnap_ok[0] || esp_timer_get_time() - s_home_snap_us > 10000000) s_tsnap_ok[0] = false;   /* e4: a picture up to 5 s old is fine */
+    if (!s_tsnap_ok[0] || esp_timer_get_time() - s_home_snap_us > 10000000) s_tsnap_ok[0] = false;   /* e4: a picture up to 10 s old is fine (home_pic_cb renews it after 5 s) */
     for (int i = 0; i < s_ntiles; i++) if (!s_tsnap_ok[i] && !tile_snap(i)) return;   /* no picture: slide live */
 #if UI_BLIT_SLIDE
     if (blit_ready()) {

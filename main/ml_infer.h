@@ -17,6 +17,14 @@
 #include <stddef.h>
 #include "status.h"
 
+/* Internal RAM a load took, for the log: free before less free after. On the S31 it is clamped at 0 (free can grow while a
+   model loads, and the unsigned difference then wrapped to about 4 GB); the S3 keeps its old expression for now. */
+#if CONFIG_IDF_TARGET_ESP32S31
+#define ML_RAM_DELTA(before, after) ((unsigned)((before) > (after) ? (before) - (after) : 0))
+#else
+#define ML_RAM_DELTA(before, after) ((unsigned)((before) - (after)))
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif

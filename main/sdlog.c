@@ -263,8 +263,8 @@ void sdlog_sync_now(void)
 }
 
 /* Saves on schedule even when no rows arrive, e.g. the car link stalls. Its own task, because the save (file flushes, JSON)
-   needs far more stack than the FreeRTOS timer task has; the stack is in PSRAM so it costs no internal RAM, and the task
-   only touches the SD card, never the flash cache. */
+   needs far more stack than the FreeRTOS timer task has. With an SD card (the S3) the stack is in PSRAM; on the ESP-Mosaico
+   it is internal (its saves write the NOR flash, which turns the flash cache off: see sdlog_init). */
 static void sync_task(void *arg)
 {
     (void)arg;

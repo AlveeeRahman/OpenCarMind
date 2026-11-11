@@ -21,7 +21,8 @@
 
 /* ---- theme: every colour, font, radius and border of the launcher in one table per palette (mosaico_display.c:
    THEME_DARK, THEME_LIGHT). Restyling = editing those tables; apps use only these names. Three looks share a table:
-   style A "Night drive" (every app), style B "Pixel garage" (Drive, b_*), style C "Cockpit" (home, c_*). ---- */
+   style A "Night drive" (every app), style B "Pixel garage" (Drive, b_*), style C "Cockpit" (home, c_*). Two palettes use
+   these tokens: THEME_DARK and THEME_LIGHT (Settings > THEME: Auto, Light, Dark). ---- */
 typedef enum { SEC_SKY = 0, SEC_ORANGE, SEC_GREEN, SEC_PINK, SEC_AMBER, SEC_RED, SEC_AQUA, SEC_VIOLET, SEC_CYAN, SEC_COUNT } ui_section_t;
 typedef struct {
     const char *name;
@@ -40,7 +41,7 @@ typedef struct {
     /* style C (home) */
     uint32_t c_bg, c_track, c_rpm, c_tick, c_status, c_btn, c_btn_glyph, c_text, c_muted;
     int16_t  radius_card, radius_row, radius_button, radius_tile_b, border_card, border_accent, pad_card, shadow_b;
-    /* the Colour look (F): 2-stop vertical gradients, glass cards (white at card_opa, white border at border_opa) */
+    /* glass and gradient tokens (from the earlier "Colour" look): 2-stop vertical gradients, glass cards */
     bool     gradients;
     uint8_t  card_opa, border_opa;
     uint32_t glass, wall_top, wall_bot, wall_app_top[SEC_COUNT], wall_app_bot[SEC_COUNT];

@@ -523,9 +523,9 @@ static uint32_t selftest(void)
 {
 #if CONFIG_CARMIND_ML_SELFTEST
     /* ESP-DL compares the model's output on its embedded test input with ESP-PPQ's PC simulation, to 1 LSB of the raw
-       int16 value, and stops at the first mismatch. The S3 trunk differs from the simulation by several percent (the
-       PC side computes w8a16 layers in float32, the S3 in 40-bit integers), so a mismatch is reported, not treated as
-       a failure; the replay agreement with the desktop model is the real check. */
+       int16 value, and stops at the first mismatch. A mismatch is reported, not treated as a failure (the replay
+       agreement with the desktop model is the real check). On the S31 the old gap was the int16 lookup tables: exported
+       without them (int16_lut_step -1) both models match exactly (z 0/64, est 0/3, man 0/4). */
     esp_err_t st = s_model->test();
     s_selftest_state = st == ESP_OK ? 1 : 0;
     int64_t t1 = esp_timer_get_time();
@@ -649,7 +649,7 @@ extern "C" void ml_init(void)
     }
     if (!s_model) { sys_event(EV_ERROR, "ML model failed to load"); return; }
     ESP_LOGI(TAG, "model %s %s (%s, %s) loaded in %lld ms, internal RAM %u B, z output %s", MODELS[s_active].name, MODELS[s_active].version,
-             MODELS[s_active].quant, MODELS[s_active].target, (esp_timer_get_time() - t0) / 1000, (unsigned)(heap0 - heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
+             MODELS[s_active].quant, MODELS[s_active].target, (esp_timer_get_time() - t0) / 1000, ML_RAM_DELTA(heap0, heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
              s_z_ok ? "yes" : "no");
     s_stats.selftest_us = selftest();
     s_job = sched_register("ml", (ML_STRIDE_S > 0 ? ML_STRIDE_S : 10) * 1000, (ML_STRIDE_S > 0 ? ML_STRIDE_S : 10) * 1000, true);

@@ -1,5 +1,5 @@
 /* Wi-Fi clock sync. The board has no battery-backed clock, so session files would carry epoch 0 until some source
- * sets the time. This module scans for a known network, connects, sets the clock over SNTP, stays connected for
+ * sets the time. This module scans for a known network, connects, sets the clock (HTTPS Date header), stays connected for
  * CONFIG_SYNC_STAY_CONNECTED_S seconds and then disconnects so the radio stops competing with BLE. It scans again
  * every CONFIG_SYNC_SCAN_INTERVAL_S seconds while the clock has never been set, and every
  * CONFIG_SYNC_RESYNC_INTERVAL_H hours afterwards to correct drift. It never scans or connects while the car is being

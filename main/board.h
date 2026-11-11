@@ -1,7 +1,7 @@
 /* Board pin maps, chosen by the build target:
  *   esp32s3   Waveshare ESP32-S3-LCD-1.47B (ESP32-S3R8, 16 MB flash, 8 MB octal PSRAM), the car board.
  *             Source: https://www.waveshare.com/wiki/ESP32-S3-LCD-1.47B and the espp BSP header.
- *   esp32s31  Espressif ESP-Mosaico V1.2 (ESP32-S31NRV16, 16 MB in-package PSRAM, 16 MB GD25Q128 NOR flash).
+ *   esp32s31  Espressif ESP-Mosaico V1.2 (ESP32-S31NRV16, 32 MB in-package PSRAM: esp_psram_get_size() 33,554,432 B, the guide says 16 MB; 16 MB GD25Q128 NOR flash; 128 MB SPI NAND).
  *             Source: ESP-Mosaico V1.2 user guide, "Pin allocation" and component tables,
  *             https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32s31/esp-mosaico/user_guide.html
  *             and the CoreBoard V1.2 schematic (overview page: power switch on VSYS, no RTC chip, no SD card). */
@@ -21,12 +21,12 @@
 #define BOARD_LCD_CS         GPIO_NUM_50
 #define BOARD_LCD_RST        GPIO_NUM_44
 #define BOARD_LCD_TE         GPIO_NUM_43
-#define BOARD_LCD_PWR        GPIO_NUM_60     /* VCC_3V3_CTRL, active low: the panel's 3.3 V rail */
+#define BOARD_LCD_PWR        GPIO_NUM_60     /* VCC_3V3_CTRL, active low: the 3.3 V rail of the panel, the HUSB320 USB-C controller and the boost converter (kept on) */
 #define BOARD_LCD_BL         GPIO_NUM_NC     /* AMOLED: no backlight; brightness is a panel command (0x51) */
 #define BOARD_LCD_H_RES      480
 #define BOARD_LCD_V_RES      480
 #define BOARD_LCD_PCLK_HZ    (40 * 1000 * 1000)
-/* the dashboard is drawn at the car board's 172x320 and shown scaled in the middle of the square panel */
+/* the car board's 172x320 layout size, unused by the Mosaico UI (it draws natively at 480x480: mosaico_display.c) */
 #define BOARD_UI_W           172
 #define BOARD_UI_H           320
 /* CST9220 touch and the other on-board I2C parts (codec 0x19, BMI270 0x69, BMM150 0x11/0x12, BQ27220 0x55) on I2C0 */

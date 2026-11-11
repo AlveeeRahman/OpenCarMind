@@ -2,7 +2,7 @@
  * board): safe pin states, the 3.3 V peripheral rail (GPIO60, active low) kept ON, the shared I2C0 bus, the BQ27220 fuel
  * gauge, and the Function key (GPIO7, active low) handled by app_main's button task.
  *
- * Power management: the car firmware does not enable esp_pm, so the clock stays at 240 MHz and the chip never
+ * Power management: the car firmware does not enable esp_pm, so the clock stays at 320 MHz and the chip never
  * light-sleeps; USB-OTG stays enumerated (the clean project needed NO_LIGHT_SLEEP + CPU_FREQ_MAX locks while USB was
  * powered for exactly this; without esp_pm both hold by construction). */
 #pragma once
