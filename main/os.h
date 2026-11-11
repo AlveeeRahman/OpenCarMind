@@ -12,8 +12,20 @@ extern "C" {
 /* The one reset path: marker, storage quiesce (NOR then NAND), reset, in that order (os_core.h). Never returns.
    detail: a short note for the next boot's log line (may be NULL). */
 void sys_reset(sys_reset_reason_t reason, const char *detail) __attribute__((noreturn));
-/* app_main, once the boot sequence is done: logs the reset the previous run asked for (if any). */
+/* app_main, once the boot sequence is done: ends the Boot runlevel, logs the reset the previous run asked for. */
 void os_boot_done(void);
+
+/* Runlevels (os_core.h). os_allows: every active runlevel enables svc. os_refusal: NULL when allowed, else the
+   phrase for the runlevel that refuses ("a drive is running", ...). os_runlevel: the one to show (Board page, log). */
+bool          os_allows(os_svc_t svc);
+const char   *os_refusal(os_svc_t svc);
+os_runlevel_t os_blocker(os_svc_t svc);                 /* the runlevel that refuses svc, OS_RL_N if none (texts only) */
+os_runlevel_t os_runlevel(void);
+/* Update runlevel while a format runs (the board task brackets it). sys_reset enters it by itself. */
+void          os_update_begin(void);
+void          os_update_end(void);
+/* the board task, every 2 s: logs runlevel changes */
+void          os_tick(void);
 
 #ifdef __cplusplus
 }

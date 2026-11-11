@@ -185,7 +185,12 @@ static void cmd_model(const char *sub, const char *key)
 {
     if (sub && !strcmp(sub, "GET")) { reply_model(); return; }
     if (!sub || strcmp(sub, "SET") || !key) { reply("ERR usage: MODEL GET | MODEL SET ev|rev"); return; }
+#if BOARD_MOSAICO
+    const char *no = os_refusal(OS_SVC_MODEL_SWITCH);   /* the runlevels (os_core.h): "a drive is running" while driving */
+    if (no) { reply("ERR %s: switch models while parked", no); return; }
+#else
     if (elm_drive_active()) { reply("ERR a drive is running: switch models while parked"); return; }
+#endif
     int id = -1;
     for (int i = 0; i < ML_MODEL_COUNT; i++) if (!strcmp(key, ml_model_key(i))) id = i;
     if (id < 0) { reply("ERR unknown model %.8s: ev or rev", key); return; }
@@ -336,7 +341,12 @@ static void handle(char *line, char *buf, char *b64)
     if ((!s_authed && !s_pair_only) || t - s_last_ms > SESSION_IDLE_MS) { s_authed = s_pair_only = false; reply("ERR not authenticated"); return; }
     if (!s_authed && strcmp(cmd, "PAIR")) { reply("ERR pair this computer first: the screen code only allows PAIR"); return; }
     s_last_ms = t;
+#if BOARD_MOSAICO
+    const char *no = os_refusal(OS_SVC_DOOR);           /* "the car link is up" while connecting or logging, as before */
+    if (no) { reply("ERR busy: %s, try again when parked", no); return; }
+#else
     if (sys_mode_get() == MODE_DRIVE) { reply("ERR busy: the car link is up, try again when parked"); return; }
+#endif
 
     if (!strcmp(cmd, "PAIR")) {
         if (!a1 || !a2 || !a3 || !a4 || !unb64(a4, buf, GET_MAX)) { reply("ERR usage: PAIR <host> <port> <token> <cert b64>"); return; }
@@ -361,6 +371,7 @@ static void handle(char *line, char *buf, char *b64)
         char ssid[40], pw[72];
         if (!a1 || !unb64(a1, ssid, sizeof ssid) || (a2 && !unb64(a2, pw, sizeof pw))) { reply("ERR usage: WIFI-ADD <ssid b64> [password b64]"); return; }
 #if BOARD_MOSAICO
+        if (OCM_REFUSED(OS_SVC_WIFI_EDIT, false)) { reply("ERR busy: %s, try again when parked", os_refusal(OS_SVC_WIFI_EDIT)); return; }
         int ar = wifi_sync_add(ssid, a2 ? pw : "");     /* under the round lock, like WIFI-FORGET */
         if (ar > 0) reply("OK WIFI-ADD");
         else if (ar == -1) reply("ERR busy: Wi-Fi is using the network list, try again in a minute");
@@ -374,6 +385,7 @@ static void handle(char *line, char *buf, char *b64)
         if (!a1 || !unb64(a1, ssid, sizeof ssid)) { reply("ERR usage: WIFI-FORGET <ssid b64>"); return; }
 #if BOARD_MOSAICO
         /* not while the Wi-Fi task holds a pointer into the list (a round running), the screen's Forget rule */
+        if (OCM_REFUSED(OS_SVC_WIFI_EDIT, false)) { reply("ERR busy: %s, try again when parked", os_refusal(OS_SVC_WIFI_EDIT)); return; }
         int fr = wifi_sync_forget(ssid);
         if (fr > 0) reply("OK WIFI-FORGET");
         else if (fr == 0) reply("ERR no such network");

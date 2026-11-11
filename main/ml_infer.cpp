@@ -558,7 +558,7 @@ extern "C" int ml_selftest_state(void) { return s_selftest_state; }
 
 extern "C" bool ml_rev_active(void)
 {
-    return s_active == ML_MODEL_REV && s_model && s_z_ok && !sched_safe_mode();
+    return s_active == ML_MODEL_REV && s_model && s_z_ok && !OCM_REFUSED(OS_SVC_LEARNER, sched_safe_mode());
 }
 
 static void announce(void)

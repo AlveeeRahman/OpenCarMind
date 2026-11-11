@@ -239,7 +239,7 @@ void rev_init(void)
 #endif
     cal_nvs_t nv;
     bool have_nv = cal_nvs_load(&nv);
-    s_safe = sched_safe_mode();
+    s_safe = OCM_REFUSED(OS_SVC_LEARNER, sched_safe_mode());   /* the Safe runlevel on the S31 (os_core.h) */
     if (s_safe) {
         /* no learning, no state file (a bad file must not keep the board in a boot loop), c read-only from NVS */
         s_c = have_nv ? nv.c : 1.0f;

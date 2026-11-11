@@ -21,5 +21,13 @@ for f in *.c *.cpp; do
 done
 n=$(grep -l -E '\bsys_reset\(|OCM_SYS_RESET\(' *.c | wc -l | tr -d ' ')
 [ "$n" -ge 5 ] || { echo "FAIL only $n files call sys_reset (door, REBOOT, format, stall guard, monitor)"; fail=1; }
-[ $fail = 0 ] && echo "os audit: resets PASS ($n files go through sys_reset)"
+# 2. Runlevels: no S31-only file decides a refusal from the drive, the car link or safe mode by itself any more.
+for f in mosaico_*.c ui_*.c board_pins_safe.c; do
+    if grep -n -E 'if \(!?(elm_drive_active\(\)|sched_safe_mode\(\)|sys_mode_get\(\) == MODE_DRIVE)\)' "$f" >/dev/null; then
+        echo "FAIL $f refuses on its own check, not os_allows():"; grep -n -E 'if \(!?(elm_drive_active\(\)|sched_safe_mode\(\)|sys_mode_get\(\) == MODE_DRIVE)\)' "$f"; fail=1
+    fi
+done
+m=$(grep -h -o -E 'os_(allows|refusal|refuse_sheet)\(OS_SVC_[A-Z_]+|OCM_REFUSED\(OS_SVC_[A-Z_]+' *.c *.cpp | sed 's/.*(//' | sort -u | wc -l | tr -d ' ')
+[ "$m" -ge 8 ] || { echo "FAIL only $m services are looked up"; fail=1; }
+[ $fail = 0 ] && echo "os audit: resets PASS ($n files go through sys_reset), runlevels PASS ($m services looked up, no own checks)"
 exit $fail

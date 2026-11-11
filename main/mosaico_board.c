@@ -68,7 +68,8 @@ void mosaico_board_model_result(mosaico_model_result_t *out)
 static void model_set(int id)
 {
     mosaico_model_result_t r = { .model = id };
-    if (elm_drive_active()) snprintf(r.why, sizeof r.why, "a drive is running: switch models while parked");   /* usb_door.c */
+    const char *no = os_refusal(OS_SVC_MODEL_SWITCH);   /* the runlevels (os_core.h); the door's MODEL SET says the same */
+    if (no) snprintf(r.why, sizeof r.why, "%s: switch models while parked", no);
     else r.ok = ml_select_model(id, r.why, sizeof r.why);
     ESP_LOGI(TAG, "model %s from the screen: %s", ml_model_key(id), r.ok ? "loaded" : r.why);
     portENTER_CRITICAL(&s_mux);
@@ -128,8 +129,11 @@ static void wifi_forget(void)
     portENTER_CRITICAL(&s_mux);
     memcpy(ssid, s_wifi_forget, sizeof ssid);
     portEXIT_CRITICAL(&s_mux);
-    int r = wifi_sync_forget(ssid);                /* refused while a Wi-Fi round holds a pointer into the list */
-    const char *note = r > 0 ? "Network forgotten."
+    const char *no = os_refusal(OS_SVC_WIFI_EDIT);
+    int r = no ? -3 : wifi_sync_forget(ssid);     /* -1: refused while a Wi-Fi round holds a pointer into the list */
+    char nb[64];
+    if (no) snprintf(nb, sizeof nb, "Not forgotten: %s.", no);
+    const char *note = no ? nb : r > 0 ? "Network forgotten."
                      : r == 0 ? "Not forgotten: the network is no longer saved."
                      : r == -1 ? "Not forgotten: Wi-Fi is busy. Try again in a minute."
                      : "Not forgotten: the list could not be written.";
@@ -191,7 +195,7 @@ static void wifi_scan(void)
     EXT_RAM_BSS_ATTR static wifi_seen_t seen[SCAN_RECORDS];
     EXT_RAM_BSS_ATTR static ws_raw_t raw[SCAN_RECORDS];
     EXT_RAM_BSS_ATTR static ws_row_t rows[SCAN_RECORDS + 8];
-    if (sys_mode_get() == MODE_DRIVE) { scan_publish(WS_ST_DRIVING, 0, 0, NULL); return; }
+    if (!os_allows(OS_SVC_WIFI_RADIO)) { scan_publish(WS_ST_DRIVING, 0, 0, NULL); return; }
     ram_line("before");
     int64_t t0 = esp_timer_get_time();
     int n = wifi_sync_up() ? wifi_sync_scan(seen, SCAN_RECORDS) : -1;   /* not before app_main's wifi_sync_started() */
@@ -263,7 +267,7 @@ static void wifi_join(void)
     ws_wipe(s_join_req.pw, sizeof s_join_req.pw);
     portEXIT_CRITICAL(&s_mux);
     int r = WJ_WAIT;
-    if (sys_mode_get() == MODE_DRIVE) r = WJ_DRIVING;
+    if (!os_allows(OS_SVC_WIFI_RADIO)) r = WJ_DRIVING;
     else if (!wifi_sync_up()) r = WJ_NO_RADIO;
     else if (!wifi_sync_join(ssid, keep ? NULL : pw, join_done, NULL)) r = WJ_BUSY;
     ws_wipe(pw, sizeof pw);
@@ -283,14 +287,16 @@ static void do_request(const mb_req_t *r)
         char why[64] = "", note[64];
         uint32_t fr = 0;
         int kept = 0;
-        if (elm_drive_active()) snprintf(note, sizeof note, "not formatted: a drive is active");
-        else if (sdlog_format_storage(&fr, &kept, why, sizeof why) == ESP_OK) {
+        const char *no = os_refusal(OS_SVC_FORMAT);
+        if (no) snprintf(note, sizeof note, "not formatted: %s", no);
+        else if (os_update_begin(), sdlog_format_storage(&fr, &kept, why, sizeof why) == ESP_OK) {
 #if CONFIG_OCM_NAND_LOGS
             if (nand_store_mounted()) snprintf(note, sizeof note, "NAND drive store formatted: %lu KB free", (unsigned long)fr);
             else
 #endif
             snprintf(note, sizeof note, "formatted: %lu KB free, %d state files kept", (unsigned long)fr, kept);
         } else snprintf(note, sizeof note, "not formatted: %s", why);
+        if (!no) os_update_end();
         ESP_LOGI(TAG, "format storage: %s", note);
         mosaico_files_note(note);
         mosaico_files_scan();
@@ -605,6 +611,7 @@ static void board_task(void *arg)
         if (tick % 30 == 0 && g.ok)
             ESP_LOGI(TAG, "PWR soc=%d%% mv=%d ma=%d rem=%d/%d mAh design=%d%s", g.soc, g.mv, g.ma, g.rem_mah, g.full_mah,
                      g.design_mah, mosaico_gauge_uncalibrated(&g) ? " (gauge not configured for the 65 mAh cell)" : "");
+        os_tick();                                 /* mossREV OS: runlevel changes in the log */
         /* sleep until the next 2 s release, serving UI requests and writing the settings when their debounce is due */
         for (;;) {
             TickType_t now = xTaskGetTickCount(), due = release + pdMS_TO_TICKS(2000);

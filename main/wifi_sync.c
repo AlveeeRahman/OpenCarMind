@@ -166,7 +166,7 @@ static bool sync_clock(void)
     return true;
 }
 
-static bool driving(void) { return sys_mode_get() == MODE_DRIVE; }
+static bool driving(void) { return OCM_REFUSED(OS_SVC_WIFI_RADIO, sys_mode_get() == MODE_DRIVE); }   /* runlevels on the S31 */
 
 static void set_wifi_state(wifi_state_t st)
 {

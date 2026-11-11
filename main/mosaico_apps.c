@@ -412,11 +412,23 @@ static uint32_t g_model_gen;                               /* mosaico_model_resu
 static char g_model_err[80];
 static bool g_model_dialog;                                /* sent by a "Use" button: a refusal opens a dialog */
 
+/* mossREV OS: every "not now" sheet comes from the runlevel lookup (os_core.h). A drive keeps the sheets' old text. */
+static bool os_refuse_sheet(os_svc_t svc, const char *action)
+{
+    EXT_RAM_BSS_ATTR static char t[112];             /* the sheet copies it: PSRAM is fine */
+    const char *no = os_refusal(svc);
+    if (!no) return false;
+    if (os_blocker(svc) == OS_RL_DRIVING && elm_drive_active()) snprintf(t, sizeof t, "A drive is active. End the drive first, then %s.", action);
+    else snprintf(t, sizeof t, "Not now: %s. Try again later.", no);
+    ui_confirm(t, "OK", NULL, NULL);
+    return true;
+}
+
 static void model_pick(int id)
 {
     if (g_model_req >= 0 || id == ml_model_active()) return;
     if (!ml_model_available(id)) { ui_confirm(id == ML_MODEL_EV ? "CarMind E.V is not in this firmware." : "CarMind R.E.V is not in this firmware.", "OK", NULL, NULL); return; }
-    if (elm_drive_active()) { ui_confirm("A drive is active. End the drive first, then switch models.", "OK", NULL, NULL); return; }
+    if (os_refuse_sheet(OS_SVC_MODEL_SWITCH, "switch models")) return;
     mosaico_model_result_t r;
     mosaico_board_model_result(&r);
     if (!mosaico_board_request(MB_MODEL_SET, (uint32_t)id)) { ui_confirm("The board is busy. Try again in a moment.", "OK", NULL, NULL); return; }
@@ -2683,7 +2695,7 @@ static void ck_open(void)
 static void clock_cb(lv_event_t *e)
 {
     (void)e;
-    if (elm_drive_active()) { ui_confirm("A drive is active. End the drive first, then set the clock.", "OK", NULL, NULL); return; }
+    if (os_refuse_sheet(OS_SVC_CLOCK_SET, "set the clock")) return;
     ck_open();
 }
 
@@ -2724,7 +2736,7 @@ static void format_again(void *arg)
 static void format_cb(lv_event_t *e)
 {
     (void)e;
-    if (elm_drive_active()) { ui_confirm("A drive is active. End the drive first, then format.", "OK", NULL, NULL); return; }
+    if (os_refuse_sheet(OS_SVC_FORMAT, "format")) return;
     ui_confirm("Erase all drive logs and summaries on this board?", "Continue", format_again, NULL);
 }
 

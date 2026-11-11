@@ -14,3 +14,6 @@ typedef enum { MODE_SEEK = 0, MODE_DRIVE } sys_mode_t;
 void        sys_mode_start(void);
 sys_mode_t  sys_mode_get(void);
 const char *sys_mode_name(sys_mode_t m);
+
+/* mossREV 2.0.0: the OS layer's hooks for files shared with the S3 (OCM_REFUSED: the runlevel lookup) */
+#include "os_hooks.h"

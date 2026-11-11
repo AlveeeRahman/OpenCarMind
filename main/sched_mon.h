@@ -90,12 +90,5 @@ void        sched_mark_intentional_reset(void);
 }
 #endif
 
-/* mossREV 2.0.0: on the ESP-Mosaico every reset goes through sys_reset() (os.h). In files shared with the car board
-   (S3), OCM_SYS_RESET(reason, s3) expands to the S3's own statement there, so the S3 objects stay as they were. */
-#include "sdkconfig.h"
-#if CONFIG_IDF_TARGET_ESP32S31
-#include "os.h"
-#define OCM_SYS_RESET(reason, s3) sys_reset(reason, NULL)
-#else
-#define OCM_SYS_RESET(reason, s3) s3
-#endif
+/* mossREV 2.0.0: the OS layer's hooks for files shared with the S3 (OCM_SYS_RESET, OCM_REFUSED) */
+#include "os_hooks.h"

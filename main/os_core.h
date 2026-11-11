@@ -11,6 +11,15 @@
  *      e. reset with the reason's method.
  *    The marker comes first so that a hang inside the quiesce, which the task watchdog then resets, still reads as
  *    the reset that was asked for.
+ *
+ * 2. Runlevels (after PebbleOS's runlevel service). A runlevel is a condition the board is in: Boot (app_main has not
+ *    finished), Safe (3 abnormal resets in a row), Driving (a drive is recorded or the car link is up), Saving (the
+ *    UPS state: USB power lost, CONFIG_OCM_UPS), Update (a reset, a door entry or a storage format is running), and
+ *    Parked when none of these holds. Each service has an enable mask over the runlevels. Several conditions can hold
+ *    at once (safe mode while driving), so a service runs only if every active runlevel enables it: each active
+ *    runlevel acts like a circuit breaker. A service never asks which runlevel is in force, it asks os_allows(svc).
+ *    The runlevel shown on the Board page and in the log is the active one highest in the order
+ *    Update > Saving > Driving > Safe > Boot > Parked.
  */
 #ifndef OS_CORE_H
 #define OS_CORE_H
@@ -48,6 +57,40 @@ typedef struct {
 const os_reset_plan_t *os_reset_plan(sys_reset_reason_t r);        /* NULL for an unknown reason */
 /* The steps in execution order (OS_STEP_*), steps that do nothing left out. Returns the count (<= 5). */
 int os_reset_steps(sys_reset_reason_t r, uint8_t steps[5]);
+
+/* ---------- 2. runlevels ---------- */
+typedef enum { OS_RL_BOOT = 0, OS_RL_SAFE, OS_RL_PARKED, OS_RL_DRIVING, OS_RL_SAVING, OS_RL_UPDATE, OS_RL_N } os_runlevel_t;
+typedef enum {
+    OS_SVC_MODEL_SWITCH = 0, /* MODEL SET from the door, the Settings segment, the model apps */
+    OS_SVC_CLOCK_SET,        /* Settings > Clock by hand */
+    OS_SVC_FORMAT,           /* Settings > Format storage */
+    OS_SVC_WIFI_EDIT,        /* forget or add a saved network (screen, door) */
+    OS_SVC_WIFI_RADIO,       /* Wi-Fi search, join and the clock round */
+    OS_SVC_DOOR,             /* the USB door's commands after authentication */
+    OS_SVC_ML,               /* loading the model at boot */
+    OS_SVC_LEARNER,          /* the R.E.V learner */
+    OS_SVC_N
+} os_svc_t;
+
+typedef struct {
+    bool boot;               /* app_main has not finished */
+    bool safe;               /* sched_safe_mode() */
+    bool drive;              /* elm_drive_active(): a drive is being recorded */
+    bool link;               /* sys_mode DRIVE: connecting to the adapter or logging */
+    bool saving;             /* the UPS state is saving (CONFIG_OCM_UPS) */
+    bool update;             /* a reset, a door entry or a format is running */
+} os_rl_in_t;
+
+uint8_t       os_rl_active(const os_rl_in_t *in);                /* bit r set: runlevel r is active (Parked alone if none) */
+os_runlevel_t os_rl_primary(uint8_t active);                     /* the one to show */
+bool          os_rl_allows(uint8_t active, os_svc_t svc);        /* every active runlevel enables svc */
+os_runlevel_t os_rl_blocker(uint8_t active, os_svc_t svc);       /* the highest active runlevel that refuses, or OS_RL_N */
+uint8_t       os_svc_mask(os_svc_t svc);                         /* bit r: svc runs in runlevel r */
+const char   *os_rl_name(os_runlevel_t r);                       /* "Parked", "Driving", ... */
+/* a short phrase for a refusal by runlevel r: "a drive is running", "the car link is up" (Driving without a drive),
+   "safe mode is on", "the board is starting", "the board is saving power", "an update or format is running" */
+const char   *os_rl_phrase(os_runlevel_t r, const os_rl_in_t *in);
+const char   *os_svc_name(os_svc_t svc);
 
 #ifdef __cplusplus
 }

@@ -7,6 +7,7 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "elm327.h"
+#include "os.h"
 #include "events.h"
 #include "harden.h"
 #include "mosaico_board.h"
@@ -71,7 +72,7 @@ bool mosaico_clock_known(const app_status_t *st) { return mosaico_clock_source(s
 bool mosaico_clock_request(int y, int mo, int d, int h, int mi, const char *tz)
 {
     mclk_result_t r = MCLK_BUSY;
-    if (elm_drive_active()) r = MCLK_ERR_DRIVE;
+    if (!os_allows(OS_SVC_CLOCK_SET)) r = MCLK_ERR_DRIVE;   /* the runlevels (os_core.h) */
     else if (!clock_fields_ok(y, mo, d, h, mi)) r = MCLK_ERR_TIME;
     else if (!tz || !harden_timezone_ok(tz)) r = MCLK_ERR_ZONE;
     if (r != MCLK_BUSY) { s_result = r; return false; }
@@ -105,7 +106,7 @@ void mosaico_clock_do_set(void)
     portENTER_CRITICAL(&s_mux);
     q = s_req;
     portEXIT_CRITICAL(&s_mux);
-    if (elm_drive_active()) { s_result = MCLK_ERR_DRIVE; return; }   /* a drive may have started since the tap */
+    if (!os_allows(OS_SVC_CLOCK_SET)) { s_result = MCLK_ERR_DRIVE; return; }   /* a drive may have started since the tap */
     int64_t epoch;
     if (!clock_local_to_epoch(q.tz, q.y, q.mo, q.d, q.h, q.mi, &epoch)) { s_result = MCLK_ERR_TIME; return; }
     if (!remote_config_set_timezone(q.tz)) { s_result = MCLK_ERR_ZONE; return; }

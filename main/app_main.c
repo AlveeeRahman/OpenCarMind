@@ -301,7 +301,7 @@ void app_main(void)
 
     /* the model loads before BLE and Wi-Fi start, so the global small-allocation switch it needs (ml_infer.cpp)
        is on while the fewest other tasks allocate; it takes under 200 B of internal RAM either way */
-    if (!sched_safe_mode()) ml_init();   /* after repeated abnormal resets, boot without the newest component */
+    if (!OCM_REFUSED(OS_SVC_ML, sched_safe_mode())) ml_init();   /* safe mode: boot without the newest component */
     rev_init();                       /* R.E.V learning and fill-up calibration; in safe mode only the calibration factor, from NVS */
 #if BOARD_MOSAICO
     mosaico_ui_producers_ready();     /* the launcher may now read the R.E.V status */
