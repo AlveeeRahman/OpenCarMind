@@ -40,6 +40,7 @@
 #include "remote_config.h"
 #include "elm327.h"
 #include "mosaico_drive.h"
+#include "sdlog.h"
 #include "fault_engine.h"
 #include "econ.h"
 #include "esp_attr.h"
@@ -1742,14 +1743,23 @@ static void panel_power(bool on)
 /* ---------- the periodic UI job (LVGL timer, 50 ms) ---------- */
 static void slide_tick(void);
 /* UI stall guard: if the LVGL timer has not run the UI tick for 15 s (it never subscribes to the TWDT when the very first
-   tick never comes), abort from the esp_timer task so the core dump holds every task's backtrace */
+   tick never comes), abort from the esp_timer task so the core dump holds every task's backtrace. The flash FAT is
+   quiesced first (no sector left half written); the core dump goes to its own partition. */
+#if CONFIG_OCM_STORAGE_RESET_TEST
+#define STALL_ARM_US   8000000                         /* the reset-injection test's stall variant: shorter cycles */
+#define STALL_LIMIT_US 3000000
+#else
+#define STALL_ARM_US   20000000
+#define STALL_LIMIT_US 15000000
+#endif
 static volatile int64_t s_tick_seen_us;
 static void stall_cb(void *arg)
 {
     (void)arg;
     int64_t now = esp_timer_get_time();
-    if (now > 20000000 && now - s_tick_seen_us > 15000000) {
+    if (now > STALL_ARM_US && now - s_tick_seen_us > STALL_LIMIT_US) {
         ESP_LOGE(TAG, "ui tick stalled for %lld s: aborting for a core dump", (long long)((now - s_tick_seen_us) / 1000000));
+        sdlog_quiesce_for_reset();
         esp_system_abort("ui tick stalled");
     }
 }
@@ -2001,9 +2011,14 @@ esp_err_t display_init(void)
     const esp_timer_create_args_t sa = { .callback = stall_cb, .name = "ui_stall" };
     if (esp_timer_create(&sa, &stall_t) == ESP_OK) esp_timer_start_periodic(stall_t, 1000000);
 
+    /* under the LVGL lock: the LVGL task is already flushing the splash through the same SPI device, and two tasks'
+       polling transactions on one device make spi_device_acquire_bus fail (spi_master.c: "Cannot acquire bus when a
+       polling transaction is in progress"); that left the v11u boot without its flush-done and the UI stalled */
+    lvgl_port_lock(0);
     esp_lcd_panel_disp_on_off(s_panel, true);
     esp_lcd_panel_co5300_set_brightness(s_panel, s_set.brightness);
     s_panel_on = true;
+    lvgl_port_unlock();
     ESP_LOGI(TAG, "dashboard up: launcher (home + %d grid page%s), %d apps, 480x480 CO5300", s_ntiles - 1, s_ntiles == 2 ? "" : "s", ui_app_count());
     return ESP_OK;
 }

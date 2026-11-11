@@ -28,6 +28,7 @@
 #include "uploader.h"
 #include "usb_door.h"
 #include "cpu_monitor.h"
+#include "storage_rt.h"
 #include "remote_config.h"
 #if BOARD_MOSAICO
 #include "mosaico_console.h"
@@ -293,6 +294,7 @@ void app_main(void)
 
     if (display_init() != ESP_OK) ESP_LOGE(TAG, "display init failed");
     if (sdlog_init() != ESP_OK) ESP_LOGE(TAG, "SD logging unavailable");
+    storage_rt_run();                 /* CONFIG_OCM_STORAGE_RESET_TEST only (ESP-Mosaico bench test); a no-op otherwise */
     remote_config_load_sd();          /* /sdcard/obd/config.json, if present */
     uploader_init();                  /* pairing with the desktop app, kept in NVS */
     sched_mon_start();                /* raises the "restarted after ..." event from sched_boot_check() */

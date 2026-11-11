@@ -14,7 +14,10 @@
 #include "ff.h"
 #if !BOARD_HAS_SD
 #include "diskio_wl.h"
+#include "esp_partition.h"
+#include "fat_mirror.h"
 #endif
+#include "esp_system.h"
 #include "sdmmc_cmd.h"
 #include "driver/sdmmc_host.h"
 #include "nvs_flash.h"
@@ -50,6 +53,7 @@ static uint32_t s_rows;
 static uint64_t s_bytes;          /* bytes written */
 static uint64_t s_synced;         /* bytes known to be on the card */
 static SemaphoreHandle_t s_lock;
+static volatile bool s_quiesced;  /* sdlog_quiesce_for_reset() ran: a reset follows, nothing more is written */
 static cJSON   *s_meta;
 static uint32_t s_meta_rev;
 
@@ -279,6 +283,119 @@ static uint64_t tree_bytes(const char *dir, uint32_t clu, int *files, int depth)
     return sum;
 }
 
+/* ---------- flash FAT checks before FatFs mounts (see fat_mirror.h for why) ---------- */
+static int  s_fat_repairs;        /* FAT sectors rewritten from the other copy at this boot */
+static bool s_unreadable;         /* the volume holds data FatFs cannot use: left unmounted, nothing overwritten */
+static uint32_t s_reclaimed_kb;    /* lost clusters freed at this boot */
+static int      s_scrubbed;        /* torn directory entries marked deleted at this boot */
+
+static bool wl_sector_read(uint32_t lba, uint8_t *buf, void *ctx)
+{
+    wl_handle_t h = *(wl_handle_t *)ctx;
+    return wl_read(h, (size_t)lba * wl_sector_size(h), buf, wl_sector_size(h)) == ESP_OK;
+}
+
+static bool wl_sector_write(wl_handle_t h, uint32_t lba, const uint8_t *buf)
+{
+    size_t ss = wl_sector_size(h);
+    return wl_erase_range(h, (size_t)lba * ss, ss) == ESP_OK && wl_write(h, (size_t)lba * ss, buf, ss) == ESP_OK;
+}
+
+typedef enum { PRE_OK, PRE_NO_FAT, PRE_BOTH_BAD, PRE_ERROR } preflight_t;
+
+static bool wl_sector_write_cb(uint32_t lba, const uint8_t *buf, void *ctx) { return wl_sector_write(*(wl_handle_t *)ctx, lba, buf); }
+
+/* Frees clusters no directory entry reaches (fat_reclaim: chains of files a reset caught before their directory entry was
+   written). FAT 1 is written before FAT 2, as FatFs does, so a reset in between is undone by the copy check next boot. */
+static void storage_reclaim(wl_handle_t h, const fat_geom_t *g, uint8_t *sec)
+{
+    size_t ss = g->sector_size, n = (size_t)g->fat_sectors * ss;
+    if (n > 64 * 1024) return;
+    uint8_t *fat = heap_caps_malloc(n, MALLOC_CAP_SPIRAM), *orig = heap_caps_malloc(n, MALLOC_CAP_SPIRAM);
+    uint8_t *mark = heap_caps_calloc(1, FAT_RECLAIM_MARK_BYTES(g), MALLOC_CAP_SPIRAM);
+    bool ok = fat && orig && mark;
+    for (uint32_t i = 0; ok && i < g->fat_sectors; i++) ok = wl_sector_read(g->fat_start + i, fat + i * ss, &h);
+    int scrubbed = 0;
+    int freed = ok ? (memcpy(orig, fat, n), fat_reclaim(g, fat, wl_sector_read, wl_sector_write_cb, &h, sec, mark, &scrubbed)) : -1;
+    if (scrubbed) {
+        s_scrubbed = scrubbed;
+        ESP_LOGE(TAG, "storage: a directory sector was torn by a reset: %d broken entr%s marked deleted (those files are lost)",
+                 scrubbed, scrubbed == 1 ? "y" : "ies");
+    }
+    if (freed < 0) ESP_LOGW(TAG, "storage: directory tree not clean: lost clusters left as they are");
+    for (int copy = 0; freed > 0 && copy < g->n_fats; copy++)
+        for (uint32_t i = 0; i < g->fat_sectors; i++)
+            if (memcmp(fat + i * ss, orig + i * ss, ss) &&
+                !wl_sector_write(h, g->fat_start + copy * g->fat_sectors + i, fat + i * ss)) { freed = -1; break; }
+    if (freed > 0) {
+        s_reclaimed_kb = (uint32_t)((uint64_t)freed * g->sec_per_clus * ss / 1024);
+        ESP_LOGW(TAG, "storage: %d lost cluster%s (%lu KB) from interrupted writes freed", freed, freed == 1 ? "" : "s",
+                 (unsigned long)s_reclaimed_kb);
+    }
+    free(fat);
+    free(orig);
+    free(mark);
+}
+
+/* Compares the two FAT copies sector by sector through the wear-levelling layer and rewrites a torn copy from the good
+   one, before FatFs reads either (FatFs never reads FAT 2, ff.c sync_window). Only the damaged copy is written, so a
+   reset during the repair leaves the good copy for the next boot. */
+static preflight_t storage_preflight(const esp_partition_t *part)
+{
+    wl_handle_t h = WL_INVALID_HANDLE;
+    if (wl_mount(part, &h) != ESP_OK) return PRE_ERROR;
+    size_t ss = wl_sector_size(h);
+    uint8_t *a = heap_caps_malloc(ss, MALLOC_CAP_SPIRAM), *b = heap_caps_malloc(ss, MALLOC_CAP_SPIRAM);
+    uint8_t *c = heap_caps_malloc(ss, MALLOC_CAP_SPIRAM);
+    preflight_t r = PRE_OK;
+    fat_geom_t g;
+    if (!a || !b || !c || !wl_sector_read(0, a, &h)) r = PRE_ERROR;
+    else if (!fat_geom_parse(a, ss, wl_sector_read, &h, c, &g)) r = PRE_NO_FAT;
+    else if (g.sector_size != ss) ESP_LOGW(TAG, "storage: FAT sector size %lu differs from the flash layer's %u: FAT copies not checked",
+                                           (unsigned long)g.sector_size, (unsigned)ss);
+    else {
+        for (uint32_t i = 0; i < g.fat_sectors && r == PRE_OK; i++) {
+            uint32_t s1 = g.fat_start + i, s2 = s1 + g.fat_sectors;
+            if (!wl_sector_read(s1, a, &h) || (g.n_fats == 2 && !wl_sector_read(s2, b, &h))) { r = PRE_ERROR; break; }
+            fat_verdict_t v = fat_mirror_compare(a, g.n_fats == 2 ? b : a, ss, i == 0, g.media);
+            if (v == FAT_BOTH_BAD) r = PRE_BOTH_BAD;
+            else if (v == FAT_COPY_2_TO_1 || v == FAT_COPY_1_TO_2) {
+                bool to1 = v == FAT_COPY_2_TO_1;
+                bool ok = wl_sector_write(h, to1 ? s1 : s2, to1 ? b : a);
+                s_fat_repairs += ok;
+                ESP_LOGE(TAG, "storage: FAT %d sector %lu was torn by a reset: rewritten from FAT %d: %s", to1 ? 1 : 2,
+                         (unsigned long)i, to1 ? 2 : 1, ok ? "ok" : "FAILED");
+                if (!ok) r = PRE_ERROR;
+            }
+        }
+        if (r == PRE_OK) storage_reclaim(h, &g, a);
+    }
+    free(a);
+    free(b);
+    free(c);
+    wl_unmount(h);
+    return r;
+}
+
+/* Nothing but erased flash in the wear-levelling data area: a first boot, or a partition blanked on purpose. The WL
+   metadata at the end (two state copies and the config sector) is skipped; its size follows WL_Flash.cpp config(),
+   lines 75-85 (16 B position records, the default wl_pos_update_record_size). */
+static bool storage_blank(const esp_partition_t *part)
+{
+    const uint32_t sec = 4096;
+    uint32_t state = 64 + part->size / sec * 16;
+    state = (state + sec - 1) / sec * sec;
+    uint32_t end = part->size - 2 * state - sec;
+    uint32_t *buf = heap_caps_malloc(sec, MALLOC_CAP_SPIRAM);
+    bool blank = buf != NULL;
+    for (uint32_t off = 0; blank && off < end; off += sec) {
+        if (esp_partition_read(part, off, buf, sec) != ESP_OK) { blank = false; break; }
+        for (uint32_t i = 0; i < sec / 4 && blank; i++) blank = buf[i] == 0xFFFFFFFFu;
+    }
+    free(buf);
+    return blank;
+}
+
 static void storage_audit(void)
 {
     char drv[4] = {(char)('0' + ff_diskio_get_pdrv_wl(s_wl)), ':', 0};
@@ -344,10 +461,40 @@ esp_err_t sdlog_init(void)
 
     esp_err_t err = esp_vfs_fat_sdmmc_mount(CONFIG_SDLOG_MOUNT_POINT, &host, &slot, &mount_config, &s_card);
 #else
-    /* the wear-levelled FAT on "storage" is formatted on first use (nothing to lose: it is the board's own log space) */
-    const esp_vfs_fat_mount_config_t mount_config = { .format_if_mount_failed = true, .max_files = 8,
-                                                      .allocation_unit_size = CONFIG_WL_SECTOR_SIZE };
-    esp_err_t err = esp_vfs_fat_spiflash_mount_rw_wl(CONFIG_SDLOG_MOUNT_POINT, "storage", &mount_config, &s_wl);
+    /* The wear-levelled FAT on "storage". Torn FAT copies are repaired before FatFs mounts. The partition is formatted
+       only when it is blank (first use): a volume that holds data but does not mount stays untouched, so the logs can
+       still be read out raw, and only the owner's "Format storage" in Settings erases it. */
+    esp_vfs_fat_mount_config_t mount_config = { .format_if_mount_failed = false, .max_files = 8,
+                                                .allocation_unit_size = CONFIG_WL_SECTOR_SIZE };
+    const esp_partition_t *part = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_ANY, "storage");
+    preflight_t pre = part ? storage_preflight(part) : PRE_ERROR;
+    esp_err_t err = ESP_FAIL;
+    if (pre == PRE_BOTH_BAD) {
+        s_unreadable = true;
+        ESP_LOGE(TAG, "storage: BOTH FAT copies are damaged: not mounted, nothing written; the files are still in the flash "
+                      "(read them out raw), then use Format storage in Settings");
+    } else if (part) {
+        err = esp_vfs_fat_spiflash_mount_rw_wl(CONFIG_SDLOG_MOUNT_POINT, "storage", &mount_config, &s_wl);
+        if (err != ESP_OK && s_wl != WL_INVALID_HANDLE) { wl_unmount(s_wl); s_wl = WL_INVALID_HANDLE; }
+        if (err == ESP_FAIL && storage_blank(part)) {
+            ESP_LOGW(TAG, "storage: blank partition, formatting it (first use)");
+            mount_config.format_if_mount_failed = true;
+            err = esp_vfs_fat_spiflash_mount_rw_wl(CONFIG_SDLOG_MOUNT_POINT, "storage", &mount_config, &s_wl);
+        } else if (err == ESP_FAIL) {
+            s_unreadable = true;
+            ESP_LOGE(TAG, "storage: holds data but has no FAT FatFs can mount: not formatted, nothing written; read it out "
+                          "raw, then use Format storage in Settings");
+        }
+    }
+    if (s_unreadable) sys_event(EV_ERROR, "Log storage damaged: not mounted so nothing is overwritten. Format storage in Settings "
+                                          "erases it");
+    if (err == ESP_OK) esp_register_shutdown_handler(sdlog_quiesce_for_reset);   /* every esp_restart() */
+    if (err == ESP_OK && s_scrubbed)
+        sys_event(EV_ERROR, "Log storage: a directory sector was torn by an abnormal reset; %d broken entries removed, those files "
+                            "are lost", s_scrubbed);
+    if (err == ESP_OK && s_fat_repairs)
+        sys_event(EV_WARN, "Log storage: %d FAT sector%s torn by an abnormal reset, repaired from the other FAT copy", s_fat_repairs,
+                  s_fat_repairs == 1 ? "" : "s");
 #endif
     if (err != ESP_OK) {
         sys_event(EV_ERROR, "SD card mount failed: %s", esp_err_to_name(err));
@@ -669,6 +816,15 @@ int sdlog_delete_all_sessions(int *sessions_out)
 #if !BOARD_HAS_SD
 esp_err_t sdlog_format_storage(uint32_t *free_kb, int *kept_files, char *why, size_t why_n)
 {
+    if (!s_ok && s_unreadable) {
+        /* the owner chose to erase a damaged volume (sdlog_init left it unmounted): format, then restart so the logger
+           starts on it like on any boot */
+        esp_err_t err = esp_vfs_fat_spiflash_format_rw_wl(CONFIG_SDLOG_MOUNT_POINT, "storage");
+        ESP_LOGW(TAG, "damaged storage formatted on request: %s; restarting", esp_err_to_name(err));
+        if (err != ESP_OK) { snprintf(why, why_n, "format failed: %s", esp_err_to_name(err)); return err; }
+        vTaskDelay(pdMS_TO_TICKS(300));
+        esp_restart();
+    }
     if (!s_ok) { snprintf(why, why_n, "storage not mounted"); return ESP_ERR_INVALID_STATE; }
     if (s_open) { snprintf(why, why_n, "a drive is being logged"); return ESP_ERR_INVALID_STATE; }
     typedef struct { char name[48]; uint8_t *data; size_t n; } keep_t;
@@ -722,6 +878,29 @@ esp_err_t sdlog_format_storage(uint32_t *free_kb, int *kept_files, char *why, si
     return err;
 }
 #endif
+
+void sdlog_quiesce_for_reset(void)
+{
+    /* The flash FAT writes a sector as erase-then-program (diskio_wl.c ff_wl_write), so a reset between the two leaves
+       an erased sector. Here: flush the logger's files under its lock, mark it stopped (its writers return at s_ok), and
+       take FatFs's own volume lock (ff_mutex_take, the lock every f_* call takes in lock_volume) without giving it back.
+       That waits for a write in progress and keeps every later one out, whichever task makes it. Called from every
+       esp_restart() (shutdown handler), the download door, and the ui-stall guard; panics cannot call it. */
+    if (s_quiesced || !s_ok) return;
+    s_quiesced = true;
+    if (s_lock && xSemaphoreTake(s_lock, pdMS_TO_TICKS(1500)) == pdTRUE) {
+        meta_flush_locked();
+        FILE *open_files[] = {s_csv, s_raw, s_pat, s_ml};
+        for (size_t i = 0; i < sizeof open_files / sizeof open_files[0]; i++)
+            if (open_files[i]) { fflush(open_files[i]); fsync(fileno(open_files[i])); }
+        s_ok = false;
+        xSemaphoreGive(s_lock);
+    } else s_ok = false;
+#if !BOARD_HAS_SD
+    BYTE pdrv = ff_diskio_get_pdrv_wl(s_wl);
+    if (pdrv != 0xFF && !ff_mutex_take(pdrv)) ESP_LOGW(TAG, "quiesce: the file system stayed busy for %d ms", CONFIG_FATFS_TIMEOUT_MS);
+#endif
+}
 
 void sdlog_prepare_sleep(void)
 {

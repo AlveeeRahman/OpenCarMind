@@ -71,6 +71,24 @@ menu "OBD Logger Configuration"
         config SDLOG_FORMAT_IF_MOUNT_FAILED
             bool "Format the card if it cannot be mounted (DESTRUCTIVE)"
             default n
+        config OCM_STORAGE_RESET_TEST
+            bool "ESP-Mosaico test: storage reset-injection loop (DESTROYS the log storage)"
+            depends on IDF_TARGET_ESP32S31
+            default n
+            help
+                Bench test of the flash FAT against abnormal resets. Every boot checks the volume the previous cycle left,
+                then writes and appends small files and resets the board at a random moment (esp_restart, abort with a
+                core dump, the download door's ROM reset), or with the stall variant freezes the UI so the ui-stall
+                guard fires. After a volume loss it erases the storage partition. Counters are kept in NVS ("srt") and
+                printed as "SRT ..." lines. Never in a release or a car build.
+        config OCM_STORAGE_RESET_TEST_CYCLES
+            int "Reset cycles per run"
+            depends on OCM_STORAGE_RESET_TEST
+            default 200
+        config OCM_STORAGE_RESET_TEST_STALL
+            bool "Stall variant: freeze the UI so the ui-stall guard resets the board"
+            depends on OCM_STORAGE_RESET_TEST
+            default n
     endmenu
 
     menu "Wi-Fi clock sync"

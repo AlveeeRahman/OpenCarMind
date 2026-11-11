@@ -26,7 +26,7 @@ idf_component_register(
          "usb_door.c"
          "elm327.c"
          "ecu_select.c"
-         "sdlog.c"
+         "sdlog.c" "fat_mirror.c" "storage_rt.c"
          "wifi_sync.c"
          "status_led.c"
          "custom_pids.c"
@@ -45,7 +45,7 @@ idf_component_register(
          "rev_task.c"
     INCLUDE_DIRS "."
     REQUIRES bt nvs_flash driver esp_driver_tsens esp_wifi esp_netif esp_event esp_http_client mbedtls esp_driver_usb_serial_jtag
-             esp_lcd fatfs sdmmc vfs esp_timer esp_driver_gpio
+             esp_lcd fatfs sdmmc vfs esp_timer esp_driver_gpio esp_app_format
              esp_driver_spi esp_driver_sdmmc esp_driver_ledc ${ocm_board_reqs}
 )
 

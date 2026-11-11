@@ -3,6 +3,7 @@
  * Covers a synthetic car whose fuel head differs from the factory prior, the gate, the reset, persistence with damaged files, plus a double-precision reference solver beside the
  * board's float one. */
 #include <stdio.h>
+#include <sys/stat.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
@@ -682,6 +683,15 @@ static void test_big_blob(void)
     CHECK(rev_blob_save(path, MAG, a, 64));                                /* small blobs still use the static path */
     memset(b, 0, 64);
     CHECK(rev_blob_load(path, MAG, b, 64) && memcmp(a, b, 64) == 0);
+    /* a reset between the saver's remove() and rename() leaves only the .tmp: it loads, and the next save first moves
+       it into place (it would otherwise be truncated while the new copy is written), then replaces it */
+    CHECK(rename(path, tmp) == 0);
+    memset(b, 0, 64);
+    CHECK(rev_blob_load(path, MAG, b, 64) && memcmp(a, b, 64) == 0);
+    CHECK(rev_blob_save(path, MAG, a + 64, 64));
+    struct stat st;
+    CHECK(stat(tmp, &st) != 0);
+    CHECK(rev_blob_load(path, MAG, b, 64) && memcmp(a + 64, b, 64) == 0);
     remove(path); remove(tmp);
     free(a); free(b); free(keep);
 }

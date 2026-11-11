@@ -5,6 +5,13 @@ SRCS = test_main.c ../../main/custom_pids.c ../../main/fault_engine.c ../../main
 run: carmind_tests
 	./carmind_tests
 
+# flash FAT: which FAT copy wins after a reset tore a write (main/fat_mirror.c)
+fat: fat_tests
+	./fat_tests
+
+fat_tests: test_fat_mirror.c ../../main/fat_mirror.c ../../main/fat_mirror.h
+	$(CC) $(CFLAGS) -o $@ test_fat_mirror.c ../../main/fat_mirror.c
+
 carmind_tests: $(SRCS) ../../main/custom_pids.h ../../main/fault_engine.h
 	$(CC) $(CFLAGS) -o $@ $(SRCS) -lm
 

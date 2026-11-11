@@ -69,3 +69,6 @@ esp_err_t sdlog_format_storage(uint32_t *free_kb, int *kept_files, char *why, si
 
 /* Flush and unmount before deep sleep. */
 void sdlog_prepare_sleep(void);
+/* Before a software reset: flush the logger's files and hold the file system's lock so no flash sector is half written when
+   the reset hits. Never returns the lock; the caller resets right after. Not for the panic handler. */
+void sdlog_quiesce_for_reset(void);

@@ -1,6 +1,7 @@
 #include "rev_state.h"
 #include <math.h>
 #include <stdio.h>
+#include <sys/stat.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -36,6 +37,15 @@ uint32_t rev_crc32(uint32_t crc, const void *data, size_t n)
     return ~crc;
 }
 
+/* A reset between remove(path) and rename(tmp, path) in the savers below leaves the complete .tmp as the only copy, and
+   the loaders read it. The next save would truncate it with fopen("wb") before the new copy is complete, so it is
+   renamed into place first. */
+static void keep_tmp(const char *path, const char *tmp)
+{
+    struct stat st;
+    if (stat(path, &st) != 0 && stat(tmp, &st) == 0) rename(tmp, path);
+}
+
 static bool put(FILE *f, uint32_t *crc, const void *p, size_t n)
 {
     *crc = rev_crc32(*crc, p, n);
@@ -47,6 +57,7 @@ bool rev_state_save(const char *path, const rev_fuel_t *fuel, const rev_phys_t *
 {
     char tmp[128];
     snprintf(tmp, sizeof tmp, "%s.tmp", path);
+    keep_tmp(path, tmp);
     FILE *f = fopen(tmp, "wb");
     if (!f) return false;
     hdr_t h = {MAGIC, VERSION, REV_NF, prior_id, fuel ? FUEL_SIZE : 0, sizeof *phys, sizeof *pick, sizeof *cal};
@@ -156,6 +167,7 @@ bool rev_blob_save(const char *path, uint32_t magic, const void *data, uint32_t 
 {
     char tmp[128];
     snprintf(tmp, sizeof tmp, "%s.tmp", path);
+    keep_tmp(path, tmp);
     FILE *f = fopen(tmp, "wb");
     if (!f) return false;
     uint32_t crc = 0;

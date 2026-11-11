@@ -10,6 +10,7 @@
  * and resets the whole system with esp_rom_software_reset_system(), as Espressif's merged arduino-esp32 PR #12957 does
  * for the S31; esp_restart() only resets the CPU cores there. */
 #include "mosaico_console.h"
+#include "sdlog.h"
 #include <stdio.h>
 #include <unistd.h>
 #include "esp_log.h"
@@ -32,6 +33,7 @@ void mosaico_console_download(void)
 {
     printf("CONSOLE rebooting into download mode\n");
     fflush(stdout);
+    sdlog_quiesce_for_reset();        /* this ROM reset bypasses esp_restart()'s shutdown handlers */
     esp_rom_delay_us(100000);
     REG_SET_BIT(LP_SYSTEM_REG_SYS_CTRL_REG, LP_SYSTEM_REG_FORCE_DOWNLOAD_BOOT);
     esp_rom_software_reset_system();
