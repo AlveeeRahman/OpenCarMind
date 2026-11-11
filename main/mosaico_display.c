@@ -727,11 +727,14 @@ static void settings_load(void)
     ui_settings_t s, m;
     settings_defaults(&s_set);
     if (!mosaico_settings_load(&s, sizeof s)) return;
-    int wifi = -1;
-    for (int i = 0; i < ui_app_count(); i++) if (!strcmp(ui_app(i)->id, "wifi")) wifi = i;
-    /* version 5 -> 6: the Wi-Fi app goes in before Settings and every hidden app shows again (read once, then saved);
-       invalid indices are dropped and apps added in a newer firmware are appended */
-    int r = ocm_settings_migrate(&s, &m, ui_app_count(), wifi);
+    int wifi = -1, ev = -1;
+    for (int i = 0; i < ui_app_count(); i++) {
+        if (!strcmp(ui_app(i)->id, "wifi")) wifi = i;
+        if (!strcmp(ui_app(i)->id, "ev")) ev = i;
+    }
+    /* version 5 -> 6: the Wi-Fi app goes in before Settings and every hidden app shows again; 6 -> 7: the E.V app goes
+       in after R.E.V (read once, then saved); invalid indices are dropped and apps added in a newer firmware are appended */
+    int r = ocm_settings_migrate(&s, &m, ui_app_count(), wifi, ev);
     if (r == OCM_SET_REJECT) return;
     if (m.widget >= W_COUNT) m.widget = W_KPL;
     if (m.theme > 2) m.theme = 0;

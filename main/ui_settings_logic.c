@@ -1,25 +1,37 @@
 #include "ui_settings_logic.h"
 #include <string.h>
 
-int ocm_settings_migrate(const ui_settings_t *saved, ui_settings_t *out, int napps, int wifi)
+/* one registry step: the app at registry index ins is new. Every saved index from ins upwards moves up by one, and ins
+   goes in next to the saved entry that is now anchor (before it, or after it). n stays within UI_MAX_APPS. */
+static void order_insert(ui_settings_t *m, int ins, int anchor, bool before)
+{
+    uint8_t ord[2 * UI_MAX_APPS];                      /* each entry plus at most one copy of the new app */
+    int k = 0;
+    for (int i = 0; i < m->n; i++) {
+        int a = m->order[i];
+        if (a >= ins) a++;
+        if (a == anchor && before) ord[k++] = (uint8_t)ins;
+        ord[k++] = (uint8_t)a;
+        if (a == anchor && !before) ord[k++] = (uint8_t)ins;
+    }
+    m->n = 0;
+    for (int i = 0; i < k && m->n < UI_MAX_APPS; i++) m->order[m->n++] = ord[i];
+}
+
+int ocm_settings_migrate(const ui_settings_t *saved, ui_settings_t *out, int napps, int wifi, int ev)
 {
     if (napps < 1 || napps > UI_MAX_APPS || saved->n > UI_MAX_APPS) return OCM_SET_REJECT;
-    if (saved->ver != 5 && saved->ver != UI_SETTINGS_VER) return OCM_SET_REJECT;
+    if (saved->ver != 5 && saved->ver != 6 && saved->ver != UI_SETTINGS_VER) return OCM_SET_REJECT;
+    if (ev >= napps || wifi >= napps || (ev >= 0 && ev == wifi)) return OCM_SET_REJECT;
     ui_settings_t m = *saved;
-    if (saved->ver == 5) {
-        /* the version-5 registry was this one without the Wi-Fi app: shift, then put Wi-Fi just before Settings */
-        int k = 0;
-        uint8_t ord[2 * UI_MAX_APPS];                  /* each entry plus at most one Wi-Fi */
-        for (int i = 0; i < saved->n; i++) {
-            int a = saved->order[i];
-            if (wifi >= 0 && a >= wifi) a++;
-            if (wifi >= 0 && a == napps - 1) ord[k++] = (uint8_t)wifi;
-            ord[k++] = (uint8_t)a;
-        }
-        m.n = 0;
-        for (int i = 0; i < k && m.n < UI_MAX_APPS; i++) m.order[m.n++] = ord[i];
-        m.ver = UI_SETTINGS_VER;
+    if (saved->ver == 5 && wifi >= 0) {
+        /* the version-6 registry is this one without E.V: Wi-Fi's index and Settings' index there */
+        int napps6 = napps - (ev >= 0), wifi6 = wifi - (ev >= 0 && ev < wifi);
+        order_insert(&m, wifi6, napps6 - 1, true);
     }
+    if (saved->ver != UI_SETTINGS_VER && ev >= 1) order_insert(&m, ev, ev - 1, false);
+    else if (saved->ver != UI_SETTINGS_VER && ev == 0) order_insert(&m, ev, -1, false);   /* no app before it: appended below */
+    m.ver = UI_SETTINGS_VER;
     m.hidden_v5 = 0;                                       /* every app a user had hidden is on Home again */
     /* keep valid, first-seen indices; apps missing from the order are appended in registry order */
     ui_settings_t v = m;

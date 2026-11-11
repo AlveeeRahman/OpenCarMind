@@ -28,16 +28,20 @@ typedef struct {
     uint8_t  econ_l100;              /* economy shown as 0 = km/L, 1 = L/100 km */
     uint8_t  theme;                  /* 0 auto (light by day once the clock is known), 1 light, 2 dark */
 } ui_settings_t;
-/* 6: the Wi-Fi app joined the registry (just before Settings) and app hiding is gone. Same size and layout as 5. */
-#define UI_SETTINGS_VER 6
+/* 6: the Wi-Fi app joined the registry (just before Settings) and app hiding is gone. Same size and layout as 5.
+   7: the E.V app joined the registry right after the R.E.V app (mossREV M1). Same size and layout as 6. */
+#define UI_SETTINGS_VER 7
 
 /* ---- loading: the saved blob -> the settings to use ----
-   napps = apps in this firmware's registry (Settings is the last one), wifi = the Wi-Fi app's registry index (the
-   index version 6 added; -1 when the firmware has none). A version-5 blob is migrated: every index from wifi upwards
-   moves up by one, Wi-Fi goes in just before Settings, and every hidden app is shown again. Any version: invalid and
-   repeated indices are dropped and apps missing from the order are appended in registry order. */
+   napps = apps in this firmware's registry (Settings is the last one). wifi = the Wi-Fi app's registry index (the app
+   version 6 added), ev = the E.V app's registry index (the app version 7 added, registered right after R.E.V); -1 when
+   the firmware has none. Each step moves every saved index from the new app's index upwards up by one:
+   5 -> 6 puts Wi-Fi in just before Settings and shows every hidden app again, 6 -> 7 puts E.V in just after R.E.V (the
+   app before it in the registry), so a user's order is kept around the new app. A version-5 blob takes both steps.
+   Any version: invalid and repeated indices are dropped and apps missing from the order are appended in registry
+   order. */
 enum { OCM_SET_REJECT = 0, OCM_SET_OK, OCM_SET_CHANGED };   /* REJECT: use the defaults; CHANGED: save the result back */
-int ocm_settings_migrate(const ui_settings_t *saved, ui_settings_t *out, int napps, int wifi);
+int ocm_settings_migrate(const ui_settings_t *saved, ui_settings_t *out, int napps, int wifi, int ev);
 
 /* ---- Home order: move the app at pos one place up (dir -1) or down (+1); false at either end ---- */
 bool ocm_order_move(ui_settings_t *s, int pos, int dir);

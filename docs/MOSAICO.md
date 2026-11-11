@@ -74,12 +74,12 @@ The desktop app talks to the Mosaico over the same USB protocol as the S3: pairi
 
 ## The apps
 
-The launcher has a Home page and 15 apps on four more pages. Swipe left and right between pages, tap an app to open it, and tap Back (the round arrow at the top left) or swipe down to come home. Back is a 44 px circle with a touch area 104 px wide that reaches from the screen corner down to the first card, so a thumb from the corner always hits it.
+The launcher has a Home page and 16 apps on four more pages. Swipe left and right between pages, tap an app to open it, and tap Back (the round arrow at the top left) or swipe down to come home. Back is a 44 px circle with a touch area 104 px wide that reaches from the screen corner down to the first card, so a thumb from the corner always hits it.
 
 - **Drive.** The live drive view (speed, rpm and more) and the End drive control (hold it for 1 second).
 - **AI.** What the model in use sees: the manoeuvre class and the three estimates (brake pressure, flywheel torque, fuel rate).
 - **Learning.** The model in use, its self-test, and what R.E.V has learned so far.
-- **R.E.V.** Whether R.E.V is the model in use, its self-test and the fuel-learning counts. With E.V in use it says "Not active" and keeps what R.E.V learned.
+- **R.E.V and E.V.** One app per model, side by side on the launcher: its self-test, its own figures (R.E.V's fuel learning, what E.V answers) and a 64 px "Use R.E.V" or "Use E.V" button that reads "In use" for the model running. The button takes the Settings > MODEL path and is refused during a drive. While E.V runs, the Learning app dims its cards and says learning is off, and R.E.V keeps what it learned.
 - **Summary.** The last drive: distance, time, economy, hard brakes, a speed and fuel chart, what the AI saw every 10 seconds, the history of the last drives, and the recent events (see below).
 - **Live, Fuel, Brakes, Trip, Engine.** The live OBD values grouped by topic.
 - **Faults.** Stored, pending and permanent trouble codes, ranked by severity and grouped by shared cause.
@@ -109,7 +109,7 @@ mossREV carries both on-board models, each re-quantized by ESP-PPQ for the esp32
 
 Both files are exported without ESP-PPQ's int16 lookup table (`int16_lut_step=-1`). ESP-DL reads a stepped int16 table by nearest neighbour while ESP-PPQ's simulator computes the exact ReLU, and that was the whole gap between the chip and the PC.
 
-A new board starts on R.E.V. To switch, open Settings > MODEL on the screen and tap R.E.V or E.V, or use the desktop app's model switch. A switch needs the car to be parked: during a drive the board says "A drive is active. End the drive first, then switch models." The board keeps the choice after a restart. Every model mark and name on the screen follows the model in use, and what R.E.V learned stays on the board while E.V runs. One model is loaded at a time.
+A new board starts on R.E.V. To switch, tap Use in the R.E.V or E.V app, open Settings > MODEL and tap R.E.V or E.V, or use the desktop app's model switch. A switch needs the car to be parked: during a drive the board says "A drive is active. End the drive first, then switch models." The board keeps the choice after a restart. Every model mark and name on the screen follows the model in use, and what R.E.V learned stays on the board while E.V runs. One model is loaded at a time.
 
 ## Smart swipe and Smart UI
 
@@ -192,7 +192,7 @@ mossREV 1.2.1 will use the S31's pixel-processing accelerator and 2D-DMA for the
 ## Licences
 
 - OpenCarMind: MIT.
-- Tabler Icons v3.51.0, 14 of the launcher's app icons (the R.E.V app shows the R.E.V mark): MIT, Copyright (c) 2020-2026 Paweł Kuna.
+- Tabler Icons v3.51.0, 14 of the launcher's app icons (the R.E.V and E.V apps show their own marks): MIT, Copyright (c) 2020-2026 Paweł Kuna.
 - Fonts on the screen: LVGL's built-in Montserrat fonts, under the SIL Open Font License 1.1, with the Font Awesome 5 symbols LVGL merges into them, under the Font Awesome Free licence.
 - No Inter font ships in the firmware. The desktop app's stylesheet names Inter first but uses it only if it is installed on the computer.
 
