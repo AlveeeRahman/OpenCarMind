@@ -6,7 +6,7 @@ if(ocm_target STREQUAL "esp32s31")
     list(APPEND ocm_board_srcs "swipe_intent.c")                   # smart swipe (CONFIG_OCM_SWIPE_INTENT)
     list(APPEND ocm_board_srcs "mosaico_clock.c" "clock_set.c")    # Settings > Clock: set the clock by hand
     list(APPEND ocm_board_reqs esp_app_format)                    # its firmware tag: the app ELF SHA
-    set(ocm_ml_dir "${CMAKE_CURRENT_LIST_DIR}/../ml/onboard_s31")   # CarMind R.E.V re-quantized for the S31 (rev/)
+    set(ocm_ml_dir "${CMAKE_CURRENT_LIST_DIR}/../ml/onboard_s31")   # CarMind E.V (ev/) and R.E.V (rev/) re-quantized for the S31
 else()
     set(ocm_board_srcs "display.c")
     set(ocm_board_reqs perfmon)                                      # Xtensa PMU (cpu_monitor.c)
@@ -67,7 +67,9 @@ if(CONFIG_CARMIND_ML_ENABLE)
     idf_component_get_property(esp_dl_dir espressif__esp-dl COMPONENT_DIR)
     set(cmake_dir ${esp_dl_dir}/fbs_loader/cmake)
     include(${cmake_dir}/utilities.cmake)
-    if(NOT ocm_target STREQUAL "esp32s31")   # mossREV: the ESP-Mosaico build carries CarMind R.E.V only (ml_infer.cpp)
+    if(ocm_target STREQUAL "esp32s31")       # CarMind E.V for the S31 (ml/onboard_s31/ev), the same symbol
+        target_add_aligned_binary_data(${COMPONENT_LIB} "${ocm_ml_dir}/ev/onboard.espdl" BINARY)
+    else()
         target_add_aligned_binary_data(${COMPONENT_LIB} "${ocm_ml_dir}/onboard.espdl" BINARY)
     endif()
     # CarMind R.E.V (ml/onboard/rev/onboard.espdl). The helper names the symbol and its generated .S after the file name, so the

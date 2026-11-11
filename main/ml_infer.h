@@ -1,7 +1,7 @@
 /* On-board model: manoeuvre recogniser + estimator (ESP-DL), fed from the OBD poll loop.
  *
  * Two models are embedded in flash and one runs at a time: CarMind E.V (the default) and, with CONFIG_CARMIND_REV_ENABLE,
- * CarMind R.E.V (the ESP-Mosaico build, esp32s31, carries R.E.V only), about half the size, which also outputs its 64-value feature z for on-board fuel learning (rev_task.h).
+ * CarMind R.E.V, about half the size, which also outputs its 64-value feature z for on-board fuel learning (rev_task.h).
  * The desktop app switches between them over USB (ml_select_model); the choice is kept in NVS (namespace "ml", key "model").
  *
  * ml_feed() is called for every logged row and builds 1 s bins of the 10 pattern-layer channels.
@@ -25,7 +25,7 @@ typedef enum { ML_MODEL_EV = 0, ML_MODEL_REV = 1, ML_MODEL_COUNT } ml_model_id_t
 const char *ml_model_key(int id);        /* "ev", "rev" */
 const char *ml_model_name(int id);       /* "CarMind E.V", "CarMind R.E.V" */
 bool ml_model_available(int id);         /* built into this firmware */
-int  ml_model_active(void);              /* the selected model, ML_MODEL_EV until NVS says otherwise */
+int  ml_model_active(void);              /* the selected model; before ml_init the one a new board starts on */
 const char *ml_model_version(int id);    /* first 12 hex of the model file's sha256, "" when not built in */
 const char *ml_model_target(int id);     /* the chip the model file was exported for ("esp32s3", "esp32s31") */
 /* The loaded model's self-test at load (CONFIG_CARMIND_ML_SELFTEST): 1 = its outputs on the embedded test input are within

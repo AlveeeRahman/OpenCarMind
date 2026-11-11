@@ -12,7 +12,7 @@
  *   obd         obd_poll       1 s (rows)    30 s       5     1     14 KB internal  ELM327 I/O, collectors, R.E.V physics
  *   mode        -              event         -          5     0     3 KB            DRIVE / SEEK arbitration
  *   sync        -              event         -          4     0     8 KB            Wi-Fi clock
- *   ml          ml             10 s windows  10 s       3     1     6 KB PSRAM      CarMind R.E.V (the only model here)
+ *   ml          ml             10 s windows  10 s       3     1     6 KB PSRAM      E.V or R.E.V, one at a time
  *   taskLVGL    ui             50 ms         50 ms      2     0     8 KB internal   this file: visible screen only
  *   rev         rev            stride        30 s       2     1     6 KB            fuel learner
  *   sdsync      -              5 s           -          2     any   6 KB            card / flash FAT saves
@@ -666,6 +666,7 @@ static void take_snapshot(void)
     status_get(&s_st);
     s->st = &s_st;
     ml_get_stats(&s->ml);
+    s->model = ml_model_active();
     s->nprobs = ml_get_last_probs(s->probs, 4);
     if (s_producers_ready) rev_get_status(&s->rs);       /* the R.E.V learner exists only after rev_init() */
     else { memset(&s->rs, 0, sizeof s->rs); s->rs.cal = 1.0f; }

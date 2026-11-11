@@ -26,7 +26,11 @@ extern "C" {                     /* C headers without their own C++ guards, befo
 #include "board.h"
 #include "ml_infer.h"
 #include "cpu_monitor.h"
+#if CONFIG_IDF_TARGET_ESP32S31
+#include "ml_params_ev_s31.h"    /* generated from ml/onboard_s31/ev: the S31 export of E.V, its own hash and target */
+#else
 #include "ml_params.h"
+#endif
 #include "harden.h"
 #include "sched_mon.h"
 #include "rev_task.h"
@@ -54,15 +58,19 @@ static const char *TAG = "ml";
 #else
 #define ML_ROW_PREFIX ""
 #endif
-/* mossREV: the ESP-Mosaico (esp32s31) build carries CarMind R.E.V only, so it has no E.V file and no model switch. The
-   esp32s3 build carries E.V and, with CONFIG_CARMIND_REV_ENABLE, R.E.V. */
-#if CONFIG_IDF_TARGET_ESP32S31
-#define ML_EV_BUILT_IN 0
-#if CONFIG_CARMIND_ML_ENABLE && !CONFIG_CARMIND_REV_ENABLE
-#error "the ESP32-S31 build carries CarMind R.E.V only: turn CONFIG_CARMIND_REV_ENABLE on"
-#endif
-#else
+/* Both builds carry CarMind E.V and, with CONFIG_CARMIND_REV_ENABLE, R.E.V; the desktop app (MODEL SET) and, on the
+   ESP-Mosaico, Settings switch between them. The ESP-Mosaico (esp32s31) files are the same models re-quantized for that
+   chip (ml/onboard_s31). mossREV starts a new board on R.E.V (stored_model), so the S31 build needs it. */
 #define ML_EV_BUILT_IN 1
+#if CONFIG_IDF_TARGET_ESP32S31 && CONFIG_CARMIND_ML_ENABLE && !CONFIG_CARMIND_REV_ENABLE
+#error "the ESP32-S31 build (mossREV) starts on CarMind R.E.V: turn CONFIG_CARMIND_REV_ENABLE on"
+#endif
+/* The model ml_model_active() names until ml_init has read the stored choice: on the ESP-Mosaico the one a new board starts
+   on (stored_model: R.E.V), so the screens show the right model while it loads. */
+#if CONFIG_IDF_TARGET_ESP32S31 && CONFIG_CARMIND_REV_ENABLE
+#define ML_MODEL_BOOT ML_MODEL_REV
+#else
+#define ML_MODEL_BOOT (ML_EV_BUILT_IN ? ML_MODEL_EV : ML_MODEL_REV)
 #endif
 #if ML_EV_BUILT_IN
 extern const uint8_t ml_model_start[] asm("_binary_onboard_espdl_start");
@@ -90,7 +98,7 @@ static const ml_model_desc_t MODELS[ML_MODEL_COUNT] = {
     {"rev", "CarMind R.E.V", "", "", "", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr},
 #endif
 };
-static volatile int s_active = ML_EV_BUILT_IN ? ML_MODEL_EV : ML_MODEL_REV;   /* the model that is loaded (or being loaded) */
+static volatile int s_active = ML_MODEL_BOOT;       /* the model that is loaded (or being loaded) */
 static bool s_z_ok;                                  /* the loaded model's "z" output exists and has REV_NF - 1 values */
 #define MAF_CH 3                                     /* channel index of MAF in FIELDS */
 
@@ -138,7 +146,7 @@ EXT_RAM_BSS_ATTR static float s_phi[REV_NF];
 #endif
 
 static dl::Model     *s_model;
-static ml_stats_t     s_stats = {false, 0, 0, 0, 0, 0, -1, 0.0f, {0.0f, 0.0f, 0.0f}, 0, ML_EV_BUILT_IN ? ML_MODEL_EV : ML_MODEL_REV, false, false, 0.0f, 0.0f, 0, 0};
+static ml_stats_t     s_stats = {false, 0, 0, 0, 0, 0, -1, 0.0f, {0.0f, 0.0f, 0.0f}, 0, ML_MODEL_BOOT, false, false, 0.0f, 0.0f, 0, 0};
 static float          s_last_p[ML_N_CLASSES];
 static SemaphoreHandle_t s_stats_lock;
 static sched_job_t    s_job = -1;
@@ -572,7 +580,7 @@ static int stored_model(void)
     uint8_t v = ml_model_available(ML_MODEL_REV) ? ML_MODEL_REV : ML_MODEL_EV;
     if (nvs_open("ml", NVS_READONLY, &h) == ESP_OK) { nvs_get_u8(h, "model", &v); nvs_close(h); }
     if (v < ML_MODEL_COUNT && ml_model_available(v)) return (int)v;
-    return ml_model_available(ML_MODEL_EV) ? (int)ML_MODEL_EV : (int)ML_MODEL_REV;   /* R.E.V-only build: R.E.V */
+    return ml_model_available(ML_MODEL_EV) ? (int)ML_MODEL_EV : (int)ML_MODEL_REV;   /* a build without E.V: R.E.V */
 }
 
 /* Unloading and loading at run time is what ml_unload()/ml_load() were written for: the model lock is held across the swap, the

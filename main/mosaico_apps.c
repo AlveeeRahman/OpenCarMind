@@ -22,8 +22,9 @@
 #include "mosaico_files.h"
 #include "mosaico_drive.h"
 #include "fault_engine.h"
-/* mossREV: this build carries CarMind R.E.V only, so every model mark on the screen is the R.E.V mark */
-extern const lv_image_dsc_t ocm_mark_rev_34, ocm_mark_rev_24, ocm_mark_rev_tile;
+/* Model marks: every model mark and model name on the screens follows the model in use (ui_snap_t.model), E.V or R.E.V.
+   The R.E.V app keeps its own tile and mark: it is the page of R.E.V and its learning, whichever model runs. */
+extern const lv_image_dsc_t ocm_mark_rev_34, ocm_mark_rev_24, ocm_mark_rev_tile, ocm_mark_ev_34, ocm_mark_ev_24;
 #define LEARNED_STATE "R.E.V"
 #define LEARNED_STATE_AND "R.E.V"
 extern const lv_image_dsc_t ocm_icon_drive_52, ocm_icon_ai_52, ocm_icon_learn_52, ocm_icon_summary_52, ocm_icon_live_52, ocm_icon_fuel_52, ocm_icon_brakes_52, ocm_icon_trip_52, ocm_icon_engine_52, ocm_icon_faults_52, ocm_icon_board_52, ocm_icon_files_52, ocm_icon_settings_52;
@@ -81,6 +82,10 @@ static void pill_set(lv_obj_t *p, const char *t, uint32_t c)
         lv_obj_set_style_border_color(p, lv_color_hex(c), 0);
 }
 
+static bool rev_in_use(const ui_snap_t *s) { return s->model == ML_MODEL_REV; }
+static const char *model_tag(const ui_snap_t *s) { return rev_in_use(s) ? "R.E.V" : "E.V"; }
+static const lv_image_dsc_t *model_mark_34(const ui_snap_t *s) { return rev_in_use(s) ? &ocm_mark_rev_34 : &ocm_mark_ev_34; }
+static void mark_set(lv_obj_t *img, const lv_image_dsc_t *mk) { if (lv_image_get_src(img) != (const void *)mk) lv_image_set_src(img, mk); }
 static bool have_f(const ui_snap_t *s, int f) { return s->obd_live && OBD_HAS(&s->st->obd, f); }
 /* Where the torque figure comes from, the same rule on Drive, AI and Brakes: the physics torque (from fuel and rpm) while
    the car reports it, else the model's estimate. The badge shows it on every update, also before the first value. */
@@ -249,6 +254,8 @@ static void ai_create(lv_obj_t *p)
 static void ai_update(const ui_snap_t *s)
 {
     const ml_stats_t *m = &s->ml;
+    pill_set(a_tag, model_tag(s), UI_ORANGE);
+    mark_set(a_mark, model_mark_34(s));
     if (m->windows) ui_set_fmt(a_right, "%lu windows, %.1f ms", (unsigned long)m->windows, m->last_us / 1000.0);
     else ui_set_text(a_right, m->ready ? "no windows yet" : "model not loaded");
     bool have = m->last_class >= 0;
@@ -289,7 +296,7 @@ static void ai_update(const ui_snap_t *s)
 }
 
 /* ======================= Learning ======================= */
-static lv_obj_t *l_saved_dot, *l_saved, *l_f2, *l_f3, *l_k2, *l_k3, *l_tank_u, *l_tbar, *l_tnote, *l_state, *l_n[3];
+static lv_obj_t *l_saved_dot, *l_saved, *l_f2, *l_f3, *l_k2, *l_k3, *l_tank_u, *l_tbar, *l_tnote, *l_state, *l_n[3], *l_mark, *l_note;
 static d_val_t l_f1, l_k1, l_t1;
 
 /* the self-test of the model at load: its outputs on the file's own test input against ESP-PPQ's PC simulation */
@@ -322,7 +329,7 @@ static void learn_create(lv_obj_t *p)
     l_tbar = d_bar(c, 0, 28, DW - 28, 8, UI_GREEN, 100);
     l_tnote = d_txt(c, UI_THEME.f_small, UI_MUTED, "", 0, 42);
     c = d_card(p, DX, DY + 192, DW, 150, UI_GREEN, false);
-    lv_obj_t *mk = lv_image_create(c);                    /* the R.E.V mark next to the model's figures */
+    lv_obj_t *mk = l_mark = lv_image_create(c);           /* the mark of the model in use next to its figures */
     lv_image_set_src(mk, &ocm_mark_rev_24);
     lv_obj_set_pos(mk, 0, -4);
     d_lab(c, "MODEL", 30, 0, UI_GREEN);
@@ -333,7 +340,7 @@ static void learn_create(lv_obj_t *p)
         l_n[k] = d_txt(c, UI_THEME.f_title, UI_TEXT, "--", k * 140, 26);
         d_txt(c, UI_THEME.f_small, UI_MUTED, N[k], k * 140, 58);
     }
-    lv_obj_t *n = d_txt(c, UI_THEME.f_label, UI_MUTED, "The classifier stays as shipped; the fuel read-out learns in this car.", 0, 86);
+    lv_obj_t *n = l_note = d_txt(c, UI_THEME.f_label, UI_MUTED, "", 0, 86);
     lv_obj_set_width(n, DW - 28);
     lv_label_set_long_mode(n, LV_LABEL_LONG_WRAP);
 }
@@ -362,21 +369,24 @@ static void learn_update(const ui_snap_t *s)
     bar_set(l_tbar, (int)fminf(fmaxf(r->tank.span_pct, 0), 100));
     ui_set_fmt(l_tnote, "Gauge span seen: %.0f %%. More fill-ups make it sharper.", (double)r->tank.span_pct);
     const ml_stats_t *m = &s->ml;
-    if (m->ready) ui_set_fmt(l_state, "R.E.V %s", ml_model_version(ML_MODEL_REV)); else ui_set_text(l_state, "R.E.V not loaded");
+    mark_set(l_mark, rev_in_use(s) ? &ocm_mark_rev_24 : &ocm_mark_ev_24);
+    if (m->ready) ui_set_fmt(l_state, "%s %s", model_tag(s), ml_model_version(s->model)); else ui_set_fmt(l_state, "%s not loaded", model_tag(s));
+    ui_set_text(l_note, rev_in_use(s) ? "The classifier stays as shipped; the fuel read-out learns in this car."
+                                      : "E.V runs as shipped. Fuel learning needs R.E.V (Settings, MODEL).");
     ui_set_fmt(l_n[0], "%lu", (unsigned long)m->windows);
     ui_set_text(l_n[1], m->ready ? selftest_word() : "--");
     if (m->ready && m->selftest_us) ui_set_fmt(l_n[2], "%.1f ms", m->selftest_us / 1000.0); else ui_set_text(l_n[2], "--");
 }
 
 /* ======================= R.E.V: the model in use, its self-test and the fuel learning ======================= */
-static lv_obj_t *v_step, *v_card[2], *v_big[2], *v_l1[2], *v_l2[2], *v_learn, *v_z, *v_n[3], *v_saved, *v_resets;
+static lv_obj_t *v_sub, *v_step, *v_card[2], *v_big[2], *v_l1[2], *v_l2[2], *v_ok, *v_learn, *v_z, *v_n[3], *v_saved, *v_resets;
 
 static void rev_create(lv_obj_t *p)
 {
     lv_obj_t *t = d_header(p, "R.E.V");
     lv_obj_t *mk = d_after(t, lv_image_create(p));
     lv_image_set_src(mk, &ocm_mark_rev_34);
-    d_after(mk, ui_label(p, UI_THEME.f_label, UI_MUTED, "the model in use"));
+    v_sub = d_after(mk, ui_label(p, UI_THEME.f_label, UI_MUTED, "the model in use"));
     v_step = d_right(p, "", UI_MUTED);
     int hw = (DW - 8) / 2;
     static const char *const R[2] = {"MODEL", "SELF-TEST"};
@@ -391,7 +401,7 @@ static void rev_create(lv_obj_t *p)
     lv_obj_t *c = d_card(p, DX, DY + 128, DW, 46, UI_BORDER, false);
     lv_obj_set_style_radius(c, 16, 0);
     lv_obj_set_style_pad_ver(c, 0, 0);
-    lv_obj_t *ok = ui_label(c, UI_THEME.f_value, UI_GREEN, LV_SYMBOL_OK);
+    lv_obj_t *ok = v_ok = ui_label(c, UI_THEME.f_value, UI_GREEN, LV_SYMBOL_OK);
     lv_obj_align(ok, LV_ALIGN_LEFT_MID, 0, 0);
     v_learn = ui_label(c, UI_THEME.f_body, UI_TEXT, "");
     lv_obj_align(v_learn, LV_ALIGN_LEFT_MID, 30, 0);
@@ -413,21 +423,31 @@ static void rev_update(const ui_snap_t *s)
 {
     const ml_stats_t *m = &s->ml;
     const rev_status_t *r = &s->rs;
-    if (m->windows) ui_set_fmt(v_step, "%lu windows, %.1f ms", (unsigned long)m->windows, m->last_us / 1000.0);
+    /* E.V in use: R.E.V is not loaded, its learning is paused and everything it learned stays as saved */
+    bool on = rev_in_use(s), ready = on && m->ready;
+    ui_set_text(v_sub, on ? "the model in use" : "not active");
+    ui_set_color(v_sub, on ? UI_MUTED : UI_WARN);
+    if (!on) ui_set_text(v_step, "E.V in use");
+    else if (m->windows) ui_set_fmt(v_step, "%lu windows, %.1f ms", (unsigned long)m->windows, m->last_us / 1000.0);
     else ui_set_text(v_step, m->ready ? "no windows yet" : "not loaded");
-    int t = m->ready ? ml_selftest_state() : -1;
-    uint32_t edge[2] = {m->ready ? UI_GREEN : UI_THEME.dim, t > 0 ? UI_GREEN : t == 0 ? UI_WARN : UI_THEME.dim};
+    int t = ready ? ml_selftest_state() : -1;
+    uint32_t edge[2] = {ready ? UI_GREEN : on ? UI_THEME.dim : UI_WARN, t > 0 ? UI_GREEN : t == 0 ? UI_WARN : UI_THEME.dim};
     for (int k = 0; k < 2; k++)
         if (lv_color_to_u32(lv_obj_get_style_border_color(v_card[k], 0)) != lv_color_to_u32(lv_color_hex(edge[k])))
             lv_obj_set_style_border_color(v_card[k], lv_color_hex(edge[k]), 0);
-    ui_set_text(v_big[0], m->ready ? "CarMind R.E.V" : "--");
+    ui_set_text(v_big[0], ready ? "CarMind R.E.V" : on ? "--" : "Not active");
+    ui_set_color(v_big[0], on ? UI_TEXT : UI_WARN);
     ui_set_fmt(v_l1[0], "model %s", ml_model_version(ML_MODEL_REV));
-    ui_set_fmt(v_l2[0], "for %s, %s", ml_model_target(ML_MODEL_REV), m->ready ? "loaded" : "not loaded");
-    ui_set_text(v_big[1], m->ready ? selftest_word() : "--");
-    if (m->ready && m->selftest_us) ui_set_fmt(v_l1[1], "one run %.1f ms", m->selftest_us / 1000.0); else ui_set_text(v_l1[1], "");
-    ui_set_text(v_l2[1], t >= 0 ? "vs the PC simulation, 1 LSB" : "");
-    ui_set_text(v_learn, r->learning ? "Learning fuel use in this car" : r->safe ? "Learning off: safe mode" : "Learning off");
-    ui_set_text(v_z, m->z_ok ? "z output yes" : "z output no");
+    if (on) ui_set_fmt(v_l2[0], "for %s, %s", ml_model_target(ML_MODEL_REV), m->ready ? "loaded" : "not loaded");
+    else ui_set_text(v_l2[0], "E.V runs now");
+    ui_set_text(v_big[1], ready ? selftest_word() : "--");
+    if (ready && m->selftest_us) ui_set_fmt(v_l1[1], "one run %.1f ms", m->selftest_us / 1000.0); else ui_set_text(v_l1[1], "");
+    ui_set_text(v_l2[1], t >= 0 ? "vs the PC simulation, 1 LSB" : on ? "" : "runs when R.E.V loads");
+    ui_set_text(v_ok, on ? LV_SYMBOL_OK : LV_SYMBOL_PAUSE);
+    ui_set_color(v_ok, on ? UI_GREEN : UI_WARN);
+    if (on) ui_set_text(v_learn, r->learning ? "Learning fuel use in this car" : r->safe ? "Learning off: safe mode" : "Learning off");
+    else ui_set_text(v_learn, "Not active: learned values are kept");
+    ui_set_text(v_z, !on ? "" : m->z_ok ? "z output yes" : "z output no");
     ui_set_fmt(v_n[0], "%lu", (unsigned long)r->commits);
     ui_set_fmt(v_n[1], "%lu", (unsigned long)r->kept);
     ui_set_fmt(v_n[2], "%lu", (unsigned long)r->pairs);
@@ -1148,6 +1168,7 @@ static void drive_update(const ui_snap_t *s)
         bar_set(d_pb[k], s->nprobs > k ? pct(s->probs[k]) : 0);
         lv_obj_set_style_bg_color(d_pb[k], lv_color_hex(have && k == m->last_class ? DCLS[k] : 0x4A4A4A), LV_PART_INDICATOR);
     }
+    mark_set(d_mark, model_mark_34(s));
     if (have) ui_set_fmt(d_ev[0], "%.1f bar", (double)m->last_est[0]); else ui_set_text(d_ev[0], "--");
     ui_set_text(d_tag[1], TORQUE_SRC(s));
     if (torque_physics(s)) ui_set_fmt(d_ev[1], "%.0f N m", (double)o->torque_nm);
@@ -1719,12 +1740,76 @@ static void widget_cb(lv_event_t *e)
     ui_settings_set(&s);
 }
 
+/* repaint one segment of segmented() as selected or not */
+static void seg_paint(lv_obj_t *b, bool on)
+{
+    lv_obj_set_style_bg_color(b, lv_color_hex(on ? UI_ORANGE : UI_THEME.track), 0);
+    ui_set_color(lv_obj_get_child(b, 0), on ? UI_BG : UI_TEXT);
+}
+
+/* Settings > Model: R.E.V / E.V. The board task switches (ml_select_model, the USB door's MODEL SET path) and keeps the
+   choice in NVS; the segment shows the request until the board task answers, then the model in use. */
+static const int MODEL_SEG[2] = {ML_MODEL_REV, ML_MODEL_EV};
+static lv_obj_t *g_mseg[2], *g_model;
+static int g_model_req = -1, g_model_shown = -1;           /* requested id (-1 none), segment painted for (-1 none) */
+static uint32_t g_model_gen;                               /* mosaico_model_result_t.gen when the request was sent */
+static char g_model_err[80];
+
+static void model_pick(int id)
+{
+    if (g_model_req >= 0 || id == ml_model_active()) return;
+    if (!ml_model_available(id)) { ui_confirm(id == ML_MODEL_EV ? "CarMind E.V is not in this firmware." : "CarMind R.E.V is not in this firmware.", "OK", NULL, NULL); return; }
+    if (elm_drive_active()) { ui_confirm("A drive is active. End the drive first, then switch models.", "OK", NULL, NULL); return; }
+    mosaico_model_result_t r;
+    mosaico_board_model_result(&r);
+    if (!mosaico_board_request(MB_MODEL_SET, (uint32_t)id)) { ui_confirm("The board is busy. Try again in a moment.", "OK", NULL, NULL); return; }
+    g_model_gen = r.gen;
+    g_model_req = id;
+    g_model_err[0] = 0;
+}
+
+/* the segment and the line under it; called from settings_update (1 s) and right after a tap */
+static void model_show(int active, bool ready)
+{
+    if (!g_model) return;
+    int sel = g_model_req >= 0 ? g_model_req : active;
+    if (sel != g_model_shown) {
+        for (int i = 0; i < 2; i++) seg_paint(g_mseg[i], MODEL_SEG[i] == sel);
+        g_model_shown = sel;
+    }
+    bool rev = active == ML_MODEL_REV;
+    int t = ml_selftest_state();
+    if (g_model_req >= 0) ui_set_fmt(g_model, "Loading CarMind %s ...", g_model_req == ML_MODEL_REV ? "R.E.V" : "E.V");
+    else if (g_model_err[0]) ui_set_fmt(g_model, "Not switched: %s", g_model_err);
+    else if (!ready) ui_set_fmt(g_model, "CarMind %s is not loaded.", rev ? "R.E.V" : "E.V");
+    else ui_set_fmt(g_model, "CarMind %s %s, self-test %s. %s", rev ? "R.E.V" : "E.V", ml_model_version(active),
+                    t > 0 ? "exact" : t == 0 ? "differs" : "not run", rev ? "Learns fuel use in this car." : "Runs as shipped.");
+    ui_set_color(g_model, g_model_err[0] ? UI_WARN : UI_MUTED);
+}
+
+static void model_poll(void)
+{
+    if (g_model_req < 0) return;
+    mosaico_model_result_t r;
+    mosaico_board_model_result(&r);
+    if (r.gen == g_model_gen) return;                      /* the board task has not answered yet */
+    if (!r.ok) snprintf(g_model_err, sizeof g_model_err, "%s", r.why);
+    g_model_req = -1;
+}
+
 /* segmented controls: user data = (setting << 8) | option */
-enum { SEG_THEME = 1, SEG_UNITS, SEG_OFF };
+enum { SEG_THEME = 1, SEG_UNITS, SEG_OFF, SEG_MODEL };
 static const uint16_t OFF_S[] = {0, 10, 20, 60};
 static void seg_cb(lv_event_t *e)
 {
     int code = (int)(intptr_t)lv_event_get_user_data(e), what = code >> 8, opt = code & 0xFF;
+    if (what == SEG_MODEL) {                               /* not a UI setting: the model choice lives in NVS "ml" */
+        model_pick(MODEL_SEG[opt]);
+        ml_stats_t m;
+        ml_get_stats(&m);
+        model_show(ml_model_active(), m.ready);
+        return;
+    }
     ui_settings_t s;
     ui_settings_get(&s);
     if (what == SEG_THEME) s.theme = (uint8_t)opt;
@@ -1990,8 +2075,8 @@ static lv_obj_t *text_btn(lv_obj_t *p, const char *t, int x, int y, int w, uint3
     return b;
 }
 
-/* a row of n equal segments; the selected one is filled with the app accent */
-static void segmented(lv_obj_t *p, int y, const char *const *opts, int n, int sel, int what)
+/* a row of n equal segments; the selected one is filled with the app accent. out (n entries, or NULL) gets the segments. */
+static void segmented(lv_obj_t *p, int y, const char *const *opts, int n, int sel, int what, lv_obj_t **out)
 {
     int w = (380 - (n - 1) * 6) / n;
     for (int i = 0; i < n; i++) {
@@ -2006,6 +2091,7 @@ static void segmented(lv_obj_t *p, int y, const char *const *opts, int n, int se
         lv_obj_remove_flag(b, LV_OBJ_FLAG_SCROLLABLE);
         lv_obj_add_event_cb(b, seg_cb, LV_EVENT_CLICKED, (void *)(intptr_t)((what << 8) | i));
         lv_obj_center(ui_label(b, F16, i == sel ? UI_BG : UI_TEXT, opts[i]));
+        if (out) out[i] = b;
     }
 }
 
@@ -2022,7 +2108,7 @@ static void settings_fill(void)
 {
     if (!g_list) return;
     lv_obj_clean(g_list);
-    g_bright_sl = g_bright_val = g_clk_time = g_clk_src = NULL;
+    g_bright_sl = g_bright_val = g_clk_time = g_clk_src = g_model = NULL;
     ui_settings_t s;
     ui_settings_get(&s);
     int y = 0;
@@ -2050,8 +2136,20 @@ static void settings_fill(void)
     y += 40;
     static const char *const TH[] = {"Auto", "Light", "Dark"};
     at(ui_caption(g_list, "THEME (HOME AND APPS)"), 4, y); y += 22;
-    segmented(g_list, y, TH, 3, s.theme, SEG_THEME); y += 54;
+    segmented(g_list, y, TH, 3, s.theme, SEG_THEME, NULL); y += 54;
     at(ui_label(g_list, F14, UI_MUTED, "Auto: Light 06:00 to 17:00 once the clock is set, else Dark."), 4, y); y += 30;
+    static const char *const MD[2] = {"R.E.V", "E.V"};    /* MODEL_SEG order */
+    at(ui_caption(g_list, "MODEL"), 4, y); y += 22;
+    int act = ml_model_active(), msel = g_model_req >= 0 ? g_model_req : act;
+    segmented(g_list, y, MD, 2, MODEL_SEG[0] == msel ? 0 : 1, SEG_MODEL, g_mseg); y += 54;
+    g_model_shown = msel;
+    g_model = at(ui_label(g_list, F14, UI_MUTED, ""), 4, y);
+    lv_obj_set_width(g_model, 380);
+    lv_label_set_long_mode(g_model, LV_LABEL_LONG_WRAP);
+    ml_stats_t mst;
+    ml_get_stats(&mst);
+    model_show(act, mst.ready);
+    y += 46;
     at(ui_caption(g_list, "CLOCK"), 4, y); y += 22;
     g_clk_time = at(ui_label(g_list, F20, UI_TEXT, "--"), 4, y); y += 30;
     g_clk_src = at(ui_label(g_list, F14, UI_MUTED, ""), 4, y);
@@ -2096,12 +2194,12 @@ static void settings_fill(void)
     y += 56;
     static const char *const UN[] = {"km/L", "L/100 km"};
     at(ui_caption(g_list, "ECONOMY UNITS"), 4, y); y += 22;
-    segmented(g_list, y, UN, 2, s.econ_l100 ? 1 : 0, SEG_UNITS); y += 58;
+    segmented(g_list, y, UN, 2, s.econ_l100 ? 1 : 0, SEG_UNITS, NULL); y += 58;
     static const char *const OFF[] = {"Never", "10 s", "20 s", "60 s"};
     int sel = 0;
     for (int i = 0; i < 4; i++) if (OFF_S[i] == s.screen_off_s) sel = i;
     at(ui_caption(g_list, "SCREEN OFF AFTER"), 4, y); y += 22;
-    segmented(g_list, y, OFF, 4, sel, SEG_OFF); y += 58;
+    segmented(g_list, y, OFF, 4, sel, SEG_OFF, NULL); y += 58;
     at(ui_caption(g_list, "OBD ADAPTER (BLUETOOTH)"), 4, y); y += 22;
     g_ble = at(ui_label(g_list, F16, UI_TEXT, "--"), 4, y); y += 28;
     text_btn(g_list, LV_SYMBOL_REFRESH " Search now", 4, y, 186, UI_ORANGE, search_cb);
@@ -2159,7 +2257,9 @@ static void settings_create(lv_obj_t *p)
 
 static void settings_destroy(void)
 {
-    g_list = g_ble = g_wifi = g_bright_sl = g_bright_val = g_store = g_swipe = g_clk_time = g_clk_src = NULL;
+    g_list = g_ble = g_wifi = g_bright_sl = g_bright_val = g_store = g_swipe = g_clk_time = g_clk_src = g_model = NULL;
+    g_mseg[0] = g_mseg[1] = NULL;
+    g_model_err[0] = 0;                                  /* a refusal is shown once, not on every visit */
     if (ck_page) lv_async_call(ck_close, NULL);
 }
 
@@ -2184,6 +2284,8 @@ static void settings_update(const ui_snap_t *s)
         ui_set_fmt(g_wifi, "%s%s", st->wifi <= WIFI_ST_IDLE ? W[st->wifi] : "?", st->time_synced ? ", clock synced" : ", clock not synced");
     }
     clock_show(st);
+    model_poll();
+    model_show(s->model, s->ml.ready);
 }
 
 /* ======================= registry ======================= */

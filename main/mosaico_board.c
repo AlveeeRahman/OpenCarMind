@@ -19,6 +19,7 @@
 #include "wifi_sync.h"
 #include "freertos/queue.h"
 #include "mosaico_clock.h"
+#include "ml_infer.h"
 
 static const char *TAG = "mosaico";
 
@@ -42,6 +43,27 @@ bool mosaico_board_request(mb_cmd_t cmd, uint32_t arg)
 {
     mb_req_t r = { (uint8_t)cmd, arg };
     return s_q && xQueueSend(s_q, &r, 0) == pdTRUE;
+}
+
+static mosaico_model_result_t s_model_res;         /* published under s_mux, a memcpy only */
+
+void mosaico_board_model_result(mosaico_model_result_t *out)
+{
+    portENTER_CRITICAL(&s_mux);
+    *out = s_model_res;
+    portEXIT_CRITICAL(&s_mux);
+}
+
+static void model_set(int id)
+{
+    mosaico_model_result_t r = { .model = id };
+    if (elm_drive_active()) snprintf(r.why, sizeof r.why, "a drive is running: switch models while parked");   /* usb_door.c */
+    else r.ok = ml_select_model(id, r.why, sizeof r.why);
+    ESP_LOGI(TAG, "model %s from the screen: %s", ml_model_key(id), r.ok ? "loaded" : r.why);
+    portENTER_CRITICAL(&s_mux);
+    r.gen = s_model_res.gen + 1;
+    s_model_res = r;
+    portEXIT_CRITICAL(&s_mux);
 }
 
 static void do_request(const mb_req_t *r)
@@ -72,6 +94,7 @@ static void do_request(const mb_req_t *r)
         gpio_set_level(BOARD_MOTOR, 0);
         break;
     case MB_CLOCK_SET:        mosaico_clock_do_set(); break;
+    case MB_MODEL_SET:        model_set((int)r->arg); break;
     case MB_WIFI_NOW:         ESP_LOGI(TAG, "Wi-Fi clock sync now: %s", wifi_sync_connect_now() ? "started" : "not available"); break;
     }
 }

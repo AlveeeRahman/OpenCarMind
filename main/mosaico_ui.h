@@ -77,6 +77,7 @@ typedef struct {
     char                clock[16];   /* "17:31" when the clock is set, else uptime "1:02:03" style "up 12m" */
     bool                obd_live;   /* adapter logging with engine data */
     bool                drive_active;   /* the OBD poll loop is in a drive (elm_drive_active) */
+    int                 model;      /* ml_model_active(): the model in use, E.V or R.E.V; every model mark and name follows it */
 } ui_snap_t;
 
 typedef struct {

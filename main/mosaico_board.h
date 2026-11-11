@@ -25,8 +25,12 @@ typedef struct { bool ok; uint32_t total_kb, free_kb; } mosaico_storage_t;
 /* Work the UI hands to the board task (internal-RAM stack, lowest priority), so the LVGL task never touches FatFs, NVS,
    BLE or Wi-Fi itself. Never blocks: false when the queue (8 deep) is full. */
 typedef enum { MB_FILES_SCAN = 0, MB_FILES_DETAIL, MB_FILES_DELETE, MB_FILES_DELETE_ALL, MB_BLE_FORGET, MB_BLE_SEARCH,
-               MB_WIFI_NOW, MB_FORMAT, MB_BUZZ, MB_CLOCK_SET } mb_cmd_t;
+               MB_WIFI_NOW, MB_FORMAT, MB_BUZZ, MB_CLOCK_SET, MB_MODEL_SET } mb_cmd_t;
 bool mosaico_board_request(mb_cmd_t cmd, uint32_t arg);
+/* Settings > Model (MB_MODEL_SET, arg = ml_model_id_t): the board task switches with ml_select_model, the path the USB door's
+   MODEL SET takes, after the same "drive running" check. gen counts finished requests; why is the refusal when ok is false. */
+typedef struct { uint32_t gen; bool ok; int model; char why[80]; } mosaico_model_result_t;
+void mosaico_board_model_result(mosaico_model_result_t *out);
 
 void mosaico_board_init(void);                     /* after the console, before the display */
 i2c_master_bus_handle_t mosaico_i2c_bus(void);
