@@ -516,9 +516,6 @@ extern "C" int ml_get_last_probs(float *out, int max)
     return n;
 }
 
-#if CONFIG_IDF_TARGET_ESP32S31
-#define ML_JOB_MS ((ML_STRIDE_S > 0 ? ML_STRIDE_S : 10) * 1000)   /* the ml job's period and deadline (sched_register below) */
-#endif
 static volatile int s_selftest_state = -1;           /* 1 exact, 0 differs, -1 not run (ml_selftest_state) */
 
 /* One timed run on the model's embedded test input. Caller holds the model lock. */
@@ -543,6 +540,9 @@ static uint32_t selftest(void)
 #endif
 }
 
+#if CONFIG_IDF_TARGET_ESP32S31
+static_assert((int)OS_AI_EV == (int)ML_MODEL_EV && (int)OS_AI_REV == (int)ML_MODEL_REV, "the AI service contract ids are the model ids");
+#endif
 extern "C" const char *ml_model_key(int id) { return id >= 0 && id < ML_MODEL_COUNT ? MODELS[id].key : "?"; }
 extern "C" const char *ml_model_name(int id) { return id >= 0 && id < ML_MODEL_COUNT ? MODELS[id].name : "?"; }
 extern "C" bool ml_model_available(int id)
@@ -618,7 +618,7 @@ extern "C" bool ml_select_model(int id, char *why, size_t why_n)
 #if CONFIG_IDF_TARGET_ESP32S31
             /* mossREV OS admission (os_core.h): its measured run x 2 must leave every core-1 deadline met, else the old
                model comes back, as after a failed load */
-            if (!os_admit_model(MODELS[id].name, us, ML_JOB_MS, ML_JOB_MS, 3, 1, why, why_n)) {
+            if (!os_admit_model(id, us, why, why_n)) {
                 ok = false;
                 delete s_model;
                 s_active = old;
@@ -656,9 +656,16 @@ extern "C" void ml_init(void)
     s_active = stored_model();
     s_model = load_model();
     if (s_model && !check_outputs(s_model)) { delete s_model; s_model = nullptr; }
+#if CONFIG_IDF_TARGET_ESP32S31
+    int fb = os_ai_contract(s_active)->fallback;   /* the AI service contract: R.E.V falls back to E.V, E.V to nothing */
+    if (!s_model && fb >= 0 && ml_model_available(fb)) {
+        sys_event(EV_WARN, "%s failed to load, using %s", MODELS[s_active].name, MODELS[fb].name);
+        s_active = fb;
+#else
     if (!s_model && s_active != ML_MODEL_EV && ml_model_available(ML_MODEL_EV)) {   /* the stored choice does not load: fall back to E.V */
         sys_event(EV_WARN, "%s failed to load, using E.V", MODELS[s_active].name);
         s_active = ML_MODEL_EV;
+#endif
         s_model = load_model();
         if (s_model && !check_outputs(s_model)) { delete s_model; s_model = nullptr; }
     }
@@ -668,17 +675,21 @@ extern "C" void ml_init(void)
              s_z_ok ? "yes" : "no");
     s_stats.selftest_us = selftest();
 #if CONFIG_IDF_TARGET_ESP32S31
-    if (!os_admit_model(MODELS[s_active].name, s_stats.selftest_us, ML_JOB_MS, ML_JOB_MS, 3, 1, NULL, 0)) {
+    if (!os_admit_model(s_active, s_stats.selftest_us, NULL, 0)) {
         sys_event(EV_ERROR, "Model refused: a deadline would fail");   /* the response-time analysis (os_core.h) */
         delete s_model;
         s_model = nullptr;
         return;
     }
 #endif
+#if CONFIG_IDF_TARGET_ESP32S31
+    s_job = os_ai_register(s_active, true);       /* the AI service contract (os_core.h): the same period, deadline, stall */
+#else
     s_job = sched_register("ml", (ML_STRIDE_S > 0 ? ML_STRIDE_S : 10) * 1000, (ML_STRIDE_S > 0 ? ML_STRIDE_S : 10) * 1000, true);
     /* The model runs once per OBD row, which the car paces: about 1.4 s on a real car with gaps over 3 s, so three 1 s
        periods is too tight. A stall is no run for a whole 10 s label window while rows are expected. */
     if (ML_STRIDE_S > 0) sched_set_stall_ms(s_job, 10000);   /* stride 0 keeps the 3-period rule of its 10 s period */
+#endif
     sched_set_expected(s_job, false);              /* runs only while windows arrive */
 #if BOARD_HAS_SD
     /* stack in PSRAM: the task only computes and never runs while the flash cache is disabled */

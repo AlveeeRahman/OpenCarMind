@@ -260,9 +260,14 @@ void rev_init(void)
        model's; the deadline is the commit cadence, since a fold may wait for CPU budget. Not on the watchdog: the job also
        saves to the card, so sched_mon's I/O rule (restart after 3 x deadline) applies. */
     int stride = CONFIG_CARMIND_ML_STRIDE_S > 0 ? CONFIG_CARMIND_ML_STRIDE_S : 10;
+#if BOARD_MOSAICO
+    (void)stride;
+    s_job = os_ai_register(OS_AI_REV_LEARNER, false);               /* the AI service contract: 2 % in 30 ms bursts, 60 s stall */
+#else
     s_job = sched_register("rev", stride * 1000, 30000, false);
     sched_set_cpu_share(s_job, 20, 30);                              /* 2 % of a core on average, 30 ms bursts */
     sched_set_stall_ms(s_job, 60000);
+#endif
     sched_set_expected(s_job, false);
 #if BOARD_HAS_SD
     /* stack in PSRAM: computation and SD file I/O only, no NVS, so it never runs with the flash cache disabled */

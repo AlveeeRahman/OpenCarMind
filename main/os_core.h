@@ -37,7 +37,14 @@
  *    each release: the critical instant, all tasks released together. Equal priorities do not interfere here, as in
  *    sched_mon.c. A model is admitted on a switch or a load only if every task on its core still meets its deadline when
  *    the model's C is its measured self-test run times OS_ADMIT_FACTOR_PM / 1000. The factor is a safety margin: one
- *    measured run is not a worst case (cache state, PSRAM contention).
+ *    measured run is not a worst case (cache state, PSRAM contention). The recurrence assumes D_i <= T_i or, for a
+ *    job with a longer deadline (the R.E.V learner, D 30 s, T 1 s), that its R_i stays below T_i, which the log shows.
+ *
+ * 5. AI service contract. Every model and learner declares, in one table (os_ai_contract): its period, deadline and
+ *    stall limit (sched_mon), its CPU reservation (sched_mon's token bucket: share per mille of a core, burst ms; 0 =
+ *    none, a model is admitted by the analysis instead), its self-test, its fallback model and the runlevel service
+ *    whose mask decides when it may run. The firmware registers the jobs from the table (os_ai_apply), the admission
+ *    takes its period, deadline, priority and core from it, and ml_init falls back along it.
  */
 #ifndef OS_CORE_H
 #define OS_CORE_H
@@ -161,6 +168,28 @@ typedef struct {
 } os_admit_t;
 /* The set without the candidate's old entry, plus the candidate with C = measured_us x factor_pm / 1000. */
 bool os_admit(const os_rt_task_t *set, int n, const os_rt_task_t *cand, uint32_t measured_us, uint32_t factor_pm, os_admit_t *out);
+
+/* ---------- 5. AI service contract ---------- */
+enum { OS_AI_EV = 0, OS_AI_REV = 1, OS_AI_REV_LEARNER, OS_AI_N };     /* the first two equal ml_model_id_t */
+enum { OS_AI_MODEL = 0, OS_AI_LEARNER };
+enum { OS_ST_NONE = 0, OS_ST_VECTOR };    /* VECTOR: ESP-DL Model::test() on the file's embedded input (1 LSB) + one run */
+typedef struct {
+    const char *name;
+    const char *job;                      /* the sched_mon job it runs as ("ml" is shared by both models) */
+    uint8_t     kind;                     /* OS_AI_MODEL / OS_AI_LEARNER */
+    uint32_t    period_ms, deadline_ms, stall_ms;
+    uint16_t    share_pm;                 /* CPU reservation: per mille of a core, 0 = none */
+    uint16_t    burst_ms;
+    uint8_t     selftest;                 /* OS_ST_* */
+    int8_t      fallback;                 /* OS_AI_* model to load when this one does not, -1 none */
+    uint8_t     svc;                      /* os_svc_t: the runlevel mask that applies */
+    uint8_t     prio;
+    int8_t      core;
+} os_ai_contract_t;
+const os_ai_contract_t *os_ai_contract(int id);                        /* NULL for an unknown id */
+/* The table's rules (host-tested): sane times, a reservation with a burst, fallbacks to models only and without a
+   cycle, models that share a job declare the same timing. Returns the number of broken rules (why: the first). */
+int os_ai_check(const os_ai_contract_t *t, int n, char *why, size_t why_n);
 
 #ifdef __cplusplus
 }

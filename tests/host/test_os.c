@@ -241,12 +241,51 @@ static void test_rta(void)
     CHECK(os_admit(b, 3, &ml, 6000, OS_ADMIT_FACTOR_PM, &a) && a.r_us[1] == 0, "a job that never ran is not analysed");
 }
 
+/* ---------- 5. AI service contract ---------- */
+static void test_contract(void)
+{
+    os_ai_contract_t t[OS_AI_N];
+    char why[96] = "";
+    for (int i = 0; i < OS_AI_N; i++) t[i] = *os_ai_contract(i);
+    CHECK(os_ai_check(t, OS_AI_N, why, sizeof why) == 0, "the shipped table keeps its rules (%s)", why);
+    const os_ai_contract_t *ev = os_ai_contract(OS_AI_EV), *rev = os_ai_contract(OS_AI_REV), *ln = os_ai_contract(OS_AI_REV_LEARNER);
+    /* the values the code registered before 2.0.0 (ml_infer.cpp, rev_task.c, stride 1) */
+    CHECK(ev->period_ms == 1000 && ev->deadline_ms == 1000 && ev->stall_ms == 10000 && ev->prio == 3 && ev->core == 1 && !ev->share_pm,
+          "ml job: T 1 s, D 1 s, stall 10 s, prio 3, core 1, no reservation");
+    CHECK(ln->period_ms == 1000 && ln->deadline_ms == 30000 && ln->stall_ms == 60000 && ln->share_pm == 20 && ln->burst_ms == 30 &&
+          ln->prio == 2 && ln->core == 1, "rev job: T 1 s, D 30 s, stall 60 s, 2 %% in 30 ms bursts, prio 2, core 1");
+    CHECK(rev->fallback == OS_AI_EV && ev->fallback == -1 && ln->fallback == -1, "R.E.V falls back to E.V (ml_init's old rule)");
+    CHECK(ev->svc == OS_SVC_ML && ln->svc == OS_SVC_LEARNER, "runlevel services");
+    CHECK(os_ai_contract(OS_AI_N) == NULL && os_ai_contract(-1) == NULL, "unknown ids");
+    struct { const char *what; void (*mut)(os_ai_contract_t *); } M[] = {
+        { "stall < period",       NULL }, { "share without burst", NULL }, { "share > 1000", NULL }, { "model w/o self-test", NULL },
+        { "fallback to itself",   NULL }, { "fallback cycle",      NULL }, { "fallback to learner", NULL },
+        { "shared job, other D",  NULL }, { "bad core",            NULL },
+    };
+    for (int m = 0; m < (int)(sizeof M / sizeof M[0]); m++) {
+        for (int i = 0; i < OS_AI_N; i++) t[i] = *os_ai_contract(i);
+        switch (m) {
+        case 0: t[OS_AI_EV].stall_ms = 500; break;
+        case 1: t[OS_AI_REV_LEARNER].burst_ms = 0; break;
+        case 2: t[OS_AI_REV_LEARNER].share_pm = 1001; break;
+        case 3: t[OS_AI_REV].selftest = OS_ST_NONE; break;
+        case 4: t[OS_AI_EV].fallback = OS_AI_EV; break;
+        case 5: t[OS_AI_EV].fallback = OS_AI_REV; break;
+        case 6: t[OS_AI_REV].fallback = OS_AI_REV_LEARNER; break;
+        case 7: t[OS_AI_REV].deadline_ms = 900; break;
+        case 8: t[OS_AI_REV_LEARNER].core = 2; break;
+        }
+        CHECK(os_ai_check(t, OS_AI_N, why, sizeof why) > 0, "mutation caught: %s", M[m].what);
+    }
+}
+
 int main(void)
 {
     test_reset_plans();
     test_runlevels();
     test_health();
     test_rta();
+    test_contract();
     printf("os: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail != 0;
 }

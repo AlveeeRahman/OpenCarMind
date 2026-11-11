@@ -175,9 +175,12 @@ void os_tick(void)
 /* ---------- model admission ---------- */
 /* Called with the model lock held (ml_select_model) or before any other task can switch (ml_init), so the static
    buffers below are never shared. */
-bool os_admit_model(const char *name, uint32_t measured_us, uint32_t period_ms, uint32_t deadline_ms, uint8_t prio,
-                    int core, char *why, size_t why_n)
+bool os_admit_model(int ai_id, uint32_t measured_us, char *why, size_t why_n)
 {
+    const os_ai_contract_t *c = os_ai_contract(ai_id);
+    if (!c) { if (why) snprintf(why, why_n, "no contract"); return false; }
+    const char *name = c->name;
+    int core = c->core;
     /* in PSRAM, not on the caller's stack (app_main's is 3.5 KB): one caller at a time (above) */
     EXT_RAM_BSS_ATTR static sched_stats_t js[OS_RTA_MAX - 1];
     EXT_RAM_BSS_ATTR static os_rt_task_t set[OS_RTA_MAX - 1];
@@ -185,11 +188,11 @@ bool os_admit_model(const char *name, uint32_t measured_us, uint32_t period_ms, 
     EXT_RAM_BSS_ATTR static char rl[96];
     int n = sched_get_stats(js, OS_RTA_MAX - 1), k = 0;
     for (int i = 0; i < n; i++) {
-        if (!strcmp(js[i].name, "ml")) continue;                  /* the model's own job: replaced by the candidate */
+        if (!strcmp(js[i].name, c->job)) continue;                /* the model's own job: replaced by the candidate */
         set[k++] = (os_rt_task_t){ js[i].name, js[i].cpu_max_us, js[i].period_ms * 1000u, js[i].deadline_ms * 1000u,
                                    js[i].prio, (int8_t)(js[i].runs ? js[i].core : -1) };
     }
-    const os_rt_task_t cand = { "ml", 0, period_ms * 1000u, deadline_ms * 1000u, prio, (int8_t)core };
+    const os_rt_task_t cand = { c->job, 0, c->period_ms * 1000u, c->deadline_ms * 1000u, c->prio, c->core };
     bool ok = os_admit(set, k, &cand, measured_us, OS_ADMIT_FACTOR_PM, &a);
     int o = 0;
     rl[0] = 0;
@@ -199,10 +202,24 @@ bool os_admit_model(const char *name, uint32_t measured_us, uint32_t period_ms, 
         if (a.r_us[i] == OS_RTA_MISS) o += snprintf(rl + o, sizeof rl - (size_t)o, " %s miss", t->name);
         else o += snprintf(rl + o, sizeof rl - (size_t)o, " %s %.1f/%lu ms", t->name, a.r_us[i] / 1000.0, (unsigned long)(t->d_us / 1000));
     }
-    const char *worst = a.worst < k ? set[a.worst].name : "ml";
+    const char *worst = a.worst < k ? set[a.worst].name : c->job;
     ESP_LOGI(TAG, "admission %s: C %lu us (self-test %lu us x %u.%u) on core %d, R:%s, margin %.1f ms (%s): %s", name,
              (unsigned long)a.c_us, (unsigned long)measured_us, OS_ADMIT_FACTOR_PM / 1000, OS_ADMIT_FACTOR_PM % 1000 / 100,
              core, rl, a.margin_us / 1000.0, worst, ok ? "admitted" : "REFUSED");
     if (!ok && why) snprintf(why, why_n, "%s refused: %s would miss its deadline", name, worst);
     return ok;
+}
+
+/* ---------- AI service contract ---------- */
+int os_ai_register(int ai_id, bool watchdog)
+{
+    const os_ai_contract_t *c = os_ai_contract(ai_id);
+    if (!c) return -1;
+    sched_job_t j = sched_register(c->job, c->period_ms, c->deadline_ms, watchdog);
+    if (c->stall_ms) sched_set_stall_ms(j, c->stall_ms);
+    if (c->share_pm) sched_set_cpu_share(j, c->share_pm, c->burst_ms);   /* the token bucket, for any service that declares one */
+    ESP_LOGI(TAG, "service %s: job %s, T %lu ms, D %lu ms, stall %lu ms, CPU %u per mille in %u ms bursts, prio %u core %d",
+             c->name, c->job, (unsigned long)c->period_ms, (unsigned long)c->deadline_ms, (unsigned long)c->stall_ms,
+             c->share_pm, c->burst_ms, c->prio, c->core);
+    return j;
 }

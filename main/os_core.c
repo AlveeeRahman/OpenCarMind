@@ -1,5 +1,11 @@
 /* os_core.c: the pure rules of the mossREV OS layer. See os_core.h. */
 #include "os_core.h"
+#ifdef ESP_PLATFORM
+#include "sdkconfig.h"
+#endif
+#ifndef CONFIG_CARMIND_ML_STRIDE_S
+#define CONFIG_CARMIND_ML_STRIDE_S 1                  /* host tests: the shipped value */
+#endif
 #include <stdio.h>
 #include <string.h>
 
@@ -196,4 +202,46 @@ bool os_admit(const os_rt_task_t *set, int n, const os_rt_task_t *cand, uint32_t
     out->margin_us = best < INT32_MIN ? INT32_MIN : best > INT32_MAX ? INT32_MAX : (int32_t)best;
     out->ok = miss == 0;
     return out->ok;
+}
+
+/* ---------- 5. AI service contract ----------
+   The values are the ones the code registered before 2.0.0 (ml_infer.cpp, rev_task.c): the ml job runs once per model
+   stride (1 s) with that deadline and a 10 s stall limit (a car paces rows at about 1.4 s with gaps over 3 s), priority 3
+   on core 1. The learner pairs at most once per model run, its deadline is the commit cadence (30 s), it may stall 60 s,
+   and it gets 2 % of a core in 30 ms bursts, priority 2 on core 1. */
+#define ML_MS ((CONFIG_CARMIND_ML_STRIDE_S > 0 ? CONFIG_CARMIND_ML_STRIDE_S : 10) * 1000)
+static const os_ai_contract_t AI[OS_AI_N] = {
+    [OS_AI_EV]  = { "CarMind E.V",  "ml", OS_AI_MODEL, ML_MS, ML_MS, CONFIG_CARMIND_ML_STRIDE_S > 0 ? 10000 : 0, 0, 0,
+                    OS_ST_VECTOR, -1, OS_SVC_ML, 3, 1 },
+    [OS_AI_REV] = { "CarMind R.E.V", "ml", OS_AI_MODEL, ML_MS, ML_MS, CONFIG_CARMIND_ML_STRIDE_S > 0 ? 10000 : 0, 0, 0,
+                    OS_ST_VECTOR, OS_AI_EV, OS_SVC_ML, 3, 1 },
+    [OS_AI_REV_LEARNER] = { "R.E.V learner", "rev", OS_AI_LEARNER, ML_MS, 30000, 60000, 20, 30, OS_ST_NONE, -1,
+                            OS_SVC_LEARNER, 2, 1 },
+};
+
+const os_ai_contract_t *os_ai_contract(int id) { return id >= 0 && id < OS_AI_N ? &AI[id] : NULL; }
+
+int os_ai_check(const os_ai_contract_t *t, int n, char *why, size_t why_n)
+{
+    int bad = 0;
+#define RULE(c, ...) do { if (!(c)) { if (!bad++ && why) snprintf(why, why_n, __VA_ARGS__); } } while (0)
+    for (int i = 0; i < n; i++) {
+        const os_ai_contract_t *c = &t[i];
+        RULE(c->name && c->job && c->period_ms && c->deadline_ms, "%d: name, job, period, deadline", i);
+        RULE(!c->stall_ms || c->stall_ms >= c->period_ms, "%s: stall limit shorter than the period", c->name);
+        RULE(c->share_pm <= 1000 && (!c->share_pm || c->burst_ms), "%s: reservation needs share <= 1000 and a burst", c->name);
+        RULE(c->kind != OS_AI_MODEL || c->selftest != OS_ST_NONE, "%s: a model needs a self-test", c->name);
+        RULE(c->svc < OS_SVC_N && c->core >= 0 && c->core <= 1, "%s: runlevel service and core", c->name);
+        RULE(c->fallback < n && c->fallback != i, "%s: fallback", c->name);
+        if (c->fallback >= 0 && c->fallback < n) RULE(t[c->fallback].kind == OS_AI_MODEL, "%s: falls back to a non-model", c->name);
+        int k = i, steps = 0;
+        while (k >= 0 && k < n && steps <= n) { k = t[k].fallback; steps++; }
+        RULE(steps <= n, "%s: fallback cycle", c->name);
+        for (int j = 0; j < i; j++)
+            if (c->job && t[j].job && !strcmp(c->job, t[j].job))
+                RULE(c->period_ms == t[j].period_ms && c->deadline_ms == t[j].deadline_ms && c->stall_ms == t[j].stall_ms &&
+                     c->prio == t[j].prio && c->core == t[j].core, "%s and %s share a job but not its timing", c->name, t[j].name);
+    }
+#undef RULE
+    return bad;
 }

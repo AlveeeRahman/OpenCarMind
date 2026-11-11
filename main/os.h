@@ -31,8 +31,10 @@ uint8_t       os_health(uint16_t *flags);
 
 /* Model admission (os_core.h section 4): the jobs sched_mon measured plus the model's job with C = its self-test run x 2,
    response-time analysis on its core. Logs every job's R and the margin. false (why filled) when a deadline would fail. */
-bool          os_admit_model(const char *name, uint32_t measured_us, uint32_t period_ms, uint32_t deadline_ms, uint8_t prio,
-                             int core, char *why, size_t why_n);
+bool          os_admit_model(int ai_id, uint32_t measured_us, char *why, size_t why_n);
+/* The AI service contract (os_core.h section 5): register the service's sched_mon job from its table entry, with its
+   stall limit and CPU reservation. Returns the job. */
+int           os_ai_register(int ai_id, bool watchdog);
 
 #ifdef __cplusplus
 }
