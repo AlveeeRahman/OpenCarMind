@@ -37,3 +37,8 @@ void mosaico_storage_read(mosaico_storage_t *out);
 /* UI settings blob: the board task (internal-RAM stack) writes it to NVS when it changed */
 void mosaico_settings_save_request(const void *blob, size_t n);
 bool mosaico_settings_load(void *blob, size_t n);
+/* CONFIG_OCM_SWIPE_INTENT: the smart-swipe learner blob (swipe_intent.h, SI_BLOB_BYTES), NVS "ocm_ui"/"si", written
+   by the board task; and its one-word summary for the SYS console line (mosaico_display.c, any task) */
+void mosaico_si_save_request(const void *blob, size_t n);
+bool mosaico_si_load(void *blob, size_t *n);
+void mosaico_display_swipe_brief(char *out, size_t n);

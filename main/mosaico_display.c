@@ -57,6 +57,13 @@
 #include "driver/spi_master.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#if CONFIG_OCM_SWIPE_INTENT
+#include <stdint.h>
+#include "swipe_intent.h"
+#include "esp_app_desc.h"
+#include "esp_cpu.h"
+#include "src/indev/lv_indev_scroll.h"                /* lv_indev_scroll_throw_handler / _predict */
+#endif
 
 static const char *TAG = "display";
 
@@ -184,6 +191,22 @@ static int64_t s_last_snap_ms = -100000, s_last_app_ms, s_last_sec_ms;
 static int64_t s_rs_us;
 static uint32_t s_tsnap_us __attribute__((unused));                              /* snapshot sliding: the last page picture's render time */
 static uint32_t s_render_max_us;
+#if CONFIG_OCM_SWIPE_INTENT
+/* smart swipe (swipe_intent.h, the block before build_grid): Home's content generation and the Home picture's copy of
+   it, so a picture counts as current only if nothing on Home changed since it was taken; s_si_act = the learner acts on
+   the gesture in flight (arm A of the A/B test) */
+static uint32_t s_ui_mut, s_home_gen, s_home_pic_gen = UINT32_MAX;
+static bool s_si_act;
+static void si_touch(lv_indev_t *indev, bool pressed, int32_t x, int32_t y);
+static void si_attach(lv_obj_t *tv);
+static void si_warm_tick(void);
+static void si_render_ready(void);
+#define SI_MUT() (s_ui_mut++)
+#define SI_HOME_PIC_CURRENT() (s_si_act && s_home_pic_gen == s_home_gen)
+#else
+#define SI_MUT() ((void)0)
+#define SI_HOME_PIC_CURRENT() false
+#endif
 /* the UI job's own soft-deadline figures */
 static sched_job_t s_job = -1;
 static uint32_t s_runs, s_misses, s_max_us, s_late_max_ms;
@@ -195,6 +218,7 @@ void ui_set_text(lv_obj_t *o, const char *t)
     if (!o) return;
     const char *cur = lv_label_get_text(o);
     if (t && cur && strcmp(cur, t) == 0) return;          /* LVGL redraws on every set: only on change */
+    SI_MUT();
     lv_label_set_text(o, t);
 }
 
@@ -213,6 +237,7 @@ void ui_set_color(lv_obj_t *o, uint32_t c)
     if (!o) return;
     lv_color_t want = lv_color_hex(c);
     if (lv_color_to_u32(lv_obj_get_style_text_color(o, 0)) == lv_color_to_u32(want)) return;
+    SI_MUT();
     lv_obj_set_style_text_color(o, want, 0);
 }
 
@@ -587,6 +612,7 @@ static void settings_defaults(ui_settings_t *s)
     s->theme = 0;                                        /* Auto: Light 06:00-17:00 once the clock is known, Dark otherwise */
 }
 
+static bool s_set_loaded;                              /* false: defaults (a first boot or a settings reset) */
 static void settings_load(void)
 {
     ui_settings_t s;
@@ -603,6 +629,7 @@ static void settings_load(void)
     if (m.theme > 2) m.theme = 0;
     if (m.brightness < 5 || m.brightness > 100) m.brightness = 60;
     s_set = m;
+    s_set_loaded = true;
 }
 
 /* ---------- snapshot: one copy of every producer's published state ---------- */
@@ -749,7 +776,7 @@ static void build_status_bar(void)
 static void show(lv_obj_t *o, bool on)
 {
     if (!o) return;
-    if (on == lv_obj_has_flag(o, LV_OBJ_FLAG_HIDDEN)) { if (on) lv_obj_remove_flag(o, LV_OBJ_FLAG_HIDDEN); else lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN); }
+    if (on == lv_obj_has_flag(o, LV_OBJ_FLAG_HIDDEN)) { SI_MUT(); if (on) lv_obj_remove_flag(o, LV_OBJ_FLAG_HIDDEN); else lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN); }
 }
 
 static void power_text(const ui_snap_t *s, char *b, size_t n, bool *measured)
@@ -1224,6 +1251,9 @@ static bool have_level(const ui_snap_t *s) { return s->obd_live && OBD_HAS(&s->s
 
 static void refresh_home(const ui_snap_t *s)
 {
+#if CONFIG_OCM_SWIPE_INTENT
+    uint32_t mut0 = s_ui_mut;
+#endif
     const obd_values_t *o = &s->st->obd;
     char v[24], line[64];
     int mode;                                             /* 0 economy, 1 last drive, 2 fuel low, 3 waiting */
@@ -1321,6 +1351,7 @@ static void refresh_home(const ui_snap_t *s)
         ui_set_text(h_sub[3], UI_SIM_BATT ? "BATTERY (SIM)" : "BATTERY");
         ui_set_fmt(h_pw_vi, "%.2f V x %d mA", s->gauge.mv / 1000.0, abs(s->gauge.ma));
         pw_fill(h_pw_chart, h_pw_ser, h_pw_area, h_pw_sera, NULL);
+        SI_MUT();
         if (s_pw_n) {                                      /* the dot on the newest point */
             lv_point_t pt;
             lv_obj_update_layout(h_pw_chart);
@@ -1330,6 +1361,9 @@ static void refresh_home(const ui_snap_t *s)
     }
     show(h_search, mode == 3);
     ui_drive_ctl_refresh(h_ctl, s);
+#if CONFIG_OCM_SWIPE_INTENT
+    if (s_ui_mut != mut0) s_home_gen++;                   /* Home changed: its slide picture is no longer current */
+#endif
 }
 
 /* one apps page: title row, 2 x 2 lifted cards with a 100 px flat icon (radius 26, dark glyph) and an 18 px label */
@@ -1500,6 +1534,9 @@ static bool tile_snap(int i)
     lv_obj_add_flag(s_tile_wall[i], LV_OBJ_FLAG_HIDDEN);
     s_tsnap_us = (uint32_t)(esp_timer_get_time() - t0);
     s_tsnap_ok[i] = r == LV_RESULT_OK;
+#if CONFIG_OCM_SWIPE_INTENT
+    if (i == 0 && s_tsnap_ok[0]) s_home_pic_gen = s_home_gen;
+#endif
     if (s_tsnap_ok[i]) lv_image_set_src(s_tsnap_img[i], &s_tsnap[i]);
 #if UI_BLIT_SLIDE
     if (s_tsnap_ok[i]) blit_prepare(i);
@@ -1559,7 +1596,7 @@ static void slide_tick(void)
         /* e4: the panel already shows the page's picture. Redraw only the status bar and, on Home, the two cards whose
            values may have changed while invalidation was off. */
         lv_obj_invalidate(s_sb);
-        if (lv_obj_get_scroll_x(s_tv) / UI_W == 0) {
+        if (lv_obj_get_scroll_x(s_tv) / UI_W == 0 && !SI_HOME_PIC_CURRENT()) {   /* smart swipe: a current picture needs no redraw */
             if (h_card) lv_obj_invalidate(h_card);
             if (h_sys) lv_obj_invalidate(h_sys);
         }
@@ -1610,12 +1647,213 @@ static void slide_attach(void)
     lv_obj_add_event_cb(s_tv, tv_scroll_cb, LV_EVENT_SCROLL_BEGIN, NULL);
 #if UI_BLIT_SLIDE
     lv_obj_add_event_cb(s_tv, tv_scroll_cb, LV_EVENT_SCROLL, NULL);
+#if CONFIG_OCM_SWIPE_INTENT
+    si_attach(s_tv);
+#endif
     s_blit_on = false;
 #endif
 }
 #else
 static void slide_tick(void) {}
 static void slide_attach(void) {}
+#endif
+
+#if CONFIG_OCM_SWIPE_INTENT && UI_SNAP_SLIDE && UI_BLIT_SLIDE
+/* ---------- smart swipe: the swipe_intent learner on the launcher's tileview ----------
+   Touch samples reach the learner from touch_read_cb (LVGL task, before LVGL processes them); it predicts the outcome
+   (next / previous / stay) 40 ms after touch-down. Nothing here triggers an action: the tileview follows the finger 1:1
+   as before and LVGL alone picks the page. On arm-A gestures (si_acts) the firmware may only
+     (a) keep the Home picture current while the user rests on a page from which the page prior says Home comes next,
+         and skip the Home card redraw after a slide when the picture is already current;
+     (b) at the lift (LV_EVENT_SCROLL_THROW_BEGIN), run LVGL's own snap decision at once instead of on the next
+         animation tick, when the learner's page agrees with where LVGL's throw lands.
+   Arm B predicts and measures only. Settled = the snap's SCROLL_END if the destination's picture was current, else the
+   end of the corrective redraw (the next RENDER_READY after slide_tick re-enables invalidation). */
+EXT_RAM_BSS_ATTR static uint8_t s_si_blob[SI_BLOB_BYTES];
+static si_t s_si;                                      /* 1296 B, internal RAM: the RLS loop stays out of PSRAM */
+static bool s_si_on, s_si_gest, s_si_lifted;
+static int s_si_wait = -1;                             /* page whose corrective redraw ends the settle, -1 none */
+static uint8_t s_si_page0, s_si_state_saved = 0xFF;
+static si_pred_t s_si_pred;
+static uint32_t s_si_tag, s_si_n, s_si_early, s_si_warm, s_si_cyc_move, s_si_cyc_settle;
+static char s_si_brief[40];
+static portMUX_TYPE s_si_mux = portMUX_INITIALIZER_UNLOCKED;
+
+static uint32_t si_now(void) { return (uint32_t)(esp_timer_get_time() / 1000); }
+
+/* page i's slide picture shows what the live page would (apps pages are static; Home changes with its content) */
+static bool si_fresh(int i) { return i >= 0 && i < s_ntiles && s_tsnap_ok[i] && (i != 0 || s_home_pic_gen == s_home_gen); }
+
+static uint8_t si_fresh_mask(void)
+{
+    uint8_t m = 0;
+    for (int i = 0; i < s_ntiles && i < SI_MAX_PAGES; i++) if (si_fresh(i)) m |= (uint8_t)(1u << i);
+    return m;
+}
+
+static void si_log(const char *why)
+{
+    char l[96];
+    si_metrics_t m;
+    si_metrics_line(&s_si, l, sizeof l);
+    si_metrics_get(&s_si, &m);
+    ESP_LOGW(TAG, "%s: %s | z %.2f, acc %.1f %%, updates %lu, resets %u, early snaps %lu, warm pictures %lu, worst cycles "
+             "predict %lu settle %lu (%.1f / %.1f us)", why, l, m.z100 / 100.0, m.acc_pm / 10.0, (unsigned long)m.updates,
+             m.resets, (unsigned long)s_si_early, (unsigned long)s_si_warm, (unsigned long)s_si_cyc_move,
+             (unsigned long)s_si_cyc_settle, s_si_cyc_move / (double)CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ,
+             s_si_cyc_settle / (double)CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ);
+}
+
+/* after every learned gesture: the SYS-line summary, and NVS when the gate state changed or every 32 gestures */
+static void si_publish(void)
+{
+    static const char *const ST[] = { "learning", "on", "off" };
+    si_metrics_t m;
+    char b[sizeof s_si_brief];
+    si_metrics_get(&s_si, &m);
+    snprintf(b, sizeof b, "%s,%u/%ums,rdy%u,n%u/%u", ST[m.state < 3 ? m.state : 0], m.p95_a_ms, m.p95_b_ms,
+             (m.ready_a_pm + 5u) / 10u, m.n_a, m.n_b);
+    portENTER_CRITICAL(&s_si_mux);
+    memcpy(s_si_brief, b, sizeof b);
+    portEXIT_CRITICAL(&s_si_mux);
+    bool changed = m.state != s_si_state_saved;
+    if (changed || ++s_si_n % 32 == 0) {
+        size_t n = si_save(&s_si, s_si_blob, sizeof s_si_blob, s_si_tag);
+        if (n) mosaico_si_save_request(s_si_blob, n);
+        if (changed && s_si_state_saved != 0xFF) si_log("smart swipe decision");
+        s_si_state_saved = m.state;
+    }
+}
+
+static void si_settle_at(uint32_t now, int page)
+{
+    uint32_t c0 = esp_cpu_get_cycle_count();
+    si_settle(&s_si, now, (uint8_t)page);
+    uint32_t c = esp_cpu_get_cycle_count() - c0;
+    if (c > s_si_cyc_settle) s_si_cyc_settle = c;
+    s_si_lifted = false;
+    s_si_wait = -1;
+    si_publish();
+}
+
+/* from touch_read_cb, every touch read (LVGL task) */
+static void si_touch(lv_indev_t *indev, bool pressed, int32_t x, int32_t y)
+{
+    static bool down;
+    static int16_t lx, ly;
+    if (!s_si_on) return;
+    uint32_t now = si_now();
+    if (pressed && !down) {
+        down = true;
+        if (s_si_lifted || s_si_wait >= 0) { si_abort(&s_si); s_si_lifted = false; s_si_wait = -1; }   /* touched mid-snap */
+        s_si_gest = s_tv && s_cur < 0 && lv_screen_active() == s_home && !s_modal_open() && lv_obj_get_scroll_x(s_tv) % UI_W == 0;
+        if (!s_si_gest) return;
+        s_si_page0 = (uint8_t)lv_obj_get_index(lv_tileview_get_tile_active(s_tv));
+        s_si_act = si_acts(&s_si);
+        s_si_pred.dest = -1;
+        si_begin(&s_si, now, (int16_t)x, (int16_t)y, s_si_page0);
+    } else if (pressed) {
+        if (!s_si_gest) return;
+        uint32_t c0 = esp_cpu_get_cycle_count();
+        si_pred_t p = si_move(&s_si, now, (int16_t)x, (int16_t)y);
+        if (p.valid) {
+            uint32_t c = esp_cpu_get_cycle_count() - c0;
+            if (c > s_si_cyc_move) s_si_cyc_move = c;
+            s_si_pred = p;
+        }
+    } else if (down) {
+        down = false;
+        if (!s_si_gest) return;
+        s_si_gest = false;
+        s_si_pred = si_end(&s_si, now, lx, ly, si_fresh_mask());
+        if (lv_indev_get_scroll_obj(indev) == s_tv) s_si_lifted = true;   /* the snap follows: settle at its end */
+        else si_settle_at(now, s_si_page0);                               /* a tap or a cross-axis drag: stays */
+    }
+    if (pressed) { lx = (int16_t)x; ly = (int16_t)y; }
+}
+
+/* LV_EVENT_SCROLL_THROW_BEGIN, sent by LVGL right after it sees the lift. Arm A: if the learner's page is where the throw
+   lands, run LVGL's own throw handler now (it picks the snap point and starts the snap animation), one animation tick
+   sooner than LVGL's throw animation would. The page is LVGL's either way. */
+static void si_throw_cb(lv_event_t *e)
+{
+    lv_indev_t *in = (lv_indev_t *)lv_event_get_param(e);
+    if (!in || !s_si_lifted || !s_si_act || s_si_pred.dest < 0) return;
+    int32_t land = lv_obj_get_scroll_x(s_tv) - lv_indev_scroll_throw_predict(in, LV_DIR_HOR);
+    int t = land <= 0 ? 0 : (int)((land + UI_W / 2) / UI_W);
+    if (t < s_si_page0 - 1) t = s_si_page0 - 1;            /* the tileview scrolls one page per gesture */
+    if (t > s_si_page0 + 1) t = s_si_page0 + 1;
+    if (t >= s_ntiles) t = s_ntiles - 1;
+    if (t != s_si_pred.dest) return;                       /* disagreement: LVGL snaps on its next tick, as before */
+    s_si_early++;
+    lv_indev_scroll_throw_handler(in);
+}
+
+/* LV_EVENT_SCROLL_END: the throw handler's carries the indev and comes just after it started the snap animation; the
+   animation's own END carries nothing. A throw END with no animation running means the drag ended on a page already. */
+static void si_scroll_end_cb(lv_event_t *e)
+{
+    if (!s_si_lifted || (lv_event_get_param(e) != NULL && lv_anim_get(s_tv, NULL))) return;
+    int32_t sx = lv_obj_get_scroll_x(s_tv);
+    if (sx % UI_W) { si_abort(&s_si); s_si_lifted = false; return; }   /* the snap was interrupted */
+    int page = (int)(sx / UI_W);
+    if (!s_blit_on || si_fresh(page)) si_settle_at(si_now(), page);   /* the panel already shows the right page */
+    else { s_si_lifted = false; s_si_wait = page; }                    /* stale: settled when the redraw is shown */
+}
+
+static void si_render_ready(void) { if (s_si_wait >= 0) si_settle_at(si_now(), s_si_wait); }
+
+/* from the 1 s Home refresh (tick_cb). Arm A: resting on a page from which the user usually swipes to Home, retake the
+   Home picture when Home's content changed, so that slide starts from a current picture (about 120 ms of the LVGL task,
+   never within 700 ms of a touch). */
+static void si_warm_tick(void)
+{
+    uint8_t pct;
+    if (!s_si_on || !s_tv || s_si_gest || s_sliding || !si_acts(&s_si) || s_cur >= 0 || lv_screen_active() != s_home) return;
+    int32_t sx = lv_obj_get_scroll_x(s_tv);
+    if (sx % UI_W || sx == 0 || lv_anim_get(s_tv, NULL) || lv_display_get_inactive_time(s_disp) < 700 || si_fresh(0)) return;
+    if (si_hint_page(&s_si, (uint8_t)(sx / UI_W), &pct) != 0 || pct < 40) return;
+    if (tile_snap(0)) s_si_warm++;
+}
+
+static void si_attach(lv_obj_t *tv)
+{
+    lv_obj_add_event_cb(tv, si_throw_cb, LV_EVENT_SCROLL_THROW_BEGIN, NULL);
+    lv_obj_add_event_cb(tv, si_scroll_end_cb, LV_EVENT_SCROLL_END, NULL);
+    if (s_si_on && (s_si_gest || s_si_lifted || s_si_wait >= 0)) si_abort(&s_si);
+    s_si_gest = s_si_lifted = false;
+    s_si_wait = -1;
+}
+
+/* display_init, after the launcher is built: the model and the gate's verdict from NVS. A different firmware image
+   (ELF SHA) keeps the model and re-runs the A/B test; so does a settings reset. */
+static void si_boot(void)
+{
+    const esp_app_desc_t *d = esp_app_get_description();
+    size_t n = sizeof s_si_blob;
+    memcpy(&s_si_tag, d->app_elf_sha256, sizeof s_si_tag);
+    si_init(&s_si, (uint8_t)s_ntiles, 0x5EED1E55u);
+    bool loaded = mosaico_si_load(s_si_blob, &n) && si_load(&s_si, s_si_blob, n, s_si_tag);
+    if (!s_set_loaded) si_retest(&s_si);
+    s_si_on = true;
+    si_log(loaded ? "smart swipe: model loaded" : "smart swipe: new model");
+}
+
+void ui_swipe_status(char *buf, size_t n) { si_metrics_line(&s_si, buf, n); }
+
+void mosaico_display_swipe_brief(char *out, size_t n)
+{
+    if (!n) return;
+    portENTER_CRITICAL(&s_si_mux);
+    size_t k = strnlen(s_si_brief, sizeof s_si_brief - 1);
+    if (k >= n) k = n - 1;
+    memcpy(out, s_si_brief, k);
+    out[k] = 0;
+    portEXIT_CRITICAL(&s_si_mux);
+    if (!k && n > 1) { out[0] = '-'; out[1] = 0; }         /* nothing learned yet */
+}
+#elif CONFIG_OCM_SWIPE_INTENT
+#error "CONFIG_OCM_SWIPE_INTENT needs the snapshot slide (UI_SNAP_SLIDE and UI_BLIT_SLIDE)"
 #endif
 
 static void build_grid(void) { build_launcher(); }
@@ -1820,6 +2058,9 @@ static void tick_cb(lv_timer_t *t)
             s_theme_check = false;
             refresh_status_bar(&s_snap);
             if (s_cur < 0 && lv_screen_active() == s_home) refresh_home(&s_snap);
+#if CONFIG_OCM_SWIPE_INTENT
+            si_warm_tick();
+#endif
         }
         if (mosaico_drive_take_auto_open())                  /* after End drive: the drive summary */
             for (int i = 0; i < ui_app_count(); i++) if (!strcmp(ui_app(i)->id, "summary")) { open_app(i); break; }
@@ -1869,12 +2110,21 @@ static void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
     esp_lcd_touch_point_data_t pt[1] = {0};
     uint8_t n = 0;
     data->state = LV_INDEV_STATE_RELEASED;
-    if (esp_lcd_touch_read_data(s_tp) != ESP_OK) { s_touch_err++; return; }
+    if (esp_lcd_touch_read_data(s_tp) != ESP_OK) {
+        s_touch_err++;
+#if CONFIG_OCM_SWIPE_INTENT
+        si_touch(indev, false, 0, 0);                    /* LVGL sees a release: so does the learner */
+#endif
+        return;
+    }
     if (esp_lcd_touch_get_data(s_tp, pt, &n, 1) == ESP_OK && n > 0) {
         data->point.x = pt[0].x;
         data->point.y = pt[0].y;
         data->state = LV_INDEV_STATE_PRESSED;
     }
+#if CONFIG_OCM_SWIPE_INTENT
+    si_touch(indev, data->state == LV_INDEV_STATE_PRESSED, data->point.x, data->point.y);
+#endif
 }
 
 static void touch_init(void)
@@ -1930,6 +2180,9 @@ static void render_cb(lv_event_t *e)
         int64_t now = esp_timer_get_time();
         uint32_t d = (uint32_t)(now - s_rs_us);
         if (d > s_render_max_us) s_render_max_us = d;
+#if CONFIG_OCM_SWIPE_INTENT
+        si_render_ready();
+#endif
     }
 }
 
@@ -1996,6 +2249,9 @@ esp_err_t display_init(void)
     bool is_auto;
     ui_th = theme_wanted(s_snap.st, &is_auto);
     rebuild_all();
+#if CONFIG_OCM_SWIPE_INTENT
+    si_boot();
+#endif
     s_splash = make_screen();
     lv_obj_set_style_bg_color(s_splash, lv_color_hex(0x000000), 0);
     lv_obj_t *sl = lv_image_create(s_splash);

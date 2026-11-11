@@ -1745,7 +1745,7 @@ static void bright_cb(lv_event_t *e)
     if (g_bright_val) ui_set_fmt(g_bright_val, "%d %%", s.brightness);
 }
 
-static lv_obj_t *g_store;
+static lv_obj_t *g_store, *g_swipe;
 static void do_format(void *arg) { (void)arg; mosaico_board_request(MB_FORMAT, 0); }
 static void format_again(void *arg)
 {
@@ -1896,6 +1896,13 @@ static void settings_fill(void)
 #else
     at(ui_label(g_list, F14, UI_MUTED, "Wi-Fi is compiled out of this firmware."), 4, y); y += 30;
 #endif
+#if CONFIG_OCM_SWIPE_INTENT
+    at(ui_caption(g_list, "SMART SWIPE (KEEPS ITSELF IF FASTER)"), 4, y); y += 22;
+    g_swipe = at(ui_label(g_list, F14, UI_TEXT, "--"), 4, y);
+    lv_obj_set_width(g_swipe, 380);
+    lv_label_set_long_mode(g_swipe, LV_LABEL_LONG_WRAP);
+    y += 46;
+#endif
     at(ui_caption(g_list, "STORAGE"), 4, y); y += 22;
     g_store = at(ui_label(g_list, F16, UI_TEXT, "--"), 4, y); y += 28;
     text_btn(g_list, LV_SYMBOL_WARNING " Format storage", 4, y, 380, UI_RED, format_cb);
@@ -1930,7 +1937,7 @@ static void settings_create(lv_obj_t *p)
     settings_fill();
 }
 
-static void settings_destroy(void) { g_list = g_ble = g_wifi = g_bright_bar = g_bright_val = g_store = NULL; }
+static void settings_destroy(void) { g_list = g_ble = g_wifi = g_bright_bar = g_bright_val = g_store = g_swipe = NULL; }
 
 static void settings_update(const ui_snap_t *s)
 {
@@ -1941,6 +1948,9 @@ static void settings_update(const ui_snap_t *s)
         if (st->adapter_name[0]) ui_set_fmt(g_ble, "%.24s: %s%s", st->adapter_name, state, st->adapter_saved ? ", paired" : "");
         else ui_set_fmt(g_ble, "%s%s", state, st->adapter_saved ? ", paired" : ", none paired");
     }
+#if CONFIG_OCM_SWIPE_INTENT
+    if (g_swipe) { char b[96]; ui_swipe_status(b, sizeof b); ui_set_text(g_swipe, b); }
+#endif
     if (g_store) {
         if (s->fat.ok) ui_set_fmt(g_store, "%lu of %lu KB free", (unsigned long)s->fat.free_kb, (unsigned long)s->fat.total_kb);
         else ui_set_text(g_store, "measuring");

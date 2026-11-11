@@ -123,6 +123,51 @@ static void settings_flush(void)
     ESP_LOGI(TAG, "UI settings saved: %s", esp_err_to_name(e));
 }
 
+#if CONFIG_OCM_SWIPE_INTENT
+/* smart-swipe blob: a one-slot hand-off. The UI fills the buffer only while it is free; the board task writes it to NVS
+   and frees it. A save that finds the slot busy is dropped (the next one, at most 32 gestures later, carries it). */
+#include "swipe_intent.h"
+#define SI_MAX SI_BLOB_BYTES
+static uint8_t s_si_buf[SI_MAX];                        /* internal RAM: the NVS write reads it with the cache off */
+static size_t s_si_len;
+static volatile bool s_si_dirty;
+
+void mosaico_si_save_request(const void *blob, size_t n)
+{
+    if (n > SI_MAX || s_si_dirty) return;
+    memcpy(s_si_buf, blob, n);
+    s_si_len = n;
+    portENTER_CRITICAL(&s_mux);                          /* publishes the copy before the flag */
+    s_si_dirty = true;
+    portEXIT_CRITICAL(&s_mux);
+}
+
+bool mosaico_si_load(void *blob, size_t *n)
+{
+    nvs_handle_t h;
+    if (nvs_open("ocm_ui", NVS_READONLY, &h) != ESP_OK) return false;
+    bool ok = nvs_get_blob(h, "si", blob, n) == ESP_OK;
+    nvs_close(h);
+    return ok;
+}
+
+static void si_flush(void)
+{
+    if (!s_si_dirty) return;
+    nvs_handle_t h;
+    esp_err_t e = nvs_open("ocm_ui", NVS_READWRITE, &h);
+    if (e == ESP_OK) {
+        e = nvs_set_blob(h, "si", s_si_buf, s_si_len);
+        if (e == ESP_OK) e = nvs_commit(h);
+        nvs_close(h);
+    }
+    portENTER_CRITICAL(&s_mux);
+    s_si_dirty = false;
+    portEXIT_CRITICAL(&s_mux);
+    ESP_LOGI(TAG, "smart swipe state saved (%u B): %s", (unsigned)s_si_len, esp_err_to_name(e));
+}
+#endif
+
 i2c_master_bus_handle_t mosaico_i2c_bus(void) { return s_bus; }
 
 static int read16(uint8_t cmd, bool sign, bool *ok)
@@ -209,6 +254,9 @@ static void board_task(void *arg)
         s_last = g;
         portEXIT_CRITICAL(&s_mux);
         settings_flush();
+#if CONFIG_OCM_SWIPE_INTENT
+        si_flush();
+#endif
         if (tick == 8) storage_report();
         if (tick % 5 == 0 && sdlog_ok()) {
             uint64_t total = 0, free_b = 0;
@@ -230,7 +278,13 @@ static void board_task(void *arg)
             else snprintf(pw, sizeof pw, "%.2fW", g.mv * fabs((double)g.ma) / 1e6);
             char mb[12];
             if (mok) snprintf(mb, sizeof mb, "%.0f", (double)mips); else snprintf(mb, sizeof mb, "--");
+#if CONFIG_OCM_SWIPE_INTENT
+            char sw[40];
+            mosaico_display_swipe_brief(sw, sizeof sw);
+            printf("SYS cpu=%d c0=%d c1=%d ai=%d mips=%s pwr=%s swipe=%s\n", (c0 + c1 + 1) / 2, c0, c1, ai, mb, pw, sw);
+#else
             printf("SYS cpu=%d c0=%d c1=%d ai=%d mips=%s pwr=%s\n", (c0 + c1 + 1) / 2, c0, c1, ai, mb, pw);
+#endif
         }
         if (tick % 30 == 0 && g.ok)
             ESP_LOGI(TAG, "PWR soc=%d%% mv=%d ma=%d rem=%d/%d mAh design=%d%s", g.soc, g.mv, g.ma, g.rem_mah, g.full_mah,

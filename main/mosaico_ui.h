@@ -97,6 +97,7 @@ typedef struct {
 /* app_main calls this once ml_init() and rev_init() have run: before that the snapshot leaves the R.E.V figures empty */
 void mosaico_ui_producers_ready(void);
 uint32_t mosaico_touch_errors(void);            /* failed CST9220 reads (counted, never fatal) */
+void ui_swipe_status(char *buf, size_t n);      /* CONFIG_OCM_SWIPE_INTENT: the Settings line (LVGL task) */
 
 /* app registry (mosaico_apps.c) */
 int               ui_app_count(void);
