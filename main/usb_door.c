@@ -14,6 +14,9 @@
 #include "esp_heap_caps.h"
 #include "board.h"
 #if BOARD_MOSAICO
+#include "sched_mon.h"
+#endif
+#if BOARD_MOSAICO
 #include "mosaico_console.h"        /* the Type-C port is USB OTG: the door runs on the TinyUSB CDC console */
 #else
 #include "driver/usb_serial_jtag.h"
@@ -394,6 +397,9 @@ static void handle(char *line, char *buf, char *b64)
     } else if (!strcmp(cmd, "REBOOT")) {
         reply("OK REBOOT");
         vTaskDelay(pdMS_TO_TICKS(300));
+#if BOARD_MOSAICO
+        sched_mark_intentional_reset();
+#endif
         esp_restart();
     } else reply("ERR unknown command");
 }

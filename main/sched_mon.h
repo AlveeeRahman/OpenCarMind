@@ -82,6 +82,9 @@ void        sched_get_system(sched_system_t *out);
 /* Call first thing in app_main: reads the reset reason, counts boot loops, decides safe mode. */
 void        sched_boot_check(void);
 bool        sched_safe_mode(void);
+/* ESP-Mosaico: call just before a reset somebody asked for (download door, REBOOT, restart after a format), so the next
+   boot does not count it toward safe mode (see reset_class.h) */
+void        sched_mark_intentional_reset(void);
 
 #ifdef __cplusplus
 }

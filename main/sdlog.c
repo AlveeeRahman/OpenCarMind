@@ -17,6 +17,7 @@
 #include "esp_partition.h"
 #include "fat_mirror.h"
 #include "session_next.h"
+#include "sched_mon.h"
 #endif
 #include "esp_system.h"
 #include "sdmmc_cmd.h"
@@ -838,6 +839,7 @@ esp_err_t sdlog_format_storage(uint32_t *free_kb, int *kept_files, char *why, si
         ESP_LOGW(TAG, "damaged storage formatted on request: %s; restarting", esp_err_to_name(err));
         if (err != ESP_OK) { snprintf(why, why_n, "format failed: %s", esp_err_to_name(err)); return err; }
         vTaskDelay(pdMS_TO_TICKS(300));
+        sched_mark_intentional_reset();
         esp_restart();
     }
     if (!s_ok) { snprintf(why, why_n, "storage not mounted"); return ESP_ERR_INVALID_STATE; }

@@ -36,7 +36,7 @@ idf_component_register(
          "wifi_creds.c"
          "events.c"
          "remote_config.c"
-         "sched_mon.c"
+         "sched_mon.c" "reset_class.c"
          "sys_mode.c"
          "ml_infer.cpp"
          "rev_learn.c"

@@ -19,6 +19,13 @@ session: session_tests
 session_tests: test_session_next.c ../../main/session_next.c ../../main/session_next.h
 	$(CC) $(CFLAGS) -o $@ test_session_next.c ../../main/session_next.c
 
+# which resets count toward the boot-loop safe mode (main/reset_class.c)
+reset: reset_tests
+	./reset_tests
+
+reset_tests: test_reset_class.c ../../main/reset_class.c ../../main/reset_class.h
+	$(CC) $(CFLAGS) -o $@ test_reset_class.c ../../main/reset_class.c
+
 carmind_tests: $(SRCS) ../../main/custom_pids.h ../../main/fault_engine.h
 	$(CC) $(CFLAGS) -o $@ $(SRCS) -lm
 
@@ -35,5 +42,5 @@ rev_tests: $(REV_SRCS) ../../main/rev_learn.h ../../main/rev_cal.h ../../main/re
 	$(CC) $(CFLAGS) -o $@ $(REV_SRCS) -lm
 
 clean:
-	rm -f carmind_tests rev_tests tank_tests session_tests
-.PHONY: run rev session clean
+	rm -f carmind_tests rev_tests tank_tests session_tests reset_tests
+.PHONY: run rev session reset clean

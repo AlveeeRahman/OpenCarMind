@@ -11,6 +11,7 @@
  * for the S31; esp_restart() only resets the CPU cores there. */
 #include "mosaico_console.h"
 #include "sdlog.h"
+#include "sched_mon.h"
 #include <stdio.h>
 #include <unistd.h>
 #include "esp_log.h"
@@ -35,6 +36,7 @@ void mosaico_console_download(void)
     fflush(stdout);
     sdlog_quiesce_for_reset();        /* this ROM reset bypasses esp_restart()'s shutdown handlers */
     esp_rom_delay_us(100000);
+    sched_mark_intentional_reset();   /* the boot after esptool's reset reads as a panic otherwise */
     REG_SET_BIT(LP_SYSTEM_REG_SYS_CTRL_REG, LP_SYSTEM_REG_FORCE_DOWNLOAD_BOOT);
     esp_rom_software_reset_system();
     for (;;) {}
