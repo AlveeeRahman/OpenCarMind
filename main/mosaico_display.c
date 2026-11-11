@@ -58,6 +58,10 @@
 #include "driver/spi_master.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#if CONFIG_OCM_PPA
+#include "ocm_ppa.h"
+#include "ocm_ppa_geom.h"
+#endif
 #if CONFIG_OCM_SWIPE_INTENT
 #include <stdint.h>
 #include "swipe_intent.h"
@@ -1633,6 +1637,9 @@ static void blit_prepare(int i)
     if (!s_tblit[i]) s_tblit[i] = heap_caps_aligned_alloc(64, n * 2, MALLOC_CAP_SPIRAM);
     if (!s_tblit[i]) return;
     uint32_t st = s_tsnap[i].header.stride / 2;
+#if CONFIG_OCM_PPA
+    if (ocm_ppa_copy565(s_tblit[i], UI_W, BLIT_ROWS, 0, 0, s_tsnap[i].data, st, UI_H, 0, BLIT_Y0, UI_W, BLIT_ROWS, true)) return;
+#endif
     for (int r = 0; r < BLIT_ROWS; r++) {
         const uint16_t *src = (const uint16_t *)s_tsnap[i].data + (size_t)(r + BLIT_Y0) * st;
         uint16_t *dst = s_tblit[i] + (size_t)r * UI_W;
@@ -1658,11 +1665,21 @@ static void blit_frame(int32_t x)
     int a = (int)(x / UI_W), off = (int)(x % UI_W);
     uint16_t *fb = s_bfb[s_bfi];
     const uint16_t *pa = s_tblit[a], *pb = off ? s_tblit[a + 1] : NULL;
-    for (int r = 0; r < BLIT_ROWS; r++) {
-        memcpy(fb + (size_t)r * UI_W, pa + (size_t)r * UI_W + off, (size_t)(UI_W - off) * 2);
-        if (off) memcpy(fb + (size_t)r * UI_W + (UI_W - off), pb + (size_t)r * UI_W, (size_t)off * 2);
+    bool cpu = true;
+#if CONFIG_OCM_PPA
+    /* 2D-DMA: the same two windows as the row copy below (tests/host make ppa checks they give the same frame) */
+    ocm_slide_split_t sp = ocm_slide_split(x, s_ntiles, UI_W);
+    if (ocm_ppa_copy565(fb, UI_W, BLIT_ROWS, 0, 0, s_tblit[sp.a], UI_W, BLIT_ROWS, (uint32_t)sp.off, 0, (uint32_t)sp.w0, BLIT_ROWS, false) &&
+        (!sp.w1 || ocm_ppa_copy565(fb, UI_W, BLIT_ROWS, (uint32_t)sp.w0, 0, s_tblit[sp.a + 1], UI_W, BLIT_ROWS, 0, 0, (uint32_t)sp.w1, BLIT_ROWS, false)))
+        cpu = false;
+#endif
+    if (cpu) {
+        for (int r = 0; r < BLIT_ROWS; r++) {
+            memcpy(fb + (size_t)r * UI_W, pa + (size_t)r * UI_W + off, (size_t)(UI_W - off) * 2);
+            if (off) memcpy(fb + (size_t)r * UI_W + (UI_W - off), pb + (size_t)r * UI_W, (size_t)off * 2);
+        }
+        esp_cache_msync(fb, (size_t)UI_W * BLIT_ROWS * 2, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
     }
-    esp_cache_msync(fb, (size_t)UI_W * BLIT_ROWS * 2, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
     int64_t t1 = esp_timer_get_time();
     esp_lcd_panel_draw_bitmap(s_panel, 0, BLIT_Y0, UI_W, UI_H, fb);   /* its window commands wait for the previous frame */
     s_bfi ^= 1;
@@ -1685,6 +1702,9 @@ static bool tile_snap(int i)
     if (!s_tsnap_mem[i]) {
         s_tsnap_mem[i] = heap_caps_aligned_alloc(64, stride * UI_H, MALLOC_CAP_SPIRAM);
         if (!s_tsnap_mem[i]) return false;
+#if CONFIG_OCM_PPA_LVGL
+        ocm_ppa_region_add(s_tsnap_mem[i], stride * UI_H);   /* LVGL may fill and copy into the page picture by PPA */
+#endif
     }
     lv_draw_buf_init(&s_tsnap[i], UI_W, UI_H, LV_COLOR_FORMAT_RGB565, stride, s_tsnap_mem[i], stride * UI_H);
     int64_t t0 = esp_timer_get_time();
@@ -2661,6 +2681,9 @@ static void tick_cb(lv_timer_t *t)
             ESP_LOGI(TAG, "render: worst %.1f ms in 10 s, theme %s, ui misses %lu, internal %u KB, PSRAM %u KB free", s_render_max_us / 1000.0,
                      ui_th->name, (unsigned long)s_misses, (unsigned)(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024),
                      (unsigned)(heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024));
+#if CONFIG_OCM_PPA
+        ocm_ppa_log();
+#endif
         s_render_max_us = 0;
     }
     sched_end(s_job);
@@ -2921,6 +2944,9 @@ esp_err_t display_init(void)
     esp_lcd_panel_reset(s_panel);
     if ((e = esp_lcd_panel_init(s_panel)) != ESP_OK) return e;
 
+#if CONFIG_OCM_PPA
+    ocm_ppa_init();                                       /* before the LVGL task exists: its self-test owns the engines */
+#endif
     lvgl_port_cfg_t port = ESP_LVGL_PORT_INIT_CONFIG();
     port.task_priority = 2;                               /* below the OBD poll (5) and the model (3): see the table */
     port.task_stack = 8192;

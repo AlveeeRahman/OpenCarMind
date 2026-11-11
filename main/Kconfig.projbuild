@@ -245,6 +245,37 @@ menu "OBD Logger Configuration"
                 launcher behind the app is refreshed, so the click only has to show it. On half of the taps of each
                 class (after a warm-up) the gate compares it with no prefetch and keeps it only by the Smart UI rule;
                 otherwise it turns it off for that class. The click still decides where the page goes.
+        config OCM_PPA
+            bool "Use the PPA and the 2D-DMA for the screen"
+            depends on IDF_TARGET_ESP32S31 && SOC_PPA_SUPPORTED && SOC_DMA2D_SUPPORTED
+            default y
+            help
+                The launcher slide composes each frame with the 2D-DMA instead of a CPU row copy, and byte-swaps
+                each page picture with the PPA. Every call falls back to the CPU when the driver refuses it, and an
+                engine that fails 3 times in a row, or fails its boot self-test against the CPU, stays off until the
+                next boot (main/ocm_ppa.c). The 23.6 ms the QSPI link needs for a full frame is not changed by this.
+        config OCM_PPA_LVGL
+            bool "Also inside LVGL: large opaque fills and image copies"
+            depends on OCM_PPA
+            default y
+            help
+                LVGL's software renderer hands opaque RGB565 fills and opaque RGB565 image copies of at least
+                OCM_PPA_MIN_PX pixels to the PPA (LV_DRAW_SW_ASM_CUSTOM hooks, main/ppa_lv/ocm_lv_blend_hook.h).
+                Both give the same pixels as the CPU. Needs CONFIG_LV_DRAW_SW_ASM_CUSTOM (sdkconfig.defaults.esp32s31).
+        config OCM_PPA_LVGL_BLEND
+            bool "Also semi-transparent fills (not bit-exact)"
+            depends on OCM_PPA_LVGL
+            default n
+            help
+                The PPA blends at 8 bits per channel, LVGL at 5 bits of opacity, so a glass card can differ by one
+                step between its middle (PPA) and its rounded rows (CPU). Off until a board check shows no seam.
+        config OCM_PPA_MIN_PX
+            int "Smallest LVGL area handed to the PPA (pixels)"
+            depends on OCM_PPA
+            range 256 230400
+            default 4096
+            help
+                Below this the set-up cost of a PPA call is likely more than the CPU loop. To be tuned on the board.
     endmenu
     menu "Diagnostics"
         config CARMIND_TASK_STATS_S

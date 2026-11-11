@@ -23,6 +23,7 @@ tests/host/theme_tests
 tests/host/wificreds_tests
 tests/host/wificreds_src/
 tests/host/rows_tests
+tests/host/ppa_tests
 # ESP-Mosaico (esp32s31) models: CarMind R.E.V and E.V re-quantized for the S31 (the same weights as ml/onboard/rev and ml/onboard)
 ml/onboard_s31/*
 !ml/onboard_s31/rev/

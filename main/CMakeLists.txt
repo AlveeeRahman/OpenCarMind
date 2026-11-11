@@ -16,6 +16,8 @@ if(ocm_target STREQUAL "esp32s31")
     list(APPEND ocm_board_srcs "ui_events_logic.c")                # Summary: the recent-events rows (T1)
     list(APPEND ocm_board_srcs "ui_rows_logic.c")                  # app lists updated in place (R11)
     list(APPEND ocm_board_reqs esp_app_format)                    # its firmware tag: the app ELF SHA
+    list(APPEND ocm_board_srcs "ocm_ppa.c" "ocm_ppa_geom.c")       # PPA and 2D-DMA for the screen (CONFIG_OCM_PPA)
+    list(APPEND ocm_board_reqs esp_driver_ppa esp_driver_dma efuse)
     set(ocm_ml_dir "${CMAKE_CURRENT_LIST_DIR}/../ml/onboard_s31")   # CarMind E.V (ev/) and R.E.V (rev/) re-quantized for the S31
 else()
     set(ocm_board_srcs "display.c")
@@ -69,6 +71,8 @@ if(ocm_target STREQUAL "esp32s31")
     # swipe step e: a short page snap (LVGL clamps the scroll animation to 200..400 ms; lv_obj_scroll.c lets a build set it)
     idf_component_get_property(ocm_lvgl_lib lvgl__lvgl COMPONENT_LIB)
     target_compile_definitions(${ocm_lvgl_lib} PRIVATE SCROLL_ANIM_TIME_MIN=150 SCROLL_ANIM_TIME_MAX=180)
+    # PPA hooks in LVGL's software renderer (CONFIG_LV_DRAW_SW_ASM_CUSTOM_INCLUDE="ocm_lv_blend_hook.h")
+    target_include_directories(${ocm_lvgl_lib} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/ppa_lv")
 endif()
 
 # On-board model (ml/onboard/onboard.espdl), embedded on a 16-byte boundary with ESP-DL's own helper so the loader

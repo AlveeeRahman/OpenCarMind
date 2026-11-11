@@ -48,3 +48,8 @@ CONFIG_LV_DEF_REFR_PERIOD=16
 CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y
 CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF=y
 CONFIG_ESP_COREDUMP_CHECKSUM_SHA256=y
+
+# PPA and 2D-DMA (CONFIG_OCM_PPA, main/ocm_ppa.c): LVGL's software renderer calls the hooks in main/ppa_lv/ocm_lv_blend_hook.h
+# for large RGB565 fills and image copies. With CONFIG_OCM_PPA_LVGL off that file is empty and LVGL runs its plain C loops.
+CONFIG_LV_DRAW_SW_ASM_CUSTOM=y
+CONFIG_LV_DRAW_SW_ASM_CUSTOM_INCLUDE="ocm_lv_blend_hook.h"
