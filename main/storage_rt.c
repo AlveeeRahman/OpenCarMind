@@ -47,7 +47,7 @@ static const char *TAG = "srt";
 #define RT_LOG      RT_DIR "/log.txt"
 #define RT_PROBE    RT_DIR "/probe.bin"
 #define RT_MAGIC    0x31545253u          /* "SRT1" */
-#define RT_STATE_SZ (36 * 1024)          /* like the A.E.V state: 9 clusters allocated and freed on every save */
+#define RT_STATE_SZ (36 * 1024)          /* a large learned state: 9 clusters allocated and freed on every save */
 
 enum { M_RESTART, M_ABORT, M_ROMRESET, M_STALL, M_N };
 static const char *const MODE_NAME[M_N] = {"esp_restart", "abort", "rom_reset", "ui_stall"};
@@ -217,7 +217,7 @@ static void timer_cb(void *arg) { do_reset((int)(intptr_t)arg); }
 static void stall_task(void *arg)
 {
     (void)arg;
-    lvgl_port_lock(0);                                 /* the LVGL task blocks: no ui tick, as when the panel hung in v11u */
+    lvgl_port_lock(0);                                 /* the LVGL task blocks: no ui tick, as when the panel hung on 2026-11-11 */
     for (;;) vTaskDelay(portMAX_DELAY);
 }
 

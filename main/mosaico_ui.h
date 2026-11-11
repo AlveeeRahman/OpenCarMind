@@ -3,11 +3,11 @@
  * An app is one registered struct (mosaico_apps.c): create() builds its widgets into a full-screen parent, update()
  * refreshes them from a snapshot, destroy() (optional) forgets the widget pointers. Only the visible app is updated, at
  * its own period. Apps never read producers directly: the shell copies one ui_snap_t from the firmware's published
- * snapshots (status_get: the status mutex held for a memcpy; ml_get_stats, rev_get_status, aev_glue_snapshot,
+ * snapshots (status_get: the status mutex held for a memcpy; ml_get_stats, rev_get_status,
  * mosaico_gauge_read: a lock or spinlock held for a copy) and hands it to update(). Everything runs in the LVGL task
  * (esp_lvgl_port), so no LVGL call happens elsewhere; other tasks only set flags (display_next_page).
  *
- * Lock order (one global order, never reversed): LVGL port lock -> status mutex / ML / R.E.V / A.E.V locks. No producer
+ * Lock order (one global order, never reversed): LVGL port lock -> status mutex / ML / R.E.V locks. No producer
  * takes the LVGL lock, so the UI can wait on a producer for at most one memcpy, and a producer never waits on the UI. */
 #pragma once
 #include <stdbool.h>

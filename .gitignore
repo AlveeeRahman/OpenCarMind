@@ -10,8 +10,14 @@ tests/host/carmind_tests
 tests/host/rev_tests
 tests/host/tank_tests
 tests/host/fat_tests
-# ESP-Mosaico (esp32s31) model exports: local until a model for that target is published here
+# ESP-Mosaico (esp32s31) models: only CarMind R.E.V's S31 export is published (the same files as ml/onboard/rev)
 ml/onboard_s31/*
+!ml/onboard_s31/rev/
+ml/onboard_s31/rev/*
+!ml/onboard_s31/rev/onboard.espdl
+!ml/onboard_s31/rev/export.json
+!ml/onboard_s31/rev/norm.json
+!ml/onboard_s31/rev/targets.json
 # editor / OS
 .vscode/
 .DS_Store

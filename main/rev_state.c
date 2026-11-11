@@ -199,7 +199,7 @@ static bool blob_read(const char *path, uint32_t magic, void *data, uint32_t siz
 bool rev_blob_load(const char *path, uint32_t magic, void *data, uint32_t size)
 {
     /* The file is read into a scratch copy and checked (magic, stored size == size, CRC, nothing after the CRC) before
-       the caller's struct is touched. Small blobs use a static 1 KB copy. Larger ones (A.E.V's 35,168 B student state)
+       the caller's struct is touched. Small blobs use a static 1 KB copy. Larger ones (35,168 B learned states, for example)
        get a heap copy, PSRAM first on the board: the old code returned false for anything over 1 KB, so such a state
        never reloaded. */
     static uint8_t small[1024];

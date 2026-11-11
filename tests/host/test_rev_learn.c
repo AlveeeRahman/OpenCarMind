@@ -655,7 +655,7 @@ static void test_torque(void)
     CHECK(rev_tq_row(&T, &big, &P, &r) && r.t_b <= 200.0f * 2.0f + 1e-3f);                                         /* clip */
 }
 
-/* rev_blob_save/load with a blob far over the 1 KB static scratch: the A.E.V student state is 35,168 B. Before the fix
+/* rev_blob_save/load with a blob far over the 1 KB static scratch: a 35,168 B learned state. Before the fix
    rev_blob_load returned false for any size over 1 KB, so that state never reloaded. */
 static void test_big_blob(void)
 {

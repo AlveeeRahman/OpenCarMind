@@ -53,7 +53,22 @@ static const char *TAG = "ml";
 #else
 #define ML_ROW_PREFIX ""
 #endif
+/* mossREV: the ESP-Mosaico (esp32s31) build carries CarMind R.E.V only, so it has no E.V file and no model switch. The
+   esp32s3 build carries E.V and, with CONFIG_CARMIND_REV_ENABLE, R.E.V. */
+#if CONFIG_IDF_TARGET_ESP32S31
+#define ML_EV_BUILT_IN 0
+#if CONFIG_CARMIND_ML_ENABLE && !CONFIG_CARMIND_REV_ENABLE
+#error "the ESP32-S31 build carries CarMind R.E.V only: turn CONFIG_CARMIND_REV_ENABLE on"
+#endif
+#else
+#define ML_EV_BUILT_IN 1
+#endif
+#if ML_EV_BUILT_IN
 extern const uint8_t ml_model_start[] asm("_binary_onboard_espdl_start");
+#define ML_EV_DATA ml_model_start
+#else
+#define ML_EV_DATA nullptr
+#endif
 #if CONFIG_CARMIND_REV_ENABLE
 extern const uint8_t ml_rev_model_start[] asm("_binary_onboard_rev_espdl_start");
 #endif
@@ -67,14 +82,14 @@ typedef struct {
     const unsigned char *trained;
 } ml_model_desc_t;
 static const ml_model_desc_t MODELS[ML_MODEL_COUNT] = {
-    {"ev", "CarMind E.V", ML_MODEL_VERSION, ML_QUANT, ML_TARGET_CHIP, ml_model_start, ML_NORM_MEAN, ML_NORM_STD, ML_EST_MEAN, ML_EST_STD, ML_TRAINED},
+    {"ev", "CarMind E.V", ML_MODEL_VERSION, ML_QUANT, ML_TARGET_CHIP, ML_EV_DATA, ML_NORM_MEAN, ML_NORM_STD, ML_EST_MEAN, ML_EST_STD, ML_TRAINED},
 #if CONFIG_CARMIND_REV_ENABLE
     {"rev", "CarMind R.E.V", MLR_MODEL_VERSION, MLR_QUANT, MLR_TARGET_CHIP, ml_rev_model_start, MLR_NORM_MEAN, MLR_NORM_STD, MLR_EST_MEAN, MLR_EST_STD, MLR_TRAINED},
 #else
     {"rev", "CarMind R.E.V", "", "", "", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr},
 #endif
 };
-static volatile int s_active = ML_MODEL_EV;          /* the model that is loaded (or being loaded) */
+static volatile int s_active = ML_EV_BUILT_IN ? ML_MODEL_EV : ML_MODEL_REV;   /* the model that is loaded (or being loaded) */
 static bool s_z_ok;                                  /* the loaded model's "z" output exists and has REV_NF - 1 values */
 #define MAF_CH 3                                     /* channel index of MAF in FIELDS */
 
@@ -122,7 +137,7 @@ EXT_RAM_BSS_ATTR static float s_phi[REV_NF];
 #endif
 
 static dl::Model     *s_model;
-static ml_stats_t     s_stats = {false, 0, 0, 0, 0, 0, -1, 0.0f, {0.0f, 0.0f, 0.0f}, 0, ML_MODEL_EV, false, false, 0.0f, 0.0f, 0, 0};
+static ml_stats_t     s_stats = {false, 0, 0, 0, 0, 0, -1, 0.0f, {0.0f, 0.0f, 0.0f}, 0, ML_EV_BUILT_IN ? ML_MODEL_EV : ML_MODEL_REV, false, false, 0.0f, 0.0f, 0, 0};
 static float          s_last_p[ML_N_CLASSES];
 static SemaphoreHandle_t s_stats_lock;
 static sched_job_t    s_job = -1;
@@ -492,6 +507,8 @@ extern "C" int ml_get_last_probs(float *out, int max)
     return n;
 }
 
+static volatile int s_selftest_state = -1;           /* 1 exact, 0 differs, -1 not run (ml_selftest_state) */
+
 /* One timed run on the model's embedded test input. Caller holds the model lock. */
 static uint32_t selftest(void)
 {
@@ -501,6 +518,7 @@ static uint32_t selftest(void)
        PC side computes w8a16 layers in float32, the S3 in 40-bit integers), so a mismatch is reported, not treated as
        a failure; the replay agreement with the desktop model is the real check. */
     esp_err_t st = s_model->test();
+    s_selftest_state = st == ESP_OK ? 1 : 0;
     int64_t t1 = esp_timer_get_time();
     s_model->run();
     uint32_t us = (uint32_t)(esp_timer_get_time() - t1);
@@ -525,6 +543,9 @@ extern "C" bool ml_model_available(int id)
 #endif
 }
 extern "C" int ml_model_active(void) { return s_active; }
+extern "C" const char *ml_model_version(int id) { return id >= 0 && id < ML_MODEL_COUNT ? MODELS[id].version : ""; }
+extern "C" const char *ml_model_target(int id) { return id >= 0 && id < ML_MODEL_COUNT ? MODELS[id].target : ""; }
+extern "C" int ml_selftest_state(void) { return s_selftest_state; }
 
 extern "C" bool ml_rev_active(void)
 {
@@ -549,7 +570,8 @@ static int stored_model(void)
     nvs_handle_t h;
     uint8_t v = ml_model_available(ML_MODEL_REV) ? ML_MODEL_REV : ML_MODEL_EV;
     if (nvs_open("ml", NVS_READONLY, &h) == ESP_OK) { nvs_get_u8(h, "model", &v); nvs_close(h); }
-    return v < ML_MODEL_COUNT && ml_model_available(v) ? (int)v : (int)ML_MODEL_EV;
+    if (v < ML_MODEL_COUNT && ml_model_available(v)) return (int)v;
+    return ml_model_available(ML_MODEL_EV) ? (int)ML_MODEL_EV : (int)ML_MODEL_REV;   /* R.E.V-only build: R.E.V */
 }
 
 /* Unloading and loading at run time is what ml_unload()/ml_load() were written for: the model lock is held across the swap, the
@@ -610,7 +632,7 @@ extern "C" void ml_init(void)
     s_active = stored_model();
     s_model = load_model();
     if (s_model && !check_outputs(s_model)) { delete s_model; s_model = nullptr; }
-    if (!s_model && s_active != ML_MODEL_EV) {                     /* the stored choice does not load: fall back to E.V */
+    if (!s_model && s_active != ML_MODEL_EV && ml_model_available(ML_MODEL_EV)) {   /* the stored choice does not load: fall back to E.V */
         sys_event(EV_WARN, "%s failed to load, using E.V", MODELS[s_active].name);
         s_active = ML_MODEL_EV;
         s_model = load_model();

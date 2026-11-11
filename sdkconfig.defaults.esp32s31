@@ -9,7 +9,7 @@ CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_TINYUSB_CDC_ENABLED=y
 CONFIG_TINYUSB_CDC_COUNT=1
 CONFIG_TINYUSB_MSC_ENABLED=n
-# app is the car firmware plus three models and the launcher: -Os keeps it inside the 6 MB slot
+# app is the car firmware, CarMind R.E.V and the launcher: -Os keeps it inside the 6 MB slot
 CONFIG_COMPILER_OPTIMIZATION_SIZE=y
 # launcher fonts (480x480) and the LVGL heap in PSRAM (lv_*_core in main/mosaico_display.c)
 CONFIG_LV_FONT_MONTSERRAT_20=y
@@ -38,3 +38,9 @@ CONFIG_LV_USE_SNAPSHOT=y
 
 # swipe step e2: LVGL refresh, animation and touch timers every 16 ms (the slide blit takes ~14 ms)
 CONFIG_LV_DEF_REFR_PERIOD=16
+
+# a crash dump in flash (the "coredump" partition of partitions_mosaico.csv), read back over USB and decoded with the
+# ELF; the ui-stall guard aborts for one
+CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y
+CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF=y
+CONFIG_ESP_COREDUMP_CHECKSUM_SHA256=y

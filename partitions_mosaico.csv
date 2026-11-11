@@ -1,5 +1,5 @@
 # ESP-Mosaico, 16 MB NOR flash (GD25Q128). "storage" is the FAT partition for logs (the board has no micro-SD slot).
-# App slots are 6 MB: L7 with Wi-Fi linked is 3.99 MB at -Os (4.16 MB at -Og), and L8+ adds the OBD stack and E.V/R.E.V.
+# App slots are 6 MB: the launcher with Wi-Fi linked was 3.99 MB at -Os (4.16 MB at -Og) before the OBD stack and the model.
 # The FAT shrinks to 3.75 MB until the 128 MB NAND holds the session logs.
 # Name,     Type, SubType, Offset,   Size,     Flags
 nvs,        data, nvs,     0x9000,   0x6000,

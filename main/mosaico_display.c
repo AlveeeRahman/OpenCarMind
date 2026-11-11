@@ -1,5 +1,5 @@
 /* ESP-Mosaico screen (ESP32-S31 only): 2.16" CO5300 AMOLED, 480x480 over QSPI, CST9220 touch, LVGL 9 through
- * esp_lvgl_port. Panel and touch bring-up follow ~/opencarmind-mosaico/main/display.c and touch.c (layers 1-2, run on
+ * esp_lvgl_port. Panel and touch bring-up follow the ESP-Mosaico bring-up display and touch code (layers 1-2, run on
  * this board). This file is the launcher shell; the apps are in mosaico_apps.c (mosaico_ui.h). It implements display.h,
  * so app_main.c and the rest of the car firmware are unchanged.
  *
@@ -12,7 +12,7 @@
  *   obd         obd_poll       1 s (rows)    30 s       5     1     14 KB internal  ELM327 I/O, collectors, R.E.V physics
  *   mode        -              event         -          5     0     3 KB            DRIVE / SEEK arbitration
  *   sync        -              event         -          4     0     8 KB            Wi-Fi clock
- *   ml          ml             10 s windows  10 s       3     1     6 KB PSRAM      E.V / R.E.V + A.E.V step every >= 5 s
+ *   ml          ml             10 s windows  10 s       3     1     6 KB PSRAM      CarMind R.E.V (the only model here)
  *   taskLVGL    ui             50 ms         50 ms      2     0     8 KB internal   this file: visible screen only
  *   rev         rev            stride        30 s       2     1     6 KB            fuel learner
  *   sdsync      -              5 s           -          2     any   6 KB            card / flash FAT saves
@@ -681,7 +681,7 @@ static lv_obj_t *grow(lv_obj_t *p) { lv_obj_t *g = flex_box(p, LV_FLEX_FLOW_ROW,
 /* ---------- status bar (H): a flex column on lv_layer_top. Row 1 (flex row): the 28 px OpenCarMind mark, the time, a
    spacer, on Drive the CPU and power figures, BT, Wi-Fi, battery icon and %. Row 2: the counter pill (hidden on Home and
    on Drive, where the SYSTEM card and row 1 show the same numbers). Nothing is placed by pixel offsets next to text. ---------- */
-extern const lv_image_dsc_t ocm_logo_28, ocm_logo_160, ocm_mark_rev_34, ocm_mark_ev_34;
+extern const lv_image_dsc_t ocm_logo_28, ocm_logo_160;
 static lv_obj_t *s_sb, *sb_row1, *sb_time, *sb_dcpu, *sb_dpwr, *sb_bt, *sb_wifi, *sb_batt_i, *sb_batt, *sb_pill, *sb_grp[4], *sb_val[4],
                 *s_banner, *s_banner_txt;
 enum { SB_HOME = 0, SB_DRIVE, SB_APP };
@@ -2013,7 +2013,7 @@ esp_err_t display_init(void)
 
     /* under the LVGL lock: the LVGL task is already flushing the splash through the same SPI device, and two tasks'
        polling transactions on one device make spi_device_acquire_bus fail (spi_master.c: "Cannot acquire bus when a
-       polling transaction is in progress"); that left the v11u boot without its flush-done and the UI stalled */
+       polling transaction is in progress"); that left a boot without its flush-done and the UI stalled */
     lvgl_port_lock(0);
     esp_lcd_panel_disp_on_off(s_panel, true);
     esp_lcd_panel_co5300_set_brightness(s_panel, s_set.brightness);

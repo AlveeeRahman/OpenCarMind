@@ -298,7 +298,7 @@ Not checked yet: R.E.V over many drives and other cars, the corrected R.E.V on t
 
 <p align="center"><img src="docs/images/mosaico-rev.png" width="900" alt="Concept: OpenCarMind with CarMind R.E.V on ESP-Mosaico, three 480 by 480 screens in the dark, light and dark themes: drive gauges, what R.E.V sees and estimates, and what it has learned"></p>
 
-The next board is Espressif's ESP-Mosaico<sup>[[12]](#ref-12)</sup>, built on the ESP32-S31, with a 480 × 480 touch screen, Bluetooth Classic, a motion sensor and a small battery. I have one on order, and the concept above (a render with example values) shows CarMind R.E.V on it. The full board comparison is in the [detailed README](https://github.com/AlveeeRahman/OpenCarMind/blob/rev-c2/README.md#next-board-esp-mosaico-with-the-esp32-s31).
+The next board is Espressif's ESP-Mosaico<sup>[[12]](#ref-12)</sup>, built on the ESP32-S31, with a 480 × 480 touch screen, Bluetooth Classic, a motion sensor and a small battery. mossREV 1.0.0 below runs on it, and the concept above (a render with example values) shows CarMind R.E.V on it. The full board comparison is in the [detailed README](https://github.com/AlveeeRahman/OpenCarMind/blob/rev-c2/README.md#next-board-esp-mosaico-with-the-esp32-s31).
 
 ### How the S3 and the S31 are compatible
 
@@ -310,7 +310,20 @@ The Mosaico's accelerometer can label braking and acceleration in the car, so th
 
 ### A release for the Mosaico
 
-OpenCarMind will ship a release for the ESP-Mosaico that runs CarMind R.E.V only, from the same source tree as the S3 version. Work starts when my board arrives.
+**mossREV 1.0.0** is the ESP-Mosaico build of OpenCarMind. It comes from the same source tree as the S3 version and runs CarMind R.E.V only: there is no E.V file in it and no model switch. The desktop app's `MODEL` command answers R.E.V and refuses a switch the same way an E.V-only S3 build refuses R.E.V. Every model mark and word on the screen is R.E.V's. The version, `mossREV 1.0.0`, is in the boot log and on the Board page (the USB door reports it as `fw=mossREV-1.0.0`, because a key=value field has no spaces). The S3 build is unchanged: E.V by default, R.E.V from the desktop app.
+
+```sh
+. $IDF_PATH/export.sh
+idf.py --preview set-target esp32s31
+idf.py build
+```
+
+The S31 is a preview target in ESP-IDF 6.1, hence `--preview`. The board's settings are in `sdkconfig.defaults.esp32s31` and its partition table in `partitions_mosaico.csv`: two 6 MB app slots and 3.75 MB of flash for the logs, since the board has no SD card slot.
+
+- **The model.** `ml/onboard_s31/rev/onboard.espdl` is the public R.E.V, re-quantized by ESP-PPQ for the esp32s31 (8-bit weights, 16-bit activations) from the same trained weights and calibration windows as the S3 file. The S31 stores one weight exponent per output channel, and the classifier head dequantises to exactly the S3 values. It is exported without ESP-PPQ's int16 lookup table (`int16_lut_step=-1`): ESP-DL reads a stepped int16 table by nearest neighbour while ESP-PPQ computes the exact ReLU, and that was the whole gap between the chip and the PC. Without the table the board's self-test is bit-exact (0 of 64, 0 of 3 and 0 of 4 values off), and the quantised model picks the same manoeuvre class as the float model on 255 of 255 calibration windows and 16 of 16 test windows. `main/ml_params_rev_s31.h` is generated from that folder with `tools/gen_ml_params.py`.
+- **The screens.** A launcher with touch on the 480 × 480 AMOLED: Drive, AI, Learning, R.E.V (the model in use, its self-test and the fuel-learning counts), Summary, Live, Fuel, Brakes, Trip, Engine, Faults, Board, Files and Settings. Swiping between pages runs at 17.9 frames per second over a whole run (median slide frame 29 ms).
+- **Flashing without buttons.** The Type-C port is the S31's USB OTG port, so the console and the USB door run on TinyUSB there. When a computer opens that port at 1200 baud (the Arduino upload convention), the board sets the chip's force-download flag and restarts into its ROM download mode. No BOOT or RESET press is needed: open the port at 1200 baud, for example with pyserial, `python -c "import serial; serial.Serial('/dev/cu.usbmodemXXXX', 1200).close()"`, then flash to the ROM's port when it appears with `idf.py -p <that port> flash`.
+- **Log storage that survives resets.** The logs live in a wear-levelled FAT in the 16 MB flash. ESP-IDF writes each 4 KB sector as an erase followed by a write, so a reset between the two leaves an erased sector, and FatFs then copies a torn first FAT over the good second one. This lost the whole volume twice on the bench. Now the logger flushes and holds the file system's lock before every software reset, the two FAT copies are compared before mounting and a torn copy is rewritten from the good one, lost clusters are freed, and a volume that holds data but does not mount is never formatted on its own (Settings has Format storage for that). In a reset-injection bench test (`CONFIG_OCM_STORAGE_RESET_TEST`, off by default, never in a car build) the volume was lost 8 times in 90 resets before the fix and 0 times in 200 after; with the screen frozen until the stall guard resets the board, 2 in 40 before and 0 in 60 after. A panic can still damage the files whose directory sector it was writing: 21 of the 200 cycles damaged a file, almost all after a panic. There is no journal yet.
 
 ## Limitations and future work
 

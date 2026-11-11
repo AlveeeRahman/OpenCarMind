@@ -309,7 +309,15 @@ static void handle(char *line, char *buf, char *b64)
         s_nonce[0] = 0;                              /* one try per HELLO */
         if (ok) {
             s_authed = true; s_pair_only = false; s_last_ms = t;
+#if BOARD_MOSAICO
+            /* the release name has a space ("mossREV 1.0.0") and a key=value field cannot: fw=mossREV-1.0.0 */
+            char fw[32];
+            snprintf(fw, sizeof fw, "%s", CARMIND_VERSION);
+            for (char *c = fw; *c; c++) if (*c == ' ') *c = '-';
+            reply("OK AUTH fw=%s board=%s paired=1", fw, uploader_board_id());
+#else
             reply("OK AUTH fw=%s board=%s paired=1", CARMIND_VERSION, uploader_board_id());
+#endif
         }
         else reply("ERR not accepted: send HELLO, then pair with a code if this app is new");
         return;

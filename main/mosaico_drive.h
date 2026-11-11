@@ -1,16 +1,15 @@
 /* ESP-Mosaico drive recorder and summaries (ESP32-S31 only).
  *
  * A 1 Hz task (priority 1, the lowest, core 0) samples the published snapshots during a drive into PSRAM ring buffers
- * (speed, rpm, fuel rate, economy, A.E.V/model class + confidence, brake and torque estimates), at most 240 points per
+ * (speed, rpm, fuel rate, economy, model class + confidence, brake and torque estimates), at most 240 points per
  * series: when a series fills, neighbouring points are averaged and the step doubles. When the drive ends (the car, or
  * the End drive control on the screen) the same task writes sessions/sNNNNNN.sum.json, appends one line to
  * obd/drives.csv and publishes the summary for the Drive summary app. The UI only reads copies (a mutex held for the
  * copy) and never waits for a file.
  *
  * End drive: the screen asks (mosaico_drive_end_request); this task stops the OBD poll (elm_request_stop, so the OBD
- * task closes the drive through its own end_drive path: model, R.E.V and session saved), saves the A.E.V state now
- * (aev_glue_flush), pauses the A.E.V learner until the car moves again, builds the summary, then lets the link run again
- * (elm_resume): the next drive opens its own session. */
+ * task closes the drive through its own end_drive path: model, R.E.V and session saved), builds the summary, then lets
+ * the link run again (elm_resume): the next drive opens its own session. */
 #pragma once
 #include "sdkconfig.h"
 #include <stdbool.h>
@@ -41,7 +40,7 @@ typedef struct {
 
 void mosaico_drive_start(void);
 void mosaico_drive_end_request(void);          /* UI: the End drive control was held 1 s */
-void mosaico_drive_start_request(void);        /* UI: Start drive (resume the A.E.V learner now) */
+void mosaico_drive_start_request(void);        /* UI: Start drive */
 bool mosaico_drive_ending(void);               /* the end sequence is running */
 void mosaico_drive_get_summary(md_summary_t *out);
 void mosaico_drive_get_history(md_history_t *out);

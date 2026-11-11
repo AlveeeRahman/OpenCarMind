@@ -22,7 +22,8 @@
 #include "mosaico_files.h"
 #include "mosaico_drive.h"
 #include "fault_engine.h"
-extern const lv_image_dsc_t ocm_mark_rev_34, ocm_mark_ev_34;
+/* mossREV: this build carries CarMind R.E.V only, so every model mark on the screen is the R.E.V mark */
+extern const lv_image_dsc_t ocm_mark_rev_34, ocm_mark_rev_24, ocm_mark_rev_tile;
 #define LEARNED_STATE "R.E.V"
 #define LEARNED_STATE_AND "R.E.V"
 extern const lv_image_dsc_t ocm_icon_drive_52, ocm_icon_ai_52, ocm_icon_learn_52, ocm_icon_summary_52, ocm_icon_live_52, ocm_icon_fuel_52, ocm_icon_brakes_52, ocm_icon_trip_52, ocm_icon_engine_52, ocm_icon_faults_52, ocm_icon_board_52, ocm_icon_files_52, ocm_icon_settings_52;
@@ -85,7 +86,6 @@ static void pill_set(lv_obj_t *p, const char *t, uint32_t c)
         lv_obj_set_style_border_color(p, lv_color_hex(c), 0);
 }
 
-static const char *model_tag(const ui_snap_t *s) { return s->ml.model == ML_MODEL_REV ? "R.E.V" : "E.V"; }
 static bool have_f(const ui_snap_t *s, int f) { return s->obd_live && OBD_HAS(&s->st->obd, f); }
 static float fv(const ui_snap_t *s, int f) { return s->st->obd.f[f]; }
 static void set_int_or_dash(lv_obj_t *o, bool ok, float v) { if (ok) ui_set_fmt(o, "%d", (int)lroundf(v)); else ui_set_text(o, "--"); }
@@ -219,6 +219,7 @@ static void ai_create(lv_obj_t *p)
     lv_obj_t *t = d_header(p, "AI");
     a_tag = d_after(t, ui_pill(p, "R.E.V", UI_ORANGE));
     a_mark = d_after(t, lv_image_create(p));
+    lv_image_set_src(a_mark, &ocm_mark_rev_34);
     a_right = d_right(p, "", UI_MUTED);
     lv_obj_t *c = a_hero = d_card(p, DX, DY, DW, 168, UI_ORANGE, true);
     d_lab(c, "AI SEES", 0, 10, UI_ORANGE);
@@ -249,9 +250,6 @@ static void ai_create(lv_obj_t *p)
 static void ai_update(const ui_snap_t *s)
 {
     const ml_stats_t *m = &s->ml;
-    pill_set(a_tag, model_tag(s), UI_ORANGE);
-    const void *mk = m->model == ML_MODEL_REV ? (const void *)&ocm_mark_rev_34 : (const void *)&ocm_mark_ev_34;
-    if (lv_image_get_src(a_mark) != mk) lv_image_set_src(a_mark, mk);
     if (m->windows) ui_set_fmt(a_right, "%lu windows, %.1f ms", (unsigned long)m->windows, m->last_us / 1000.0);
     else ui_set_text(a_right, m->ready ? "no windows yet" : "model not loaded");
     bool have = m->last_class >= 0;
@@ -290,8 +288,15 @@ static void ai_update(const ui_snap_t *s)
 }
 
 /* ======================= Learning ======================= */
-static lv_obj_t *l_saved_dot, *l_saved, *l_f2, *l_f3, *l_k2, *l_k3, *l_tank_u, *l_tbar, *l_tnote;
+static lv_obj_t *l_saved_dot, *l_saved, *l_f2, *l_f3, *l_k2, *l_k3, *l_tank_u, *l_tbar, *l_tnote, *l_state, *l_n[3];
 static d_val_t l_f1, l_k1, l_t1;
+
+/* the self-test of the model at load: its outputs on the file's own test input against ESP-PPQ's PC simulation */
+static const char *selftest_word(void)
+{
+    int t = ml_selftest_state();
+    return t > 0 ? "exact" : t == 0 ? "differs" : "--";
+}
 
 static void learn_create(lv_obj_t *p)
 {
@@ -315,6 +320,21 @@ static void learn_create(lv_obj_t *p)
     l_tank_u = l_t1.u;
     l_tbar = d_bar(c, 0, 28, DW - 28, 8, UI_GREEN, 100);
     l_tnote = d_txt(c, UI_THEME.f_small, UI_MUTED, "", 0, 42);
+    c = d_card(p, DX, DY + 192, DW, 150, UI_GREEN, false);
+    lv_obj_t *mk = lv_image_create(c);                    /* the R.E.V mark next to the model's figures */
+    lv_image_set_src(mk, &ocm_mark_rev_24);
+    lv_obj_set_pos(mk, 0, -4);
+    d_lab(c, "MODEL", 30, 0, UI_GREEN);
+    l_state = ui_label(c, UI_THEME.f_small, UI_MUTED, "");
+    lv_obj_align(l_state, LV_ALIGN_TOP_RIGHT, 0, 0);
+    static const char *const N[3] = {"windows read", "self-test", "one run"};
+    for (int k = 0; k < 3; k++) {
+        l_n[k] = d_txt(c, UI_THEME.f_title, UI_TEXT, "--", k * 140, 26);
+        d_txt(c, UI_THEME.f_small, UI_MUTED, N[k], k * 140, 58);
+    }
+    lv_obj_t *n = d_txt(c, UI_THEME.f_label, UI_MUTED, "The classifier stays as shipped; the fuel read-out learns in this car.", 0, 86);
+    lv_obj_set_width(n, DW - 28);
+    lv_label_set_long_mode(n, LV_LABEL_LONG_WRAP);
 }
 
 static void learn_update(const ui_snap_t *s)
@@ -340,6 +360,78 @@ static void learn_update(const ui_snap_t *s)
     ui_set_fmt(l_tank_u, " learned from %lu fill-up%s", (unsigned long)r->tank_fills, r->tank_fills == 1 ? "" : "s");
     bar_set(l_tbar, (int)fminf(fmaxf(r->tank.span_pct, 0), 100));
     ui_set_fmt(l_tnote, "Gauge span seen: %.0f %%. More fill-ups make it sharper.", (double)r->tank.span_pct);
+    const ml_stats_t *m = &s->ml;
+    if (m->ready) ui_set_fmt(l_state, "R.E.V %s", ml_model_version(ML_MODEL_REV)); else ui_set_text(l_state, "R.E.V not loaded");
+    ui_set_fmt(l_n[0], "%lu", (unsigned long)m->windows);
+    ui_set_text(l_n[1], m->ready ? selftest_word() : "--");
+    if (m->ready && m->selftest_us) ui_set_fmt(l_n[2], "%.1f ms", m->selftest_us / 1000.0); else ui_set_text(l_n[2], "--");
+}
+
+/* ======================= R.E.V: the model in use, its self-test and the fuel learning ======================= */
+static lv_obj_t *v_step, *v_card[2], *v_big[2], *v_l1[2], *v_l2[2], *v_learn, *v_z, *v_n[3], *v_saved, *v_resets;
+
+static void rev_create(lv_obj_t *p)
+{
+    lv_obj_t *t = d_header(p, "R.E.V");
+    lv_obj_t *mk = d_after(t, lv_image_create(p));
+    lv_image_set_src(mk, &ocm_mark_rev_34);
+    d_after(mk, ui_label(p, UI_THEME.f_label, UI_MUTED, "the model in use"));
+    v_step = d_right(p, "", UI_MUTED);
+    int hw = (DW - 8) / 2;
+    static const char *const R[2] = {"MODEL", "SELF-TEST"};
+    for (int k = 0; k < 2; k++) {
+        lv_obj_t *c = v_card[k] = d_card(p, DX + k * (hw + 8), DY, hw, 120, UI_THEME.dim, true);
+        lv_obj_set_style_radius(c, 20, 0);
+        d_lab(c, R[k], 0, 0, UI_MUTED);
+        v_big[k] = d_txt(c, UI_THEME.f_title, UI_TEXT, "--", 0, 18);
+        v_l1[k] = d_txt(c, UI_THEME.f_label, UI_TEXT, "", 0, 54);
+        v_l2[k] = d_txt(c, UI_THEME.f_label, UI_MUTED, "", 0, 74);
+    }
+    lv_obj_t *c = d_card(p, DX, DY + 128, DW, 46, UI_BORDER, false);
+    lv_obj_set_style_radius(c, 16, 0);
+    lv_obj_set_style_pad_ver(c, 0, 0);
+    lv_obj_t *ok = ui_label(c, UI_THEME.f_value, UI_GREEN, LV_SYMBOL_OK);
+    lv_obj_align(ok, LV_ALIGN_LEFT_MID, 0, 0);
+    v_learn = ui_label(c, UI_THEME.f_body, UI_TEXT, "");
+    lv_obj_align(v_learn, LV_ALIGN_LEFT_MID, 30, 0);
+    v_z = ui_label(c, UI_THEME.f_label, UI_MUTED, "");
+    lv_obj_align(v_z, LV_ALIGN_RIGHT_MID, 0, 0);
+    c = d_card(p, DX, DY + 182, DW, 160, UI_BORDER, false);
+    d_lab(c, "FUEL LEARNING IN THIS CAR", 0, 0, UI_GREEN);
+    static const char *const N[3] = {"updates taken", "kept as is", "pairs seen"};   /* rev_learn.c: commits, kept, pairs */
+    for (int k = 0; k < 3; k++) {
+        v_n[k] = d_txt(c, UI_THEME.f_large, UI_TEXT, "--", k * 140, 28);
+        d_txt(c, UI_THEME.f_small, UI_MUTED, N[k], k * 140, 64);
+    }
+    v_saved = d_txt(c, UI_THEME.f_small, UI_MUTED, "", 0, 116);
+    v_resets = ui_label(c, UI_THEME.f_small, UI_MUTED, "");
+    lv_obj_align(v_resets, LV_ALIGN_TOP_RIGHT, 0, 116);
+}
+
+static void rev_update(const ui_snap_t *s)
+{
+    const ml_stats_t *m = &s->ml;
+    const rev_status_t *r = &s->rs;
+    if (m->windows) ui_set_fmt(v_step, "%lu windows, %.1f ms", (unsigned long)m->windows, m->last_us / 1000.0);
+    else ui_set_text(v_step, m->ready ? "no windows yet" : "not loaded");
+    int t = m->ready ? ml_selftest_state() : -1;
+    uint32_t edge[2] = {m->ready ? UI_GREEN : UI_THEME.dim, t > 0 ? UI_GREEN : t == 0 ? UI_WARN : UI_THEME.dim};
+    for (int k = 0; k < 2; k++)
+        if (lv_color_to_u32(lv_obj_get_style_border_color(v_card[k], 0)) != lv_color_to_u32(lv_color_hex(edge[k])))
+            lv_obj_set_style_border_color(v_card[k], lv_color_hex(edge[k]), 0);
+    ui_set_text(v_big[0], m->ready ? "CarMind R.E.V" : "--");
+    ui_set_fmt(v_l1[0], "model %s", ml_model_version(ML_MODEL_REV));
+    ui_set_fmt(v_l2[0], "for %s, %s", ml_model_target(ML_MODEL_REV), m->ready ? "loaded" : "not loaded");
+    ui_set_text(v_big[1], m->ready ? selftest_word() : "--");
+    if (m->ready && m->selftest_us) ui_set_fmt(v_l1[1], "one run %.1f ms", m->selftest_us / 1000.0); else ui_set_text(v_l1[1], "");
+    ui_set_text(v_l2[1], t >= 0 ? "vs the PC simulation, 1 LSB" : "");
+    ui_set_text(v_learn, r->learning ? "Learning fuel use in this car" : r->safe ? "Learning off: safe mode" : "Learning off");
+    ui_set_text(v_z, m->z_ok ? "z output yes" : "z output no");
+    ui_set_fmt(v_n[0], "%lu", (unsigned long)r->commits);
+    ui_set_fmt(v_n[1], "%lu", (unsigned long)r->kept);
+    ui_set_fmt(v_n[2], "%lu", (unsigned long)r->pairs);
+    ui_set_text(v_saved, r->saved ? "Saved on the board" : r->enabled ? "Not saved yet" : "Learning off");
+    ui_set_fmt(v_resets, "%lu reset%s to factory", (unsigned long)r->resets, r->resets == 1 ? "" : "s");
 }
 
 /* ======================= Live ======================= */
@@ -1051,8 +1143,6 @@ static void drive_update(const ui_snap_t *s)
         bar_set(d_pb[k], s->nprobs > k ? pct(s->probs[k]) : 0);
         lv_obj_set_style_bg_color(d_pb[k], lv_color_hex(have && k == m->last_class ? DCLS[k] : 0x4A4A4A), LV_PART_INDICATOR);
     }
-    const void *mk = m->model == ML_MODEL_REV ? (const void *)&ocm_mark_rev_34 : (const void *)&ocm_mark_ev_34;
-    if (lv_image_get_src(d_mark) != mk) lv_image_set_src(d_mark, mk);
     if (have) ui_set_fmt(d_ev[0], "%.1f bar", (double)m->last_est[0]); else ui_set_text(d_ev[0], "--");
     if (s->obd_live && isfinite(o->torque_nm)) { ui_set_fmt(d_ev[1], "%.0f N m", (double)o->torque_nm); ui_set_text(d_tag[1], "PHYSICS"); }
     else if (have) { ui_set_fmt(d_ev[1], "%.0f N m", (double)m->last_est[1]); ui_set_text(d_tag[1], "MODEL"); }
@@ -1863,6 +1953,7 @@ static const ocm_app_t APPS[] = {          /* launcher order and tile colours as
     { "drive",    "Drive",    LV_SYMBOL_GPS,       drive_create,    drive_update,    drive_destroy,    500, SEC_SKY,    0x8CC8FF, 0x1F6FEB, 0, &ocm_icon_drive_52, NULL, NULL },
     { "ai",       "AI",       LV_SYMBOL_EYE_OPEN,  ai_create,       ai_update,       NULL,             500, SEC_ORANGE, 0xFE860F, 0xE8590C, 0, &ocm_icon_ai_52, NULL, NULL },
     { "learn",    "Learning", LV_SYMBOL_REFRESH,   learn_create,    learn_update,    NULL,             1000, SEC_GREEN, 0x56F487, 0x2B8A3E, 0, &ocm_icon_learn_52, NULL, NULL },
+    { "rev",      "R.E.V",    LV_SYMBOL_SHUFFLE,   rev_create,      rev_update,      NULL,             1000, SEC_GREEN, 0x56F487, 0x2B8A3E, 0, &ocm_icon_ai_52, NULL, &ocm_mark_rev_tile },
     { "summary",  "Summary",  LV_SYMBOL_IMAGE,     summary_create,  summary_update,  summary_destroy,  1000, SEC_SKY,   0xFF7AB6, 0xD6336C, 0, &ocm_icon_summary_52, NULL, NULL },
     { "live",     "Live",     LV_SYMBOL_PLAY,      live_create,     live_update,     NULL,             250, SEC_SKY,    0x72ECE4, 0x0C8599, 0, &ocm_icon_live_52, NULL, NULL },
     { "fuel",     "Fuel",     LV_SYMBOL_TINT,      fuel_create,     fuel_update,     NULL,             500, SEC_AMBER,  0xF2A13A, 0xD9480F, 0, &ocm_icon_fuel_52, NULL, NULL },

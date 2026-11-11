@@ -1,4 +1,4 @@
-/* ESP-Mosaico board bring-up and power (ESP32-S31 only), from ~/opencarmind-mosaico/main/power.c (layer 0, runs on this
+/* ESP-Mosaico board bring-up and power (ESP32-S31 only), from the ESP-Mosaico bring-up power code (layer 0, runs on this
  * board): safe pin states, the 3.3 V peripheral rail (GPIO60, active low) kept ON, the shared I2C0 bus, the BQ27220 fuel
  * gauge, and the Function key (GPIO7, active low) handled by app_main's button task.
  *

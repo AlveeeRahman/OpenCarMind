@@ -1,5 +1,5 @@
 /* Console over the ESP-Mosaico's Type-C port (USB OTG, TinyUSB CDC-ACM through espressif/esp_tinyusb 3.x), taken from
- * ~/opencarmind-mosaico/main/console.c, which runs on this board. The S31 has no ROM CDC console on OTG, so TinyUSB
+ * the ESP-Mosaico bring-up console, which runs on this board. The S31 has no ROM CDC console on OTG, so TinyUSB
  * provides the port; stdout and the log go there (tinyusb_console).
  *
  * Received bytes: the CDC RX callback (TinyUSB task) copies them into a stream buffer with a zero timeout (drop when
@@ -74,7 +74,7 @@ void mosaico_console_init(void)
     if (tinyusb_cdcacm_init(&acm) != ESP_OK) return;
     tinyusb_console_init(TINYUSB_CDC_ACM_0);
     s_ready = true;
-    /* with a computer on the cable, give it up to 3 s to open the port so the boot checks (AEV-*, BOOT) reach it;
+    /* with a computer on the cable, give it up to 3 s to open the port so the boot lines reach it;
        on a charger only (never enumerated) this costs 1 s */
     for (int i = 0; i < 20 && !tud_mounted(); i++) vTaskDelay(pdMS_TO_TICKS(50));
     for (int i = 0; i < 60 && tud_mounted() && !tud_cdc_n_connected(0); i++) vTaskDelay(pdMS_TO_TICKS(50));

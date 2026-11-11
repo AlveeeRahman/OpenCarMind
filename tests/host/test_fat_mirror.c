@@ -63,7 +63,7 @@ int main(void)
     fat12(f1, 1); fat12(f2, 0);
     CHECK(fat_mirror_compare(f1, f2, SS, true, 0xF8) == FAT_COPY_2_TO_1);
 
-    /* the v11u dump: FAT 1 == FAT 2, all 0xFF except bytes 60/61 = 51 F0 (FatFs mirrored the erased FAT 1) */
+    /* the 2026-11-11 incident dump: FAT 1 == FAT 2, all 0xFF except bytes 60/61 = 51 F0 (FatFs mirrored the erased FAT 1) */
     memset(f1, 0xFF, SS); f1[60] = 0x51; f1[61] = 0xF0; memcpy(f2, f1, SS);
     CHECK(fat_mirror_compare(f1, f2, SS, true, 0xF8) == FAT_BOTH_BAD);
     /* both erased */
