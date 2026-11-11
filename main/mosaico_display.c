@@ -183,6 +183,10 @@ static lv_display_t *s_disp;
 static lv_obj_t *s_home, *s_appscr, *s_body;
 static int s_cur = -1;                         /* app index on screen, -1 = home */
 static bool s_panel_on;
+/* Screen off = brightness 0 + display off, WITHOUT the CO5300 sleep-in: measured 2026-11-11, every sleep-out (4 of 4)
+   left the CST9220 touch controller answering NACK / 0xff reports from ~4.8 s after the wake (no touch until it was
+   re-opened); with display off only, 20 of 20 wakes had no bad read. */
+#define s_panel_slpin false
 static volatile bool s_req_home, s_req_off, s_req_wake;
 static volatile int s_req_bright = -1;
 static uint32_t s_bright_cmds;                         /* brightness commands sent to the panel (LVGL task) */
@@ -2405,7 +2409,7 @@ static void panel_power(bool on)
 {
     if (on == s_panel_on) return;
     if (on) {
-        esp_lcd_panel_disp_sleep(s_panel, false);
+        if (s_panel_slpin) esp_lcd_panel_disp_sleep(s_panel, false);
         esp_lcd_panel_disp_on_off(s_panel, true);
         ui_settings_t set;
         ui_settings_get(&set);
@@ -2414,7 +2418,7 @@ static void panel_power(bool on)
     } else {
         esp_lcd_panel_co5300_set_brightness(s_panel, 0);
         esp_lcd_panel_disp_on_off(s_panel, false);
-        esp_lcd_panel_disp_sleep(s_panel, true);
+        if (s_panel_slpin) esp_lcd_panel_disp_sleep(s_panel, true);
     }
     s_panel_on = on;
     ESP_LOGI(TAG, "screen %s", on ? "on" : "off");
@@ -2495,8 +2499,9 @@ static void tick_cb(lv_timer_t *t)
     ui_settings_t set;
     ui_settings_get(&set);
     uint32_t idle_ms = lv_display_get_inactive_time(s_disp);
-    if (s_panel_on && set.screen_off_s && idle_ms > set.screen_off_s * 1000u) panel_power(false);
-    else if (!s_panel_on && idle_ms < 200) panel_power(true);   /* a touch wakes it */
+    int power_to = -1;                                    /* the panel's own commands run after the job (see below) */
+    if (s_panel_on && set.screen_off_s && idle_ms > set.screen_off_s * 1000u) power_to = 0;
+    else if (!s_panel_on && idle_ms < 200) power_to = 1;   /* a touch wakes it */
 
     bool sec_due = false;
     if (s_panel_on) {
@@ -2544,6 +2549,10 @@ static void tick_cb(lv_timer_t *t)
     s_runs++;
     if (us > s_max_us) s_max_us = us;
     if (us > UI_PERIOD_MS * 1000u) s_misses++;
+
+    /* screen off / on by the idle timer and by a touch: the CO5300 commands are aperiodic work and run outside the
+       "ui" job, like the Function key's wake above (the panel stays dark until it is on: nothing is drawn while off) */
+    if (power_to >= 0) panel_power(power_to == 1);
 
     /* once a second, after the job: a theme change rebuilds the launcher; smart swipe may retake the Home picture */
     if (sec_due) {
