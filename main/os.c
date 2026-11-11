@@ -9,6 +9,8 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "soc/lp_system_reg.h"
+#include "driver/gpio.h"
+#include "esp_sleep.h"
 #include "soc/soc.h"
 #include "sched_mon.h"
 #include "sdlog.h"
@@ -24,13 +26,31 @@
 
 static const char *TAG = "os";
 
-static volatile bool s_boot = true, s_resetting;
+static volatile bool s_boot = true, s_resetting, s_saving;
+static volatile uint8_t s_ui_req;
 static volatile uint8_t s_updates;                      /* formats in progress (board task) */
 
 /* ---------- resets ---------- */
 #define RTC_OS_MAGIC 0x05A5E7u                          /* low 24 bits; the reason sits in the top byte */
 static RTC_NOINIT_ATTR uint32_t s_rtc_last;             /* the reset the previous run asked for */
 static RTC_NOINIT_ATTR char     s_rtc_detail[16];
+
+/* SYS_RESET_POWER_OFF's last step: GPIO57 open-drain low is the SAM8108's power-off request (Mosaico V1.2 user guide);
+   the safe pin state holds that pin, so the hold comes off first. If the board is still up, deep sleep with no wake
+   source keeps it off until the POWER button or USB. */
+#if CONFIG_OCM_UPS
+static void power_off(void)
+{
+#if CONFIG_OCM_UPS_GPIO57
+    gpio_hold_dis(57);
+    gpio_config_t io = { .pin_bit_mask = 1ULL << 57, .mode = GPIO_MODE_OUTPUT_OD, .pull_up_en = 0, .pull_down_en = 0 };
+    gpio_config(&io);
+    gpio_set_level(57, 0);
+    esp_rom_delay_us(500000);
+#endif
+    esp_deep_sleep_start();                     /* only with CONFIG_OCM_UPS: the sleep code costs about 12 KB of IRAM */
+}
+#endif
 
 void sys_reset(sys_reset_reason_t reason, const char *detail)
 {
@@ -51,7 +71,11 @@ void sys_reset(sys_reset_reason_t reason, const char *detail)
             if (p->method == OS_RST_ROM_DOWNLOAD) {
                 REG_SET_BIT(LP_SYSTEM_REG_SYS_CTRL_REG, LP_SYSTEM_REG_FORCE_DOWNLOAD_BOOT);
                 esp_rom_software_reset_system();   /* the whole chip: esp_restart() resets only the CPU cores here */
-            } else if (p->method == OS_RST_ABORT) {
+            }
+#if CONFIG_OCM_UPS
+            else if (p->method == OS_RST_POWER_OFF) power_off();
+#endif
+            else if (p->method == OS_RST_ABORT) {
                 esp_system_abort(detail ? detail : p->name);   /* a panic: the core dump holds every task */
             }
             esp_restart();
@@ -79,7 +103,7 @@ static void rl_inputs(os_rl_in_t *in)
     in->safe = sched_safe_mode();
     in->drive = elm_drive_active();
     in->link = sys_mode_get() == MODE_DRIVE;
-    in->saving = false;
+    in->saving = s_saving;
     in->update = s_resetting || s_updates;
 }
 
@@ -222,4 +246,34 @@ int os_ai_register(int ai_id, bool watchdog)
              c->name, c->job, (unsigned long)c->period_ms, (unsigned long)c->deadline_ms, (unsigned long)c->stall_ms,
              c->share_pm, c->burst_ms, c->prio, c->core);
     return j;
+}
+
+/* ---------- UPS power state ---------- */
+uint8_t os_ui_request(void) { return s_ui_req; }
+
+void os_power_sample(bool ok, int ma, int mv)
+{
+#if CONFIG_OCM_UPS
+    static os_ups_t u;
+    static const os_ups_cfg_t cfg = { CONFIG_OCM_UPS_DISCHARGE_MA, CONFIG_OCM_UPS_GRACE_S * 1000u, CONFIG_OCM_UPS_FLOOR_MV };
+    uint8_t a = os_ups_step(&u, &cfg, ok, (int16_t)ma, (uint16_t)(mv > 0 ? mv : 0), (uint32_t)(esp_timer_get_time() / 1000));
+    if (a & OS_UPS_A_FLUSH_DIM) {
+        s_saving = true;                                   /* the Saving runlevel: every change is refused */
+        s_ui_req |= OS_UI_DIM;
+        sdlog_sync_now();
+        sys_event(EV_WARN, "USB power lost: on battery, %d mA, %d mV; off in %d s", ma, mv, CONFIG_OCM_UPS_GRACE_S);
+    }
+    if (a & OS_UPS_A_RESTORE) {
+        s_saving = false;
+        s_ui_req &= (uint8_t)~OS_UI_DIM;
+        sys_event(EV_INFO, "USB power back");
+    }
+    if (a & OS_UPS_A_POWER_OFF) {
+        s_saving = true;
+        sys_event(EV_WARN, "Battery: powering off (%d mV)", mv);
+        sys_reset(SYS_RESET_POWER_OFF, mv <= CONFIG_OCM_UPS_FLOOR_MV ? "voltage floor" : "battery grace");
+    }
+#else
+    (void)ok; (void)ma; (void)mv;
+#endif
 }

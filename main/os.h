@@ -32,6 +32,12 @@ uint8_t       os_health(uint16_t *flags);
 /* Model admission (os_core.h section 4): the jobs sched_mon measured plus the model's job with C = its self-test run x 2,
    response-time analysis on its core. Logs every job's R and the margin. false (why filled) when a deadline would fail. */
 bool          os_admit_model(int ai_id, uint32_t measured_us, char *why, size_t why_n);
+/* The UPS state (CONFIG_OCM_UPS, os_core.h section 6): the board task's gauge sample every 2 s */
+void          os_power_sample(bool ok, int ma, int mv);
+/* Requests to the LVGL task, read once per UI tick (50 ms): OS_UI_DIM (the UPS state) */
+enum { OS_UI_DIM = 1, OS_UI_SLOW = 2 };
+uint8_t       os_ui_request(void);
+
 /* The AI service contract (os_core.h section 5): register the service's sched_mon job from its table entry, with its
    stall limit and CPU reservation. Returns the job. */
 int           os_ai_register(int ai_id, bool watchdog);

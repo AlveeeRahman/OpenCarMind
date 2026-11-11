@@ -45,6 +45,19 @@
  *    none, a model is admitted by the analysis instead), its self-test, its fallback model and the runlevel service
  *    whose mask decides when it may run. The firmware registers the jobs from the table (os_ai_apply), the admission
  *    takes its period, deadline, priority and core from it, and ml_init falls back along it.
+ *
+ * 6. UPS power state (CONFIG_OCM_UPS, default n until measured on the board). The board runs from the car's USB and
+ *    has a 65 mAh cell. USB loss is seen in the gauge's current: the BQ27220 reports discharge as a negative current
+ *    (TI's sign convention; on this board UNVERIFIED until measured). The HUSB320 Type-C controller is not on I2C0 in
+ *    the board's user guide (no address listed) and has no VBUS line to a GPIO, so VBUS_DET is not used. States:
+ *      USB      on car power.
+ *      GRACE    the current has been below -discharge_ma for two samples in a row: flush the logs, dim the screen, and
+ *               wait grace_ms, because cranking the engine drops the USB rail for a few seconds. USB back (current
+ *               above -5 mA) returns to USB and restores the screen.
+ *      OFF      grace ran out on battery: sys_reset(POWER_OFF) quiesces storage and pulls GPIO57 (the SAM8108
+ *               POWER_SWITCH request, documented as open-drain low = shutdown) or, without that, deep sleep.
+ *    A hard floor: at or below floor_mv on battery the board goes to OFF at once, from any state, before a brownout
+ *    can tear a write. GRACE is the Saving runlevel.
  */
 #ifndef OS_CORE_H
 #define OS_CORE_H
@@ -64,10 +77,11 @@ typedef enum {
     SYS_RESET_FORMAT,        /* the restart after a damaged NOR volume was formatted */
     SYS_RESET_UI_STALL,      /* the UI tick stopped for 15 s: abort for a core dump */
     SYS_RESET_MONITOR,       /* sched_mon: an I/O job hung past 3 deadlines */
+    SYS_RESET_POWER_OFF,     /* the UPS state: on battery past the grace, or at the voltage floor (CONFIG_OCM_UPS) */
     SYS_RESET_N
 } sys_reset_reason_t;
 
-enum { OS_RST_RESTART = 0, OS_RST_ROM_DOWNLOAD, OS_RST_ABORT };
+enum { OS_RST_RESTART = 0, OS_RST_ROM_DOWNLOAD, OS_RST_ABORT, OS_RST_POWER_OFF };
 enum { OS_STEP_WAIT = 1, OS_STEP_MARK, OS_STEP_QUIESCE, OS_STEP_SETTLE, OS_STEP_RESET };
 
 typedef struct {
@@ -190,6 +204,15 @@ const os_ai_contract_t *os_ai_contract(int id);                        /* NULL f
 /* The table's rules (host-tested): sane times, a reservation with a burst, fallbacks to models only and without a
    cycle, models that share a job declare the same timing. Returns the number of broken rules (why: the first). */
 int os_ai_check(const os_ai_contract_t *t, int n, char *why, size_t why_n);
+
+/* ---------- 6. UPS power state ---------- */
+enum { OS_UPS_USB = 0, OS_UPS_GRACE, OS_UPS_OFF };
+enum { OS_UPS_A_NONE = 0, OS_UPS_A_FLUSH_DIM = 1, OS_UPS_A_RESTORE = 2, OS_UPS_A_POWER_OFF = 4 };
+typedef struct { int16_t discharge_ma; uint32_t grace_ms; uint16_t floor_mv; } os_ups_cfg_t;
+typedef struct { uint8_t state, low_samples; uint32_t since_ms; } os_ups_t;
+/* One gauge sample (every 2 s). ok = false: the gauge did not answer, nothing changes. Returns OS_UPS_A_* to do now. */
+uint8_t os_ups_step(os_ups_t *u, const os_ups_cfg_t *c, bool ok, int16_t ma, uint16_t mv, uint32_t now_ms);
+const char *os_ups_name(uint8_t state);
 
 #ifdef __cplusplus
 }

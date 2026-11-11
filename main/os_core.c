@@ -19,6 +19,7 @@ static const os_reset_plan_t PLANS[SYS_RESET_N] = {
     [SYS_RESET_FORMAT]    = { "format",    1, 1, OS_RST_RESTART,      0, 0 },
     [SYS_RESET_UI_STALL]  = { "ui stall",  0, 1, OS_RST_ABORT,        0, 0 },
     [SYS_RESET_MONITOR]   = { "monitor",   0, 1, OS_RST_RESTART,      0, 0 },
+    [SYS_RESET_POWER_OFF] = { "power off", 1, 1, OS_RST_POWER_OFF,    0, 0 },
 };
 
 const os_reset_plan_t *os_reset_plan(sys_reset_reason_t r)
@@ -244,4 +245,31 @@ int os_ai_check(const os_ai_contract_t *t, int n, char *why, size_t why_n)
     }
 #undef RULE
     return bad;
+}
+
+/* ---------- 6. UPS power state ---------- */
+#define UPS_USB_BACK_MA (-5)                   /* above this the board is on USB again (the Board page's own rule) */
+uint8_t os_ups_step(os_ups_t *u, const os_ups_cfg_t *c, bool ok, int16_t ma, uint16_t mv, uint32_t now_ms)
+{
+    if (!ok || u->state == OS_UPS_OFF) return OS_UPS_A_NONE;
+    bool on_batt = ma <= -c->discharge_ma;
+    if (on_batt && mv && mv <= c->floor_mv) { u->state = OS_UPS_OFF; return OS_UPS_A_POWER_OFF; }   /* hard floor */
+    switch (u->state) {
+    case OS_UPS_USB:
+        u->low_samples = on_batt ? (uint8_t)(u->low_samples + 1) : 0;
+        if (u->low_samples >= 2) { u->state = OS_UPS_GRACE; u->since_ms = now_ms; return OS_UPS_A_FLUSH_DIM; }
+        return OS_UPS_A_NONE;
+    case OS_UPS_GRACE:
+        if (ma > UPS_USB_BACK_MA) { u->state = OS_UPS_USB; u->low_samples = 0; return OS_UPS_A_RESTORE; }
+        if (now_ms - u->since_ms >= c->grace_ms) { u->state = OS_UPS_OFF; return OS_UPS_A_POWER_OFF; }
+        return OS_UPS_A_NONE;
+    default:
+        return OS_UPS_A_NONE;
+    }
+}
+
+const char *os_ups_name(uint8_t s)
+{
+    static const char *const N[3] = { "USB", "battery grace", "power off" };
+    return s < 3 ? N[s] : "?";
 }

@@ -96,6 +96,35 @@ menu "OBD Logger Configuration"
             help
                 board_pins_safe_apply prints gpio_dump_io_configuration for all 60 GPIOs before and after it runs (about
                 400 lines on the console at boot), for a diff on the bench. Never in a release.
+        config OCM_UPS
+            bool "mossREV OS: the battery as a UPS (power off cleanly after USB loss), not measured yet"
+            depends on IDF_TARGET_ESP32S31
+            default n
+            help
+                The board task watches the fuel gauge's current. Two samples below -OCM_UPS_DISCHARGE_MA in a row mean
+                USB power is gone: the logs are flushed, the screen dims and the Saving runlevel refuses every change.
+                After OCM_UPS_GRACE_S on battery (cranking drops the car's USB for a few seconds) storage is quiesced
+                and the board powers off (GPIO57 to the SAM8108, or deep sleep). At OCM_UPS_FLOOR_MV it powers off at
+                once. Off until the current sign and the draw are measured on the board (os_core.h section 6).
+        config OCM_UPS_DISCHARGE_MA
+            int "On battery when the gauge current is at or below minus this (mA)"
+            depends on OCM_UPS
+            range 5 500
+            default 20
+        config OCM_UPS_GRACE_S
+            int "Seconds on battery before the board powers off"
+            depends on OCM_UPS
+            range 2 120
+            default 15
+        config OCM_UPS_FLOOR_MV
+            int "Battery voltage at which the board powers off at once (mV)"
+            depends on OCM_UPS
+            range 3000 3800
+            default 3400
+        config OCM_UPS_GPIO57
+            bool "Power off through GPIO57 (SAM8108 POWER_SWITCH, open-drain low); deep sleep if it is still up"
+            depends on OCM_UPS
+            default y
         config OCM_NAND_LOGS
             bool "ESP-Mosaico: drive logs on the 128 MB SPI NAND"
             depends on IDF_TARGET_ESP32S31

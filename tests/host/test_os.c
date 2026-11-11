@@ -279,6 +279,48 @@ static void test_contract(void)
     }
 }
 
+/* ---------- 6. UPS power state ---------- */
+static void test_ups(void)
+{
+    const os_ups_cfg_t c = { 20, 15000, 3400 };
+    os_ups_t u = { 0 };
+    uint32_t t = 0;
+    CHECK(os_ups_step(&u, &c, true, 40, 4100, t) == 0 && u.state == OS_UPS_USB, "charging: on USB");
+    CHECK(os_ups_step(&u, &c, true, -3, 4150, t += 2000) == 0 && u.state == OS_UPS_USB, "full, about 0 mA: on USB");
+    CHECK(os_ups_step(&u, &c, true, -120, 4000, t += 2000) == 0 && u.state == OS_UPS_USB, "one discharge sample is not enough");
+    CHECK(os_ups_step(&u, &c, true, 10, 4100, t += 2000) == 0 && u.low_samples == 0, "and a USB sample clears it");
+    os_ups_step(&u, &c, true, -120, 4000, t += 2000);
+    CHECK(os_ups_step(&u, &c, true, -120, 3990, t += 2000) == OS_UPS_A_FLUSH_DIM && u.state == OS_UPS_GRACE, "two in a row: flush and dim");
+    /* cranking: USB comes back inside the grace */
+    CHECK(os_ups_step(&u, &c, true, -300, 3800, t += 2000) == 0 && u.state == OS_UPS_GRACE, "cranking dip, still waiting");
+    CHECK(os_ups_step(&u, &c, true, 30, 4000, t += 2000) == OS_UPS_A_RESTORE && u.state == OS_UPS_USB, "USB back: restore");
+    /* a real loss: grace runs out */
+    os_ups_step(&u, &c, true, -120, 4000, t += 2000);
+    os_ups_step(&u, &c, true, -120, 4000, t += 2000);
+    uint32_t t_loss = t;
+    int off_at = -1;
+    for (int i = 1; i <= 10; i++) {
+        uint8_t a = os_ups_step(&u, &c, true, -120, 3950, t += 2000);
+        if (a == OS_UPS_A_POWER_OFF) { off_at = (int)(t - t_loss); break; }
+    }
+    CHECK(off_at >= 15000 && off_at < 17000 && u.state == OS_UPS_OFF, "power off after the 15 s grace (%d ms)", off_at);
+    CHECK(os_ups_step(&u, &c, true, 50, 4100, t += 2000) == 0 && u.state == OS_UPS_OFF, "OFF is final");
+    /* the floor: at once from USB-side states, on battery only */
+    os_ups_t v = { 0 };
+    CHECK(os_ups_step(&v, &c, true, -120, 3400, 0) == OS_UPS_A_POWER_OFF, "at the floor on battery: off at once");
+    os_ups_t w = { 0 };
+    CHECK(os_ups_step(&w, &c, true, 40, 3300, 0) == 0 && w.state == OS_UPS_USB, "a low cell while charging is not a power loss");
+    CHECK(os_ups_step(&w, &c, false, -500, 3000, 2000) == 0 && w.state == OS_UPS_USB, "no gauge reading: nothing changes");
+    os_ups_t x = { 0 };
+    for (int i = 0; i < 30; i++) os_ups_step(&x, &c, true, -19, 4000, (uint32_t)i * 2000);
+    CHECK(x.state == OS_UPS_USB, "-19 mA (above the -20 mA threshold) never counts as battery");
+    CHECK(!strcmp(os_ups_name(OS_UPS_GRACE), "battery grace"), "name");
+    const os_reset_plan_t *p = os_reset_plan(SYS_RESET_POWER_OFF);
+    CHECK(p && p->method == OS_RST_POWER_OFF && p->quiesce && p->asked_for, "power off: quiesce first, not a crash");
+    os_rl_in_t sv = { .saving = 1 };
+    CHECK(!os_rl_allows(os_rl_active(&sv), OS_SVC_FORMAT) && !os_rl_allows(os_rl_active(&sv), OS_SVC_MODEL_SWITCH), "grace is the Saving runlevel");
+}
+
 int main(void)
 {
     test_reset_plans();
@@ -286,6 +328,7 @@ int main(void)
     test_health();
     test_rta();
     test_contract();
+    test_ups();
     printf("os: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail != 0;
 }

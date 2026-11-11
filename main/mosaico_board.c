@@ -612,6 +612,9 @@ static void board_task(void *arg)
             ESP_LOGI(TAG, "PWR soc=%d%% mv=%d ma=%d rem=%d/%d mAh design=%d%s", g.soc, g.mv, g.ma, g.rem_mah, g.full_mah,
                      g.design_mah, mosaico_gauge_uncalibrated(&g) ? " (gauge not configured for the 65 mAh cell)" : "");
         os_tick();                                 /* mossREV OS: runlevel changes in the log */
+#if CONFIG_OCM_UPS
+        os_power_sample(g.ok, g.ma, g.mv);         /* the UPS state (os_core.h section 6) */
+#endif
         /* sleep until the next 2 s release, serving UI requests and writing the settings when their debounce is due */
         for (;;) {
             TickType_t now = xTaskGetTickCount(), due = release + pdMS_TO_TICKS(2000);
