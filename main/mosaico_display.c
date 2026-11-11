@@ -393,25 +393,48 @@ lv_obj_t *ui_pill(lv_obj_t *parent, const char *text, uint32_t color)
     return l;
 }
 
-static void back_cb(lv_event_t *e) { (void)e; ui_go_home(); }
+/* ---------- Back: the touch area is its own transparent object, not an ext click area. LVGL searches a child only
+   where the point lies inside the parent (lv_indev_search_obj, lv_indev.c:636), so an ext area that reaches past a
+   38 px header row is dead outside it, and ext areas grow equally on all four sides, which would reach into the
+   first content row. ---------- */
+static void back_home_cb(lv_event_t *e) { (void)e; ui_go_home(); }
+/* runs first: a press that became an LVGL gesture (an app-to-app or a down swipe) is the screen's, not a tap */
+static void back_filter_cb(lv_event_t *e)
+{
+    lv_indev_t *in = lv_indev_active();
+    if (in && lv_indev_get_gesture_dir(in) != LV_DIR_NONE) lv_event_stop_processing(e);
+}
+
+lv_obj_t *ui_back(lv_obj_t *parent, int x, int y, int hit_h, uint32_t bg, uint32_t fg, lv_event_cb_t cb)
+{
+    lv_obj_t *hit = lv_obj_create(parent);
+    lv_obj_remove_style_all(hit);
+    lv_obj_set_pos(hit, 0, 0);
+    lv_obj_set_size(hit, UI_BACK_HIT_W, hit_h);
+    lv_obj_remove_flag(hit, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(hit, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_GESTURE_BUBBLE | LV_OBJ_FLAG_STATE_TRICKLE);
+    lv_obj_add_event_cb(hit, back_filter_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(hit, cb ? cb : back_home_cb, LV_EVENT_CLICKED, NULL);
+    if (!cb) lv_obj_add_flag(hit, UI_FLAG_BACK);          /* app -> launcher only: the picker's Back is a Cancel, not a Back (Smart UI metrics) */
+    lv_obj_t *b = lv_obj_create(hit);                     /* the drawn chevron: the hit's pressed state trickles to it */
+    lv_obj_remove_style_all(b);
+    lv_obj_set_size(b, UI_BACK_D, UI_BACK_D);
+    lv_obj_set_pos(b, x, y);
+    lv_obj_set_style_radius(b, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(b, lv_color_hex(bg), 0);
+    lv_obj_set_style_bg_color(b, lv_color_mix(lv_color_hex(UI_THEME.press_tint), lv_color_hex(bg), 64), LV_STATE_PRESSED);   /* dark: lighter, light: darker */
+    lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
+    lv_obj_remove_flag(b, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_center(ui_label(b, UI_THEME.f_title, fg, LV_SYMBOL_LEFT));
+    return hit;
+}
 
 lv_obj_t *ui_header(lv_obj_t *parent, const char *title)
 {
-    lv_obj_t *b = lv_obj_create(parent);                  /* round back chevron */
-    lv_obj_remove_style_all(b);
-    lv_obj_set_size(b, 40, 40);
-    lv_obj_set_pos(b, UI_MARGIN + 8, UI_TOP);
-    lv_obj_set_style_radius(b, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_color(b, lv_color_hex(UI_THEME.track), 0);
-    lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
-    lv_obj_set_ext_click_area(b, 12);
-    lv_obj_add_flag(b, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_remove_flag(b, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_event_cb(b, back_cb, LV_EVENT_CLICKED, NULL);
-    lv_obj_add_flag(b, UI_FLAG_BACK);
-    lv_obj_center(ui_label(b, UI_THEME.f_body, UI_ORANGE, LV_SYMBOL_LEFT));
+    /* chevron y 79-122, between the status bar (ends at y 76) and the list (y 126); touch area 104 x 124 */
+    ui_back(parent, UI_MARGIN + 4, UI_SB_APP_BOTTOM + 3, UI_TOP + 40, UI_THEME.track, UI_ORANGE, NULL);
     lv_obj_t *t = ui_label(parent, UI_THEME.f_title, UI_TEXT, title);
-    lv_obj_set_pos(t, UI_MARGIN + 60, UI_TOP + 6);
+    lv_obj_set_pos(t, UI_MARGIN + 4 + UI_BACK_D + 12, UI_TOP + 6);
     return t;
 }
 

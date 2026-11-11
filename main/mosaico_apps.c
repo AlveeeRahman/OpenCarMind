@@ -113,7 +113,11 @@ static int pct(float p) { return (int)lroundf(p * 100.0f); }
 #define DHY  (UI_TOP)          /* header row under the status bar */
 #define DY   (UI_TOP + 38)     /* content from here to 464 */
 
-static void d_back_cb(lv_event_t *e) { (void)e; ui_go_home(); }
+/* Back geometry (ui_back): each touch area ends above its page's first control, each chevron sits inside its area and
+   below the status bar */
+_Static_assert(UI_BACK_HIT_W >= 96 && DY >= 96 && UI_TOP + 40 >= 96, "Back touch area under 96 x 96");
+_Static_assert(DHY - 7 >= UI_SB_APP_BOTTOM && DHY - 7 + UI_BACK_D <= DY, "D-page chevron outside its row");
+_Static_assert(UI_SB_APP_BOTTOM + 3 + UI_BACK_D <= UI_TOP + 40 && UI_TOP + 40 < Y0, "ui_header Back overlaps the list");
 
 static lv_obj_t *d_card(lv_obj_t *p, int x, int y, int w, int h, uint32_t border, bool hero)
 {
@@ -161,33 +165,26 @@ static void d_value_set(d_val_t *d, const char *t)
     lv_obj_align_to(d->u, d->v, LV_ALIGN_OUT_RIGHT_BOTTOM, 4, -(lv_font_get_line_height(lv_obj_get_style_text_font(d->v, 0)) / 8));
 }
 
-/* header: 30 px round chevron (46 px touch target), title; returns the title label */
-/* header: a flex row at the top of the page. Back chevron (38 px round, 46 px touch target), title, items placed after the
-   title (d_after), a spacer, items on the right (d_right). No pixel offsets between texts. */
+/* header: a flex row at the top of the page. Back (ui_back: a 44 px chevron, a 104 x 122 px touch area from the corner
+   down to the content), title, items placed after the title (d_after), a spacer, items on the right (d_right). No pixel
+   offsets between texts. */
 static lv_obj_t *s_hr, *s_hr_sp;
 static lv_obj_t *d_header(lv_obj_t *p, const char *title)
 {
+    ui_back(p, DX, DHY - 7, DY, UI_THEME.chip, UI_ORANGE, NULL);
     s_hr = lv_obj_create(p);
     lv_obj_remove_style_all(s_hr);
-    lv_obj_set_pos(s_hr, DX, DHY - 2);
-    lv_obj_set_size(s_hr, DW, 38);
+    lv_obj_set_pos(s_hr, DX, DHY - 7);
+    lv_obj_set_size(s_hr, DW, UI_BACK_D);
     lv_obj_set_flex_flow(s_hr, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(s_hr, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_column(s_hr, 10, 0);
     lv_obj_remove_flag(s_hr, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_flag(s_hr, LV_OBJ_FLAG_GESTURE_BUBBLE);
-    lv_obj_t *b = lv_obj_create(s_hr);
+    lv_obj_t *b = lv_obj_create(s_hr);                    /* the chevron's place in the row (it is drawn by ui_back) */
     lv_obj_remove_style_all(b);
-    lv_obj_set_size(b, 38, 38);
-    lv_obj_set_style_radius(b, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_color(b, lv_color_hex(UI_THEME.chip), 0);
-    lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
-    lv_obj_set_ext_click_area(b, 6);
-    lv_obj_add_flag(b, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_remove_flag(b, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_event_cb(b, d_back_cb, LV_EVENT_CLICKED, NULL);
-    lv_obj_add_flag(b, UI_FLAG_BACK);
-    lv_obj_center(ui_label(b, UI_THEME.f_body, UI_ORANGE, LV_SYMBOL_LEFT));
+    lv_obj_set_size(b, UI_BACK_D, 1);
+    lv_obj_remove_flag(b, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_t *t = ui_label(s_hr, UI_THEME.f_value, UI_TEXT, title);
     s_hr_sp = lv_obj_create(s_hr);
     lv_obj_remove_style_all(s_hr_sp);
@@ -1038,23 +1035,16 @@ static lv_obj_t *dk_blocks(lv_obj_t *p, lv_obj_t **blk, int n, int h)
 
 static void drive_create(lv_obj_t *p)
 {
+    ui_back(p, 22, 51, 98, UI_THEME.chip, UI_THEME.section[SEC_SKY], NULL);
     lv_obj_t *col = fbox(p, LV_FLEX_FLOW_COLUMN, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, 8);
     lv_obj_set_pos(col, 22, 54);
     lv_obj_set_size(col, UI_W - 44, UI_H - 16 - 54);
-    /* header: back, Drive, End drive pill */
+    /* header: back, Drive, End drive pill. The row is y 54-91 (no counter pill on Drive: the status bar ends at y 44);
+       the 44 px chevron is drawn at y 51-94 and its 104 x 98 touch area ends above the speed row (y 100) */
     lv_obj_t *hr = fbox(col, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, 10);
     lv_obj_set_size(hr, LV_PCT(100), 38);
-    lv_obj_t *b = lv_obj_create(hr);
-    lv_obj_remove_style_all(b);
-    lv_obj_set_size(b, 38, 38);
-    lv_obj_set_style_radius(b, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_color(b, lv_color_hex(UI_THEME.chip), 0);
-    lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
-    lv_obj_set_ext_click_area(b, 6);
-    lv_obj_add_flag(b, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_event_cb(b, d_back_cb, LV_EVENT_CLICKED, NULL);
-    lv_obj_add_flag(b, UI_FLAG_BACK);
-    lv_obj_center(ui_label(b, UI_THEME.f_body, UI_THEME.section[SEC_SKY], LV_SYMBOL_LEFT));
+    lv_obj_t *b = fbox(hr, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, 0);   /* the chevron's place */
+    lv_obj_set_size(b, UI_BACK_D, 1);
     ui_label(hr, UI_THEME.f_value, UI_TEXT, "Drive");
     lv_obj_t *sp = fbox(hr, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, 0);
     lv_obj_set_size(sp, 1, 1);
@@ -2379,7 +2369,9 @@ static void ck_open(void)
     lv_obj_add_flag(ck_page, LV_OBJ_FLAG_CLICKABLE);                  /* swallows taps behind it */
     lv_obj_remove_flag(ck_page, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_event_cb(ck_page, ck_deleted, LV_EVENT_DELETE, NULL);
-    at(ui_label(ck_page, F28, UI_TEXT, "Set clock"), 24, 28);
+    /* Back = Cancel: the 44 px chevron at y 22-65 next to the title, its 104 x 104 touch area ends above the rollers (y 112) */
+    ui_back(ck_page, 20, 22, 104, UI_THEME.track, UI_ORANGE, ck_cancel_cb);
+    at(ui_label(ck_page, F28, UI_TEXT, "Set clock"), 20 + UI_BACK_D + 12, 28);
     at(ui_caption(ck_page, "DAY"), 24, 86);
     at(ui_caption(ck_page, "MONTH"), 96, 86);
     at(ui_caption(ck_page, "YEAR"), 186, 86);

@@ -128,6 +128,14 @@ lv_obj_t *ui_label(lv_obj_t *parent, const lv_font_t *f, uint32_t color, const c
 lv_obj_t *ui_caption(lv_obj_t *parent, const char *upper_text);      /* small UPPERCASE orange label */
 lv_obj_t *ui_pill(lv_obj_t *parent, const char *text, uint32_t color);
 lv_obj_t *ui_header(lv_obj_t *parent, const char *title);           /* app title row with a round back chevron */
+/* Back: a UI_BACK_D px round chevron drawn at (x, y) inside a transparent touch area from the screen's top-left corner,
+   (0, 0) to (UI_BACK_HIT_W, hit_h). parent must be a full-screen object at (0, 0). Create it before the page's other
+   controls, so a control that overlaps it stays on top. The chevron lightens in the frame after the press. A press
+   that turns into an LVGL gesture is not a tap. cb NULL = ui_go_home. Returns the touch area. */
+#define UI_BACK_D        44      /* drawn chevron: the most that fits between the status bar and the first card */
+#define UI_BACK_HIT_W    104     /* touch area width from the left edge (>= 96) */
+#define UI_SB_APP_BOTTOM 76      /* status bar on app pages: y 12 + row 32 + gap 6 + counter pill 26 */
+lv_obj_t *ui_back(lv_obj_t *parent, int x, int y, int hit_h, uint32_t bg, uint32_t fg, lv_event_cb_t cb);
 lv_obj_t *ui_rect(lv_obj_t *parent, int x, int y, int w, int h, uint32_t color, int radius);   /* plain filled box */
 void      ui_set_bg(lv_obj_t *o, uint32_t c);                        /* change-only background colour */
 void      ui_glass(lv_obj_t *o);                                     /* Colour theme: glass card; else nothing */
