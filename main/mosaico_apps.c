@@ -32,6 +32,11 @@ extern const lv_image_dsc_t ocm_icon_drive_52, ocm_icon_ai_52, ocm_icon_learn_52
 #include "elm327.h"
 #include "mosaico_clock.h"
 #include "remote_config.h"
+#include "ui_events_logic.h"
+#include "power_state.h"
+#include "sdlog.h"
+#include "sys_mode.h"
+#include "uploader.h"
 
 #define F48 (UI_THEME.f_hero)
 #define F32 (UI_THEME.f_big)
@@ -172,7 +177,7 @@ static lv_obj_t *d_header(lv_obj_t *p, const char *title)
     lv_obj_remove_style_all(b);
     lv_obj_set_size(b, 38, 38);
     lv_obj_set_style_radius(b, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_color(b, lv_color_hex(0x141519), 0);
+    lv_obj_set_style_bg_color(b, lv_color_hex(UI_THEME.chip), 0);
     lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
     lv_obj_set_ext_click_area(b, 6);
     lv_obj_add_flag(b, LV_OBJ_FLAG_CLICKABLE);
@@ -978,10 +983,11 @@ static void board_update(const ui_snap_t *s)
     ui_set_fmt(o_chip, "ESP32-S31 rev %d.%d  IDF %.8s", ci.revision / 100, ci.revision % 100, esp_get_idf_version() + (esp_get_idf_version()[0] == 'v'));
 }
 
-/* ======================= Drive (H_Drive): pure black, dark cards, no light tile. Flex rows and columns throughout ===== */
+/* ======================= Drive (H_Drive): dark = pure black and near-black panels, light = white panels on the light
+   ground (theme panel tokens). Flex rows and columns throughout ===== */
 #define RPM_BLOCKS 20
 #define TANK_BLOCKS 10
-static const uint32_t DCLS[4] = {0xAD8DFD, 0xFD5A4A, 0x5AA2FF, 0xFCCA21};     /* stopped, braking, accelerating, cruising */
+#define DCLS (UI_THEME.dcls)                               /* stopped, braking, accelerating, cruising */
 static lv_obj_t *d_ctl, *d_spd, *d_rpm, *d_rpm_blk[RPM_BLOCKS], *d_ai, *d_face[4], *d_cls, *d_sure, *d_pb[4], *d_mark,
                 *d_ev[3], *d_tag[3], *d_tank_blk[TANK_BLOCKS], *d_tank_pct, *d_tank_km;
 static int d_rpm_lit = -1, d_tank_lit = -1;
@@ -989,10 +995,10 @@ static int d_rpm_lit = -1, d_tank_lit = -1;
 static lv_obj_t *dk_card(lv_obj_t *p, int radius)
 {
     lv_obj_t *c = fbox(p, LV_FLEX_FLOW_COLUMN, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_START, 4);
-    lv_obj_set_style_bg_color(c, lv_color_hex(0x111216), 0);
+    lv_obj_set_style_bg_color(c, lv_color_hex(UI_THEME.panel), 0);
     lv_obj_set_style_bg_opa(c, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(c, 1, 0);
-    lv_obj_set_style_border_color(c, lv_color_hex(0x1F2026), 0);
+    lv_obj_set_style_border_color(c, lv_color_hex(UI_THEME.panel_edge), 0);
     lv_obj_set_style_radius(c, radius, 0);
     lv_obj_set_style_pad_hor(c, 14, 0);
     lv_obj_set_style_pad_ver(c, 10, 0);
@@ -1000,7 +1006,7 @@ static lv_obj_t *dk_card(lv_obj_t *p, int radius)
 }
 static lv_obj_t *dk_lab(lv_obj_t *p, const char *t)
 {
-    lv_obj_t *l = ui_label(p, UI_THEME.f_small, 0x8E8E93, t);
+    lv_obj_t *l = ui_label(p, UI_THEME.f_small, UI_THEME.label2, t);
     lv_obj_set_style_text_letter_space(l, 2, 0);
     return l;
 }
@@ -1017,7 +1023,7 @@ static lv_obj_t *dk_blocks(lv_obj_t *p, lv_obj_t **blk, int n, int h)
 {
     lv_obj_t *r = fbox(p, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, 2);
     lv_obj_set_size(r, LV_PCT(100), h);
-    for (int i = 0; i < n; i++) { blk[i] = ui_rect(r, 0, 0, 1, h, 0x1F2026, 2); lv_obj_set_flex_grow(blk[i], 1); }
+    for (int i = 0; i < n; i++) { blk[i] = ui_rect(r, 0, 0, 1, h, UI_THEME.panel_edge, 2); lv_obj_set_flex_grow(blk[i], 1); }
     return r;
 }
 
@@ -1033,12 +1039,12 @@ static void drive_create(lv_obj_t *p)
     lv_obj_remove_style_all(b);
     lv_obj_set_size(b, 38, 38);
     lv_obj_set_style_radius(b, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_color(b, lv_color_hex(0x141519), 0);
+    lv_obj_set_style_bg_color(b, lv_color_hex(UI_THEME.chip), 0);
     lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
     lv_obj_set_ext_click_area(b, 6);
     lv_obj_add_flag(b, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(b, d_back_cb, LV_EVENT_CLICKED, NULL);
-    lv_obj_center(ui_label(b, UI_THEME.f_body, 0x8CC8FF, LV_SYMBOL_LEFT));
+    lv_obj_center(ui_label(b, UI_THEME.f_body, UI_THEME.section[SEC_SKY], LV_SYMBOL_LEFT));
     ui_label(hr, UI_THEME.f_value, UI_TEXT, "Drive");
     lv_obj_t *sp = fbox(hr, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, 0);
     lv_obj_set_size(sp, 1, 1);
@@ -1053,8 +1059,8 @@ static void drive_create(lv_obj_t *p)
     dk_lab(c, "SPEED");
     lv_obj_t *vr = fbox(c, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_END, 8);
     lv_obj_set_size(vr, LV_PCT(100), LV_SIZE_CONTENT);
-    d_spd = ui_label(vr, UI_THEME.f_hero, 0x8CC8FF, "--");
-    lv_obj_t *u = ui_label(vr, UI_THEME.f_label, 0x8E8E93, "km/h");
+    d_spd = ui_label(vr, UI_THEME.f_hero, UI_THEME.section[SEC_SKY], "--");
+    lv_obj_t *u = ui_label(vr, UI_THEME.f_label, UI_THEME.label2, "km/h");
     lv_obj_set_style_pad_bottom(u, 8, 0);
     c = dk_card(r, 20);
     lv_obj_set_height(c, 112);
@@ -1065,14 +1071,14 @@ static void drive_create(lv_obj_t *p)
     /* AI SEES: dark card with a 4 px class-colour left edge, pixel face, class, S/B/A/C bars, model mark */
     d_ai = fbox(col, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, 12);
     lv_obj_set_size(d_ai, LV_PCT(100), 82);
-    lv_obj_set_style_bg_color(d_ai, lv_color_hex(0x111216), 0);
+    lv_obj_set_style_bg_color(d_ai, lv_color_hex(UI_THEME.panel), 0);
     lv_obj_set_style_bg_opa(d_ai, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(d_ai, 4, 0);
     lv_obj_set_style_border_side(d_ai, LV_BORDER_SIDE_LEFT, 0);
     lv_obj_set_style_border_color(d_ai, lv_color_hex(DCLS[3]), 0);
     lv_obj_set_style_radius(d_ai, 20, 0);
     lv_obj_set_style_pad_hor(d_ai, 12, 0);
-    lv_obj_t *fb = ui_rect(d_ai, 0, 0, 56, 56, 0x1A1B20, 14);
+    lv_obj_t *fb = ui_rect(d_ai, 0, 0, 56, 56, UI_THEME.inset, 14);
     d_face[0] = ui_rect(fb, 8, 8, 40, 40, 0, 0);                    /* the head outline, 4 px, class colour */
     lv_obj_set_style_bg_opa(d_face[0], LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(d_face[0], 4, 0);
@@ -1097,12 +1103,12 @@ static void drive_create(lv_obj_t *p)
         d_pb[k] = lv_bar_create(pc);
         lv_obj_set_size(d_pb[k], 12, 38);
         lv_bar_set_range(d_pb[k], 0, 100);
-        lv_obj_set_style_bg_color(d_pb[k], lv_color_hex(0x26272D), 0);
+        lv_obj_set_style_bg_color(d_pb[k], lv_color_hex(UI_THEME.inset_hi), 0);
         lv_obj_set_style_bg_opa(d_pb[k], LV_OPA_COVER, 0);
         lv_obj_set_style_radius(d_pb[k], 3, 0);
         lv_obj_set_style_radius(d_pb[k], 0, LV_PART_INDICATOR);
         lv_obj_remove_flag(d_pb[k], LV_OBJ_FLAG_CLICKABLE);
-        ui_label(pc, UI_THEME.f_small, 0x8E8E93, K[k]);
+        ui_label(pc, UI_THEME.f_small, UI_THEME.label2, K[k]);
     }
     d_mark = lv_image_create(d_ai);
     lv_image_set_src(d_mark, &ocm_mark_rev_34);
@@ -1114,7 +1120,8 @@ static void drive_create(lv_obj_t *p)
        128 px for "TORQUE" + "PHYSICS", 110 for "BRAKE" + "MODEL" and 112 for "FUEL" + "LEARNED" (Montserrat 12 advance
        widths); each tile leaves width - 2 x 8 padding - 2 x 1 border for it */
     static const int EW[3] = {134, 152, 134};
-    const uint32_t EC[3] = {0xFD5A4A, 0xF2A13A, 0x56F487}, TC[3] = {0xF2A13A, 0xF2A13A, 0x56F487};
+    const uint32_t EC[3] = {DCLS[1], UI_THEME.section[SEC_AMBER], UI_THEME.section[SEC_GREEN]},
+                   TC[3] = {UI_THEME.section[SEC_AMBER], UI_THEME.section[SEC_AMBER], UI_THEME.section[SEC_GREEN]};
     for (int k = 0; k < 3; k++) {
         c = dk_card(r, 18);
         lv_obj_set_size(c, EW[k], 78);
@@ -1128,10 +1135,10 @@ static void drive_create(lv_obj_t *p)
     /* tank */
     c = fbox(col, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, 10);
     lv_obj_set_size(c, LV_PCT(100), 40);
-    lv_obj_set_style_bg_color(c, lv_color_hex(0x111216), 0);
+    lv_obj_set_style_bg_color(c, lv_color_hex(UI_THEME.panel), 0);
     lv_obj_set_style_bg_opa(c, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(c, 1, 0);
-    lv_obj_set_style_border_color(c, lv_color_hex(0x1F2026), 0);
+    lv_obj_set_style_border_color(c, lv_color_hex(UI_THEME.panel_edge), 0);
     lv_obj_set_style_radius(c, 16, 0);
     lv_obj_set_style_pad_hor(c, 14, 0);
     dk_lab(c, "TANK");
@@ -1139,7 +1146,7 @@ static void drive_create(lv_obj_t *p)
     lv_obj_set_width(tb, LV_SIZE_CONTENT);
     lv_obj_set_flex_grow(tb, 1);
     d_tank_pct = ui_label(c, UI_THEME.f_label, UI_TEXT, "--");
-    d_tank_km = ui_label(c, UI_THEME.f_small, 0x8E8E93, "");
+    d_tank_km = ui_label(c, UI_THEME.f_small, UI_THEME.label2, "");
     d_rpm_lit = d_tank_lit = -1;
 }
 
@@ -1155,10 +1162,11 @@ static void drive_update(const ui_snap_t *s)
     int lit = rpm_ok ? (int)lroundf(fminf(fv(s, F_rpm), 7000) / 7000.0f * RPM_BLOCKS) : 0;
     if (lit != d_rpm_lit) {
         d_rpm_lit = lit;
-        for (int i = 0; i < RPM_BLOCKS; i++) ui_set_bg(d_rpm_blk[i], i >= lit ? 0x1F2026 : i >= RPM_BLOCKS - 4 ? 0xFD122E : 0x8CC8FF);
+        for (int i = 0; i < RPM_BLOCKS; i++) ui_set_bg(d_rpm_blk[i], i >= lit ? UI_THEME.panel_edge : i >= RPM_BLOCKS - 4 ? UI_THEME.section[SEC_RED]
+                                                                                           : UI_THEME.section[SEC_SKY]);
     }
     bool have = m->last_class >= 0;
-    uint32_t cc = have ? DCLS[m->last_class] : 0x4A4A4A;
+    uint32_t cc = have ? DCLS[m->last_class] : UI_THEME.off;
     if (lv_color_to_u32(lv_obj_get_style_border_color(d_ai, 0)) != lv_color_to_u32(lv_color_hex(cc))) lv_obj_set_style_border_color(d_ai, lv_color_hex(cc), 0);
     if (lv_color_to_u32(lv_obj_get_style_border_color(d_face[0], 0)) != lv_color_to_u32(lv_color_hex(cc))) lv_obj_set_style_border_color(d_face[0], lv_color_hex(cc), 0);
     for (int k = 1; k < 4; k++) ui_set_bg(d_face[k], cc);
@@ -1167,7 +1175,7 @@ static void drive_update(const ui_snap_t *s)
     if (have) ui_set_fmt(d_sure, "%d %% sure", pct(m->last_prob)); else ui_set_text(d_sure, m->ready ? "waits for a drive" : "model not loaded");
     for (int k = 0; k < 4; k++) {
         bar_set(d_pb[k], s->nprobs > k ? pct(s->probs[k]) : 0);
-        lv_obj_set_style_bg_color(d_pb[k], lv_color_hex(have && k == m->last_class ? DCLS[k] : 0x4A4A4A), LV_PART_INDICATOR);
+        lv_obj_set_style_bg_color(d_pb[k], lv_color_hex(have && k == m->last_class ? DCLS[k] : UI_THEME.off), LV_PART_INDICATOR);
     }
     mark_set(d_mark, model_mark_34(s));
     if (have) ui_set_fmt(d_ev[0], "%.1f bar", (double)m->last_est[0]); else ui_set_text(d_ev[0], "--");
@@ -1186,7 +1194,7 @@ static void drive_update(const ui_snap_t *s)
     const rev_tank_out_t *t = &s->rs.tank;
     float level = t->ready ? t->level : have_f(s, F_fuel_level) ? fv(s, F_fuel_level) : -1;
     int tl = level >= 0 ? (int)lroundf(fminf(level, 100) / 10.0f) : 0;
-    if (tl != d_tank_lit) { d_tank_lit = tl; for (int i = 0; i < TANK_BLOCKS; i++) ui_set_bg(d_tank_blk[i], i < tl ? 0x56F487 : 0x1F2026); }
+    if (tl != d_tank_lit) { d_tank_lit = tl; for (int i = 0; i < TANK_BLOCKS; i++) ui_set_bg(d_tank_blk[i], i < tl ? UI_THEME.section[SEC_GREEN] : UI_THEME.panel_edge); }
     if (level >= 0) ui_set_fmt(d_tank_pct, "%.0f %%", (double)level); else ui_set_text(d_tank_pct, "--");
     if (o->tank_range_km >= 0) ui_set_fmt(d_tank_km, "about %.0f km", (double)o->tank_range_km); else ui_set_text(d_tank_km, "");
     ui_drive_ctl_refresh(d_ctl, s);
@@ -1199,13 +1207,14 @@ static int64_t q_read_ms;
 
 static uint32_t sev_color(uint8_t sev)
 {
-    return sev >= SEV_CRITICAL ? 0xFD122E : sev >= SEV_HIGH ? 0xFE860F : sev >= SEV_MEDIUM ? 0xFCCA21 : 0x8CC8FF;
+    return sev >= SEV_CRITICAL ? UI_THEME.section[SEC_RED] : sev >= SEV_HIGH ? UI_THEME.section[SEC_ORANGE]
+         : sev >= SEV_MEDIUM ? UI_WARN : UI_THEME.section[SEC_SKY];
 }
 
 static void faults_create(lv_obj_t *p)
 {
     lv_obj_t *t = d_header(p, "Faults");
-    q_mil = d_after(t, dk_tag(p, "MIL ON", 0xFD122E));
+    q_mil = d_after(t, dk_tag(p, "MIL ON", UI_THEME.section[SEC_RED]));
     q_count = d_right(p, "", UI_MUTED);
     lv_obj_t *col = fbox(p, LV_FLEX_FLOW_COLUMN, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, 8);
     lv_obj_set_pos(col, DX, DY);
@@ -1260,7 +1269,7 @@ static void faults_fill(const ui_snap_t *s)
         lv_obj_t *hr = fbox(c, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, 8);
         lv_obj_set_size(hr, LV_PCT(100), LV_SIZE_CONTENT);
         ui_label(hr, UI_THEME.f_title, UI_TEXT, f->code);
-        if (f->is_new) dk_tag(hr, "NEW", 0x56F487);
+        if (f->is_new) dk_tag(hr, "NEW", UI_THEME.section[SEC_GREEN]);
         lv_obj_t *sp = fbox(hr, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, 0);
         lv_obj_set_size(sp, 1, 1);
         lv_obj_set_flex_grow(sp, 1);
@@ -1327,6 +1336,304 @@ static lv_obj_t *sm_chart(lv_obj_t *p, int x, int y, int w, int h, lv_chart_type
     return ch;
 }
 
+/* ---- RECENT EVENTS (T1, owner: "see opencarmind how it shows logs like in drive summary"): the shared events.c ring
+   as the S3 shows it (ui_events_logic.h). A card on the summary page (the newest lines that fit, the pattern footer);
+   a tap opens the full list (filter chips, 64 px rows, newest first), a tap on a row its detail. Labels are made once
+   and changed in place when the rows' fingerprint changes (no per-second rebuild, the list keeps its scroll). ---- */
+static lv_color_t st_pressed(void);
+static lv_obj_t *sm_parent, *ev_card, *ev_foot, *ev_line[EVENT_MAX];
+static int ev_card_n;
+static uint32_t ev_card_sig;
+static lv_obj_t *ev_page, *ev_count, *ev_note, *ev_list, *ev_empty, *ev_chip[UEV_FILTERS], *ev_row[EVENT_MAX], *ev_row_when[EVENT_MAX],
+                *ev_row_text[EVENT_MAX], *ev_det;
+static int ev_filter, ev_row_ring[EVENT_MAX], ev_rows_n, ev_top_ring = -1;
+static uint32_t ev_page_sig;
+static const app_status_t *ev_st;                         /* the shell's status copy (it outlives the app) */
+EXT_RAM_BSS_ATTR static uev_row_t ev_rows[EVENT_MAX];
+EXT_RAM_BSS_ATTR static sys_event_t ev_ring[EVENT_MAX];   /* the ring as last shown: what a tapped row opens */
+#define EV_ROW_H 64
+#define EV_GAP   6
+
+static uint32_t ev_color(uev_tone_t t)
+{
+    return t == UEV_GOOD ? UI_GREEN : t == UEV_WARN ? UI_WARN : t == UEV_ERROR ? UI_RED : t == UEV_MUTED ? UI_MUTED : UI_TEXT;
+}
+
+static void ev_ctx(uev_ctx_t *c)
+{
+    c->power = power_state(sdlog_ok(), sdlog_saved(), sdlog_ms_since_write(), sys_mode_get() == MODE_DRIVE, uploader_busy());
+    c->mark_ok = LV_SYMBOL_OK;
+    c->mark_warn = LV_SYMBOL_WARNING;
+    c->win_ok = sm.ok && sm.start_up_ms > 0;              /* the summary is always a drive of this boot */
+    c->win_start_ms = sm.start_up_ms;
+    c->win_dur_s = sm.dur_s;
+}
+
+static void ev_open(lv_event_t *e);
+static void ev_card_build(lv_obj_t *pg, int y, int h)
+{
+    lv_obj_t *c = ev_card = d_card(pg, DX, y, DW, h, UI_BORDER, false);
+    lv_obj_set_style_pad_ver(c, 8, 0);
+    lv_obj_add_flag(c, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_GESTURE_BUBBLE);   /* the whole card (>= 64 px) opens the list */
+    lv_obj_set_style_bg_color(c, st_pressed(), LV_STATE_PRESSED);
+    lv_obj_add_event_cb(c, ev_open, LV_EVENT_CLICKED, NULL);
+    d_lab(c, "RECENT EVENTS", 0, 0, UI_MUTED);
+    ev_foot = ui_label(c, UI_THEME.f_small, UI_MUTED, "");
+    lv_obj_align(ev_foot, LV_ALIGN_TOP_RIGHT, 0, 0);
+    int lh = lv_font_get_line_height(UI_THEME.f_label) + 1;
+    ev_card_n = (h - 16 - 17 + 1) / lh;                   /* lines from y 17 inside the padding (66 px card: 2) */
+    if (ev_card_n > EVENT_MAX) ev_card_n = EVENT_MAX;
+    if (ev_card_n < 1) ev_card_n = 1;
+    memset(ev_line, 0, sizeof ev_line);
+    for (int i = 0; i < ev_card_n; i++) {
+        ev_line[i] = d_txt(c, UI_THEME.f_label, UI_TEXT, "", 0, 17 + i * lh);
+        lv_obj_set_width(ev_line[i], DW - 28);
+        lv_label_set_long_mode(ev_line[i], LV_LABEL_LONG_DOT);   /* one line each, cut with dots; the list shows it all */
+    }
+    ev_card_sig = 0;
+}
+
+static void ev_card_refresh(const ui_snap_t *s)
+{
+    if (!ev_card) return;
+    const app_status_t *st = s->st;
+    uev_ctx_t c;
+    ev_ctx(&c);
+    uint32_t sig = uev_sig(st->events, st->event_head, st->event_count, c.power, st->pattern_windows);
+    if (sig == ev_card_sig) return;
+    ev_card_sig = sig;
+    int n = uev_rows(st->events, st->event_head, st->event_count, UEV_ALL, &c, ev_rows, ev_card_n);
+    for (int i = 0; i < ev_card_n; i++) {
+        if (i < n) { ui_set_text(ev_line[i], ev_rows[i].line); ui_set_color(ev_line[i], ev_color(ev_rows[i].tone)); }
+        else { ui_set_text(ev_line[i], i ? "" : "no events yet"); ui_set_color(ev_line[i], UI_MUTED); }
+    }
+    char f[64];
+    uev_pattern(f, sizeof f, st->pattern_windows, st->pattern_id, st->pattern_novelty, st->pattern_used);
+    ui_set_fmt(ev_foot, "%s  " LV_SYMBOL_RIGHT, f);
+}
+
+/* the list's header row: its own back chip (closes the list or the detail, not the app) */
+static lv_obj_t *ev_head(lv_obj_t *p, const char *title, lv_event_cb_t back)
+{
+    lv_obj_t *b = lv_obj_create(p);
+    lv_obj_remove_style_all(b);
+    lv_obj_set_pos(b, DX, DHY - 2);
+    lv_obj_set_size(b, 38, 38);
+    lv_obj_set_style_radius(b, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(b, lv_color_hex(UI_THEME.chip), 0);
+    lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
+    lv_obj_set_ext_click_area(b, 13);                     /* a 64 px target */
+    lv_obj_add_flag(b, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_remove_flag(b, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_event_cb(b, back, LV_EVENT_CLICKED, NULL);
+    lv_obj_center(ui_label(b, UI_THEME.f_body, UI_ORANGE, LV_SYMBOL_LEFT));
+    lv_obj_t *t = ui_label(p, UI_THEME.f_value, UI_TEXT, title);
+    lv_obj_set_pos(t, DX + 48, DHY + 6);
+    return t;
+}
+
+static lv_obj_t *ev_screen(lv_obj_t *p)                    /* a full-screen panel in the palette over the app */
+{
+    lv_obj_t *o = lv_obj_create(p);
+    lv_obj_remove_style_all(o);
+    lv_obj_set_size(o, UI_W, UI_H);
+    lv_obj_set_style_bg_color(o, lv_color_hex(UI_BG), 0);
+    lv_obj_set_style_bg_opa(o, LV_OPA_COVER, 0);
+    lv_obj_add_flag(o, LV_OBJ_FLAG_CLICKABLE);             /* swallows taps meant for what is under it */
+    lv_obj_remove_flag(o, LV_OBJ_FLAG_SCROLLABLE);
+    return o;
+}
+
+static void ev_close_list(void *arg) { (void)arg; if (ev_page) { lv_obj_delete(ev_page); ev_page = ev_det = NULL; } }
+static void ev_close_detail(void *arg) { (void)arg; if (ev_det) { lv_obj_delete(ev_det); ev_det = NULL; } }
+static void ev_list_back_cb(lv_event_t *e) { (void)e; lv_async_call(ev_close_list, NULL); }
+static void ev_det_back_cb(lv_event_t *e) { (void)e; lv_async_call(ev_close_detail, NULL); }
+
+static void ev_chip_paint(void)
+{
+    for (int i = 0; i < UEV_FILTERS; i++) {
+        bool on = i == ev_filter;
+        lv_obj_set_style_bg_color(ev_chip[i], lv_color_hex(on ? UI_ORANGE : UI_THEME.track), 0);
+        lv_obj_set_style_bg_color(ev_chip[i], on ? lv_color_hex(UI_ORANGE) : st_pressed(), LV_STATE_PRESSED);
+        ui_set_color(lv_obj_get_child(ev_chip[i], 0), on ? UI_BG : UI_TEXT);
+    }
+}
+
+/* fill the pre-made rows; a new event on top while the list is scrolled down moves the scroll with it, so the rows
+   under the finger stay put; a filter change goes back to the top */
+static void ev_page_fill(const ui_snap_t *s, bool top)
+{
+    if (!ev_page) return;
+    const app_status_t *st = s->st;
+    uev_ctx_t c;
+    ev_ctx(&c);
+    uint32_t sig = uev_sig(st->events, st->event_head, st->event_count, c.power, st->pattern_windows) ^ (uint32_t)(ev_filter * 0x9E3779B9u);
+    if (sig == ev_page_sig && !top) return;
+    ev_page_sig = sig;
+    memcpy(ev_ring, st->events, sizeof ev_ring);
+    int n = ev_rows_n = uev_rows(st->events, st->event_head, st->event_count, (uev_filter_t)ev_filter, &c, ev_rows, EVENT_MAX);
+    int shift = 0;
+    if (!top && ev_top_ring >= 0)
+        for (int i = 0; i < n; i++) if (ev_rows[i].ring == ev_top_ring) { shift = i; break; }
+    for (int i = 0; i < EVENT_MAX; i++) {
+        if (i >= n) { lv_obj_add_flag(ev_row[i], LV_OBJ_FLAG_HIDDEN); continue; }
+        lv_obj_remove_flag(ev_row[i], LV_OBJ_FLAG_HIDDEN);
+        ev_row_ring[i] = ev_rows[i].ring;
+        ui_set_fmt(ev_row_when[i], "%s   %s", ev_rows[i].when, uev_level_name(st->events[ev_rows[i].ring].level));
+        ui_set_text(ev_row_text[i], ev_rows[i].text);
+        ui_set_color(ev_row_text[i], ev_color(ev_rows[i].tone));
+    }
+    if (n) lv_obj_add_flag(ev_empty, LV_OBJ_FLAG_HIDDEN); else lv_obj_remove_flag(ev_empty, LV_OBJ_FLAG_HIDDEN);
+    ev_top_ring = n ? ev_rows[0].ring : -1;
+    int total = st->event_count < EVENT_MAX ? st->event_count : EVENT_MAX;
+    ui_set_fmt(ev_count, "%d of %d", n, total);
+    if (ev_filter == UEV_DRIVE && c.win_ok) {
+        char a[16], z[16];
+        uev_uptime(a, sizeof a, sm.start_up_ms);
+        uev_uptime(z, sizeof z, sm.start_up_ms + (int64_t)sm.dur_s * 1000);
+        ui_set_fmt(ev_note, "During drive s%06lu, %s to %s after boot, and its save.", (unsigned long)sm.session, a, z);
+    } else if (ev_filter == UEV_DRIVE)
+        ui_set_text(ev_note, "No drive has ended yet: car and drive events by type.");
+    else ui_set_text(ev_note, "Since the board started; the board keeps the newest 10.");
+    lv_obj_update_layout(ev_list);
+    if (top) lv_obj_scroll_to_y(ev_list, 0, LV_ANIM_OFF);
+    else if (shift && lv_obj_get_scroll_y(ev_list) > 0) lv_obj_scroll_by_bounded(ev_list, 0, -shift * (EV_ROW_H + EV_GAP), LV_ANIM_OFF);
+}
+
+static void ev_chip_cb(lv_event_t *e)
+{
+    int f = (int)(intptr_t)lv_event_get_user_data(e);
+    if (f == ev_filter || !ev_st) return;
+    ev_filter = f;
+    ev_chip_paint();                                      /* shown in this frame */
+    ui_snap_t s = { .st = (app_status_t *)ev_st };
+    ev_page_fill(&s, true);
+}
+
+static void ev_detail_open(int ring);
+static void ev_row_cb(lv_event_t *e)
+{
+    int i = (int)(intptr_t)lv_event_get_user_data(e);
+    if (i >= 0 && i < ev_rows_n) ev_detail_open(ev_row_ring[i]);
+}
+
+static void ev_open(lv_event_t *e)
+{
+    (void)e;
+    if (ev_page || !sm_parent || !ev_st) return;
+    ev_page = ev_screen(sm_parent);
+    ev_head(ev_page, "Recent events", ev_list_back_cb);
+    ev_count = ui_label(ev_page, UI_THEME.f_label, UI_MUTED, "");
+    lv_obj_align(ev_count, LV_ALIGN_TOP_RIGHT, -DX, DHY + 10);
+    int cw = (DW - (UEV_FILTERS - 1) * EV_GAP) / UEV_FILTERS;
+    for (int i = 0; i < UEV_FILTERS; i++) {               /* filter chips, 64 px tall */
+        lv_obj_t *b = ev_chip[i] = lv_obj_create(ev_page);
+        lv_obj_remove_style_all(b);
+        lv_obj_set_pos(b, DX + i * (cw + EV_GAP), DY);
+        lv_obj_set_size(b, cw, EV_ROW_H);
+        lv_obj_set_style_radius(b, UI_THEME.radius_row, 0);
+        lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
+        lv_obj_add_flag(b, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_remove_flag(b, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_add_event_cb(b, ev_chip_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+        lv_obj_center(ui_label(b, UI_THEME.f_label, UI_TEXT, uev_filter_name((uev_filter_t)i)));
+    }
+    ev_note = d_txt(ev_page, UI_THEME.f_small, UI_MUTED, "", DX, DY + EV_ROW_H + 6);
+    lv_obj_set_width(ev_note, DW);
+    lv_label_set_long_mode(ev_note, LV_LABEL_LONG_DOT);
+    ev_list = lv_obj_create(ev_page);                     /* plain rows: no shadow, border or opacity layer, scrolls cheaply */
+    lv_obj_remove_style_all(ev_list);
+    int ly = DY + EV_ROW_H + 26;
+    lv_obj_set_pos(ev_list, DX, ly);
+    lv_obj_set_size(ev_list, DW + 8, UI_H - 12 - ly);
+    lv_obj_set_flex_flow(ev_list, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(ev_list, EV_GAP, 0);
+    lv_obj_set_style_pad_right(ev_list, 8, 0);
+    lv_obj_set_scroll_dir(ev_list, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(ev_list, LV_SCROLLBAR_MODE_ACTIVE);
+    lv_obj_add_flag(ev_list, LV_OBJ_FLAG_SCROLL_MOMENTUM);
+    lv_obj_set_style_bg_color(ev_list, lv_color_hex(UI_MUTED), LV_PART_SCROLLBAR);
+    lv_obj_set_style_bg_opa(ev_list, LV_OPA_60, LV_PART_SCROLLBAR);
+    lv_obj_set_style_width(ev_list, 4, LV_PART_SCROLLBAR);
+    ev_empty = ui_label(ev_list, UI_THEME.f_body, UI_MUTED, "No events of this kind since the board started.");
+    lv_obj_set_width(ev_empty, DW);
+    lv_label_set_long_mode(ev_empty, LV_LABEL_LONG_WRAP);
+    for (int i = 0; i < EVENT_MAX; i++) {
+        lv_obj_t *r = ev_row[i] = lv_obj_create(ev_list);
+        lv_obj_remove_style_all(r);
+        lv_obj_set_size(r, DW, EV_ROW_H);
+        lv_obj_set_style_bg_color(r, lv_color_hex(UI_CARD), 0);
+        lv_obj_set_style_bg_opa(r, LV_OPA_COVER, 0);
+        lv_obj_set_style_bg_color(r, st_pressed(), LV_STATE_PRESSED);
+        lv_obj_set_style_radius(r, 14, 0);
+        lv_obj_add_flag(r, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_GESTURE_BUBBLE);
+        lv_obj_remove_flag(r, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_add_event_cb(r, ev_row_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+        ev_row_when[i] = d_txt(r, UI_THEME.f_small, UI_MUTED, "", 14, 8);
+        ev_row_text[i] = d_txt(r, UI_THEME.f_body, UI_TEXT, "", 14, 30);
+        lv_obj_set_width(ev_row_text[i], DW - 28 - 24);
+        lv_label_set_long_mode(ev_row_text[i], LV_LABEL_LONG_DOT);
+        lv_obj_align(ui_label(r, UI_THEME.f_body, UI_MUTED, LV_SYMBOL_RIGHT), LV_ALIGN_RIGHT_MID, -12, 0);
+        lv_obj_add_flag(r, LV_OBJ_FLAG_HIDDEN);
+    }
+    ev_top_ring = -1;
+    ev_chip_paint();
+    ui_snap_t s = { .st = (app_status_t *)ev_st };
+    ev_page_fill(&s, true);
+}
+
+/* one event in full: the whole text, the time since boot and on the clock, its type and its drive */
+static void ev_detail_open(int ring)
+{
+    if (!ev_page || ev_det || ring < 0 || ring >= EVENT_MAX) return;
+    const sys_event_t *e = &ev_ring[ring];
+    ev_det = ev_screen(ev_page);
+    ev_head(ev_det, "Event", ev_det_back_cb);
+    lv_obj_t *col = fbox(ev_det, LV_FLEX_FLOW_COLUMN, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, 8);
+    lv_obj_set_pos(col, DX, DY);
+    lv_obj_set_size(col, DW, UI_H - 16 - DY);
+    lv_obj_t *c = fcard(col, 0);
+    lv_obj_set_width(c, LV_PCT(100));
+    lv_obj_set_style_border_width(c, 4, 0);
+    lv_obj_set_style_border_side(c, LV_BORDER_SIDE_LEFT, 0);
+    uint32_t tone = e->level == EV_ERROR ? UI_RED : e->level == EV_WARN ? UI_WARN : UI_THEME.dim;
+    lv_obj_set_style_border_color(c, lv_color_hex(tone), 0);
+    d_lab(c, "WHAT HAPPENED", 0, 0, UI_MUTED);
+    lv_obj_t *t = ui_label(c, UI_THEME.f_value, UI_TEXT, e->text);   /* the full text, wrapped: nothing cut */
+    lv_obj_set_width(t, LV_PCT(100));
+    lv_label_set_long_mode(t, LV_LABEL_LONG_WRAP);
+    char b[96], w[16];
+    unsigned cat = uev_category(e->text);
+    ui_set_fmt(ui_label(c, UI_THEME.f_label, e->level == EV_INFO ? UI_MUTED : tone, ""), "%s%s%s", uev_level_name(e->level),
+               cat & UEV_CAT_WIFI ? ", Wi-Fi" : "", cat & UEV_CAT_DRIVE ? ", car and drive" : "");
+    c = fcard(col, 0);
+    lv_obj_set_width(c, LV_PCT(100));
+    d_lab(c, "WHEN", 0, 0, UI_MUTED);
+    uev_uptime(w, sizeof w, e->uptime_ms);
+    ui_set_fmt(ui_label(c, UI_THEME.f_value, UI_TEXT, ""), "%s after boot", w);
+    if (ev_st && mosaico_clock_known(ev_st)) {
+        time_t at = (time_t)(uev_epoch_ms(e->uptime_ms, esp_timer_get_time() / 1000, (int64_t)time(NULL) * 1000) / 1000);
+        struct tm tm;
+        localtime_r(&at, &tm);
+        strftime(b, sizeof b, "%H:%M:%S  %a %d %b %Y", &tm);
+        ui_label(c, UI_THEME.f_label, UI_MUTED, b);
+    } else ui_label(c, UI_THEME.f_label, UI_MUTED, "Clock not set yet: time since boot only.");
+    c = fcard(col, 0);
+    lv_obj_set_width(c, LV_PCT(100));
+    d_lab(c, "DRIVE", 0, 0, UI_MUTED);
+    uint32_t sess = uev_session(e->text);
+    if (sess) snprintf(b, sizeof b, "Drive s%06lu (named in the event)", (unsigned long)sess);
+    else if (sm.ok && sm.start_up_ms > 0 && uev_in_drive(e->uptime_ms, sm.start_up_ms, sm.dur_s))
+        snprintf(b, sizeof b, "During drive s%06lu, the last drive", (unsigned long)sm.session);
+    else if (sm.ok) snprintf(b, sizeof b, "Not during the last drive (s%06lu)", (unsigned long)sm.session);
+    else if (ev_st && ev_st->sd_mounted && elm_drive_active()) snprintf(b, sizeof b, "A drive is being recorded (s%06lu); none has ended yet",
+                                                                     (unsigned long)ev_st->session_id);
+    else snprintf(b, sizeof b, "No drive has ended since the board started");
+    lv_obj_t *dl = ui_label(c, UI_THEME.f_body, UI_TEXT, b);
+    lv_obj_set_width(dl, LV_PCT(100));
+    lv_label_set_long_mode(dl, LV_LABEL_LONG_WRAP);
+}
+
 static void sm_fill(void)
 {
     lv_obj_clean(sm_p1);
@@ -1338,6 +1645,7 @@ static void sm_fill(void)
                                                              "the Home or Drive screen, or switch the car off.", DX, DY);
         lv_obj_set_width(l, DW);
         lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
+        ev_card_build(sm_p1, DY + 70, 452 - (DY + 70));
     } else {
         if (sm.start_epoch_ms > 1600000000000LL) {
             time_t t0 = (time_t)(sm.start_epoch_ms / 1000), t1 = t0 + sm.dur_s;
@@ -1357,22 +1665,22 @@ static void sm_fill(void)
         snprintf(V[2], 16, "%s", e); snprintf(U[2], 12, "%s", strcmp(eu, "L/100 km") ? eu : "L/100");
         snprintf(V[3], 16, "%d", sm.hard_brakes); U[3][0] = 0;
         for (int k = 0; k < 4; k++) {
-            lv_obj_t *c = d_card(sm_p1, DX + k * (w4 + 8), DY, w4, 58, UI_BORDER, false);
+            lv_obj_t *c = d_card(sm_p1, DX + k * (w4 + 8), DY, w4, 54, UI_BORDER, false);
             lv_obj_set_style_radius(c, 14, 0);
             lv_obj_set_style_pad_all(c, 8, 0);
             d_lab(c, K[k], 0, 0, UI_MUTED);
-            d_val_t v = d_value(c, UI_THEME.f_value, U[k], 0, 18);
+            d_val_t v = d_value(c, UI_THEME.f_value, U[k], 0, 16);
             d_value_set(&v, V[k]);
         }
-        /* speed and fuel rate over the drive, one chart, fuel on the secondary axis */
-        lv_obj_t *c = d_card(sm_p1, DX, DY + 66, DW, 150, UI_BORDER, false);
+        /* speed and fuel rate over the drive, one chart, fuel on the secondary axis (T1: 36 px shorter, for the events) */
+        lv_obj_t *c = d_card(sm_p1, DX, DY + 62, DW, 114, UI_BORDER, false);
         lv_obj_set_style_pad_ver(c, 8, 0);
         d_lab(c, "SPEED KM/H", 0, 0, UI_THEME.section[SEC_SKY]);
         lv_obj_t *fl = d_lab(c, "FUEL L/H", 0, 0, UI_GREEN);
         lv_obj_align(fl, LV_ALIGN_TOP_RIGHT, 0, 0);
         float vmax = 10, fmax = 1;
         for (int i = 0; i < sm.n; i++) { vmax = fmaxf(vmax, sm.spd[i]); fmax = fmaxf(fmax, sm.fuel[i]); }
-        lv_obj_t *ch = sm_chart(c, 0, 18, DW - 28, 96, LV_CHART_TYPE_LINE, sm.n, (int)vmax + 5);
+        lv_obj_t *ch = sm_chart(c, 0, 18, DW - 28, 62, LV_CHART_TYPE_LINE, sm.n, (int)vmax + 5);
         lv_chart_set_axis_range(ch, LV_CHART_AXIS_SECONDARY_Y, 0, (int)(fmax * 10) + 5);
         lv_chart_series_t *ss = lv_chart_add_series(ch, lv_color_hex(UI_THEME.section[SEC_SKY]), LV_CHART_AXIS_PRIMARY_Y);
         lv_chart_series_t *sf = lv_chart_add_series(ch, lv_color_hex(UI_GREEN), LV_CHART_AXIS_SECONDARY_Y);
@@ -1380,24 +1688,27 @@ static void sm_fill(void)
             lv_chart_set_next_value(ch, ss, (int32_t)lroundf(sm.spd[i]));
             lv_chart_set_next_value(ch, sf, (int32_t)lroundf(sm.fuel[i] * 10));
         }
-        d_txt(c, UI_THEME.f_small, UI_MUTED, "0 min", 0, 118);
+        d_txt(c, UI_THEME.f_small, UI_MUTED, "0 min", 0, 82);
         lv_obj_t *mid = ui_label(c, UI_THEME.f_small, UI_MUTED, "");
         ui_set_fmt(mid, "%ld", (long)(sm.dur_s / 120));
-        lv_obj_align(mid, LV_ALIGN_TOP_MID, 0, 118);
+        lv_obj_align(mid, LV_ALIGN_TOP_MID, 0, 82);
         lv_obj_t *end = ui_label(c, UI_THEME.f_small, UI_MUTED, "");
         ui_set_fmt(end, "%ld min", (long)(sm.dur_s / 60));
-        lv_obj_align(end, LV_ALIGN_TOP_RIGHT, 0, 118);
+        lv_obj_align(end, LV_ALIGN_TOP_RIGHT, 0, 82);
         /* what the AI saw, one block per 10 s (at most 40 blocks), and the class shares */
-        c = d_card(sm_p1, DX, DY + 224, DW, 104, UI_BORDER, false);
+        c = d_card(sm_p1, DX, DY + 184, DW, 72, UI_BORDER, false);
         lv_obj_set_style_pad_ver(c, 8, 0);
         d_lab(c, "WHAT THE AI SAW, EVERY 10 S", 0, 0, UI_MUTED);
+        lv_obj_t *a = ui_label(c, UI_THEME.f_small, UI_MUTED, "");
+        ui_set_fmt(a, "%d brakings", sm.brake_events);
+        lv_obj_align(a, LV_ALIGN_TOP_RIGHT, 0, 0);
         int nb = sm.dur_s / 10;
         if (nb > 40) nb = 40;
         if (nb < 1) nb = 1;
         int W = DW - 28, bw = W / nb;
         for (int k = 0; k < nb && sm.n > 0; k++) {
             int cls = sm.cls[(int)((long)k * sm.n / nb)];
-            ui_rect(c, k * bw, 22, bw > 1 ? bw - 1 : 1, 16, cls >= 0 && cls < 4 ? UI_THEME.cls[cls] : UI_THEME.track, 0);
+            ui_rect(c, k * bw, 20, bw > 1 ? bw - 1 : 1, 14, cls >= 0 && cls < 4 ? UI_THEME.cls[cls] : UI_THEME.track, 0);
         }
         static const char *const CN[4] = {"Stopped", "Braking", "Accelerating", "Cruising"};
         int order[4] = {0, 1, 2, 3};
@@ -1405,14 +1716,13 @@ static void sm_fill(void)
         int x = 0;
         for (int i = 0; i < 4; i++) {
             int k = order[i];
-            ui_rect(c, x, 54, 9, 9, UI_THEME.cls[k], 2);
-            lv_obj_t *l = d_txt(c, UI_THEME.f_small, UI_TEXT, "", x + 14, 50);
+            ui_rect(c, x, 44, 9, 9, UI_THEME.cls[k], 2);
+            lv_obj_t *l = d_txt(c, UI_THEME.f_small, UI_TEXT, "", x + 14, 40);
             ui_set_fmt(l, "%s %.0f %%", CN[k], sm.cls_share[k] * 100.0);
             lv_obj_update_layout(l);
             x += 14 + lv_obj_get_width(l) + 12;
         }
-        lv_obj_t *a = d_txt(c, UI_THEME.f_small, UI_MUTED, "", 0, 70);
-        ui_set_fmt(a, "%d brakings", sm.brake_events);
+        ev_card_build(sm_p1, DY + 264, 452 - (DY + 264));
     }
     /* page 2: history from drives.csv */
     d_lab(sm_p2, "HISTORY, LAST DRIVES (OLDEST LEFT)", DX, DY, UI_MUTED);
@@ -1439,6 +1749,9 @@ static void sm_fill(void)
 
 static void summary_create(lv_obj_t *p)
 {
+    sm_parent = p;
+    ev_card = ev_page = ev_det = NULL;
+    ev_filter = UEV_ALL;
     d_header(p, "Drive summary");
     sm_hdr = d_right(p, "", UI_MUTED);
     sm_tv = lv_tileview_create(p);
@@ -1460,14 +1773,23 @@ static void summary_create(lv_obj_t *p)
     mosaico_drive_history_request();
 }
 
-static void summary_destroy(void) { sm_tv = sm_p1 = sm_p2 = sm_hdr = NULL; }
+static void summary_destroy(void)
+{
+    sm_tv = sm_p1 = sm_p2 = sm_hdr = NULL;
+    sm_parent = ev_card = ev_foot = ev_page = ev_det = ev_list = NULL;
+    memset(ev_line, 0, sizeof ev_line);
+}
 
 static void summary_update(const ui_snap_t *s)
 {
-    (void)s;
+    ev_st = s->st;
     mosaico_drive_get_summary(&sm);
     mosaico_drive_get_history(&sm_h);
-    if (sm.gen == sm_gen && sm_h.gen == sm_hgen) return;
+    if (sm.gen == sm_gen && sm_h.gen == sm_hgen) {         /* the events change in place, every update (1 s) */
+        ev_card_refresh(s);
+        ev_page_fill(s, false);
+        return;
+    }
     sm_gen = sm.gen; sm_hgen = sm_h.gen;
     /* sm_fill cleans the pages: the dots go with them, so draw them again */
     sm_fill();
@@ -1477,6 +1799,8 @@ static void summary_update(const ui_snap_t *s)
         ui_rect(pg, x, 456, t ? 6 : 18, 6, t ? UI_THEME.dim : UI_TEXT, LV_RADIUS_CIRCLE);
         ui_rect(pg, x + (t ? 13 : 25), 456, t ? 18 : 6, 6, t ? UI_TEXT : UI_THEME.dim, LV_RADIUS_CIRCLE);
     }
+    ev_card_refresh(s);
+    ev_page_fill(s, false);
 }
 
 /* ======================= 11. Files (drive logs) ======================= */
@@ -1724,7 +2048,8 @@ static void st_bevel(lv_obj_t *o)
     lv_obj_set_style_border_color(o, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_border_opa(o, 46, 0);
 }
-static lv_color_t st_pressed(void) { return lv_color_mix(lv_color_hex(0xFFFFFF), lv_color_hex(UI_THEME.track), 48); }
+/* pressed: the fill tinted 48/255 toward press_tint (dark: lighter, light: darker) */
+static lv_color_t st_pressed(void) { return lv_color_mix(lv_color_hex(UI_THEME.press_tint), lv_color_hex(UI_THEME.track), 48); }
 
 /* ---- HOME APPS ORDER: one full-width row per launcher place, a big Up and Down button on each. A move swaps the two
    rows' labels in place and scrolls the list one row with it, so the moved app stays under the finger. ---- */
@@ -1734,7 +2059,7 @@ static int g_ord_n, g_ord_mark = -1;
 static void ord_paint(int pos, int app)
 {
     const ocm_app_t *a = ui_app(app);
-    ui_set_bg(g_ord_tile[pos], a->icon_bg);
+    ui_set_bg(g_ord_tile[pos], UI_LIGHT ? a->icon_g1 : a->icon_bg);     /* the launcher's tile in each theme */
     if (lv_image_get_src(g_ord_icon[pos]) != (const void *)a->icon52) lv_image_set_src(g_ord_icon[pos], a->icon52);
     ui_set_text(g_ord_name[pos], a->name);
 }
@@ -1797,7 +2122,7 @@ static int ord_rows(lv_obj_t *p, int y, const ui_settings_t *s)
         g_ord_row[i] = r;
         g_ord_tile[i] = ui_rect(r, 6, 6, 52, 52, 0, 14);
         g_ord_icon[i] = lv_image_create(g_ord_tile[i]);
-        lv_obj_set_style_image_recolor(g_ord_icon[i], lv_color_hex(0x0B0B0D), 0);
+        lv_obj_set_style_image_recolor(g_ord_icon[i], lv_color_hex(UI_THEME.tile_glyph), 0);
         lv_obj_set_style_image_recolor_opa(g_ord_icon[i], LV_OPA_COVER, 0);
         lv_obj_center(g_ord_icon[i]);
         lv_obj_t *num = ui_label(r, F14, UI_MUTED, "");
@@ -2073,6 +2398,13 @@ static void ck_open(void)
     lv_obj_t *zl = lv_dropdown_get_list(ck_tz);
     lv_obj_set_style_text_line_space(zl, ST_H - lv_font_get_line_height(F16), 0);
     lv_obj_set_style_text_font(zl, F16, 0);
+    lv_obj_set_style_bg_color(zl, lv_color_hex(UI_CARD), 0);           /* the open list: the palette, not LVGL's white */
+    lv_obj_set_style_text_color(zl, lv_color_hex(UI_TEXT), 0);
+    lv_obj_set_style_border_color(zl, lv_color_hex(UI_BORDER), 0);
+    lv_obj_set_style_bg_color(zl, lv_color_hex(UI_ORANGE), LV_PART_SELECTED | LV_STATE_CHECKED);
+    lv_obj_set_style_bg_color(zl, lv_color_hex(UI_ORANGE), LV_PART_SELECTED | LV_STATE_PRESSED);
+    lv_obj_set_style_text_color(zl, lv_color_hex(UI_BG), LV_PART_SELECTED | LV_STATE_CHECKED);
+    lv_obj_set_style_text_color(zl, lv_color_hex(UI_BG), LV_PART_SELECTED | LV_STATE_PRESSED);
     ck_msg = at(ui_label(ck_page, F14, UI_MUTED, "24-hour time, local to the zone. Wi-Fi time replaces it when it syncs."), 24, 350);
     lv_obj_set_width(ck_msg, UI_W - 48);
     lv_label_set_long_mode(ck_msg, LV_LABEL_LONG_WRAP);
@@ -2282,6 +2614,7 @@ static void settings_fill(void)
     st_note(g_list, y, "Saved on the board (NVS). Wi-Fi networks: the Wi-Fi app. Function key: home.");
 }
 
+static int32_t g_keep_y;                                   /* the list's scroll across a theme rebuild */
 static void settings_create(lv_obj_t *p)
 {
     ui_header(p, "Settings");
@@ -2292,10 +2625,16 @@ static void settings_create(lv_obj_t *p)
     lv_obj_set_scroll_dir(g_list, LV_DIR_VER);
     lv_obj_set_scrollbar_mode(g_list, LV_SCROLLBAR_MODE_ACTIVE);
     settings_fill();
+    if (ui_theme_reopening() && g_keep_y > 0) {            /* the Theme tap rebuilt the page: stay where the finger was */
+        lv_obj_update_layout(g_list);
+        lv_obj_scroll_to_y(g_list, g_keep_y, LV_ANIM_OFF);
+    }
+    g_keep_y = 0;
 }
 
 static void settings_destroy(void)
 {
+    g_keep_y = ui_theme_reopening() && g_list ? lv_obj_get_scroll_y(g_list) : 0;
     g_list = g_ble = g_bright_sl = g_bright_val = g_store = g_swipe = g_clk_time = g_clk_src = g_model = NULL;
     g_mseg[0] = g_mseg[1] = NULL;
     memset(g_seg, 0, sizeof g_seg);

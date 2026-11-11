@@ -6,6 +6,7 @@ if(ocm_target STREQUAL "esp32s31")
     list(APPEND ocm_board_srcs "swipe_intent.c")                   # smart swipe (CONFIG_OCM_SWIPE_INTENT)
     list(APPEND ocm_board_srcs "mosaico_clock.c" "clock_set.c")    # Settings > Clock: set the clock by hand
     list(APPEND ocm_board_srcs "ui_settings_logic.c")              # Settings: blob migration, order moves, debounce
+    list(APPEND ocm_board_srcs "ui_events_logic.c")                # Summary: the recent-events rows (T1)
     list(APPEND ocm_board_reqs esp_app_format)                    # its firmware tag: the app ELF SHA
     set(ocm_ml_dir "${CMAKE_CURRENT_LIST_DIR}/../ml/onboard_s31")   # CarMind E.V (ev/) and R.E.V (rev/) re-quantized for the S31
 else()

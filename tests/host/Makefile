@@ -44,6 +44,20 @@ settings: settings_tests
 settings_tests: test_ui_settings.c ../../main/ui_settings_logic.c ../../main/ui_settings_logic.h
 	$(CC) $(CFLAGS) -o $@ test_ui_settings.c ../../main/ui_settings_logic.c
 
+# ESP-Mosaico recent events (Summary app): times, colours by level, the save line, filters, UTF-8 truncation (T1)
+events: events_tests
+	./events_tests
+
+events_tests: test_ui_events.c ../../main/ui_events_logic.c ../../main/ui_events_logic.h ../../main/power_state.c
+	$(CC) $(CFLAGS) -o $@ test_ui_events.c ../../main/ui_events_logic.c ../../main/power_state.c
+
+# ESP-Mosaico palettes: every text/ground pair >= 4.5:1, graphics >= 3:1, read from mosaico_display.c (T1)
+theme: theme_tests
+	./theme_tests
+
+theme_tests: test_ui_theme.c ../../main/mosaico_display.c
+	$(CC) $(CFLAGS) -o $@ test_ui_theme.c -lm
+
 swipe_tests: test_swipe_intent.c ../../main/swipe_intent.c ../../main/swipe_intent.h
 	$(CC) $(CFLAGS) -O2 -o $@ test_swipe_intent.c -lm
 
@@ -63,5 +77,5 @@ rev_tests: $(REV_SRCS) ../../main/rev_learn.h ../../main/rev_cal.h ../../main/re
 	$(CC) $(CFLAGS) -o $@ $(REV_SRCS) -lm
 
 clean:
-	rm -f carmind_tests rev_tests tank_tests session_tests reset_tests swipe_tests clock_tests settings_tests
-.PHONY: run rev session reset swipe clock settings clean
+	rm -f carmind_tests rev_tests tank_tests session_tests reset_tests swipe_tests clock_tests settings_tests events_tests theme_tests
+.PHONY: run rev session reset swipe clock settings events theme clean

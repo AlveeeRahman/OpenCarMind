@@ -22,6 +22,7 @@ typedef struct {
     uint32_t gen, session;
     bool     ok;
     int64_t  start_epoch_ms;           /* 0 = no clock */
+    int64_t  start_up_ms;              /* uptime at the start (this boot): the drive's window in the recent-events log */
     int32_t  dur_s;
     float    km, fuel_l, l100, avg_kph, max_kph, idle_pct;
     float    cls_share[4];             /* stopped, braking, accelerating, cruising: share of the classified time */
