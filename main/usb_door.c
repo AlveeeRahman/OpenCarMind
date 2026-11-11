@@ -444,7 +444,7 @@ static void handle(char *line, char *buf, char *b64)
         reply("OK REBOOT");
         vTaskDelay(pdMS_TO_TICKS(300));
 #if BOARD_MOSAICO
-        sched_mark_intentional_reset();
+        sys_reset(SYS_RESET_REBOOT, "door REBOOT");
 #endif
         esp_restart();
     } else reply("ERR unknown command");

@@ -329,4 +329,7 @@ void app_main(void)
     ESP_LOGI(TAG, "internal heap after tasks: %u (largest block %u)", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
              (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
     ESP_LOGI(TAG, "%s running", CARMIND_FW_STRING);
+#if BOARD_MOSAICO
+    os_boot_done();                    /* mossREV OS: the reset the last run asked for (os.h) */
+#endif
 }

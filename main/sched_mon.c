@@ -336,7 +336,7 @@ static void restart_hung(const char *name)
     snprintf(s_rtc_reason, sizeof s_rtc_reason, "%.14s hung", name);
     sys_event(EV_ERROR, "%s hung past %dx deadline, restarting", name, SCHED_RESTART_FACTOR);
     vTaskDelay(pdMS_TO_TICKS(200));                 /* let the log line out */
-    esp_restart();
+    OCM_SYS_RESET(SYS_RESET_MONITOR, (void)0); esp_restart();
 }
 
 static void monitor_task(void *arg)

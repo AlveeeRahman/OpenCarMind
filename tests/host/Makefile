@@ -119,6 +119,14 @@ ppa: ppa_tests
 ppa_tests: test_ppa_geom.c ../../main/ocm_ppa_geom.c ../../main/ocm_ppa_geom.h
 	$(CC) $(CFLAGS) -O2 -o $@ test_ppa_geom.c ../../main/ocm_ppa_geom.c
 
+# mossREV OS layer (2.0.0): the pure rules (main/os_core.c) plus a source audit (os_audit.sh)
+os: os_tests
+	./os_tests
+	./os_audit.sh
+
+os_tests: test_os.c ../../main/os_core.c ../../main/os_core.h ../../main/reset_class.c
+	$(CC) $(CFLAGS) -o $@ test_os.c ../../main/os_core.c ../../main/reset_class.c -lm
+
 carmind_tests: $(SRCS) ../../main/custom_pids.h ../../main/fault_engine.h
 	$(CC) $(CFLAGS) -o $@ $(SRCS) -lm
 
@@ -135,5 +143,5 @@ rev_tests: $(REV_SRCS) ../../main/rev_learn.h ../../main/rev_cal.h ../../main/re
 	$(CC) $(CFLAGS) -o $@ $(REV_SRCS) -lm
 
 clean:
-	rm -f carmind_tests rev_tests tank_tests session_tests reset_tests swipe_tests clock_tests uimetrics_tests prefetch_tests logstore_tests nandfat_tests settings_tests wifi_tests events_tests theme_tests wificreds_tests rows_tests ppa_tests
-.PHONY: run rev session reset swipe clock uimetrics prefetch logstore clean settings wifi events theme wificreds rows eventtext ppa
+	rm -f carmind_tests rev_tests tank_tests session_tests reset_tests swipe_tests clock_tests uimetrics_tests prefetch_tests logstore_tests nandfat_tests settings_tests wifi_tests events_tests theme_tests wificreds_tests rows_tests ppa_tests os_tests
+.PHONY: run rev session reset swipe clock uimetrics prefetch logstore clean settings wifi events theme wificreds rows eventtext ppa os

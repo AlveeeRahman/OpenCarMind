@@ -34,12 +34,9 @@ void mosaico_console_download(void)
 {
     printf("CONSOLE rebooting into download mode\n");
     fflush(stdout);
-    sdlog_quiesce_for_reset();        /* this ROM reset bypasses esp_restart()'s shutdown handlers */
-    esp_rom_delay_us(100000);
-    sched_mark_intentional_reset();   /* the boot after esptool's reset reads as a panic otherwise */
-    REG_SET_BIT(LP_SYSTEM_REG_SYS_CTRL_REG, LP_SYSTEM_REG_FORCE_DOWNLOAD_BOOT);
-    esp_rom_software_reset_system();
-    for (;;) {}
+    /* marker (the boot after esptool's reset reads as a panic otherwise), storage quiesce (this ROM reset bypasses
+       esp_restart()'s shutdown handlers), 100 ms, then the ROM download reset: os_core.c SYS_RESET_DOOR */
+    sys_reset(SYS_RESET_DOOR, "USB door");
 }
 
 static void download_cb(void *arg) { (void)arg; mosaico_console_download(); }

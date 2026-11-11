@@ -2579,8 +2579,7 @@ static void stall_cb(void *arg)
     int64_t now = esp_timer_get_time();
     if (now > STALL_ARM_US && now - s_tick_seen_us > STALL_LIMIT_US) {
         ESP_LOGE(TAG, "ui tick stalled for %lld s: aborting for a core dump", (long long)((now - s_tick_seen_us) / 1000000));
-        sdlog_quiesce_for_reset();
-        esp_system_abort("ui tick stalled");
+        sys_reset(SYS_RESET_UI_STALL, "ui tick stalled");   /* quiesce, then abort for the core dump (os_core.h) */
     }
 }
 static void tick_cb(lv_timer_t *t)
