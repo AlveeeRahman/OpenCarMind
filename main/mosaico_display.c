@@ -86,8 +86,9 @@ void lv_mem_monitor_core(lv_mem_monitor_t *mon) { (void)mon; }
 lv_result_t lv_mem_test_core(void) { return LV_RESULT_OK; }
 
 /* ---------- themes: one table per palette. Dark = the owner's chosen looks (A "Night drive", B "Pixel garage" for Drive,
-   C "Cockpit" for home); Light = the OpenCarMind design system's lcd light tokens (every text colour >= 4.5:1 on its
-   ground). Class colours: stopped, braking, accelerating, cruising. ---------- */
+   C "Cockpit" for home); Light = the Row I light look of the launcher carried into every app page. Every text colour
+   is >= 4.5:1 (WCAG 2.x AA) on each ground it is drawn on, in both palettes: tests/host/test_ui_theme.c reads these
+   tables and checks the pairs. Class colours: stopped, braking, accelerating, cruising. ---------- */
 #define THEME_FONTS \
     .f_speed = &lv_font_montserrat_48, .f_num_b = &lv_font_montserrat_48, .f_hero = &lv_font_montserrat_48, \
     .f_big = &lv_font_montserrat_32, .f_large = &lv_font_montserrat_28, .f_title = &lv_font_montserrat_24, \
@@ -100,13 +101,16 @@ lv_result_t lv_mem_test_core(void) { return LV_RESULT_OK; }
 static const ui_theme_t THEME_DARK = {
     .name = "dark",
     .bg = 0x000000, .card = 0x0B0B0D, .border = 0x2A2A2E, .text = 0xF2ECE1, .muted = 0xB8B8B8, .dim = 0x4A4A4A,
-    .track = 0x1A1A1D, .good = 0x56F487, .warn = 0xFCCA21, .bad = 0xE64343, .estimate = 0xF2A13A, .ai = 0xE64343,
+    .track = 0x1A1A1D, .good = 0x56F487, .warn = 0xFCCA21, .bad = 0xEA4B4B, .estimate = 0xF2A13A, .ai = 0xEA4B4B,
     .scrim = 0x000000, .banner = 0x16161A,
     .section = { [SEC_SKY] = 0x8CC8FF, [SEC_ORANGE] = 0xFE860F, [SEC_GREEN] = 0x56F487, [SEC_PINK] = 0xF472B6,
-                 [SEC_AMBER] = 0xF2A13A, [SEC_RED] = 0xFD122E, [SEC_AQUA] = 0x72ECE4, [SEC_VIOLET] = 0xAD8DFD,
+                 [SEC_AMBER] = 0xF2A13A, [SEC_RED] = 0xFF2A3D, [SEC_AQUA] = 0x72ECE4, [SEC_VIOLET] = 0xAD8DFD,
                  [SEC_CYAN] = 0x38B8F6 },
     .cls = { 0x9372C8, 0xE05B4A, 0x4E82E5, 0xC68206 },
     .icon = 0xF2ECE1, .icon_glyph = 0x111111,
+    .light = false, .panel = 0x111216, .panel_edge = 0x1F2026, .inset = 0x1A1B20, .inset_hi = 0x26272D, .chip = 0x141519,
+    .label2 = 0x8E8E93, .off = 0x4A4A4A, .sheet = 0x16161A, .press_tint = 0xFFFFFF, .tile_glyph = 0x0B0B0D,
+    .dcls = { 0xAD8DFD, 0xFD5A4A, 0x5AA2FF, 0xFCCA21 },
     /* black ground on the AMOLED (v5's #16212F rendered bright blue): near-black tiles, 1 px border, dark hard shadow */
     .b_ground = 0x000000, .b_tile = 0x0B0B0D, .b_border = 0x2A2A2E, .b_shadow = 0x1A1A1D, .b_lit = 0x7AA2FF, .b_lit_hi = 0xF2C94C,
     .b_unlit = 0x222226, .b_tank = 0x7CCB6E, .b_face_tile = 0xF2ECE1, .b_face_text = 0x111111, .b_head = 0x111111,
@@ -118,24 +122,31 @@ static const ui_theme_t THEME_DARK = {
     .sb_cpu = 0x72ECE4, .sb_ai = 0xFE860F, .sb_mips = 0xF2ECE1, .sb_pwr = 0x56F487,
 };
 
-__attribute__((unused)) static const ui_theme_t THEME_LIGHT = {   /* kept for a later light option */
+/* Light (T1, owner 2026-11-11: "white mode app internals need to be white too"): the launcher's Row I light ground
+   (#F3F1EC, white cards) on every app page. Accents are the dark ones darkened until they pass 4.5:1 on the button
+   fill (track), which also covers the page and the cards, and so that the page colour passes on them (a selected
+   segment, the Save button). Amber and green in particular are deep (#845400, #186A2C): the dark ones fail on white. */
+static const ui_theme_t THEME_LIGHT = {
     .name = "light",
-    .bg = 0xF5F5F5, .card = 0xFFFFFF, .border = 0x8C8C8C, .text = 0x101418, .muted = 0x4A4A4A, .dim = 0x8C8C8C,
-    .track = 0xE2E2E2, .good = 0x1B6B2A, .warn = 0x6B4A00, .bad = 0xC62828, .estimate = 0x8F5200, .ai = 0xC62828,
-    .scrim = 0x101418, .banner = 0xFFFFFF,
-    .section = { [SEC_SKY] = 0x196EA9, [SEC_ORANGE] = 0xA65F00, [SEC_GREEN] = 0x40731A, [SEC_PINK] = 0x971C65,
-                 [SEC_AMBER] = 0x8F5200, [SEC_RED] = 0xD4002A, [SEC_AQUA] = 0x034239, [SEC_VIOLET] = 0x5517A5,
-                 [SEC_CYAN] = 0x196EA9 },
-    .cls = { 0x9372C8, 0xE05B4A, 0x4E82E5, 0xA86C00 },
-    .icon = 0x101418, .icon_glyph = 0xF5F5F5,
+    .bg = 0xF3F1EC, .card = 0xFFFFFF, .border = 0xD9D6CF, .text = 0x1C1C1E, .muted = 0x5C5C61, .dim = 0xB8B5AE,
+    .track = 0xE8E5DE, .good = 0x186A2C, .warn = 0x845400, .bad = 0xB8121C, .estimate = 0x8A4F00, .ai = 0xB8121C,
+    .scrim = 0x1C1C1E, .banner = 0xFFFFFF,
+    .section = { [SEC_SKY] = 0x1A5BC4, [SEC_ORANGE] = 0xA34200, [SEC_GREEN] = 0x186A2C, [SEC_PINK] = 0xA81D5A,
+                 [SEC_AMBER] = 0x845000, [SEC_RED] = 0xB8101C, [SEC_AQUA] = 0x0A665F, [SEC_VIOLET] = 0x5B2BB5,
+                 [SEC_CYAN] = 0x0A6584 },
+    .cls = { 0x7448D0, 0xC0392B, 0x2563C9, 0x9A6400 },
+    .icon = 0x1C1C1E, .icon_glyph = 0xF3F1EC,
+    .light = true, .panel = 0xFFFFFF, .panel_edge = 0xDDDAD3, .inset = 0xF1EFEA, .inset_hi = 0xE8E5DE, .chip = 0xFFFFFF,
+    .label2 = 0x5C5C61, .off = 0xB8B5AE, .sheet = 0xFFFFFF, .press_tint = 0x000000, .tile_glyph = 0xFFFFFF,
+    .dcls = { 0x6A3FC4, 0xB8121C, 0x1F5FCC, 0x845400 },
     .b_ground = 0xF5F2EB, .b_tile = 0xFFFFFF, .b_border = 0xC9C1B3, .b_shadow = 0xC9C1B3, .b_lit = 0x1F4FC2, .b_lit_hi = 0x6B4A00,
     .b_unlit = 0xE2DED6, .b_tank = 0x1B6B2A, .b_face_tile = 0x101418, .b_face_text = 0xF5F2EB, .b_head = 0xF5F2EB,
     .b_tag_model = 0x8F5200, .b_tag_phys = 0x8F5200, .b_tag_learn = 0x1B6B2A, .b_text = 0x101418, .b_muted = 0x4A4A4A,
-    .c_bg = 0xF5F5F5, .c_track = 0xE2E2E2, .c_rpm = 0x1F4FC2, .c_tick = 0x8C8C8C, .c_status = 0x4A4A4A,
-    .c_btn = 0x101418, .c_btn_glyph = 0xF5F5F5, .c_text = 0x101418, .c_muted = 0x4A4A4A,
+    .c_bg = 0xF3F1EC, .c_track = 0xE8E5DE, .c_rpm = 0x1A5BC4, .c_tick = 0x8C8C8C, .c_status = 0x5C5C61,
+    .c_btn = 0x1C1C1E, .c_btn_glyph = 0xF3F1EC, .c_text = 0x1C1C1E, .c_muted = 0x5C5C61,
     THEME_SHAPES, THEME_FONTS,
-    .face_top = 0xFFFFFF, .face_bot = 0xFFFFFF, .face_tick = 0xA65F00, .face_dot = 0x8C8C8C, .face_hour = 0xA65F00, .face_min = 0x101418,
-    .sb_cpu = 0x034239, .sb_ai = 0xA65F00, .sb_mips = 0x101418, .sb_pwr = 0x1B6B2A,
+    .face_top = 0xFFFFFF, .face_bot = 0xFFFFFF, .face_tick = 0xA34200, .face_dot = 0x8C8C8C, .face_hour = 0xA34200, .face_min = 0x1C1C1E,
+    .sb_cpu = 0x0A665F, .sb_ai = 0xA34200, .sb_mips = 0x1C1C1E, .sb_pwr = 0x186A2C,
 };
 
 /* Colour (F rows, Apple-style on the OLED): wallpaper gradients, glass cards, gradient widgets, white text. The Drive
@@ -475,7 +486,7 @@ void ui_confirm(const char *text, const char *yes, void (*cb)(void *arg), void *
     lv_label_set_long_mode(t, LV_LABEL_LONG_WRAP);
     lv_obj_set_pos(t, 2, 2);
     modal_button(c, "Cancel", UI_THEME.track, UI_TEXT, modal_no, LV_ALIGN_BOTTOM_LEFT);
-    modal_button(c, yes, UI_RED, 0xFFFFFF, modal_yes, LV_ALIGN_BOTTOM_RIGHT);
+    modal_button(c, yes, UI_RED, UI_BG, modal_yes, LV_ALIGN_BOTTOM_RIGHT);   /* white on the dark red was 4.0:1 */
 }
 
 /* ---------- End drive / Start drive control: a 64 px ring with a stop icon, held 1 s (the ring fills) to end a drive,
@@ -1064,7 +1075,7 @@ static void power_sheet_cb(lv_event_t *e)
     s_psheet = lv_obj_create(lv_layer_top());
     lv_obj_remove_style_all(s_psheet);
     lv_obj_set_size(s_psheet, UI_W, UI_H);
-    lv_obj_set_style_bg_color(s_psheet, lv_color_hex(0x000000), 0);
+    lv_obj_set_style_bg_color(s_psheet, lv_color_hex(UI_THEME.scrim), 0);
     lv_obj_set_style_bg_opa(s_psheet, LV_OPA_60, 0);
     lv_obj_add_flag(s_psheet, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(s_psheet, psheet_close, LV_EVENT_CLICKED, NULL);
@@ -1072,7 +1083,7 @@ static void power_sheet_cb(lv_event_t *e)
     lv_obj_t *c = flex_box(s_psheet, LV_FLEX_FLOW_COLUMN, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, 8);
     lv_obj_set_pos(c, 22, 150);
     lv_obj_set_size(c, UI_W - 44, 300);
-    lv_obj_set_style_bg_color(c, lv_color_hex(0x16161A), 0);
+    lv_obj_set_style_bg_color(c, lv_color_hex(UI_THEME.sheet), 0);
     lv_obj_set_style_bg_opa(c, LV_OPA_COVER, 0);
     lv_obj_set_style_radius(c, 24, 0);
     lv_obj_set_style_pad_all(c, 16, 0);
@@ -1213,7 +1224,7 @@ static void build_home_tile(lv_obj_t *t)
     lv_obj_t *face = ui_rect(ct, 16, 16, 128, 128, 0, LV_RADIUS_CIRCLE);
     lv_obj_set_style_bg_opa(face, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(face, 2, 0);
-    lv_obj_set_style_border_color(face, lv_color_hex(0x2A2A2E), 0);
+    lv_obj_set_style_border_color(face, lv_color_hex(s_light ? 0xC7C7CC : 0x2A2A2E), 0);   /* Row I ring */
     for (int i = 0; i < 12; i++) {
         float a = (float)i * (float)M_PI / 6.0f;
         int cx = 64 + (int)lroundf(52 * sinf(a)), cy = 64 - (int)lroundf(52 * cosf(a));
@@ -2333,7 +2344,7 @@ static void open_app(int idx)
     s_cur = idx;
     s_accent_sec = ui_app(idx)->section;
     lv_obj_set_style_bg_grad_dir(s_appscr, LV_GRAD_DIR_NONE, 0);
-    lv_obj_set_style_bg_color(s_appscr, lv_color_hex(0x000000), 0);   /* app pages and Drive: pure black */
+    lv_obj_set_style_bg_color(s_appscr, lv_color_hex(UI_BG), 0);      /* the palette's page ground (dark: pure black) */
     ui_app(idx)->create(s_body);
     take_snapshot();
     ui_app(idx)->update(&s_snap);
@@ -2385,10 +2396,17 @@ static void gesture_cb(lv_event_t *e)
    finger is on the glass or a question is open; checked once a second, so it follows the minute. ---------- */
 static void rebuild_all(void);
 
-/* v9: app pages and Drive are always the dark look; the launcher (Home, Apps) and its status row follow Settings > Theme:
+/* Settings > Theme drives the launcher (Home, Apps), the status row and every app page (T1; v9 kept the apps dark):
    Light, Dark, or Auto = Light from config.json day_start_hour to day_end_hour (06:00-17:00 by default, the S3 rule) once
    the clock is known, Dark otherwise and with no clock */
-static const ui_theme_t *theme_wanted(const app_status_t *st, bool *is_auto) { (void)st; *is_auto = false; return &THEME_DARK; }
+static bool light_wanted(const app_status_t *st, bool *is_auto);
+static const ui_theme_t *theme_wanted(const app_status_t *st, bool *is_auto)
+{
+    s_light = light_wanted(st, is_auto);
+    return s_light ? &THEME_LIGHT : &THEME_DARK;
+}
+static bool s_theme_reopen;
+bool ui_theme_reopening(void) { return s_theme_reopen; }
 
 static bool light_wanted(const app_status_t *st, bool *is_auto)
 {
@@ -2413,11 +2431,20 @@ static bool theme_tick(const ui_snap_t *s, bool force)
     if (want == s_light) return false;
     if (!force && (lv_display_get_inactive_time(s_disp) < 1500 || s_modal_open())) return false;   /* not mid-gesture */
     s_light = want;
+    ui_th = s_light ? &THEME_LIGHT : &THEME_DARK;
     int64_t tb = esp_timer_get_time();
-    build_launcher();                                     /* one rebuild; both wallpapers are already in PSRAM */
-    s_sb_mode = -1;
-    ESP_LOGI(TAG, "theme -> %s (%s, %s), launcher rebuilt in %.1f ms", s_light ? "light" : "dark", is_auto ? "auto" : "set", s->clock,
-             (esp_timer_get_time() - tb) / 1000.0);
+    /* one rebuild in the new palette: the status row and its banner, the launcher (both wallpapers are already in
+       PSRAM) and the app on screen; the Power sheet closes */
+    if (s_psheet) { lv_obj_delete(s_psheet); s_psheet = NULL; }
+    if (s_sb) lv_obj_delete(s_sb);
+    if (s_banner) lv_obj_delete(s_banner);
+    build_status_bar();
+    build_launcher();
+    int64_t ta = esp_timer_get_time();
+    lv_obj_set_style_bg_color(s_appscr, lv_color_hex(UI_BG), 0);
+    if (s_cur >= 0) { s_theme_reopen = true; open_app(s_cur); s_theme_reopen = false; }
+    ESP_LOGI(TAG, "theme -> %s (%s, %s), launcher rebuilt in %.1f ms, app in %.1f ms", s_light ? "light" : "dark", is_auto ? "auto" : "set",
+             s->clock, (ta - tb) / 1000.0, (esp_timer_get_time() - ta) / 1000.0);
     return true;
 }
 

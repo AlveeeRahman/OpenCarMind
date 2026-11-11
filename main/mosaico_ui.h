@@ -30,6 +30,10 @@ typedef struct {
     uint32_t section[SEC_COUNT];                 /* per-app accents */
     uint32_t cls[4];                             /* stopped, braking, accelerating, cruising */
     uint32_t icon, icon_glyph;
+    /* app surfaces without a style A name (Drive's panels and wells, back chips, sheets), the press tint, the glyph on
+       an app tile, Drive's class colours; light = the light palette (apps then use the light tiles, icon_g1) */
+    bool     light;
+    uint32_t panel, panel_edge, inset, inset_hi, chip, label2, off, sheet, press_tint, tile_glyph, dcls[4];
     /* style B (Drive) */
     uint32_t b_ground, b_tile, b_border, b_shadow, b_lit, b_lit_hi, b_unlit, b_tank, b_face_tile, b_face_text, b_head,
              b_tag_model, b_tag_phys, b_tag_learn, b_text, b_muted;
@@ -59,6 +63,7 @@ uint32_t ui_accent(void);                        /* accent of the app on screen 
 #define UI_GREEN     (UI_THEME.good)
 #define UI_WARN      (UI_THEME.warn)
 #define UI_ICON      (UI_THEME.icon)
+#define UI_LIGHT     (UI_THEME.light)
 #define UI_MARGIN    16
 #define UI_W         480
 #define UI_H         480
@@ -132,6 +137,8 @@ void      ui_set_text(lv_obj_t *o, const char *t);                   /* change-o
 void      ui_set_fmt(lv_obj_t *o, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
 void      ui_set_color(lv_obj_t *o, uint32_t c);
 void      ui_go_home(void);
+/* true while the shell rebuilds the open app for a theme switch: an app may keep its scroll position across it */
+bool      ui_theme_reopening(void);
 /* economy in the unit chosen in Settings: writes the number into buf ("--" when kpl < 0.05) and returns the unit */
 const char *ui_econ(float kpl, char *buf, size_t n);
 /* modal question on top of everything: only the yes button runs cb (never a single tap on the item itself) */

@@ -128,6 +128,7 @@ static void rec_finish(void)
     memset(w, 0, sizeof *w);
     w->session = R.session;
     w->start_epoch_ms = R.epoch0_ms;
+    w->start_up_ms = R.t0_ms;
     w->dur_s = (int32_t)((esp_timer_get_time() / 1000 - R.t0_ms) / 1000);
     w->km = R.km; w->fuel_l = R.fuel_l;
     w->l100 = R.km > 0.2f && R.fuel_l > 0 ? 100.0f * R.fuel_l / R.km : -1;
