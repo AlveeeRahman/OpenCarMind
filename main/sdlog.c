@@ -610,7 +610,8 @@ bool session_name_valid(const char *n)
     if (!n || strlen(n) < 11 || n[0] != 's') return false;
     for (int i = 1; i <= 6; i++) if (n[i] < '0' || n[i] > '9') return false;
     const char *e = n + 7;
-    return !strcmp(e, ".csv") || !strcmp(e, ".ml.csv") || !strcmp(e, ".pat") || !strcmp(e, ".raw") || !strcmp(e, ".json");
+    return !strcmp(e, ".csv") || !strcmp(e, ".ml.csv") || !strcmp(e, ".pat") || !strcmp(e, ".raw") || !strcmp(e, ".json") ||
+           !strcmp(e, ".sum.json");                     /* the ESP-Mosaico's drive summary (mosaico_drive.c) */
 }
 
 /* lock held; id = 0 means every session but the current one */

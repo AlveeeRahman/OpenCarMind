@@ -32,6 +32,7 @@
 #if BOARD_MOSAICO
 #include "mosaico_console.h"
 #include "mosaico_board.h"
+#include "mosaico_ui.h"
 #endif
 
 static const char *TAG = "app";
@@ -300,6 +301,9 @@ void app_main(void)
        is on while the fewest other tasks allocate; it takes under 200 B of internal RAM either way */
     if (!sched_safe_mode()) ml_init();   /* after repeated abnormal resets, boot without the newest component */
     rev_init();                       /* R.E.V learning and fill-up calibration; in safe mode only the calibration factor, from NVS */
+#if BOARD_MOSAICO
+    mosaico_ui_producers_ready();     /* the launcher may now read the R.E.V status */
+#endif
     ESP_LOGI(TAG, "internal heap before BLE: %u", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
     ESP_ERROR_CHECK(obd_ble_start());
     ESP_LOGI(TAG, "internal heap before Wi-Fi: %u", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));

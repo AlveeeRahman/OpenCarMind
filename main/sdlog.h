@@ -51,7 +51,8 @@ void sdlog_write_ml_line(const char *header, const char *line);         /* value
 bool sdlog_load_text(const char *path, char *buf, size_t n);
 bool sdlog_save_text_atomic(const char *path, const char *text);
 
-/* Drive-log file name: "s" + 6 digits + a suffix the logger writes (.csv, .ml.csv, .pat, .raw, .json). */
+/* Drive-log file name: "s" + 6 digits + a suffix the logger writes (.csv, .ml.csv, .pat, .raw, .json,
+   and .sum.json on the ESP-Mosaico). */
 bool session_name_valid(const char *name);
 
 /* Delete drive logs (every sNNNNNN.<known suffix> file in SDLOG_SESSIONS_DIR, nothing else) under the logger's own lock,

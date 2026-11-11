@@ -1,6 +1,8 @@
 # Espressif ESP-Mosaico V1.2 (ESP32-S31NRV16): 16 MB NOR flash, 16 MB in-package PSRAM, CO5300 AMOLED, CST9220 touch
 CONFIG_IDF_TARGET="esp32s31"
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions_mosaico.csv"
+CONFIG_ESP_LCD_TOUCH_MAX_POINTS=2
+CONFIG_LV_USE_DRAW_SW=y
 CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
 CONFIG_PARTITION_TABLE_CUSTOM=y
 # console and USB door: TinyUSB CDC-ACM on the Type-C (USB OTG) port (main/mosaico_console.c); never TinyUSB MSC
@@ -9,6 +11,12 @@ CONFIG_TINYUSB_CDC_COUNT=1
 CONFIG_TINYUSB_MSC_ENABLED=n
 # app is the car firmware plus three models and the launcher: -Os keeps it inside the 6 MB slot
 CONFIG_COMPILER_OPTIMIZATION_SIZE=y
+# launcher fonts (480x480) and the LVGL heap in PSRAM (lv_*_core in main/mosaico_display.c)
+CONFIG_LV_FONT_MONTSERRAT_20=y
+CONFIG_LV_FONT_MONTSERRAT_28=y
+CONFIG_LV_FONT_MONTSERRAT_32=y
+CONFIG_LV_FONT_MONTSERRAT_48=y
+CONFIG_LV_USE_CUSTOM_MALLOC=y
 CONFIG_ESP_BROWNOUT_DET=y
 # Wi-Fi only sets the clock (one HTTPS HEAD): 2 static RX and 4 static TX buffers, ~1.6 KB internal RAM each.
 # The S31 Wi-Fi driver checks RX_BA_WIN <= 2 x STATIC_RX_BUFFER_NUM.
