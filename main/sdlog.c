@@ -94,6 +94,55 @@ static WORD_ALIGNED_ATTR char s_csv_iobuf[2048];   /* internal DRAM, DMA-capable
 #define CLOCK_PATH SDLOG_DIR "/clock.txt"
 static const char *s_clock_source = "unset";   /* unset, rtc (kept through a reset), resumed (from the card), https (the time server) */
 
+#if CONFIG_OCM_NAND_LOGS
+/* With the NAND mounted clock.txt lives there and is written at most once a minute (log_store_clock_due): every NOR write
+   stalls the flash cache, and this was the last one at every save. The NOR copy stays as the fallback for a boot without
+   the NAND; at boot the newer of the two wins. */
+#define NAND_CLOCK_PATH NAND_LOG_DIR "/clock.txt"
+static int64_t s_clock_saved_ms = -1;          /* uptime of the last clock.txt write, -1 = none since boot */
+static bool s_clock_force;                     /* the clock was just set (by hand or by Wi-Fi): write at the next save */
+
+static void save_clock_locked(void)
+{
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    if (!harden_epoch_plausible(tv.tv_sec)) return;
+    int64_t now = esp_timer_get_time() / 1000;
+    if (!log_store_clock_due(now, s_clock_saved_ms, s_clock_force)) return;
+    FILE *f = fopen(nand_store_mounted() ? NAND_CLOCK_PATH : CLOCK_PATH, "w");
+    if (!f) return;
+    fprintf(f, "%lld\n", (long long)tv.tv_sec);
+    fflush(f);
+    fsync(fileno(f));
+    fclose(f);
+    s_clock_saved_ms = now;
+    s_clock_force = false;
+}
+
+static long long read_clock_file(const char *path)   /* 0 when missing or not a plausible time */
+{
+    FILE *f = fopen(path, "r");
+    if (!f) return 0;
+    long long saved = 0;
+    int n = fscanf(f, "%lld", &saved);
+    fclose(f);
+    return n == 1 && harden_epoch_plausible(saved) ? saved : 0;
+}
+
+static void restore_clock(void)
+{
+    struct timeval now;
+    gettimeofday(&now, NULL);
+    if (harden_epoch_plausible(now.tv_sec)) { s_clock_source = "rtc"; return; }
+    long long saved = log_store_clock_pick(nand_store_mounted() ? read_clock_file(NAND_CLOCK_PATH) : 0, read_clock_file(CLOCK_PATH));
+    if (!saved) return;
+    struct timeval tv = { .tv_sec = (time_t)saved, .tv_usec = 0 };
+    settimeofday(&tv, NULL);
+    s_clock_source = "resumed";
+    STATUS_LOCK(); g_status.clock_estimated = true; STATUS_UNLOCK();
+    sys_event(EV_INFO, "Clock resumed from the card, Wi-Fi will correct it");
+}
+#else
 static void save_clock_locked(void)
 {
     struct timeval tv;
@@ -124,6 +173,8 @@ static void restore_clock(void)
     STATUS_LOCK(); g_status.clock_estimated = true; STATUS_UNLOCK();
     sys_event(EV_INFO, "Clock resumed from the card, Wi-Fi will correct it");
 }
+
+#endif
 
 static void set_meta_string(cJSON *obj, const char *key, const char *value)
 {
@@ -911,6 +962,7 @@ static esp_err_t format_drive_store(uint32_t *free_kb, int *kept_files, char *wh
         mkdir(NAND_SESSIONS_DIR, 0775);
         delete_in_dir_locked(SDLOG_SESSIONS_DIR, 0, NULL);
         remove(SDLOG_DIR "/drives.csv");
+        s_clock_saved_ms = -1;                        /* clock.txt went with the NAND: write it again at the next save */
     }
     uint64_t tot = 0, fr = 0;
     nand_store_info(&tot, &fr);
@@ -942,11 +994,15 @@ esp_err_t sdlog_format_storage(uint32_t *free_kb, int *kept_files, char *why, si
 #if CONFIG_OCM_NAND_LOGS
     /* the session opened at boot stays open (s_open) until a drive with rows ends; one without rows holds no data */
     if (nand_store_state() != NAND_ABSENT) {
-        if (s_open && s_rows) { snprintf(why, why_n, "a drive is being logged"); return ESP_ERR_INVALID_STATE; }
+        if (!log_store_format_allowed(s_open, s_rows)) { snprintf(why, why_n, "a drive is being logged"); return ESP_ERR_INVALID_STATE; }
         return format_drive_store(free_kb, kept_files, why, why_n);
     }
+    /* no NAND: the flash FAT path. Like the NAND path, the session opened at boot with no rows does not block it (it was
+       refused here right after every boot, until a drive ended) */
+    if (!log_store_format_allowed(s_open, s_rows)) { snprintf(why, why_n, "a drive is being logged"); return ESP_ERR_INVALID_STATE; }
+#else
+    if (s_open && s_rows) { snprintf(why, why_n, "a drive is being logged"); return ESP_ERR_INVALID_STATE; }
 #endif
-    if (s_open) { snprintf(why, why_n, "a drive is being logged"); return ESP_ERR_INVALID_STATE; }
     typedef struct { char name[48]; uint8_t *data; size_t n; } keep_t;
     static keep_t keep[24];
     int nk = 0;
@@ -957,6 +1013,7 @@ esp_err_t sdlog_format_storage(uint32_t *free_kb, int *kept_files, char *why, si
     if (s_raw) { fclose(s_raw); s_raw = NULL; }
     if (s_pat) { fclose(s_pat); s_pat = NULL; }
     if (s_ml) { fclose(s_ml); s_ml = NULL; }
+    s_open = false;                                   /* its files go with the format: the next drive opens a new session */
     DIR *d = opendir(SDLOG_DIR);
     for (struct dirent *e; d && (e = readdir(d)) != NULL && nk < 24;) {
         if (!strcmp(e->d_name, "drives.csv") || strlen(e->d_name) >= sizeof keep[0].name) continue;
@@ -1117,6 +1174,9 @@ void sdlog_meta_set_time_sync(int64_t epoch_ms, int64_t uptime_ms)
     if (!s_meta) return;
     xSemaphoreTake(s_lock, portMAX_DELAY);
     s_clock_source = "https";
+#if CONFIG_OCM_NAND_LOGS
+    s_clock_force = true;                      /* clock.txt at the next save, not up to a minute later */
+#endif
     cJSON *ts = cJSON_GetObjectItem(s_meta, "time_sync");
     cJSON_ReplaceItemInObject(ts, "epoch_ms", cJSON_CreateNumber((double)epoch_ms));
     cJSON_ReplaceItemInObject(ts, "uptime_ms", cJSON_CreateNumber((double)uptime_ms));
@@ -1193,6 +1253,9 @@ void sdlog_meta_set_clock_manual(int64_t epoch_ms, int64_t uptime_ms)
     s_clock_source = "manual";
     cJSON_ReplaceItemInObject(s_meta, "started_epoch_ms", cJSON_CreateNumber((double)(epoch_ms - uptime_ms)));
     meta_flush_locked();
+#if CONFIG_OCM_NAND_LOGS
+    s_clock_force = true;
+#endif
     save_clock_locked();
     xSemaphoreGive(s_lock);
 }

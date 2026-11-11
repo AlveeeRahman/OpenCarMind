@@ -110,3 +110,20 @@ long log_store_merge_drives_csv(const char *a, const char *b, char *out, size_t 
     out[w] = 0;
     return (long)w;
 }
+
+bool log_store_format_allowed(bool session_open, uint32_t rows)
+{
+    return !session_open || rows == 0;
+}
+
+bool log_store_clock_due(int64_t now_ms, int64_t last_ms, bool force)
+{
+    return force || last_ms < 0 || now_ms - last_ms >= LOG_STORE_CLOCK_PERIOD_MS || now_ms < last_ms;
+}
+
+int64_t log_store_clock_pick(int64_t nand_epoch_s, int64_t flash_epoch_s)
+{
+    if (nand_epoch_s < 0) nand_epoch_s = 0;
+    if (flash_epoch_s < 0) flash_epoch_s = 0;
+    return nand_epoch_s > flash_epoch_s ? nand_epoch_s : flash_epoch_s;
+}

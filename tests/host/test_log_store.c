@@ -212,6 +212,33 @@ int main(void)
     n = log_store_merge_drives_csv("x,y\nbroken line\n5,z\n", "", out, sizeof out);
     CHECK(n > 0 && !strcmp(out, "x,y\n5,z\nbroken line\n"));   /* a row with no number kept, at the end */
 
+    /* Format storage: only a session with rows blocks it (the session opened at boot has none) */
+    CHECK(log_store_format_allowed(false, 0));
+    CHECK(log_store_format_allowed(true, 0));            /* right after boot: allowed (was refused on the flash FAT path) */
+    CHECK(!log_store_format_allowed(true, 1));
+    CHECK(!log_store_format_allowed(true, 123456));
+    CHECK(log_store_format_allowed(false, 50));          /* a drive ended: its rows are saved, the session is closed */
+
+    /* clock.txt: at most once a minute, forced writes at once, the first save after boot at once */
+    CHECK(log_store_clock_due(5000, -1, false));
+    CHECK(!log_store_clock_due(5000 + 59999, 5000, false));
+    CHECK(log_store_clock_due(5000 + 60000, 5000, false));
+    CHECK(log_store_clock_due(5001, 5000, true));
+    CHECK(log_store_clock_due(100, 5000, false));        /* time went backwards (cannot on one boot): write */
+    {
+        int writes = 0;                                   /* a 2 s save cadence over 10 minutes: 10 writes, not 300 */
+        int64_t last = -1;
+        for (int64_t t = 0; t < 600000; t += 2000)
+            if (log_store_clock_due(t, last, false)) { writes++; last = t; }
+        CHECK(writes == 10);
+    }
+    CHECK(log_store_clock_pick(1800000000, 1700000000) == 1800000000);
+    CHECK(log_store_clock_pick(1700000000, 1800000000) == 1800000000);
+    CHECK(log_store_clock_pick(0, 1800000000) == 1800000000);    /* no NAND copy yet (first boot with the NAND) */
+    CHECK(log_store_clock_pick(1800000000, 0) == 1800000000);
+    CHECK(log_store_clock_pick(0, 0) == 0);
+    CHECK(log_store_clock_pick(-5, 0) == 0);
+
     /* the move over two real directories, with a reset after every step */
     snprintf(dflash, sizeof dflash, "/tmp/ocm_lsflash_XXXXXX");
     snprintf(dnand, sizeof dnand, "/tmp/ocm_lsnand_XXXXXX");

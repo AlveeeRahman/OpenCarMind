@@ -3,7 +3,8 @@
  *
  * Two FAT volumes: the 128 MB SPI NAND (Dhara FTL, mounted at CONFIG_OCM_NAND_MOUNT_POINT) holds the drive logs, and the
  * flash FAT in the NOR "storage" partition (CONFIG_SDLOG_MOUNT_POINT) keeps the state files (learned R.E.V state, tank,
- * clock.txt, config.json, wifi.csv, custom_pids.csv, patterns.json). Without a mounted NAND the drive logs stay on the
+ * config.json, wifi.csv, custom_pids.csv, patterns.json). clock.txt is written to the NAND when it is mounted (the flash
+ * copy stays as a fallback, see log_store_clock_due). Without a mounted NAND the drive logs stay on the
  * flash FAT as before. Drive logs found on the flash FAT while the NAND is mounted are moved to the NAND once, each file
  * copied, synced, read back and compared before the flash copy is removed (log_store_move_step). */
 #include <stdbool.h>
@@ -38,3 +39,16 @@ bool log_store_copy_verified(uint64_t flash_size, uint32_t flash_crc, uint64_t n
    first column (rows without a number keep their order at the end). Returns the merged length, or -1 when out does not
    hold it (out is then left as an empty string). Either input may be NULL or empty. */
 long log_store_merge_drives_csv(const char *a, const char *b, char *out, size_t out_n);
+
+/* Format storage: refused only while a drive is being logged. The session opened at boot stays open until a drive with
+   rows ends, but with no rows it holds no data, so it does not block a format (the flash FAT path used to refuse here
+   right after every boot). */
+bool log_store_format_allowed(bool session_open, uint32_t rows);
+
+/* clock.txt (the last known time, read back after a power cut): on the NAND when it is mounted, so the save no longer
+   writes the NOR flash (each NOR write stalls the flash cache), and at most once a minute. A forced write (the clock was
+   just set by hand or by Wi-Fi) is always due. last_ms < 0: never written since boot. */
+#define LOG_STORE_CLOCK_PERIOD_MS 60000
+bool log_store_clock_due(int64_t now_ms, int64_t last_ms, bool force);
+/* At boot: the newer of the two copies. 0 = that copy is missing or not a plausible time. */
+int64_t log_store_clock_pick(int64_t nand_epoch_s, int64_t flash_epoch_s);
