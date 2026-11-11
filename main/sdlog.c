@@ -558,7 +558,13 @@ esp_err_t sdlog_init(void)
     g_status.sd_mounted = true;
     g_status.sd_error[0] = 0;
     STATUS_UNLOCK();
+#if BOARD_HAS_SD
     xTaskCreateWithCaps(sync_task, "sdsync", 6144, NULL, 2, NULL, MALLOC_CAP_SPIRAM);
+#else
+    /* The ESP-Mosaico keeps its logs in the NOR flash: every log write disables the flash cache, and a task with a PSRAM
+       stack then trips esp_task_stack_is_sane_cache_disabled(). With an SD card the stack stays in PSRAM. */
+    xTaskCreate(sync_task, "sdsync", 6144, NULL, 2, NULL);
+#endif
     return ESP_OK;
 }
 

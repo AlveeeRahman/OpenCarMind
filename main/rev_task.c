@@ -12,6 +12,7 @@
 #include "esp_heap_caps.h"
 #include "nvs.h"
 #include "sdkconfig.h"
+#include "board.h"
 #include "rev_task.h"
 #include "rev_state.h"
 #include "ml_infer.h"
@@ -263,8 +264,13 @@ void rev_init(void)
     sched_set_cpu_share(s_job, 20, 30);                              /* 2 % of a core on average, 30 ms bursts */
     sched_set_stall_ms(s_job, 60000);
     sched_set_expected(s_job, false);
+#if BOARD_HAS_SD
     /* stack in PSRAM: computation and SD file I/O only, no NVS, so it never runs with the flash cache disabled */
     if (xTaskCreatePinnedToCoreWithCaps(rev_task, "rev", 6144, NULL, 2, &s_task, 1, MALLOC_CAP_SPIRAM) != pdPASS) {
+#else
+    /* internal stack: the state files are in the NOR flash here (see sdlog.c, sync task) */
+    if (xTaskCreatePinnedToCore(rev_task, "rev", 6144, NULL, 2, &s_task, 1) != pdPASS) {
+#endif
         sys_event(EV_ERROR, "Fuel learning could not start (no memory)");
         return;
     }

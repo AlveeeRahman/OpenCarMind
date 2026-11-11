@@ -19,6 +19,7 @@
 #include "esp_attr.h"
 #include "esp_log.h"
 #include "esp_system.h"
+#include "board.h"
 #include "esp_timer.h"
 #include "esp_task_wdt.h"
 #include "events.h"
@@ -380,8 +381,13 @@ static void monitor_task(void *arg)
 
 void sched_mon_start(void)
 {
+#if BOARD_HAS_SD
     /* stack in PSRAM, as sys_mode.c: the monitor never runs with the flash cache disabled */
     xTaskCreatePinnedToCoreWithCaps(monitor_task, "sched", 4096, NULL, 1, NULL, 0, MALLOC_CAP_SPIRAM);
+#else
+    /* internal stack: restart_hung() calls esp_restart(), whose shutdown handler flushes the logs in the NOR flash */
+    xTaskCreatePinnedToCore(monitor_task, "sched", 4096, NULL, 1, NULL, 0);
+#endif
     if (s_sys.boot_abnormal)
         sys_event(s_sys.safe_mode ? EV_ERROR : EV_WARN, "Restarted after %s (%lu in a row)%s", s_sys.last_reset,
                   (unsigned long)s_sys.boot_abnormal, s_sys.safe_mode ? ", safe mode: ML off" : "");

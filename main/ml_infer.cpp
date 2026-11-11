@@ -23,6 +23,7 @@ extern "C" {                     /* C headers without their own C++ guards, befo
 #include "sys_mode.h"
 }
 #include "sdkconfig.h"
+#include "board.h"
 #include "ml_infer.h"
 #include "cpu_monitor.h"
 #include "ml_params.h"
@@ -648,8 +649,13 @@ extern "C" void ml_init(void)
        periods is too tight. A stall is no run for a whole 10 s label window while rows are expected. */
     if (ML_STRIDE_S > 0) sched_set_stall_ms(s_job, 10000);   /* stride 0 keeps the 3-period rule of its 10 s period */
     sched_set_expected(s_job, false);              /* runs only while windows arrive */
+#if BOARD_HAS_SD
     /* stack in PSRAM: the task only computes and never runs while the flash cache is disabled */
     if (xTaskCreatePinnedToCoreWithCaps(ml_task, "ml", 6144, NULL, 3, NULL, 1, MALLOC_CAP_SPIRAM) != pdPASS) {
+#else
+    /* internal stack: its .ml.csv lines go through stdio, which writes the NOR flash log when its buffer fills */
+    if (xTaskCreatePinnedToCore(ml_task, "ml", 6144, NULL, 3, NULL, 1) != pdPASS) {
+#endif
         sys_event(EV_ERROR, "ML task could not start (no memory)");
         return;
     }
