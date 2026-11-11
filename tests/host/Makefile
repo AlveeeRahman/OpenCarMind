@@ -44,6 +44,13 @@ settings: settings_tests
 settings_tests: test_ui_settings.c ../../main/ui_settings_logic.c ../../main/ui_settings_logic.h
 	$(CC) $(CFLAGS) -o $@ test_ui_settings.c ../../main/ui_settings_logic.c
 
+# ESP-Mosaico Wi-Fi app: the search list merge, the password rules (WIFI-ADD's), the join result texts (main/wifi_ui_logic.c)
+wifi: wifi_tests
+	./wifi_tests
+
+wifi_tests: test_wifi_ui.c ../../main/wifi_ui_logic.c ../../main/wifi_ui_logic.h ../../main/harden.c
+	$(CC) $(CFLAGS) -o $@ test_wifi_ui.c ../../main/wifi_ui_logic.c ../../main/harden.c -lm
+
 swipe_tests: test_swipe_intent.c ../../main/swipe_intent.c ../../main/swipe_intent.h
 	$(CC) $(CFLAGS) -O2 -o $@ test_swipe_intent.c -lm
 
@@ -63,5 +70,5 @@ rev_tests: $(REV_SRCS) ../../main/rev_learn.h ../../main/rev_cal.h ../../main/re
 	$(CC) $(CFLAGS) -o $@ $(REV_SRCS) -lm
 
 clean:
-	rm -f carmind_tests rev_tests tank_tests session_tests reset_tests swipe_tests clock_tests settings_tests
-.PHONY: run rev session reset swipe clock settings clean
+	rm -f carmind_tests rev_tests tank_tests session_tests reset_tests swipe_tests clock_tests settings_tests wifi_tests
+.PHONY: run rev session reset swipe clock settings wifi clean

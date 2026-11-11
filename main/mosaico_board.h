@@ -26,7 +26,7 @@ typedef struct { bool ok; uint32_t total_kb, free_kb; } mosaico_storage_t;
    BLE or Wi-Fi itself. Never blocks: false when the queue (8 deep) is full. */
 typedef enum { MB_FILES_SCAN = 0, MB_FILES_DETAIL, MB_FILES_DELETE, MB_FILES_DELETE_ALL, MB_BLE_FORGET, MB_BLE_SEARCH,
                MB_WIFI_NOW, MB_FORMAT, MB_BUZZ, MB_CLOCK_SET, MB_MODEL_SET, MB_SETTINGS_KICK, MB_WIFI_LIST,
-               MB_WIFI_FORGET } mb_cmd_t;
+               MB_WIFI_FORGET, MB_WIFI_SCAN, MB_WIFI_JOIN } mb_cmd_t;
 bool mosaico_board_request(mb_cmd_t cmd, uint32_t arg);
 /* Settings > Model (MB_MODEL_SET, arg = ml_model_id_t): the board task switches with ml_select_model, the path the USB door's
    MODEL SET takes, after the same "drive running" check. gen counts finished requests; why is the refusal when ok is false. */
@@ -41,11 +41,31 @@ typedef struct {
     int      n;
     struct { char ssid[33]; int8_t rssi; uint8_t fails; } net[MB_WIFI_NETS];
     char     note[72];                                 /* the last forget's result, "" before one */
+    char     clock_note[72];                           /* the last "Sync clock now" answer, "" before one */
+    uint32_t clock_gen;                                /* counts those answers */
 } mosaico_wifi_list_t;
 void mosaico_board_wifi_list(mosaico_wifi_list_t *out);
-/* forget one saved network (the board task removes it with wifi_creds_remove, the USB door's WIFI-FORGET path); refused
-   while the Wi-Fi task scans or is connected, because it holds a pointer into the list then. False when the queue is full. */
+/* forget one saved network (wifi_sync_forget, the USB door's WIFI-FORGET path); refused while the Wi-Fi task runs a
+   round, because it holds a pointer into the list then. False when the queue is full. */
 bool mosaico_board_wifi_forget(const char *ssid);
+/* Search: the board task runs one active scan (wifi_sync_scan) and publishes the merged list (wifi_ui_logic.h: one row
+   per name, strongest first, hidden names left out, saved ones marked). state is WS_ST_*; gen counts the changes. The
+   scan records and this list live in PSRAM. */
+#include "wifi_ui_logic.h"
+typedef struct {
+    uint32_t gen;
+    int      state, n, n_seen;
+    ws_row_t row[WS_ROWS_MAX];
+} mosaico_wifi_scan_t;
+bool mosaico_board_wifi_search(void);                  /* false when the queue is full (the state says "failed") */
+/* copies the list when its gen differs from have_gen; false when nothing changed */
+bool mosaico_board_wifi_scan(mosaico_wifi_scan_t *out, uint32_t have_gen);
+/* Join one network: the board task hands it to the Wi-Fi task (wifi_sync_join), which saves it in the WIFI-ADD store,
+   connects once and sets the clock. password NULL: use the saved one. The password is copied, then wiped from every
+   buffer the board and the Wi-Fi task used; it is never logged. result is a wj_result_t (WJ_WAIT until the end). */
+typedef struct { uint32_t gen; int result; char ssid[33]; } mosaico_wifi_join_t;
+bool mosaico_board_wifi_join(const char *ssid, const char *password);
+void mosaico_board_wifi_join_state(mosaico_wifi_join_t *out);
 
 void mosaico_board_init(void);                     /* after the console, before the display */
 i2c_master_bus_handle_t mosaico_i2c_bus(void);

@@ -310,6 +310,9 @@ void app_main(void)
     ESP_ERROR_CHECK(obd_ble_start());
     ESP_LOGI(TAG, "internal heap before Wi-Fi: %u", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
     wifi_sync_start();
+#if BOARD_MOSAICO
+    wifi_sync_started();               /* the Wi-Fi app may start the radio from now on; before the USB door starts */
+#endif
     ESP_LOGI(TAG, "internal heap after Wi-Fi: %u", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
     sys_mode_start();                  /* DRIVE / SEEK arbitration, see sys_mode.h */
     usb_door_start();                  /* setup from the desktop app over the USB cable, see usb_door.h */

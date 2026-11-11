@@ -292,10 +292,256 @@ esp_err_t wifi_sync_start(void)
     ESP_ERROR_CHECK(esp_wifi_start());
     set_wifi_state(WIFI_ST_IDLE);
 
+#if !BOARD_MOSAICO                               /* the S31 starts its own loop in wifi_sync_started() */
     if (xTaskCreatePinnedToCore(sync_task, "sync", 8192, NULL, 4, &s_task, 0) != pdPASS)
         sys_event(EV_ERROR, "Clock-sync task could not start (internal RAM %u B)", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+#endif
     return ESP_OK;
 }
+
+#if BOARD_MOSAICO
+/* ---- ESP-Mosaico Wi-Fi app: search and join from the screen (wifi_sync.h) ----
+   The S31 runs s31_task, a copy of sync_task's loop, so a round can also be a join, and every round holds s_hold:
+   pick_network() hands sync_once() a pointer into the wifi_creds list, so a forget or a join's save must not move the
+   list while a round runs. sync_once() leaves the state at "scanning" when no saved network is in range; the round then
+   ends idle, so the screen does not show a search that is not happening. With nothing saved a round does not scan.
+   When no network was known at boot the station is not started at boot (as before); wifi_sync_up() starts it the
+   first time the screen searches or joins, and it then stays up as it does for a board that booted with a network. */
+#include "freertos/semphr.h"
+#include "wifi_ui_logic.h"
+
+#define WIFI_NEED_FREE   36000           /* internal RAM esp_wifi_init() needs, with margin (measured on the board) */
+#define WIFI_NEED_BLOCK  12000
+
+static SemaphoreHandle_t s_hold;         /* held by the Wi-Fi task for a whole round, and by a scan */
+static volatile bool s_boot_done;        /* app_main has finished wifi_sync_start() */
+static bool s_up_failed;                 /* a start failed: esp_wifi_init() does not give back what it took, no retry */
+static portMUX_TYPE s_join_mux = portMUX_INITIALIZER_UNLOCKED;
+static struct {
+    bool reserved;                       /* a join is queued or running */
+    bool queued;                         /* not taken by the Wi-Fi task yet */
+    bool keep_saved;                     /* no password given: use the saved one */
+    char ssid[33];
+    char pw[65];
+    void (*done)(int, void *);
+    void *ctx;
+} s_join;                                /* under s_join_mux */
+
+static bool join_round(void);
+
+static wifi_state_t wifi_state_now(void)
+{
+    STATUS_LOCK(); wifi_state_t st = g_status.wifi; STATUS_UNLOCK();
+    return st;
+}
+
+static bool join_queued(void)
+{
+    portENTER_CRITICAL(&s_join_mux);
+    bool q = s_join.queued;
+    portEXIT_CRITICAL(&s_join_mux);
+    return q;
+}
+
+static void s31_task(void *arg)
+{
+    (void)arg;
+    (void)sync_task;                     /* the S3's loop, not used here */
+    uint32_t wait_s = clock_is_set() && !uploader_wifi_enabled() ? CONFIG_SYNC_RESYNC_INTERVAL_H * 3600U : 0;
+    for (;;) {
+        if (wait_s) ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(wait_s * 1000U));   /* a join or wifi_sync_connect_now() wakes it */
+        while (driving()) vTaskDelay(pdMS_TO_TICKS(2000));
+        xSemaphoreTake(s_hold, portMAX_DELAY);
+        bool joined = join_queued(), ok;
+        if (joined) ok = join_round();
+        else ok = wifi_creds_count() ? sync_once() : false;
+        if (wifi_state_now() == WIFI_ST_SCANNING) set_wifi_state(WIFI_ST_IDLE);
+        xSemaphoreGive(s_hold);
+        if (uploader_wifi_enabled()) wait_s = CONFIG_SYNC_SCAN_INTERVAL_S;
+        else if (ok) wait_s = CONFIG_SYNC_RESYNC_INTERVAL_H * 3600U;
+        else    wait_s = clock_is_set() ? 900U : CONFIG_SYNC_SCAN_INTERVAL_S;
+    }
+}
+
+static bool s31_task_up(void)
+{
+    if (s_task) return true;
+    if (!s_hold) s_hold = xSemaphoreCreateMutex();
+    if (!s_hold || xTaskCreatePinnedToCore(s31_task, "sync", 8192, NULL, 4, &s_task, 0) != pdPASS) {
+        sys_event(EV_ERROR, "Clock-sync task could not start (internal RAM %u B)", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+        return false;
+    }
+    return true;
+}
+
+void wifi_sync_started(void)
+{
+    if (!s_hold) s_hold = xSemaphoreCreateMutex();   /* before the USB door starts: its WIFI-FORGET takes it */
+    if (s_ev) s31_task_up();                         /* a network was known at boot: wifi_sync_start() started the station */
+    s_boot_done = true;
+}
+
+bool wifi_sync_up(void)
+{
+    if (!s_boot_done || s_up_failed || !s_hold) return false;
+    if (s_task) return true;
+    if (!s_ev) {                         /* no network at boot: the station was never started */
+        uint32_t free_b = (uint32_t)heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+        uint32_t block = (uint32_t)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
+        if (free_b < WIFI_NEED_FREE || block < WIFI_NEED_BLOCK) {
+            ESP_LOGW(TAG, "Wi-Fi not started: internal RAM %lu B free, block %lu B", (unsigned long)free_b, (unsigned long)block);
+            return false;                /* nothing taken yet: a later try may find the room */
+        }
+        esp_err_t e = esp_netif_init();
+        if (e == ESP_OK) { e = esp_event_loop_create_default(); if (e == ESP_ERR_INVALID_STATE) e = ESP_OK; }
+        if (e == ESP_OK && !esp_netif_create_default_wifi_sta()) e = ESP_FAIL;
+        wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+        if (e == ESP_OK) e = esp_wifi_init(&cfg);
+        if (e == ESP_OK) e = esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, wifi_event, NULL, NULL);
+        if (e == ESP_OK) e = esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, wifi_event, NULL, NULL);
+        if (e == ESP_OK) { s_ev = xEventGroupCreate(); if (!s_ev) e = ESP_ERR_NO_MEM; }
+        if (e == ESP_OK) e = esp_wifi_set_mode(WIFI_MODE_STA);
+        if (e == ESP_OK) e = esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
+        if (e == ESP_OK) e = esp_wifi_start();
+        if (e != ESP_OK) {
+            s_up_failed = true;
+            sys_event(EV_WARN, "Wi-Fi could not start (%s, internal RAM %lu B); off until restart", esp_err_to_name(e),
+                      (unsigned long)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+            return false;
+        }
+        ESP_LOGI(TAG, "Wi-Fi started for the Wi-Fi app: internal RAM %lu B free (was %lu B)",
+                 (unsigned long)heap_caps_get_free_size(MALLOC_CAP_INTERNAL), (unsigned long)free_b);
+        set_wifi_state(WIFI_ST_IDLE);
+    }
+    return s31_task_up();
+}
+
+int wifi_sync_scan(wifi_seen_t *out, int max)
+{
+    if (driving() || !wifi_sync_up()) return -1;
+    if (xSemaphoreTake(s_hold, pdMS_TO_TICKS(3000)) != pdTRUE) return -1;   /* a round is connecting or connected */
+    wifi_scan_config_t sc = { .show_hidden = false, .scan_type = WIFI_SCAN_TYPE_ACTIVE, .scan_time.active = {.min = 60, .max = 120} };
+    EXT_RAM_BSS_ATTR static wifi_ap_record_t ap[40];
+    uint16_t n = sizeof ap / sizeof ap[0];
+    esp_err_t e = esp_wifi_scan_start(&sc, true);
+    if (e == ESP_OK) e = esp_wifi_scan_get_ap_records(&n, ap);    /* sorted by signal, the strongest n kept */
+    if (e != ESP_OK) esp_wifi_clear_ap_list();
+    xSemaphoreGive(s_hold);
+    if (e != ESP_OK) { ESP_LOGW(TAG, "app scan failed: %s", esp_err_to_name(e)); return -1; }
+    int k = 0;
+    for (int i = 0; i < n && k < max; i++) {
+        if (!ap[i].ssid[0]) continue;
+        strlcpy(out[k].ssid, (const char *)ap[i].ssid, sizeof out[k].ssid);
+        out[k].rssi = ap[i].rssi; out[k].channel = ap[i].primary; out[k].secure = ap[i].authmode != WIFI_AUTH_OPEN;
+        k++;
+    }
+    ESP_LOGI(TAG, "app scan: %d networks", k);                     /* names stay out of the log */
+    return k;
+}
+
+bool wifi_sync_join(const char *ssid, const char *password, void (*done)(int result, void *ctx), void *ctx)
+{
+    if (!s_task) return false;
+    bool ok = false;
+    portENTER_CRITICAL(&s_join_mux);
+    if (!s_join.reserved) {
+        s_join.reserved = s_join.queued = ok = true;
+        s_join.keep_saved = password == NULL;
+        strlcpy(s_join.ssid, ssid, sizeof s_join.ssid);
+        strlcpy(s_join.pw, password ? password : "", sizeof s_join.pw);
+        s_join.done = done;
+        s_join.ctx = ctx;
+    }
+    portEXIT_CRITICAL(&s_join_mux);
+    if (ok) xTaskNotifyGive(s_task);
+    return ok;
+}
+
+int wifi_sync_forget(const char *ssid)
+{
+    if (s_hold && xSemaphoreTake(s_hold, pdMS_TO_TICKS(200)) != pdTRUE) return -1;
+    int r = !wifi_creds_find(ssid) ? 0 : wifi_creds_remove(ssid) ? 1 : -2;
+    if (s_hold) xSemaphoreGive(s_hold);
+    return r;
+}
+
+/* The chosen network, connected once: 20 s for an address, the reason of a failure mapped by wj_classify(). */
+static wj_result_t join_connect(wifi_cred_t *c)
+{
+    if (driving()) return WJ_DRIVING;
+    STATUS_LOCK();
+    g_status.wifi = WIFI_ST_CONNECTING;
+    g_status.wifi_rssi = c->last_rssi;
+    snprintf(g_status.wifi_ssid, sizeof g_status.wifi_ssid, "%s", c->ssid);
+    STATUS_UNLOCK();
+    apply_network(c);
+    xEventGroupClearBits(s_ev, GOT_IP_BIT | LOST_BIT);
+    s_last_reason = 0;
+    esp_wifi_connect();
+    EventBits_t b = xEventGroupWaitBits(s_ev, GOT_IP_BIT | LOST_BIT, pdTRUE, pdFALSE, pdMS_TO_TICKS(20000));
+    wj_result_t r = wj_classify((b & GOT_IP_BIT) != 0, (b & LOST_BIT) ? s_last_reason : 0);
+    ESP_LOGI(TAG, "join from the screen: %s (reason %d)", r == WJ_CONNECTED ? "connected" : "failed", (b & LOST_BIT) ? s_last_reason : 0);
+    if (r != WJ_CONNECTED) { esp_wifi_disconnect(); set_wifi_state(WIFI_ST_IDLE); }
+    return r;
+}
+
+/* A join round (s_hold held): save, connect once, tell the screen, then the clock sync as sync_once() does it. */
+static bool join_round(void)
+{
+    char ssid[33], pw[65], old_pw[65] = "";
+    portENTER_CRITICAL(&s_join_mux);
+    memcpy(ssid, s_join.ssid, sizeof ssid);
+    memcpy(pw, s_join.pw, sizeof pw);
+    bool keep = s_join.keep_saved;
+    void (*done)(int, void *) = s_join.done;
+    void *ctx = s_join.ctx;
+    ws_wipe(s_join.pw, sizeof s_join.pw);
+    s_join.queued = false;
+    portEXIT_CRITICAL(&s_join_mux);
+
+    wifi_cred_t *c = wifi_creds_find(ssid);
+    bool existed = c != NULL;
+    if (existed) strlcpy(old_pw, c->password, sizeof old_pw);
+    wj_result_t r = WJ_WAIT;
+    if (keep && !existed) r = WJ_INVALID;
+    else if (!keep && !existed && wifi_creds_count() >= WIFI_CREDS_MAX) r = WJ_FULL;
+    else if (!keep && !harden_wifi_cred_ok(ssid, pw)) r = WJ_INVALID;
+    else if (!keep && !wifi_creds_add(ssid, pw)) r = WJ_SAVE_FAILED;
+    else if (!(c = wifi_creds_find(ssid))) r = WJ_SAVE_FAILED;
+    bool clock_ok = false;
+    if (r == WJ_WAIT) {
+        r = join_connect(c);
+        if (wj_forget_after(r) && !keep) {               /* a wrong password does not stay saved */
+            if (existed) wifi_creds_add(ssid, old_pw);
+            else wifi_creds_remove(ssid);
+        }
+    }
+    ws_wipe(pw, sizeof pw);
+    ws_wipe(old_pw, sizeof old_pw);
+    if (done) done((int)r, ctx);
+    portENTER_CRITICAL(&s_join_mux);
+    s_join.reserved = false;
+    portEXIT_CRITICAL(&s_join_mux);
+    if (r != WJ_CONNECTED) return false;
+
+    c = wifi_creds_find(ssid);
+    if (c) { c->fail_count = 0; c->retry_after_ms = 0; }
+    set_wifi_state(WIFI_ST_CONNECTED);
+    sys_event(EV_INFO, "Wi-Fi joined from the screen");
+    {
+        wifi_ap_record_t ap = {0};
+        char cc[3] = "";
+        if (esp_wifi_sta_get_ap_info(&ap) == ESP_OK) { cc[0] = ap.country.cc[0]; cc[1] = ap.country.cc[1]; cc[2] = 0; }
+        units_detect(cc, remote_config_get()->timezone);
+    }
+    for (int attempt = 0; attempt < 3 && !clock_ok && s_connected && !driving(); attempt++) clock_ok = sync_clock();
+    if (clock_ok) stay_connected();
+    esp_wifi_disconnect();
+    vTaskDelay(pdMS_TO_TICKS(500));
+    set_wifi_state(WIFI_ST_IDLE);
+    return clock_ok;
+}
+#endif  /* BOARD_MOSAICO */
 
 #else  /* CONFIG_OCM_WIFI_CLOCK_SYNC off: no Wi-Fi stack, no clock sync */
 
@@ -308,5 +554,16 @@ esp_err_t wifi_sync_start(void)
 
 bool wifi_sync_connected(void) { return false; }
 bool wifi_sync_connect_now(void) { return false; }
+#if BOARD_MOSAICO
+void wifi_sync_started(void) {}
+bool wifi_sync_up(void) { return false; }
+int  wifi_sync_scan(wifi_seen_t *out, int max) { (void)out; (void)max; return -1; }
+bool wifi_sync_join(const char *ssid, const char *password, void (*done)(int result, void *ctx), void *ctx)
+{
+    (void)ssid; (void)password; (void)done; (void)ctx;
+    return false;
+}
+int  wifi_sync_forget(const char *ssid) { return wifi_creds_remove(ssid) ? 1 : 0; }
+#endif
 
 #endif

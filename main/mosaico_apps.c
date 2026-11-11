@@ -2253,8 +2253,8 @@ static void settings_fill(void)
     at(ui_caption(g_list, "OBD ADAPTER (BLUETOOTH)"), 0, y); y += 22;
     g_ble = at(ui_label(g_list, F16, UI_TEXT, "--"), 0, y); y += 28;
     int half = (ST_W - ST_GAP) / 2;
-    text_btn(g_list, LV_SYMBOL_REFRESH " Search now", 0, y, half, UI_ORANGE, search_cb);
-    text_btn(g_list, LV_SYMBOL_CLOSE " Forget", half + ST_GAP, y, half, UI_RED, forget_cb);
+    text_btn(g_list, LV_SYMBOL_BLUETOOTH " Find OBD adapter", 0, y, half, UI_ORANGE, search_cb);   /* not Wi-Fi: the Wi-Fi app searches */
+    text_btn(g_list, LV_SYMBOL_CLOSE " Forget adapter", half + ST_GAP, y, half, UI_RED, forget_cb);
     y += ST_H + ST_GAP + 6;
 #if CONFIG_OCM_SWIPE_INTENT
     at(ui_caption(g_list, "SMART SWIPE (KEEPS ITSELF IF FASTER)"), 0, y); y += 22;
@@ -2328,14 +2328,25 @@ static void settings_update(const ui_snap_t *s)
 
 /* ======================= 13. Wi-Fi ======================= */
 /* The networks the board uses to set its clock (and, paired with the desktop app, to send data while parked): the
-   status, a "Sync clock now" button, the saved list with a Forget on each, and where new networks come from. Moved
-   here from Settings (S1). The list is a copy the board task makes (wifi_creds is the Wi-Fi task's); names are shown
-   on this screen only. */
-static lv_obj_t *w_list, *w_state, *w_clock, *w_note, *w_rows, *w_det[MB_WIFI_NETS];
+   status and "Sync clock now", "Search for networks" (one active scan in the board task, the merged list below it),
+   joining a network from the list (a password page with a keyboard for a secured one, a confirm for an open one), and
+   the saved list with a Forget on each. The lists are copies the board task makes (wifi_creds belongs to the Wi-Fi
+   task); names are shown on this screen only and never logged, a typed password goes to the board task and is wiped. */
+#include "esp_log.h"
+static lv_obj_t *w_list, *w_state, *w_clock, *w_clock_note, *w_note, *w_rows, *w_det[MB_WIFI_NETS];
+static lv_obj_t *w_search_btn, *w_search_lbl, *w_scan_msg, *w_join_msg, *w_found, *w_saved_cap;
 static mosaico_wifi_list_t w_copy;                       /* LVGL task: the last copy shown */
 static uint32_t w_gen;
 static int64_t w_asked_ms;
 static char w_forget_ssid[33];
+EXT_RAM_BSS_ATTR static mosaico_wifi_scan_t w_scan;      /* LVGL task: the last search list copied */
+EXT_RAM_BSS_ATTR static ws_row_t w_shown[WS_ROWS_MAX];   /* the rows on screen: taps read these, a new search may be running */
+static int w_shown_n;
+static uint32_t w_scan_gen = UINT32_MAX, w_join_gen;
+static char w_open_ssid[33];                             /* the open network a confirm sheet asks about */
+static lv_style_t w_st_row, w_st_bar_on, w_st_bar_off;
+static bool w_st_ready;
+static uint32_t w_clock_gen;
 
 static void w_do_forget(void *arg)
 {
@@ -2349,13 +2360,27 @@ static void w_forget_cb(lv_event_t *e)
     if (i < 0 || i >= w_copy.n) return;
     strlcpy(w_forget_ssid, w_copy.net[i].ssid, sizeof w_forget_ssid);
     static char q[96];
-    snprintf(q, sizeof q, "Forget %.32s? The board stops using it to set the clock.", w_forget_ssid);
+    char name[40];
+    ws_display_name(w_forget_ssid, name, sizeof name);
+    snprintf(q, sizeof q, "Forget %.36s? The board stops using it to set the clock.", name);
     ui_confirm(q, "Forget", w_do_forget, NULL);
 }
 
 #if CONFIG_OCM_WIFI_CLOCK_SYNC
-static void w_sync_cb(lv_event_t *e) { (void)e; mosaico_board_request(MB_WIFI_NOW, 0); }
+static void w_sync_cb(lv_event_t *e)
+{
+    (void)e;
+    if (!w_copy.n) {                                     /* nothing to connect to: say so at once */
+        ui_set_text(w_clock_note, "No saved network yet: search and join one first.");
+        ui_set_color(w_clock_note, UI_WARN);
+        return;
+    }
+    ui_set_color(w_clock_note, UI_MUTED);
+    ui_set_text(w_clock_note, mosaico_board_request(MB_WIFI_NOW, 0) ? "Asking the Wi-Fi task..." : "The board is busy. Try again in a moment.");
+}
 #endif
+
+static void w_show_saved(void *arg) { (void)arg; if (w_saved_cap) lv_obj_scroll_to_view(w_saved_cap, LV_ANIM_ON); }
 
 static void w_detail(int i)                              /* the line under a network name, changed in place */
 {
@@ -2379,15 +2404,13 @@ static void w_fill_rows(void)
     for (int i = 0; i < w_copy.n; i++, y += ST_H + ST_GAP) {
         lv_obj_t *r = lv_obj_create(w_rows);
         lv_obj_remove_style_all(r);
+        lv_obj_add_style(r, &w_st_row, 0);
         lv_obj_set_pos(r, 0, y);
         lv_obj_set_size(r, ST_W, ST_H);
-        lv_obj_set_style_radius(r, UI_THEME.radius_row, 0);
-        lv_obj_set_style_bg_color(r, lv_color_hex(UI_CARD), 0);
-        lv_obj_set_style_bg_opa(r, LV_OPA_COVER, 0);
-        lv_obj_set_style_border_width(r, 1, 0);
-        lv_obj_set_style_border_color(r, lv_color_hex(UI_BORDER), 0);
         lv_obj_remove_flag(r, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_t *n = ui_label(r, F16, UI_TEXT, w_copy.net[i].ssid);
+        char name[40];
+        ws_display_name(w_copy.net[i].ssid, name, sizeof name);
+        lv_obj_t *n = ui_label(r, F16, UI_TEXT, name);
         lv_obj_set_width(n, ST_W - 140 - 28);
         lv_label_set_long_mode(n, LV_LABEL_LONG_DOT);
         lv_obj_set_pos(n, 14, 10);
@@ -2409,8 +2432,410 @@ static void w_fill_rows(void)
     lv_obj_set_height(w_rows, y - ST_GAP);
 }
 
+/* ---------- Wi-Fi > password page: full screen on lv_layer_top (the clock picker's pattern) ----------
+   480 x 480: title 10-36, the masked field 42-106 (392 x 64) with the show/hide key (64 x 64), the message 110-144,
+   the keyboard 146-400 (4 rows, 6 px apart: letter keys 44 x 59 px), Cancel and Join 408-472 (228 x 64). The maps
+   carry every printable ASCII character: letters, then two symbol pages ("123", "#+="). */
+static lv_obj_t *pw_page, *pw_ta, *pw_kb, *pw_msg, *pw_eye, *pw_join;
+static char pw_ssid[33];
+static bool pw_saved, pw_sent;
+static lv_timer_t *pw_close_timer;
+
+#define KB_123 "123"
+#define KB_SYM "#+="
+static const char *const PW_LC[] = { "q", "w", "e", "r", "t", "y", "u", "i", "o", "p", "\n",
+                                     "a", "s", "d", "f", "g", "h", "j", "k", "l", "-", "\n",
+                                     "ABC", "z", "x", "c", "v", "b", "n", "m", LV_SYMBOL_BACKSPACE, "\n",
+                                     KB_123, LV_SYMBOL_LEFT, " ", LV_SYMBOL_RIGHT, ".", "" };
+static const char *const PW_UC[] = { "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P", "\n",
+                                     "A", "S", "D", "F", "G", "H", "J", "K", "L", "-", "\n",
+                                     "abc", "Z", "X", "C", "V", "B", "N", "M", LV_SYMBOL_BACKSPACE, "\n",
+                                     KB_123, LV_SYMBOL_LEFT, " ", LV_SYMBOL_RIGHT, ".", "" };
+static const char *const PW_S1[] = { "1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "\n",
+                                     "!", "@", "#", "$", "%", "&", "*", "(", ")", "_", "\n",
+                                     KB_SYM, "-", "+", "=", "/", ":", ";", "'", LV_SYMBOL_BACKSPACE, "\n",
+                                     "abc", LV_SYMBOL_LEFT, " ", LV_SYMBOL_RIGHT, ",", "?", ".", "" };
+static const char *const PW_S2[] = { "1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "\n",
+                                     "[", "]", "{", "}", "<", ">", "^", "~", "`", "|", "\n",
+                                     KB_123, "\\", "\"", "'", "!", "?", ",", ".", LV_SYMBOL_BACKSPACE, "\n",
+                                     "abc", LV_SYMBOL_LEFT, " ", LV_SYMBOL_RIGHT, "_", "" };
+#define KC (LV_BUTTONMATRIX_CTRL_NO_REPEAT | LV_BUTTONMATRIX_CTRL_CLICK_TRIG | LV_BUTTONMATRIX_CTRL_CHECKED)   /* a mode key */
+#define KD LV_BUTTONMATRIX_CTRL_CHECKED                                    /* backspace and the cursor keys: repeat */
+/* widths in units, 20 per row: a letter is 2 (44 px), so the long keys are 3 */
+static const lv_buttonmatrix_ctrl_t PW_CTRL_L[] = { 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+                                                   2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+                                                   KC | 3, 2, 2, 2, 2, 2, 2, 2, KD | 3,
+                                                   KC | 3, KD | 3, 8, KD | 3, 3 };
+static const lv_buttonmatrix_ctrl_t PW_CTRL_S1[] = { 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+                                                    2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+                                                    KC | 3, 2, 2, 2, 2, 2, 2, 2, KD | 3,
+                                                    KC | 3, KD | 2, 6, KD | 2, 2, 2, 3 };
+static const lv_buttonmatrix_ctrl_t PW_CTRL_S2[] = { 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+                                                    2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+                                                    KC | 3, 2, 2, 2, 2, 2, 2, 2, KD | 3,
+                                                    KC | 3, KD | 3, 8, KD | 3, 3 };
+
+static void pw_ram(const char *when)
+{
+    ESP_LOGI("wifi_ui", "password page %s: internal RAM %u B free, lowest %u B, largest block %u B", when,
+             (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL), (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL),
+             (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
+}
+
+/* LVGL frees its text buffers without clearing them: overwrite what the field holds before the page goes */
+static void pw_wipe_field(void)
+{
+    if (!pw_ta) return;
+    char *t = (char *)lv_textarea_get_text(pw_ta);       /* the password copy in password mode, else the label's text */
+    if (t) ws_wipe(t, strlen(t));
+    char *l = lv_label_get_text(lv_textarea_get_label(pw_ta));
+    if (l) ws_wipe(l, strlen(l));
+}
+
+static void pw_close(void *arg) { (void)arg; if (pw_page) { pw_wipe_field(); lv_obj_delete(pw_page); } }
+static void pw_deleted(lv_event_t *e)
+{
+    (void)e;
+    if (pw_close_timer) { lv_timer_delete(pw_close_timer); pw_close_timer = NULL; }
+    pw_page = pw_ta = pw_kb = pw_msg = pw_eye = pw_join = NULL;
+    pw_sent = false;
+    ws_wipe(pw_ssid, sizeof pw_ssid);
+    pw_ram("closed");
+}
+static void pw_close_tick(lv_timer_t *t) { (void)t; pw_close_timer = NULL; lv_async_call(pw_close, NULL); }
+
+static void pw_say(const char *t, uint32_t c)
+{
+    if (!pw_msg) return;
+    ui_set_text(pw_msg, t);
+    ui_set_color(pw_msg, c);
+}
+
+static void pw_busy(bool on)
+{
+    if (!pw_join) return;
+    if (on) lv_obj_add_state(pw_join, LV_STATE_DISABLED); else lv_obj_remove_state(pw_join, LV_STATE_DISABLED);
+}
+
+static void pw_cancel_cb(lv_event_t *e) { (void)e; lv_async_call(pw_close, NULL); }
+
+static void pw_join_cb(lv_event_t *e)
+{
+    (void)e;
+    if (!pw_page || pw_sent) return;
+    const char *pw = lv_textarea_get_text(pw_ta);
+    wv_result_t v = wv_check(pw_ssid, pw, true, pw_saved);
+    if (v != WV_OK) { pw_say(wv_text(v), UI_RED); return; }
+    if (!pw_saved && w_copy.n >= MB_WIFI_NETS) { pw_say(wj_text(WJ_FULL), UI_RED); return; }
+    pw_sent = mosaico_board_wifi_join(pw_ssid, pw[0] ? pw : NULL);
+    if (!pw_sent) { pw_say(wj_text(WJ_BUSY), UI_RED); return; }
+    pw_say(wj_text(WJ_WAIT), UI_MUTED);
+    pw_busy(true);
+}
+
+static void pw_eye_cb(lv_event_t *e)
+{
+    (void)e;
+    bool hidden = lv_textarea_get_password_mode(pw_ta);
+    lv_textarea_set_password_mode(pw_ta, !hidden);
+    lv_label_set_text(lv_obj_get_child(pw_eye, 0), hidden ? LV_SYMBOL_EYE_CLOSE : LV_SYMBOL_EYE_OPEN);
+}
+
+/* the mode keys this page adds ("123", "#+="); everything else is the keyboard's own handler */
+static void pw_kb_cb(lv_event_t *e)
+{
+    lv_obj_t *kb = lv_event_get_current_target(e);
+    uint32_t id = lv_buttonmatrix_get_selected_button(kb);
+    const char *t = id == LV_BUTTONMATRIX_BUTTON_NONE ? NULL : lv_buttonmatrix_get_button_text(kb, id);
+    if (t && !strcmp(t, KB_123)) { lv_keyboard_set_mode(kb, LV_KEYBOARD_MODE_SPECIAL); return; }
+    if (t && !strcmp(t, KB_SYM)) { lv_keyboard_set_mode(kb, LV_KEYBOARD_MODE_USER_1); return; }
+    lv_keyboard_def_event_cb(e);
+}
+
+/* a join answer for the network on this page (from wifi_update) */
+static void pw_result(const mosaico_wifi_join_t *j)
+{
+    if (!pw_page || !pw_sent || strcmp(j->ssid, pw_ssid)) return;
+    if (j->result == WJ_WAIT) return;
+    pw_sent = false;
+    if (j->result == WJ_CONNECTED) {
+        pw_say(wj_text(WJ_CONNECTED), UI_GREEN);
+        if (!pw_close_timer) { pw_close_timer = lv_timer_create(pw_close_tick, 1500, NULL); lv_timer_set_repeat_count(pw_close_timer, 1); }
+        return;
+    }
+    if (j->result == WJ_FULL) {
+        lv_async_call(pw_close, NULL);
+        ui_confirm(wj_text(WJ_FULL), "Show saved", w_show_saved, NULL);
+        return;
+    }
+    pw_say(wj_text((wj_result_t)j->result), UI_RED);
+    pw_busy(false);
+}
+
+static lv_obj_t *pw_button(const char *t, uint32_t bg, uint32_t fg, int x, int y, int w, lv_event_cb_t cb)
+{
+    lv_obj_t *b = lv_button_create(pw_page);
+    lv_obj_set_pos(b, x, y);
+    lv_obj_set_size(b, w, ST_H);
+    lv_obj_set_style_bg_color(b, lv_color_hex(bg), 0);
+    lv_obj_set_style_bg_color(b, st_pressed(), LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(b, LV_OPA_50, LV_STATE_DISABLED);
+    lv_obj_set_style_radius(b, UI_THEME.radius_row, 0);
+    lv_obj_set_style_shadow_width(b, 0, 0);
+    lv_obj_add_event_cb(b, cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_center(ui_label(b, F16, fg, t));
+    return b;
+}
+
+static void pw_open(const ws_row_t *row)
+{
+    if (pw_page) return;
+    strlcpy(pw_ssid, row->ssid, sizeof pw_ssid);
+    pw_saved = row->saved;
+    pw_sent = false;
+    pw_page = lv_obj_create(lv_layer_top());
+    lv_obj_remove_style_all(pw_page);
+    lv_obj_set_size(pw_page, UI_W, UI_H);
+    lv_obj_set_style_bg_color(pw_page, lv_color_hex(UI_BG), 0);
+    lv_obj_set_style_bg_opa(pw_page, LV_OPA_COVER, 0);
+    lv_obj_add_flag(pw_page, LV_OBJ_FLAG_CLICKABLE);                  /* swallows taps behind it */
+    lv_obj_remove_flag(pw_page, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_event_cb(pw_page, pw_deleted, LV_EVENT_DELETE, NULL);
+
+    char name[40];
+    ws_display_name(row->ssid, name, sizeof name);
+    lv_obj_t *t = ui_label(pw_page, F20, UI_TEXT, "");
+    ui_set_fmt(t, LV_SYMBOL_WIFI " Join %s", name);
+    lv_obj_set_pos(t, 8, 10);
+    lv_obj_set_width(t, UI_W - 16);
+    lv_label_set_long_mode(t, LV_LABEL_LONG_DOT);
+
+    pw_ta = lv_textarea_create(pw_page);
+    lv_obj_set_pos(pw_ta, 8, 42);
+    lv_obj_set_size(pw_ta, UI_W - 16 - 64 - 8, ST_H);
+    lv_textarea_set_one_line(pw_ta, true);
+    lv_textarea_set_password_mode(pw_ta, true);
+    lv_textarea_set_max_length(pw_ta, 64);                             /* WIFI-ADD's limit; every key is one byte */
+    lv_textarea_set_placeholder_text(pw_ta, pw_saved ? "Saved password" : "Password");
+    lv_obj_set_style_text_font(pw_ta, F20, 0);
+    lv_obj_set_style_text_color(pw_ta, lv_color_hex(UI_TEXT), 0);
+    lv_obj_set_style_text_color(pw_ta, lv_color_hex(UI_MUTED), LV_PART_TEXTAREA_PLACEHOLDER);
+    lv_obj_set_style_bg_color(pw_ta, lv_color_hex(UI_THEME.track), 0);
+    lv_obj_set_style_bg_opa(pw_ta, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(pw_ta, 1, 0);
+    lv_obj_set_style_border_color(pw_ta, lv_color_hex(UI_ORANGE), 0);
+    lv_obj_set_style_radius(pw_ta, UI_THEME.radius_row, 0);
+    lv_obj_set_style_pad_hor(pw_ta, 14, 0);
+    lv_obj_set_style_pad_ver(pw_ta, (ST_H - lv_font_get_line_height(F20)) / 2 - 1, 0);
+    lv_obj_set_style_bg_color(pw_ta, lv_color_hex(UI_ORANGE), LV_PART_CURSOR);
+    lv_obj_set_style_border_color(pw_ta, lv_color_hex(UI_ORANGE), LV_PART_CURSOR);
+    lv_obj_add_state(pw_ta, LV_STATE_FOCUSED);                         /* shows the cursor */
+
+    pw_eye = lv_button_create(pw_page);
+    lv_obj_set_pos(pw_eye, UI_W - 8 - 64, 42);
+    lv_obj_set_size(pw_eye, 64, ST_H);
+    lv_obj_set_style_bg_color(pw_eye, lv_color_hex(UI_THEME.track), 0);
+    lv_obj_set_style_bg_color(pw_eye, st_pressed(), LV_STATE_PRESSED);
+    lv_obj_set_style_radius(pw_eye, UI_THEME.radius_row, 0);
+    lv_obj_set_style_shadow_width(pw_eye, 0, 0);
+    lv_obj_add_event_cb(pw_eye, pw_eye_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_center(ui_label(pw_eye, F20, UI_TEXT, LV_SYMBOL_EYE_OPEN));
+
+    pw_msg = ui_label(pw_page, F14, UI_MUTED, pw_saved ? "Saved: leave it empty to use the saved password, or type a new one."
+                                                      : "8 to 64 characters. The eye shows what you typed.");
+    lv_obj_set_pos(pw_msg, 8, 110);
+    lv_obj_set_width(pw_msg, UI_W - 16);
+    lv_label_set_long_mode(pw_msg, LV_LABEL_LONG_WRAP);
+
+    pw_kb = lv_keyboard_create(pw_page);
+    lv_keyboard_set_map(pw_kb, LV_KEYBOARD_MODE_TEXT_LOWER, PW_LC, PW_CTRL_L);
+    lv_keyboard_set_map(pw_kb, LV_KEYBOARD_MODE_TEXT_UPPER, PW_UC, PW_CTRL_L);
+    lv_keyboard_set_map(pw_kb, LV_KEYBOARD_MODE_SPECIAL, PW_S1, PW_CTRL_S1);
+    lv_keyboard_set_map(pw_kb, LV_KEYBOARD_MODE_USER_1, PW_S2, PW_CTRL_S2);
+    lv_keyboard_set_mode(pw_kb, LV_KEYBOARD_MODE_TEXT_LOWER);
+    lv_keyboard_set_popovers(pw_kb, false);
+    lv_obj_remove_event_cb(pw_kb, lv_keyboard_def_event_cb);
+    lv_obj_add_event_cb(pw_kb, pw_kb_cb, LV_EVENT_VALUE_CHANGED, NULL);
+    lv_keyboard_set_textarea(pw_kb, pw_ta);
+    lv_obj_set_pos(pw_kb, 0, 146);
+    lv_obj_set_size(pw_kb, UI_W, 400 - 146);
+    lv_obj_set_style_bg_color(pw_kb, lv_color_hex(UI_BG), 0);
+    lv_obj_set_style_bg_opa(pw_kb, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(pw_kb, 0, 0);
+    lv_obj_set_style_radius(pw_kb, 0, 0);
+    lv_obj_set_style_pad_hor(pw_kb, 2, 0);
+    lv_obj_set_style_pad_ver(pw_kb, 0, 0);
+    lv_obj_set_style_pad_row(pw_kb, 6, 0);
+    lv_obj_set_style_pad_column(pw_kb, 4, 0);
+    lv_obj_set_style_text_font(pw_kb, F20, LV_PART_ITEMS);
+    lv_obj_set_style_text_color(pw_kb, lv_color_hex(UI_TEXT), LV_PART_ITEMS);
+    lv_obj_set_style_bg_color(pw_kb, lv_color_hex(UI_THEME.track), LV_PART_ITEMS);
+    lv_obj_set_style_bg_opa(pw_kb, LV_OPA_COVER, LV_PART_ITEMS);
+    lv_obj_set_style_bg_color(pw_kb, st_pressed(), LV_PART_ITEMS | LV_STATE_PRESSED);
+    lv_obj_set_style_bg_color(pw_kb, lv_color_hex(UI_CARD), LV_PART_ITEMS | LV_STATE_CHECKED);
+    lv_obj_set_style_text_color(pw_kb, lv_color_hex(UI_ORANGE), LV_PART_ITEMS | LV_STATE_CHECKED);
+    lv_obj_set_style_border_width(pw_kb, 0, LV_PART_ITEMS);
+    lv_obj_set_style_shadow_width(pw_kb, 0, LV_PART_ITEMS);
+    lv_obj_set_style_radius(pw_kb, 8, LV_PART_ITEMS);
+
+    pw_button("Cancel", UI_THEME.track, UI_TEXT, 8, 408, (UI_W - 24) / 2, pw_cancel_cb);
+    pw_join = pw_button("Join", UI_ORANGE, UI_BG, 8 + (UI_W - 24) / 2 + 8, 408, (UI_W - 24) / 2, pw_join_cb);
+    pw_ram("open");
+}
+
+/* ---------- the search list ---------- */
+static void w_bars(lv_obj_t *p, int x, int bars)          /* 4 bars, 6 px wide, 8/14/20/26 px tall, on one baseline */
+{
+    for (int k = 0; k < 4; k++) {
+        lv_obj_t *b = lv_obj_create(p);
+        lv_obj_remove_style_all(b);
+        lv_obj_add_style(b, k < bars ? &w_st_bar_on : &w_st_bar_off, 0);
+        lv_obj_set_size(b, 6, 8 + 6 * k);
+        lv_obj_set_pos(b, x + 10 * k, 45 - (8 + 6 * k));
+        lv_obj_remove_flag(b, LV_OBJ_FLAG_CLICKABLE);
+    }
+}
+
+static void w_lock(lv_obj_t *p, int x)                    /* a padlock: a 10 x 10 ring above a 14 x 11 body */
+{
+    lv_obj_t *s = lv_obj_create(p);
+    lv_obj_remove_style_all(s);
+    lv_obj_set_size(s, 10, 12);
+    lv_obj_set_pos(s, x + 2, 20);
+    lv_obj_set_style_border_width(s, 2, 0);
+    lv_obj_set_style_border_color(s, lv_color_hex(UI_MUTED), 0);
+    lv_obj_set_style_radius(s, 5, 0);
+    lv_obj_remove_flag(s, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_t *b = lv_obj_create(p);
+    lv_obj_remove_style_all(b);
+    lv_obj_set_size(b, 14, 11);
+    lv_obj_set_pos(b, x, 28);
+    lv_obj_set_style_bg_color(b, lv_color_hex(UI_MUTED), 0);
+    lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(b, 2, 0);
+    lv_obj_remove_flag(b, LV_OBJ_FLAG_CLICKABLE);
+}
+
+static void w_join_now(void *arg)                          /* the confirm sheet of an open network said Join */
+{
+    (void)arg;
+    bool saved = false;
+    for (int i = 0; i < w_copy.n; i++) if (!strcmp(w_copy.net[i].ssid, w_open_ssid)) saved = true;
+    if (!mosaico_board_wifi_join(w_open_ssid, saved ? NULL : "")) ui_confirm(wj_text(WJ_BUSY), "OK", NULL, NULL);
+}
+
+static void w_found_cb(lv_event_t *e)
+{
+    int i = (int)(intptr_t)lv_event_get_user_data(e);
+    if (i < 0 || i >= w_shown_n) return;
+    const ws_row_t *r = &w_shown[i];
+    if (!r->joinable) { ui_confirm(wv_text(WV_SSID_CTRL), "OK", NULL, NULL); return; }
+    if (!r->saved && w_copy.n >= MB_WIFI_NETS) { ui_confirm(wj_text(WJ_FULL), "Show saved", w_show_saved, NULL); return; }
+    if (r->secure) { pw_open(r); return; }
+    strlcpy(w_open_ssid, r->ssid, sizeof w_open_ssid);
+    static char q[112];
+    char name[40];
+    ws_display_name(r->ssid, name, sizeof name);
+    snprintf(q, sizeof q, "Join %.36s? It is open: no password, and anyone nearby can read what it carries.", name);
+    ui_confirm(q, "Join", w_join_now, NULL);
+}
+
+static void w_fill_found(void)
+{
+    lv_obj_clean(w_found);                                 /* only when a new search list arrives */
+    w_shown_n = w_scan.n;
+    memcpy(w_shown, w_scan.row, (size_t)w_shown_n * sizeof w_shown[0]);
+    int y = 0;
+    for (int i = 0; i < w_shown_n; i++, y += ST_H + ST_GAP) {
+        const ws_row_t *w = &w_shown[i];
+        lv_obj_t *r = lv_obj_create(w_found);
+        lv_obj_remove_style_all(r);
+        lv_obj_add_style(r, &w_st_row, 0);
+        lv_obj_set_style_bg_color(r, st_pressed(), LV_STATE_PRESSED);
+        lv_obj_set_pos(r, 0, y);
+        lv_obj_set_size(r, ST_W, ST_H);
+        lv_obj_remove_flag(r, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_add_flag(r, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_event_cb(r, w_found_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+        char name[40];
+        ws_display_name(w->ssid, name, sizeof name);
+        lv_obj_t *n = ui_label(r, F16, UI_TEXT, name);
+        lv_obj_set_width(n, ST_W - 14 - 96);
+        lv_label_set_long_mode(n, LV_LABEL_LONG_DOT);
+        lv_obj_set_pos(n, 14, 10);
+        const char *sub = !w->joinable ? "Can't join: control characters in the name"
+                        : w->saved ? (w->secure ? "Saved, secured" : "Saved, open")
+                        : w->secure ? "Secured: tap to type the password" : "Open: no password";
+        lv_obj_t *d = ui_label(r, F14, !w->joinable ? UI_WARN : w->saved ? UI_GREEN : UI_MUTED, sub);
+        lv_obj_set_pos(d, 14, 36);
+        if (w->secure) w_lock(r, ST_W - 82);
+        w_bars(r, ST_W - 50, ws_bars(w->rssi));
+    }
+    lv_obj_set_height(w_found, y ? y - ST_GAP : 0);
+}
+
+static void w_scan_show(void)
+{
+    char b[96];
+    ws_state_text(w_scan.state, w_scan.n, w_scan.n_seen, b, sizeof b);
+    ui_set_text(w_scan_msg, b);
+    ui_set_color(w_scan_msg, w_scan.state == WS_ST_FAILED || w_scan.state == WS_ST_DRIVING ? UI_WARN : UI_MUTED);
+    bool busy = w_scan.state == WS_ST_SEARCHING;
+    ui_set_text(w_search_lbl, busy ? LV_SYMBOL_WIFI " Searching..." : LV_SYMBOL_WIFI " Search for networks");
+    if (busy) lv_obj_add_state(w_search_btn, LV_STATE_DISABLED); else lv_obj_remove_state(w_search_btn, LV_STATE_DISABLED);
+    if (w_scan.state == WS_ST_DONE) w_fill_found();
+    else if (w_scan.state != WS_ST_SEARCHING) { lv_obj_clean(w_found); lv_obj_set_height(w_found, 0); w_shown_n = 0; }
+}
+
+static void w_search_cb(lv_event_t *e)
+{
+    (void)e;
+    if (w_scan.state == WS_ST_SEARCHING) return;
+    mosaico_board_wifi_search();                           /* the list arrives with wifi_update */
+}
+
+static void w_join_show(const mosaico_wifi_join_t *j)
+{
+    pw_result(j);
+    char name[40];
+    ws_display_name(j->ssid, name, sizeof name);
+    if (j->result == WJ_NONE) ui_set_text(w_join_msg, "");
+    else if (j->result == WJ_WAIT) ui_set_fmt(w_join_msg, "Joining %s...", name);
+    else ui_set_fmt(w_join_msg, "%s: %s", name, wj_text((wj_result_t)j->result));
+    ui_set_color(w_join_msg, j->result == WJ_CONNECTED ? UI_GREEN : j->result == WJ_WAIT ? UI_MUTED : UI_WARN);
+}
+
+static void w_styles(void)                                 /* no object uses them now: the app was closed */
+{
+    if (w_st_ready) { lv_style_reset(&w_st_row); lv_style_reset(&w_st_bar_on); lv_style_reset(&w_st_bar_off); }
+    w_st_ready = true;
+    lv_style_init(&w_st_row);
+    lv_style_set_radius(&w_st_row, UI_THEME.radius_row);
+    lv_style_set_bg_color(&w_st_row, lv_color_hex(UI_CARD));
+    lv_style_set_bg_opa(&w_st_row, LV_OPA_COVER);
+    lv_style_set_border_width(&w_st_row, 1);
+    lv_style_set_border_color(&w_st_row, lv_color_hex(UI_BORDER));
+    lv_style_init(&w_st_bar_on);
+    lv_style_set_bg_color(&w_st_bar_on, lv_color_hex(UI_TEXT));
+    lv_style_set_bg_opa(&w_st_bar_on, LV_OPA_COVER);
+    lv_style_set_radius(&w_st_bar_on, 1);
+    lv_style_init(&w_st_bar_off);
+    lv_style_set_bg_color(&w_st_bar_off, lv_color_hex(UI_THEME.track));
+    lv_style_set_bg_opa(&w_st_bar_off, LV_OPA_COVER);
+    lv_style_set_radius(&w_st_bar_off, 1);
+}
+
+static lv_obj_t *w_wrapped(lv_obj_t *p, uint32_t c, const char *t)
+{
+    lv_obj_t *l = ui_label(p, F14, c, t);
+    lv_obj_set_width(l, ST_W);
+    lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
+    return l;
+}
+
 static void wifi_create(lv_obj_t *p)
 {
+    w_styles();
     ui_header(p, "Wi-Fi");
     w_list = lv_obj_create(p);
     lv_obj_remove_style_all(w_list);
@@ -2426,33 +2851,56 @@ static void wifi_create(lv_obj_t *p)
     lv_label_set_long_mode(w_state, LV_LABEL_LONG_WRAP);
     w_clock = ui_label(w_list, F14, UI_MUTED, "");
 #if CONFIG_OCM_WIFI_CLOCK_SYNC
-    lv_obj_t *sb = text_btn(w_list, LV_SYMBOL_WIFI " Sync clock now", 0, 0, ST_W, UI_ORANGE, w_sync_cb);
+    lv_obj_t *sb = text_btn(w_list, LV_SYMBOL_REFRESH " Sync clock now", 0, 0, ST_W, UI_ORANGE, w_sync_cb);
     lv_obj_set_style_margin_top(sb, 4, 0);
+    w_clock_note = w_wrapped(w_list, UI_MUTED, "");
+    lv_obj_t *cap1 = ui_caption(w_list, "FIND A NETWORK");
+    lv_obj_set_style_margin_top(cap1, 10, 0);
+    w_search_btn = text_btn(w_list, LV_SYMBOL_WIFI " Search for networks", 0, 0, ST_W, UI_ORANGE, w_search_cb);
+    w_search_lbl = lv_obj_get_child(w_search_btn, 0);
+    lv_obj_set_style_bg_opa(w_search_btn, LV_OPA_50, LV_STATE_DISABLED);
+    w_scan_msg = w_wrapped(w_list, UI_MUTED, "");
+    w_join_msg = w_wrapped(w_list, UI_MUTED, "");
+    w_found = lv_obj_create(w_list);
+    lv_obj_remove_style_all(w_found);
+    lv_obj_set_size(w_found, ST_W, 0);
+    lv_obj_remove_flag(w_found, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
 #else
     ui_label(w_list, F14, UI_MUTED, "Wi-Fi is compiled out of this firmware.");
 #endif
-    lv_obj_t *cap = ui_caption(w_list, "SAVED NETWORKS");
-    lv_obj_set_style_margin_top(cap, 10, 0);
+    w_saved_cap = ui_caption(w_list, "SAVED NETWORKS");
+    lv_obj_set_style_margin_top(w_saved_cap, 10, 0);
     w_rows = lv_obj_create(w_list);
     lv_obj_remove_style_all(w_rows);
     lv_obj_set_size(w_rows, ST_W, 24);
     lv_obj_remove_flag(w_rows, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
-    w_note = ui_label(w_list, F14, UI_GREEN, "");
-    lv_obj_set_width(w_note, ST_W);
-    lv_label_set_long_mode(w_note, LV_LABEL_LONG_WRAP);
-    lv_obj_t *n = ui_label(w_list, F14, UI_MUTED, "Networks are added from the desktop app (up to 8). The board uses them to set "
-                                                  "its clock and, when paired with the app, to send new data while parked.");
-    lv_obj_set_width(n, ST_W);
-    lv_label_set_long_mode(n, LV_LABEL_LONG_WRAP);
+    w_note = w_wrapped(w_list, UI_GREEN, "");
+    w_wrapped(w_list, UI_MUTED, "Up to 8 networks: join one above, or add it from the desktop app. The board uses them to set its "
+                                "clock and, when paired with the app, to send new data while parked.");
     mosaico_board_wifi_list(&w_copy);
     w_gen = w_copy.gen;
+    w_clock_gen = w_copy.clock_gen;                      /* an old clock answer is not shown again */
     w_fill_rows();
     ui_set_text(w_note, w_copy.note);
     mosaico_board_request(MB_WIFI_LIST, 0);              /* a fresh copy (the desktop app may have added one) */
     w_asked_ms = esp_timer_get_time() / 1000;
+#if CONFIG_OCM_WIFI_CLOCK_SYNC
+    w_scan_gen = UINT32_MAX;                             /* the last search list is shown again */
+    if (mosaico_board_wifi_scan(&w_scan, w_scan_gen)) w_scan_gen = w_scan.gen;
+    w_scan_show();
+    mosaico_wifi_join_t j;
+    mosaico_board_wifi_join_state(&j);
+    w_join_gen = j.gen;                                  /* an old join answer is not shown again */
+#endif
 }
 
-static void wifi_destroy(void) { w_list = w_state = w_clock = w_note = w_rows = NULL; memset(w_det, 0, sizeof w_det); }
+static void wifi_destroy(void)
+{
+    w_list = w_state = w_clock = w_clock_note = w_note = w_rows = NULL;
+    w_search_btn = w_search_lbl = w_scan_msg = w_join_msg = w_found = w_saved_cap = NULL;
+    memset(w_det, 0, sizeof w_det);
+    if (pw_page) lv_async_call(pw_close, NULL);
+}
 
 static void wifi_update(const ui_snap_t *s)
 {
@@ -2463,9 +2911,15 @@ static void wifi_update(const ui_snap_t *s)
     case WIFI_ST_CONNECTING: ui_set_fmt(w_state, "Connecting to %.32s", st->wifi_ssid); break;
     case WIFI_ST_SCANNING:   ui_set_text(w_state, "Looking for a saved network"); break;
     case WIFI_ST_IDLE:       ui_set_text(w_state, "Idle between clock syncs"); break;
-    default:                 ui_set_text(w_state, w_copy.n ? "Off: restart the board to use the saved networks" : "Off: no network saved"); break;
+    default:                 ui_set_text(w_state, w_copy.n ? "Off: Sync clock now starts it" : "Off: no network saved yet"); break;
     }
     ui_set_text(w_clock, st->time_synced ? "The clock is synced over Wi-Fi." : "The clock is not synced over Wi-Fi yet.");
+#if CONFIG_OCM_WIFI_CLOCK_SYNC
+    if (mosaico_board_wifi_scan(&w_scan, w_scan_gen)) { w_scan_gen = w_scan.gen; w_scan_show(); }
+    mosaico_wifi_join_t j;
+    mosaico_board_wifi_join_state(&j);
+    if (j.gen != w_join_gen) { w_join_gen = j.gen; w_join_show(&j); }
+#endif
     if (s->now_ms - w_asked_ms >= 5000) { mosaico_board_request(MB_WIFI_LIST, 0); w_asked_ms = s->now_ms; }
     mosaico_wifi_list_t c;
     mosaico_board_wifi_list(&c);
@@ -2473,10 +2927,16 @@ static void wifi_update(const ui_snap_t *s)
     w_gen = c.gen;
     bool rows = c.n != w_copy.n;                           /* a network added or forgotten: new rows */
     for (int i = 0; !rows && i < c.n; i++) rows = strcmp(c.net[i].ssid, w_copy.net[i].ssid) != 0;
+    bool clock_note = c.clock_gen != w_clock_gen;
+    w_clock_gen = c.clock_gen;
     w_copy = c;
     if (rows) w_fill_rows();
     else for (int i = 0; i < c.n; i++) if (w_det[i]) w_detail(i);   /* signal and failures: the label only */
     ui_set_text(w_note, c.note);
+    if (clock_note && w_clock_note) {
+        ui_set_text(w_clock_note, c.clock_note);
+        ui_set_color(w_clock_note, strncmp(c.clock_note, "Looking", 7) ? UI_WARN : UI_MUTED);
+    }
 }
 
 /* ======================= registry ======================= */
@@ -2494,7 +2954,7 @@ static const ocm_app_t APPS[] = {          /* launcher order and tile colours as
     { "faults",   "Faults",   LV_SYMBOL_WARNING,   faults_create,   faults_update,   faults_destroy,   1000, SEC_RED,   0xFD5A4A, 0xC92A2A, 0, &ocm_icon_faults_52, NULL, NULL },
     { "board",    "Board",    LV_SYMBOL_SD_CARD,   board_create,    board_update,    NULL,             1000, SEC_AQUA,  0x72ECE4, 0x087F5B, 0, &ocm_icon_board_52, NULL, NULL },
     { "files",    "Files",    LV_SYMBOL_DIRECTORY, files_create,    files_update,    files_destroy,    500, SEC_AQUA,   0xFFB38A, 0x3B5BDB, 0, &ocm_icon_files_52, NULL, NULL },
-    { "wifi",     "Wi-Fi",    LV_SYMBOL_WIFI,      wifi_create,     wifi_update,     wifi_destroy,     1000, SEC_CYAN,  0x66D9E8, 0x0B7285, 0, &ocm_icon_wifi_52, NULL, NULL },   /* S1: just before Settings */
+    { "wifi",     "Wi-Fi",    LV_SYMBOL_WIFI,      wifi_create,     wifi_update,     wifi_destroy,     250,  SEC_CYAN,  0x66D9E8, 0x0B7285, 0, &ocm_icon_wifi_52, NULL, NULL },   /* S1: just before Settings */
     { "settings", "Settings", LV_SYMBOL_SETTINGS,  settings_create, settings_update, settings_destroy, 1000, SEC_VIOLET, 0xB8B8B8, 0x5F6368, 0, &ocm_icon_settings_52, NULL, NULL },   /* keep last */
 };
 
