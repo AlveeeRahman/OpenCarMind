@@ -6,10 +6,18 @@
 #include <string.h>
 #include <unistd.h>
 #ifdef ESP_PLATFORM
+#include "sdkconfig.h"
 #include "esp_heap_caps.h"
 #define BLOB_ALLOC(n) heap_caps_malloc_prefer((n), 2, MALLOC_CAP_SPIRAM, MALLOC_CAP_DEFAULT)
 #else
 #define BLOB_ALLOC(n) malloc(n)
+#endif
+/* The ESP-Mosaico (ESP32-S31) storage hardening: keep_tmp() and the large-blob reload. The ESP32-S3 build keeps the
+   public 2.5 behaviour exactly; the host tests build the hardened code. */
+#if !defined(ESP_PLATFORM) || CONFIG_IDF_TARGET_ESP32S31
+#define REV_STATE_HARDENED 1
+#else
+#define REV_STATE_HARDENED 0
 #endif
 
 #define MAGIC   0x31564552u              /* "REV1" */
@@ -42,8 +50,12 @@ uint32_t rev_crc32(uint32_t crc, const void *data, size_t n)
    renamed into place first. */
 static void keep_tmp(const char *path, const char *tmp)
 {
+#if REV_STATE_HARDENED
     struct stat st;
     if (stat(path, &st) != 0 && stat(tmp, &st) == 0) rename(tmp, path);
+#else
+    (void)path; (void)tmp;
+#endif
 }
 
 static bool put(FILE *f, uint32_t *crc, const void *p, size_t n)
@@ -202,6 +214,7 @@ bool rev_blob_load(const char *path, uint32_t magic, void *data, uint32_t size)
        the caller's struct is touched. Small blobs use a static 1 KB copy. Larger ones (35,168 B learned states, for example)
        get a heap copy, PSRAM first on the board: the old code returned false for anything over 1 KB, so such a state
        never reloaded. */
+#if REV_STATE_HARDENED
     static uint8_t small[1024];
     uint8_t *scratch = size <= sizeof small ? small : (uint8_t *)BLOB_ALLOC(size);
     if (!scratch) return false;
@@ -210,4 +223,11 @@ bool rev_blob_load(const char *path, uint32_t magic, void *data, uint32_t size)
     bool ok = blob_read(path, magic, data, size, scratch) || blob_read(tmp, magic, data, size, scratch);
     if (scratch != small) free(scratch);
     return ok;
+#else
+    static uint8_t scratch[1024];                    /* the caller's struct is left untouched unless a file checks out */
+    if (size > sizeof scratch) return false;
+    char tmp[128];
+    snprintf(tmp, sizeof tmp, "%s.tmp", path);
+    return blob_read(path, magic, data, size, scratch) || blob_read(tmp, magic, data, size, scratch);
+#endif
 }

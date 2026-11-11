@@ -245,32 +245,6 @@ static void board_task(void *arg)
     }
 }
 
-/* Key identification (2026-11-11): logs every edge of the two keys the firmware can read, the Function key (GPIO7) and
-   BOOT (GPIO61, a strap pin, read only as an input here). The POWER key goes to the SAM8108 load switch and has no
-   input line. Read-only: no key action changes. */
-static void key_log_task(void *arg)
-{
-    (void)arg;
-    static const struct { gpio_num_t pin; const char *name; } K[2] = {{GPIO_NUM_7, "Function key GPIO7"}, {GPIO_NUM_61, "BOOT GPIO61"}};
-    int last[2];
-    for (int i = 0; i < 2; i++) {
-        if (K[i].pin != BOARD_BUTTON) {
-            gpio_config_t io = { .pin_bit_mask = 1ULL << K[i].pin, .mode = GPIO_MODE_INPUT, .pull_up_en = GPIO_PULLUP_ENABLE };
-            gpio_config(&io);
-        }
-        last[i] = gpio_get_level(K[i].pin);
-        ESP_LOGW("keys", "KEY %s reads %s at start", K[i].name, last[i] ? "high (released)" : "LOW (pressed?)");
-    }
-    for (;;) {
-        vTaskDelay(pdMS_TO_TICKS(10));
-        for (int i = 0; i < 2; i++) {
-            int v = gpio_get_level(K[i].pin);
-            if (v != last[i]) { last[i] = v; ESP_LOGW("keys", "KEY %s %s", K[i].name, v ? "up" : "DOWN"); }
-        }
-    }
-}
-
-
 void mosaico_board_init(void)
 {
     /* Safe states first: motor off; the 3.3 V rail (VCC_3V3, GPIO60 active low) ON. The USB-C controller HUSB320 and the
@@ -299,5 +273,4 @@ void mosaico_board_init(void)
     ESP_LOGI(TAG, "ESP-Mosaico: battery soc=%d%% mv=%d ma=%d (gauge %s)", g.soc, g.mv, g.ma, g.ok ? "ok" : "not read");
     s_q = xQueueCreate(8, sizeof(mb_req_t));
     xTaskCreatePinnedToCore(board_task, "board", 6144, NULL, 1, NULL, 0);
-    xTaskCreatePinnedToCore(key_log_task, "keylog", 2560, NULL, 1, NULL, 0);
 }
