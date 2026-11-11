@@ -44,6 +44,13 @@ uimetrics: uimetrics_tests
 uimetrics_tests: test_ui_metrics.c ../../main/ui_metrics.c ../../main/ui_metrics.h
 	$(CC) $(CFLAGS) -O2 -o $@ test_ui_metrics.c ../../main/ui_metrics.c -lm
 
+# Smart UI arm A1: when the press-time prefetch builds, commits and cancels (main/ui_prefetch.c)
+prefetch: prefetch_tests
+	./prefetch_tests
+
+prefetch_tests: test_ui_prefetch.c ../../main/ui_prefetch.c ../../main/ui_prefetch.h
+	$(CC) $(CFLAGS) -o $@ test_ui_prefetch.c ../../main/ui_prefetch.c
+
 swipe_tests: test_swipe_intent.c ../../main/swipe_intent.c ../../main/swipe_intent.h ../../main/ui_metrics.c ../../main/ui_metrics.h
 	$(CC) $(CFLAGS) -O2 -o $@ test_swipe_intent.c ../../main/ui_metrics.c -lm
 
@@ -63,5 +70,5 @@ rev_tests: $(REV_SRCS) ../../main/rev_learn.h ../../main/rev_cal.h ../../main/re
 	$(CC) $(CFLAGS) -o $@ $(REV_SRCS) -lm
 
 clean:
-	rm -f carmind_tests rev_tests tank_tests session_tests reset_tests swipe_tests clock_tests uimetrics_tests
-.PHONY: run rev session reset swipe clock uimetrics clean
+	rm -f carmind_tests rev_tests tank_tests session_tests reset_tests swipe_tests clock_tests uimetrics_tests prefetch_tests
+.PHONY: run rev session reset swipe clock uimetrics prefetch clean

@@ -192,6 +192,15 @@ menu "OBD Logger Configuration"
                 a prefetcher may stay: p95 must drop, the prefetched page must be ready on more than 80 % of events and
                 a one-sided Mann-Whitney test (Holm-corrected across the classes) must pass, else it is turned off.
                 The verdicts are saved in NVS and re-tested after a firmware update. About 3 KB of PSRAM.
+        config OCM_UI_PREFETCH
+            bool "Smart UI arm A1: build the app (or refresh the launcher) at the press, keep it only if faster"
+            depends on OCM_UI_METRICS
+            default y
+            help
+                At the press on an app icon the app screen is built in a spare screen, and at the press on Back the
+                launcher behind the app is refreshed, so the click only has to show it. On half of the taps of each
+                class (after a warm-up) the gate compares it with no prefetch and keeps it only by the Smart UI rule;
+                otherwise it turns it off for that class. The click still decides where the page goes.
     endmenu
     menu "Diagnostics"
         config CARMIND_TASK_STATS_S

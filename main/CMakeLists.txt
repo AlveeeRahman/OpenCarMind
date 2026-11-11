@@ -5,6 +5,7 @@ if(ocm_target STREQUAL "esp32s31")
     set(ocm_board_reqs esp_driver_i2c wear_levelling esp_pm esp_psram spi_flash esp_mm)
     list(APPEND ocm_board_srcs "swipe_intent.c")                   # smart swipe (CONFIG_OCM_SWIPE_INTENT)
     list(APPEND ocm_board_srcs "ui_metrics.c")                     # Smart UI metrics + gate (smart swipe's histograms too)
+    list(APPEND ocm_board_srcs "ui_prefetch.c")                    # Smart UI arm A1: press-time prefetch (CONFIG_OCM_UI_PREFETCH)
     list(APPEND ocm_board_srcs "mosaico_clock.c" "clock_set.c")    # Settings > Clock: set the clock by hand
     list(APPEND ocm_board_reqs esp_app_format)                    # its firmware tag: the app ELF SHA
     set(ocm_ml_dir "${CMAKE_CURRENT_LIST_DIR}/../ml/onboard_s31")   # CarMind E.V (ev/) and R.E.V (rev/) re-quantized for the S31

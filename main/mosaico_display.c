@@ -238,6 +238,19 @@ static uint8_t s_icon_app[UM_MAX_ICONS], s_nicons;
 #define UM_RENDER_START() ((void)0)
 #define UM_FRAME() ((void)0)
 #endif
+#if CONFIG_OCM_UI_PREFETCH
+/* Smart UI arm A1, press-time prefetch (ui_prefetch.h; the block after the metrics block) */
+#include "ui_prefetch.h"
+static upf_t s_pf;
+static lv_obj_t *s_pf_scr, *s_pf_body;                 /* the spare app screen: at most one app is prebuilt in it */
+static int s_pf_app = -1, s_pd_app = -1;               /* the prebuilt app; the app whose teardown waits for the settle */
+static bool s_pf_home;                                 /* Back: the launcher behind the app was refreshed at the press */
+static void pf_act(int action);
+static void pd_run(void);
+static void pf_cell_pressing_cb(lv_event_t *e);
+static bool pf_open_app(int idx);
+static bool pf_go_home(void);
+#endif
 /* the UI job's own soft-deadline figures */
 static sched_job_t s_job = -1;
 static uint32_t s_runs, s_misses, s_max_us, s_late_max_ms;
@@ -1095,6 +1108,9 @@ static void open_app(int idx);
 static void icon_cb(lv_event_t *e)
 {
     s_return_tile = s_tv ? (int)lv_obj_get_index(lv_tileview_get_tile_active(s_tv)) : 0;
+#if CONFIG_OCM_UI_PREFETCH
+    if (pf_open_app((int)(intptr_t)lv_event_get_user_data(e))) return;   /* the app was built at the press */
+#endif
     open_app((int)(intptr_t)lv_event_get_user_data(e));
 }
 static void all_apps_cb(lv_event_t *e) { (void)e; if (s_ntiles > 1) lv_tileview_set_tile_by_index(s_tv, 1, 0, LV_ANIM_ON); }
@@ -1452,6 +1468,9 @@ static void build_apps_page(lv_obj_t *t, int page, const int *apps, int n)
 #if CONFIG_OCM_UI_METRICS
         if (s_nicons < UM_MAX_ICONS) { s_icon_cell[s_nicons] = cell; s_icon_app[s_nicons++] = (uint8_t)app; }
 #endif
+#if CONFIG_OCM_UI_PREFETCH
+        lv_obj_add_event_cb(cell, pf_cell_pressing_cb, LV_EVENT_PRESSING, NULL);
+#endif
         /* Tabler icon (A8, recoloured): dark = bright tile with a dark glyph, light = deeper tile with a white glyph */
         if (ui_app(app)->tile) {                          /* the app's own mark is the tile (98 px square, centred in the 100 px slot) */
             lv_obj_t *box = flex_box(cell, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, 0);
@@ -1629,6 +1648,9 @@ static void tv_scroll_cb(lv_event_t *e)
         if (s_blit_on) blit_frame(lv_obj_get_scroll_x(s_tv));
         return;
     }
+#endif
+#if CONFIG_OCM_UI_PREFETCH
+    if (lv_event_get_code(e) == LV_EVENT_SCROLL_BEGIN) pf_act(upf_scroll_begin(&s_pf));   /* the press became a swipe */
 #endif
     if (lv_event_get_code(e) != LV_EVENT_SCROLL_BEGIN || s_sliding) return;
     if (!s_tsnap_ok[0] || esp_timer_get_time() - s_home_snap_us > 10000000) s_tsnap_ok[0] = false;   /* e4: a picture up to 5 s old is fine */
@@ -1926,7 +1948,11 @@ void mosaico_display_swipe_brief(char *out, size_t n)
    or Back counts only if LVGL then sends CLICKED (a press that slid off opened nothing). The settle is polled by a
    16 ms LVGL timer that runs only while an event waits for its settle. */
 #include "src/misc/lv_event_private.h"                /* lv_event_dsc_t.filter: which events a control listens to */
+#if CONFIG_OCM_UI_PREFETCH
+#define UM_FAMILY ((1u << UM_APP) | (1u << UM_BACK))   /* classes with a prefetch action (arm A1) */
+#else
 #define UM_FAMILY 0u                                   /* no prefetch action: every event is A0 */
+#endif
 #define UM_RING 512
 static um_t s_um;                                     /* 2.8 KB internal RAM: touched on every event */
 EXT_RAM_BSS_ATTR static uint8_t s_um_blob[UM_BLOB_MAX];
@@ -1996,6 +2022,10 @@ static void um_touch(lv_indev_t *indev, bool pressed)
                 s_um_interrupted++;
                 um_finish(now - s_ue.t_lift, UM_F_INTERRUPTED);
             }
+#if CONFIG_OCM_UI_PREFETCH
+            pf_act(upf_settle(&s_pf));                   /* a new touch: nothing stays built from the last one */
+            pd_run();
+#endif
             memset(&s_ue, 0, sizeof s_ue);
             s_ue.down = true;
             s_ue.t_press = now;
@@ -2019,6 +2049,9 @@ static void um_touch(lv_indev_t *indev, bool pressed)
         s_ue.fresh = si_fresh_mask();
 #endif
     } else if (so) {
+#if CONFIG_OCM_UI_PREFETCH
+        pf_act(upf_scroll_begin(&s_pf));
+#endif
         s_ue.cls = UM_LIST;
         s_ue.target = um_obj_id(so);
         s_ue.arm = um_arm(&s_um, UM_LIST);
@@ -2055,6 +2088,16 @@ static void um_indev_cb(lv_event_t *e)
     return;
 classed:
     s_ue.arm = um_arm(&s_um, s_ue.cls);
+#if CONFIG_OCM_UI_PREFETCH
+    if (s_ue.arm == UM_A1 && (s_ue.cls == UM_APP || s_ue.cls == UM_BACK)) {
+        lv_point_t pt = { 0, 0 };
+        if (s_um_indev) lv_indev_get_point(s_um_indev, &pt);
+        int pre = UPF_NONE;
+        int a = upf_press(&s_pf, s_ue.cls == UM_APP ? UPF_K_APP : UPF_K_BACK, s_ue.target, um_now(), (int16_t)pt.x, (int16_t)pt.y, &pre);
+        pf_act(pre);
+        pf_act(a);
+    }
+#endif
 }
 
 static void um_frame(void)
@@ -2074,6 +2117,11 @@ static void um_finish(uint32_t lat, uint8_t why)
     s_ue.waiting = false;
     uint8_t c = s_ue.cls;
     bool ready = false;
+#if CONFIG_OCM_UI_PREFETCH
+    ready = (c == UM_APP || c == UM_BACK) && s_ue.arm == UM_A1 && upf_was_ready(&s_pf);
+    pf_act(upf_settle(&s_pf));                           /* built but no click: thrown away */
+    pd_run();                                            /* the app left by a prefetched Back is torn down now */
+#endif
     if ((c == UM_APP || c == UM_BACK) && !s_ue.clicked) { s_um_cancelled++; um_dropped(&s_um, c); return; }
     if (c == UM_SWIPE && s_tv) {
         int fin = (int)(lv_obj_get_scroll_x(s_tv) / UI_W);
@@ -2134,6 +2182,111 @@ static void um_boot(void)
 
 #endif
 
+#if CONFIG_OCM_UI_PREFETCH
+/* ---------- Smart UI arm A1: press-time prefetch (ui_prefetch.h) ----------
+   App icon, arm A1: once the finger rests for UPF_APP_DELAY_MS, the app is created in the spare app screen (its widgets
+   in the PSRAM LVGL heap) and filled from a fresh snapshot; LVGL's click then shows that screen instead of building it.
+   Back, arm A1: at the press the launcher behind the app is refreshed (an inactive screen: nothing is drawn); the
+   click shows it at once and the app's widgets are deleted after the page has settled, not before the first frame.
+   Nothing here changes where a touch lands: LVGL's own click picks the page, the prefetch only builds. */
+#define PF_INT_FLOOR (48 * 1024)                       /* no prebuild below this much free internal RAM */
+static uint32_t s_pf_build_us_max, s_pf_build_us_sum, s_pf_floor_skips;
+
+static void pf_cancel_app(void)
+{
+    if (s_pf_app < 0) return;
+    if (ui_app(s_pf_app)->destroy) ui_app(s_pf_app)->destroy();   /* no instance of it is live: the launcher is shown */
+    lv_obj_clean(s_pf_body);
+    s_pf_app = -1;
+}
+
+/* the app teardown a prefetched Back left for after the settle */
+static void pd_run(void)
+{
+    if (s_pd_app < 0) return;
+    if (ui_app(s_pd_app)->destroy) ui_app(s_pd_app)->destroy();
+    lv_obj_clean(s_body);
+    s_pd_app = -1;
+}
+
+static void pf_build(void)
+{
+    int64_t t0 = esp_timer_get_time();
+    pd_run();
+    if (heap_caps_get_free_size(MALLOC_CAP_INTERNAL) < PF_INT_FLOOR) { s_pf_floor_skips++; s_pf.st = UPF_IDLE; return; }
+    if (s_pf.kind == UPF_K_BACK) {
+        if (s_cur < 0) { s_pf.st = UPF_IDLE; return; }
+        take_snapshot();
+        if (s_tv) lv_tileview_set_tile_by_index(s_tv, (uint32_t)(s_return_tile < s_ntiles ? s_return_tile : 0), 0, LV_ANIM_OFF);
+        refresh_home(&s_snap);                            /* s_home is not the active screen: labels change, nothing draws */
+        s_pf_home = true;
+    } else {
+        int idx = s_pf.target;
+        if (s_cur >= 0 || idx >= ui_app_count()) { s_pf.st = UPF_IDLE; return; }
+        uint8_t acc = s_accent_sec;
+        s_accent_sec = ui_app(idx)->section;
+        lv_obj_set_style_bg_grad_dir(s_pf_scr, LV_GRAD_DIR_NONE, 0);
+        lv_obj_set_style_bg_color(s_pf_scr, lv_color_hex(0x000000), 0);
+        ui_app(idx)->create(s_pf_body);
+        take_snapshot();
+        ui_app(idx)->update(&s_snap);
+        s_accent_sec = acc;
+        s_pf_app = idx;
+    }
+    uint32_t us = (uint32_t)(esp_timer_get_time() - t0);
+    if (us > s_pf_build_us_max) s_pf_build_us_max = us;
+    s_pf_build_us_sum += us;
+}
+
+static void pf_act(int action)
+{
+    if (action == UPF_BUILD) pf_build();
+    else if (action == UPF_CANCEL) { pf_cancel_app(); s_pf_home = false; }
+}
+
+/* LV_EVENT_PRESSING on an app cell, every touch read while the finger is on it */
+static void pf_cell_pressing_cb(lv_event_t *e)
+{
+    (void)e;
+    if (!s_um_indev || s_pf.st != UPF_ARMED) return;
+    lv_point_t pt;
+    lv_indev_get_point(s_um_indev, &pt);
+    pf_act(upf_pressing(&s_pf, um_now(), (int16_t)pt.x, (int16_t)pt.y, lv_indev_get_scroll_obj(s_um_indev) != NULL));
+}
+
+/* icon_cb: true if the click opened the prebuilt app (the two app screens swap) */
+static bool pf_open_app(int idx)
+{
+    int a = upf_click(&s_pf, UPF_K_APP, (uint16_t)idx);
+    if (a != UPF_COMMIT || s_pf_app != idx) { pf_act(a == UPF_COMMIT ? UPF_CANCEL : a); return false; }
+    lv_obj_t *scr = s_appscr, *body = s_body;
+    s_appscr = s_pf_scr; s_body = s_pf_body;
+    s_pf_scr = scr; s_pf_body = body;
+    s_pf_app = -1;
+    s_cur = idx;
+    s_accent_sec = ui_app(idx)->section;
+    refresh_status_bar(&s_snap);
+    s_last_app_ms = s_snap.now_ms;
+    lv_screen_load(s_appscr);
+    ESP_LOGI(TAG, "app %s (built at the press)", ui_app(idx)->name);
+    return true;
+}
+
+/* ui_go_home: true if a Back press already refreshed the launcher */
+static bool pf_go_home(void)
+{
+    uint16_t target = (uint16_t)(((unsigned)(s_cur & 0xFF) << 8) | (unsigned)(s_return_tile & 0xFF));
+    int a = upf_click(&s_pf, UPF_K_BACK, target);
+    if (a != UPF_COMMIT || !s_pf_home || s_cur < 0) { s_pf_home = false; if (a == UPF_COMMIT) s_pf.st = UPF_IDLE; return false; }
+    s_pf_home = false;
+    s_pd_app = s_cur;                                     /* its widgets go after the settle (pd_run) */
+    s_cur = -1;
+    lv_screen_load(s_home);
+    refresh_status_bar(&s_snap);
+    return true;
+}
+
+#endif
 
 static void build_grid(void) { build_launcher(); }
 static void build_home_row(void) {}
@@ -2145,6 +2298,9 @@ static int64_t s_splash_until;
 /* ---------- navigation ---------- */
 static void close_app(void)
 {
+#if CONFIG_OCM_UI_PREFETCH
+    pd_run();
+#endif
     if (s_cur >= 0 && ui_app(s_cur)->destroy) ui_app(s_cur)->destroy();
     if (s_body) lv_obj_clean(s_body);
     s_cur = -1;
@@ -2153,6 +2309,9 @@ static void close_app(void)
 static void open_app(int idx)
 {
     if (idx < 0 || idx >= ui_app_count()) return;
+#if CONFIG_OCM_UI_PREFETCH
+    pf_act(upf_settle(&s_pf));                            /* any other way into an app drops a prebuilt one */
+#endif
     close_app();
     s_cur = idx;
     s_accent_sec = ui_app(idx)->section;
@@ -2170,6 +2329,9 @@ static void open_app(int idx)
 /* back from an app: the launcher page it was opened from */
 void ui_go_home(void)
 {
+#if CONFIG_OCM_UI_PREFETCH
+    if (pf_go_home()) return;                             /* the launcher was refreshed at the Back press */
+#endif
     close_app();
     if (lv_screen_active() != s_home) lv_screen_load(s_home);
     if (s_tv) lv_tileview_set_tile_by_index(s_tv, (uint32_t)(s_return_tile < s_ntiles ? s_return_tile : 0), 0, LV_ANIM_OFF);
@@ -2472,6 +2634,10 @@ static void rounder_cb(lv_event_t *e)
 /* one rebuild of everything in the palette in force: status bar, home, grid and the app on screen */
 static void rebuild_all(void)
 {
+#if CONFIG_OCM_UI_PREFETCH
+    pf_act(upf_settle(&s_pf));
+    pd_run();
+#endif
     int app = s_cur;
     if (s_tv && app < 0) s_return_tile = (int)lv_obj_get_index(lv_tileview_get_tile_active(s_tv));
     close_app();
@@ -2480,6 +2646,9 @@ static void rebuild_all(void)
     build_status_bar();
     build_launcher();
     lv_obj_set_style_bg_color(s_appscr, lv_color_hex(UI_BG), 0);
+#if CONFIG_OCM_UI_PREFETCH
+    lv_obj_set_style_bg_color(s_pf_scr, lv_color_hex(UI_BG), 0);
+#endif
     if (app >= 0) open_app(app);
     else { take_snapshot(); refresh_status_bar(&s_snap); refresh_home(&s_snap); }
 }
@@ -2558,6 +2727,15 @@ esp_err_t display_init(void)
     lv_obj_set_size(s_body, UI_W, UI_H);
     lv_obj_remove_flag(s_body, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_flag(s_body, LV_OBJ_FLAG_GESTURE_BUBBLE);
+#if CONFIG_OCM_UI_PREFETCH
+    s_pf_scr = make_screen();                             /* the same as s_appscr: the two swap when a prebuilt app opens */
+    lv_obj_add_event_cb(s_pf_scr, gesture_cb, LV_EVENT_GESTURE, NULL);
+    s_pf_body = lv_obj_create(s_pf_scr);
+    lv_obj_remove_style_all(s_pf_body);
+    lv_obj_set_size(s_pf_body, UI_W, UI_H);
+    lv_obj_remove_flag(s_pf_body, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(s_pf_body, LV_OBJ_FLAG_GESTURE_BUBBLE);
+#endif
     take_snapshot();
     bool is_auto;
     ui_th = theme_wanted(s_snap.st, &is_auto);
