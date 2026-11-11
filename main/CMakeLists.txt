@@ -26,7 +26,7 @@ idf_component_register(
          "usb_door.c"
          "elm327.c"
          "ecu_select.c"
-         "sdlog.c" "fat_mirror.c" "storage_rt.c"
+         "sdlog.c" "fat_mirror.c" "session_next.c" "storage_rt.c"
          "wifi_sync.c"
          "status_led.c"
          "custom_pids.c"

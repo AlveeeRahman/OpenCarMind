@@ -12,6 +12,13 @@ fat: fat_tests
 fat_tests: test_fat_mirror.c ../../main/fat_mirror.c ../../main/fat_mirror.h
 	$(CC) $(CFLAGS) -o $@ test_fat_mirror.c ../../main/fat_mirror.c
 
+# session number after a re-flash erased the NVS counter (main/session_next.c)
+session: session_tests
+	./session_tests
+
+session_tests: test_session_next.c ../../main/session_next.c ../../main/session_next.h
+	$(CC) $(CFLAGS) -o $@ test_session_next.c ../../main/session_next.c
+
 carmind_tests: $(SRCS) ../../main/custom_pids.h ../../main/fault_engine.h
 	$(CC) $(CFLAGS) -o $@ $(SRCS) -lm
 
@@ -28,5 +35,5 @@ rev_tests: $(REV_SRCS) ../../main/rev_learn.h ../../main/rev_cal.h ../../main/re
 	$(CC) $(CFLAGS) -o $@ $(REV_SRCS) -lm
 
 clean:
-	rm -f carmind_tests rev_tests tank_tests
-.PHONY: run rev clean
+	rm -f carmind_tests rev_tests tank_tests session_tests
+.PHONY: run rev session clean

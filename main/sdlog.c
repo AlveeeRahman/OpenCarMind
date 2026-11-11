@@ -16,6 +16,7 @@
 #include "diskio_wl.h"
 #include "esp_partition.h"
 #include "fat_mirror.h"
+#include "session_next.h"
 #endif
 #include "esp_system.h"
 #include "sdmmc_cmd.h"
@@ -137,7 +138,15 @@ static uint32_t next_session_id(void)
     uint32_t id = 0;
     if (nvs_open("obdlog", NVS_READWRITE, &h) == ESP_OK) {
         nvs_get_u32(h, "session", &id);
+#if !BOARD_HAS_SD
+        /* a re-flash erases NVS but keeps the storage partition: never reuse the number of a drive that is still there */
+        uint32_t hi = session_highest_in_dir(SDLOG_SESSIONS_DIR), next = session_next_id(id, hi);
+        if (next != id + 1) ESP_LOGW(TAG, "session counter %lu is behind the storage (highest s%06lu): next is %lu",
+                                     (unsigned long)id, (unsigned long)hi, (unsigned long)next);
+        id = next;
+#else
         id++;
+#endif
         nvs_set_u32(h, "session", id);
         nvs_commit(h);
         nvs_close(h);
