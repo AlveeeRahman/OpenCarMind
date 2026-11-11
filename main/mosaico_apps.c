@@ -1364,7 +1364,7 @@ static void ev_ctx(uev_ctx_t *c)
     c->power = power_state(sdlog_ok(), sdlog_saved(), sdlog_ms_since_write(), sys_mode_get() == MODE_DRIVE, uploader_busy());
     c->mark_ok = LV_SYMBOL_OK;
     c->mark_warn = LV_SYMBOL_WARNING;
-    c->win_ok = sm.ok && sm.start_up_ms > 0;              /* the summary is always a drive of this boot */
+    c->win_ok = sm.ok && !sm.past && sm.start_up_ms > 0;  /* a drive of this boot: its window holds ring events */
     c->win_start_ms = sm.start_up_ms;
     c->win_dur_s = sm.dur_s;
 }
@@ -1457,11 +1457,22 @@ static void ev_page_fill(const ui_snap_t *s, bool top)
     const app_status_t *st = s->st;
     uev_ctx_t c;
     ev_ctx(&c);
-    uint32_t sig = uev_sig(st->events, st->event_head, st->event_count, c.power, st->pattern_windows) ^ (uint32_t)(ev_filter * 0x9E3779B9u);
+    /* the Drive chip with the drive's own list (kept by the recorder, or read back after a restart): its newest 10 */
+    bool own = ev_filter == UEV_DRIVE && sm.ok && sm.nev > 0;
+    const sys_event_t *src = st->events;
+    uint8_t head = st->event_head, count = st->event_count;
+    static sys_event_t own_ring[EVENT_MAX];
+    if (own) {
+        int k = sm.nev < EVENT_MAX ? sm.nev : EVENT_MAX;
+        memset(own_ring, 0, sizeof own_ring);
+        memcpy(own_ring, &sm.ev[sm.nev - k], sizeof own_ring[0] * (size_t)k);
+        src = own_ring; head = (uint8_t)(k % EVENT_MAX); count = (uint8_t)k;
+    }
+    uint32_t sig = uev_sig(src, head, count, c.power, st->pattern_windows) ^ (uint32_t)(ev_filter * 0x9E3779B9u) ^ (own ? sm.gen * 2654435761u : 0);
     if (sig == ev_page_sig && !top) return;
     ev_page_sig = sig;
-    memcpy(ev_ring, st->events, sizeof ev_ring);
-    int n = ev_rows_n = uev_rows(st->events, st->event_head, st->event_count, (uev_filter_t)ev_filter, &c, ev_rows, EVENT_MAX);
+    memcpy(ev_ring, src, sizeof ev_ring);
+    int n = ev_rows_n = uev_rows(src, head, count, own ? UEV_ALL : (uev_filter_t)ev_filter, &c, ev_rows, EVENT_MAX);
     int shift = 0;
     if (!top && ev_top_ring >= 0)
         for (int i = 0; i < n; i++) if (ev_rows[i].ring == ev_top_ring) { shift = i; break; }
@@ -1469,15 +1480,19 @@ static void ev_page_fill(const ui_snap_t *s, bool top)
         if (i >= n) { lv_obj_add_flag(ev_row[i], LV_OBJ_FLAG_HIDDEN); continue; }
         lv_obj_remove_flag(ev_row[i], LV_OBJ_FLAG_HIDDEN);
         ev_row_ring[i] = ev_rows[i].ring;
-        ui_set_fmt(ev_row_when[i], "%s   %s", ev_rows[i].when, uev_level_name(st->events[ev_rows[i].ring].level));
+        ui_set_fmt(ev_row_when[i], "%s   %s", ev_rows[i].when, uev_level_name(ev_ring[ev_rows[i].ring].level));
         ui_set_text(ev_row_text[i], ev_rows[i].text);
         ui_set_color(ev_row_text[i], ev_color(ev_rows[i].tone));
     }
     if (n) lv_obj_add_flag(ev_empty, LV_OBJ_FLAG_HIDDEN); else lv_obj_remove_flag(ev_empty, LV_OBJ_FLAG_HIDDEN);
     ev_top_ring = n ? ev_rows[0].ring : -1;
-    int total = st->event_count < EVENT_MAX ? st->event_count : EVENT_MAX;
+    int total = own ? sm.nev : st->event_count < EVENT_MAX ? st->event_count : EVENT_MAX;
     ui_set_fmt(ev_count, "%d of %d", n, total);
-    if (ev_filter == UEV_DRIVE && c.win_ok) {
+    if (own && sm.past)
+        ui_set_fmt(ev_note, "Drive s%06lu, before the last restart: its saved events.", (unsigned long)sm.session);
+    else if (own)
+        ui_set_fmt(ev_note, "Drive s%06lu: its own events, the newest %d.", (unsigned long)sm.session, n);
+    else if (ev_filter == UEV_DRIVE && c.win_ok) {
         char a[16], z[16];
         uev_uptime(a, sizeof a, sm.start_up_ms);
         uev_uptime(z, sizeof z, sm.start_up_ms + (int64_t)sm.dur_s * 1000);
@@ -1601,7 +1616,9 @@ static void ev_detail_open(int ring)
     d_lab(c, "WHEN", 0, 0, UI_MUTED);
     uev_uptime(w, sizeof w, e->uptime_ms);
     ui_set_fmt(ui_label(c, UI_THEME.f_value, UI_TEXT, ""), "%s after boot", w);
-    if (ev_st && mosaico_clock_known(ev_st)) {
+    bool before_restart = ev_filter == UEV_DRIVE && sm.ok && sm.nev > 0 && sm.past;   /* another boot's uptime */
+    if (before_restart) ui_label(c, UI_THEME.f_label, UI_MUTED, "Before the last restart: time since that start.");
+    else if (ev_st && mosaico_clock_known(ev_st)) {
         time_t at = (time_t)(uev_epoch_ms(e->uptime_ms, esp_timer_get_time() / 1000, (int64_t)time(NULL) * 1000) / 1000);
         struct tm tm;
         localtime_r(&at, &tm);
@@ -1613,7 +1630,9 @@ static void ev_detail_open(int ring)
     d_lab(c, "DRIVE", 0, 0, UI_MUTED);
     uint32_t sess = uev_session(e->text);
     if (sess) snprintf(b, sizeof b, "Drive s%06lu (named in the event)", (unsigned long)sess);
-    else if (sm.ok && sm.start_up_ms > 0 && uev_in_drive(e->uptime_ms, sm.start_up_ms, sm.dur_s))
+    else if (ev_filter == UEV_DRIVE && sm.ok && sm.nev > 0)
+        snprintf(b, sizeof b, "Drive s%06lu (its own event list)", (unsigned long)sm.session);
+    else if (sm.ok && !sm.past && sm.start_up_ms > 0 && uev_in_drive(e->uptime_ms, sm.start_up_ms, sm.dur_s))
         snprintf(b, sizeof b, "During drive s%06lu, the last drive", (unsigned long)sm.session);
     else if (sm.ok) snprintf(b, sizeof b, "Not during the last drive (s%06lu)", (unsigned long)sm.session);
     else if (ev_st && ev_st->sd_mounted && elm_drive_active()) snprintf(b, sizeof b, "A drive is being recorded (s%06lu); none has ended yet",
@@ -1687,6 +1706,7 @@ static void sm_fill(void)
         lv_obj_t *end = ui_label(c, UI_THEME.f_small, UI_MUTED, "");
         ui_set_fmt(end, "%ld min", (long)(sm.dur_s / 60));
         lv_obj_align(end, LV_ALIGN_TOP_RIGHT, 0, 82);
+        if (sm.past) lv_obj_center(ui_label(c, UI_THEME.f_small, UI_MUTED, "Read back after a restart: the curves are not kept"));
         /* what the AI saw, one block per 10 s (at most 40 blocks), and the class shares */
         c = d_card(sm_p1, DX, DY + 184, DW, 72, UI_BORDER, false);
         lv_obj_set_style_pad_ver(c, 8, 0);

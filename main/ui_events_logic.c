@@ -1,6 +1,7 @@
 #include "ui_events_logic.h"
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 
 static const char SAVE_TEXT[] = "Safe to turn off";     /* sdlog.c: written at every save that leaves nothing pending */
 
@@ -176,5 +177,115 @@ size_t uev_redact(const char *text, const char *name, const char *placeholder, c
     }
     out[w] = 0;
     return w;
+}
+
+int uev_collect(sys_event_t *list, int n, int max, const sys_event_t ring[EVENT_MAX], uint8_t head, uint8_t count,
+                int64_t from_ms, int64_t *seen_ms, const char *name)
+{
+    int idx[EVENT_MAX], k = uev_order(head, count, idx);
+    for (int i = k - 1; i >= 0; i--) {                   /* oldest first */
+        const sys_event_t *e = &ring[idx[i]];
+        if (e->uptime_ms < from_ms || e->uptime_ms <= *seen_ms) continue;
+        *seen_ms = e->uptime_ms;
+        char t[EVENT_TEXT + 16];
+        uev_redact(e->text, name, "<network>", t, sizeof t);
+        if (n > 0 && !strncmp(list[n - 1].text, t, EVENT_TEXT - 1) && list[n - 1].level == e->level) {
+            list[n - 1].uptime_ms = e->uptime_ms;        /* the same text again: events.c folds it, so do we */
+            continue;
+        }
+        if (n == max) { memmove(&list[0], &list[1], (size_t)(max - 1) * sizeof list[0]); n--; }
+        list[n].uptime_ms = e->uptime_ms;
+        list[n].level = e->level;
+        uev_copy(list[n].text, sizeof list[n].text, t);
+        n++;
+    }
+    return n;
+}
+
+size_t uev_events_json(const sys_event_t *list, int n, char *out, size_t cap)
+{
+    size_t w = 0;
+#define PUT(...) do { int r_ = snprintf(out + w, cap > w ? cap - w : 0, __VA_ARGS__); if (r_ < 0 || (size_t)r_ >= cap - w) goto full; w += (size_t)r_; } while (0)
+    if (!out || !cap) return 0;
+    PUT(",\"events\":[");
+    for (int i = 0; i < n; i++) {
+        const sys_event_t *e = &list[i];
+        PUT("%s{\"up\":%lld,\"lv\":\"%c\",\"tx\":\"", i ? "," : "", (long long)e->uptime_ms, "IWE"[e->level <= EV_ERROR ? e->level : 0]);
+        for (const unsigned char *p = (const unsigned char *)e->text; *p; p++) {
+            if (*p == '"' || *p == '\\') PUT("\\%c", *p);
+            else if (*p < 0x20) PUT("\\u%04x", *p);
+            else PUT("%c", *p);
+        }
+        PUT("\"}");
+    }
+    PUT("]");
+    return w;
+full:
+    out[0] = 0;
+    return 0;
+#undef PUT
+}
+
+static event_level_t lv_of(char c) { return c == 'E' ? EV_ERROR : c == 'W' ? EV_WARN : EV_INFO; }
+
+int uev_events_parse(const char *json, sys_event_t *list, int max)
+{
+    /* the exact shape uev_events_json writes: {"up":N,"lv":"X","tx":"..."} (a '}' or ',' inside a text is fine) */
+    const char *p = json ? strstr(json, "\"events\":[") : NULL;
+    int n = 0;
+    if (!p) return 0;
+    p += 10;
+    while (n < max && *p && *p != ']') {
+        if (*p == ',' || *p == ' ') { p++; continue; }
+        if (strncmp(p, "{\"up\":", 6)) break;
+        char *e1;
+        long long up = strtoll(p + 6, &e1, 10);
+        if (e1 == p + 6 || strncmp(e1, ",\"lv\":\"", 7) || !e1[7] || strncmp(e1 + 8, "\",\"tx\":\"", 8)) break;
+        sys_event_t e = { .uptime_ms = up, .level = lv_of(e1[7]) };
+        const char *q = e1 + 16;
+        size_t w = 0;
+        for (; *q && *q != '"'; q++) {
+            char c = *q;
+            if (c == '\\' && q[1]) {
+                q++;
+                if (*q == 'u' && q[1] && q[2] && q[3] && q[4]) { char h[5] = {q[1], q[2], q[3], q[4], 0}; c = (char)strtol(h, NULL, 16); q += 4; }
+                else c = *q;
+            }
+            if (w + 1 < sizeof e.text) e.text[w++] = c;  /* a text longer than an event's: the rest is skipped */
+        }
+        e.text[w] = 0;
+        if (strncmp(q, "\"}", 2)) break;
+        p = q + 2;
+        list[n++] = e;
+    }
+    return n;
+}
+
+bool uev_sys_line(const char *line, sys_event_t *out)
+{
+    char *end;
+    long long up = strtoll(line, &end, 10);
+    if (end == line || end[0] != ',' || !end[1] || end[2] != ',') return false;
+    char k = end[1];
+    if (k != 'I' && k != 'W' && k != 'E') return false;  /* H = heartbeat, the header line, anything else */
+    out->uptime_ms = up;
+    out->level = lv_of(k);
+    char t[EVENT_TEXT];
+    size_t w = 0;
+    for (const char *p = end + 3; *p && *p != '\n' && *p != '\r' && w + 1 < sizeof t; p++) t[w++] = *p;
+    t[w] = 0;
+    uev_copy(out->text, sizeof out->text, t);
+    return true;
+}
+
+double uev_json_num(const char *json, const char *key, double def)
+{
+    char k[48];
+    snprintf(k, sizeof k, "\"%s\":", key);
+    const char *p = json ? strstr(json, k) : NULL;
+    if (!p) return def;
+    char *e;
+    double v = strtod(p + strlen(k), &e);
+    return e == p + strlen(k) ? def : v;
 }
 

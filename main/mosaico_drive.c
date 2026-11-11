@@ -58,7 +58,17 @@ static struct {
     float    max_spd, km, fuel_l;
     int      last_cls, brake_events, hard_brakes;
     bool     hard_on;
+    int      nev;
+    int64_t  ev_seen;
 } R;
+EXT_RAM_BSS_ATTR static sys_event_t s_rev[UEV_DRIVE_EVENTS];   /* the drive's own events (uev_collect), oldest first */
+
+/* the ring's new entries into the drive's list: the 10-entry ring alone loses a long drive's early events */
+static void rec_events(void)
+{
+    R.nev = uev_collect(s_rev, R.nev, UEV_DRIVE_EVENTS, s_st.events, s_st.event_head, s_st.event_count, R.t0_ms, &R.ev_seen,
+                        s_st.wifi_ssid);
+}
 
 static void rec_start(void)
 {
@@ -67,6 +77,7 @@ static void rec_start(void)
     R.session = sdlog_session_id();
     R.t0_ms = esp_timer_get_time() / 1000;
     R.last_cls = -1;
+    R.ev_seen = -1;
     if (mosaico_clock_known(&s_st)) R.epoch0_ms = (int64_t)time(NULL) * 1000;
     series_reset(&S_SPD); series_reset(&S_FUEL); series_reset(&S_CLS);
     ESP_LOGI(TAG, "recording drive s%06lu", (unsigned long)R.session);
@@ -123,6 +134,7 @@ static void history_load(void)
 
 static void rec_finish(void)
 {
+    rec_events();
     R.on = false;
     md_summary_t *w = &s_work;
     memset(w, 0, sizeof *w);
@@ -143,19 +155,22 @@ static void rec_finish(void)
     memcpy(w->spd, s_spd, sizeof(float) * S_SPD.n);
     memcpy(w->fuel, s_fuel, sizeof(float) * S_FUEL.n);
     for (int i = 0; i < S_CLS.n && i < MD_PTS; i++) w->cls[i] = (int8_t)lroundf(s_cls_f[i]);
+    w->nev = R.nev;
+    memcpy(w->ev, s_rev, sizeof s_rev[0] * (size_t)R.nev);
     w->ok = R.samples > 0;
     if (!w->ok) { ESP_LOGI(TAG, "drive s%06lu had no engine data: no summary", (unsigned long)R.session); return; }
     /* files: the summary next to the session, one history line */
-    EXT_RAM_BSS_ATTR static char j[768];
+    EXT_RAM_BSS_ATTR static char j[768 + 24 * 100], evj[24 * 100];
+    if (!uev_events_json(w->ev, w->nev, evj, sizeof evj)) evj[0] = 0;   /* (fits: 24 x at most ~95 B) */
     snprintf(j, sizeof j,
              "{\"schema\":1,\"session\":%lu,\"start_epoch_ms\":%lld,\"duration_s\":%ld,\"km\":%.2f,\"fuel_l\":%.3f,\"l_per_100km\":%.2f,"
              "\"avg_kph\":%.1f,\"max_kph\":%.1f,\"idle_pct\":%.1f,\"class_share\":{\"stopped\":%.3f,\"braking\":%.3f,"
-             "\"accelerating\":%.3f,\"cruising\":%.3f},\"braking_events\":%d,\"hard_brakes\":%d,\"hard_brake_bar\":%.0f"
-             "}\n",
+             "\"accelerating\":%.3f,\"cruising\":%.3f},\"braking_events\":%d,\"hard_brakes\":%d,\"hard_brake_bar\":%.0f,"
+             "\"start_up_ms\":%lld%s}\n",
              (unsigned long)w->session, (long long)w->start_epoch_ms, (long)w->dur_s, (double)w->km, (double)w->fuel_l, (double)w->l100,
              (double)w->avg_kph, (double)w->max_kph, (double)w->idle_pct, (double)w->cls_share[0], (double)w->cls_share[1],
-             (double)w->cls_share[2], (double)w->cls_share[3], w->brake_events, w->hard_brakes, (double)HARD_BRAKE_BAR
-             );
+             (double)w->cls_share[2], (double)w->cls_share[3], w->brake_events, w->hard_brakes, (double)HARD_BRAKE_BAR,
+             (long long)w->start_up_ms, evj);
     char path[96];
     SDLOG_DRIVE_PATH(path, "/s%06lu.sum.json", (unsigned long)w->session);
     bool ok = sdlog_ok() && sdlog_save_text_atomic(path, j);
@@ -169,8 +184,8 @@ static void rec_finish(void)
                 (double)w->idle_pct, w->hard_brakes);
         fclose(f);
     }
-    ESP_LOGI(TAG, "drive summary s%06lu: %ld s, %.1f km, %.2f L, %d hard brakes; %s %s, drives.csv %s",
-             (unsigned long)w->session, (long)w->dur_s, (double)w->km, (double)w->fuel_l, w->hard_brakes,
+    ESP_LOGI(TAG, "drive summary s%06lu: %ld s, %.1f km, %.2f L, %d hard brakes, %d events; %s %s, drives.csv %s",
+             (unsigned long)w->session, (long)w->dur_s, (double)w->km, (double)w->fuel_l, w->hard_brakes, w->nev,
              strrchr(path, '/') + 1, ok ? "written" : "NOT written", f ? "appended" : "NOT appended");
     xSemaphoreTake(s_mx, portMAX_DELAY);
     uint32_t g = s_pub.gen + 1;
@@ -178,6 +193,70 @@ static void rec_finish(void)
     s_pub.gen = g;
     xSemaphoreGive(s_mx);
     history_load();
+}
+
+/* After a restart: the last drive in drives.csv back from its files, so the Summary shows it with its events. The events
+   come from its .sys.txt when the firmware writes one (rows inside the drive's window, the test firmware), else from
+   the "events" the .sum.json carries. No curves (they are not in the files). */
+static bool drive_file(const char *name, char *path, size_t n)
+{
+#if CONFIG_OCM_NAND_LOGS
+    return sdlog_drive_file(name, path, n);
+#else
+    snprintf(path, n, "%s/%s", SDLOG_DRIVE_DIR, name);
+    struct stat st;
+    return stat(path, &st) == 0;
+#endif
+}
+
+static void past_load(uint32_t session)
+{
+    EXT_RAM_BSS_ATTR static char j[768 + 24 * 100 + 64];
+    char name[24], path[96];
+    snprintf(name, sizeof name, "s%06lu.sum.json", (unsigned long)session);
+    FILE *f = drive_file(name, path, sizeof path) ? fopen(path, "r") : NULL;
+    if (!f) return;
+    size_t r = fread(j, 1, sizeof j - 1, f);
+    fclose(f);
+    j[r] = 0;
+    md_summary_t *w = &s_work;
+    memset(w, 0, sizeof *w);
+    w->session = (uint32_t)uev_json_num(j, "session", 0);
+    if (w->session != session) return;
+    w->past = true;
+    w->start_epoch_ms = (int64_t)uev_json_num(j, "start_epoch_ms", 0);
+    w->start_up_ms = (int64_t)uev_json_num(j, "start_up_ms", 0);
+    w->dur_s = (int32_t)uev_json_num(j, "duration_s", 0);
+    w->km = (float)uev_json_num(j, "km", 0); w->fuel_l = (float)uev_json_num(j, "fuel_l", 0);
+    w->l100 = (float)uev_json_num(j, "l_per_100km", -1);
+    w->avg_kph = (float)uev_json_num(j, "avg_kph", 0); w->max_kph = (float)uev_json_num(j, "max_kph", 0);
+    w->idle_pct = (float)uev_json_num(j, "idle_pct", 0);
+    static const char *const CS[4] = {"stopped", "braking", "accelerating", "cruising"};
+    for (int k = 0; k < 4; k++) w->cls_share[k] = (float)uev_json_num(j, CS[k], 0);
+    w->brake_events = (int)uev_json_num(j, "braking_events", 0);
+    w->hard_brakes = (int)uev_json_num(j, "hard_brakes", 0);
+    snprintf(name, sizeof name, "s%06lu.sys.txt", (unsigned long)session);
+    f = w->start_up_ms > 0 && drive_file(name, path, sizeof path) ? fopen(path, "r") : NULL;
+    const char *from = "sum.json";
+    if (f) {
+        int64_t a = w->start_up_ms, z = w->start_up_ms + (int64_t)w->dur_s * 1000 + UEV_DRIVE_TAIL_MS;
+        char line[200];
+        sys_event_t e;
+        while (fgets(line, sizeof line, f)) {
+            if (!uev_sys_line(line, &e) || e.uptime_ms < a || e.uptime_ms > z) continue;
+            if (w->nev == UEV_DRIVE_EVENTS) { memmove(&w->ev[0], &w->ev[1], (UEV_DRIVE_EVENTS - 1) * sizeof w->ev[0]); w->nev--; }
+            w->ev[w->nev++] = e;
+        }
+        fclose(f);
+        from = "sys.txt";
+    } else w->nev = uev_events_parse(j, w->ev, UEV_DRIVE_EVENTS);
+    w->ok = true;
+    ESP_LOGI(TAG, "last drive s%06lu read back: %ld s, %.1f km, %d events (from its %s)", (unsigned long)session, (long)w->dur_s,
+             (double)w->km, w->nev, from);
+    xSemaphoreTake(s_mx, portMAX_DELAY);
+    uint32_t g = s_pub.gen + 1;
+    if (!s_pub.ok) { s_pub = *w; s_pub.gen = g; }       /* a drive of this boot wins */
+    xSemaphoreGive(s_mx);
 }
 
 static void end_sequence(void)
@@ -197,6 +276,7 @@ static void drive_task(void *arg)
 {
     (void)arg;
     history_load();
+    if (s_hist.n) past_load(s_hist.d[s_hist.n - 1].session);
     TickType_t release = xTaskGetTickCount();
     for (;;) {
         vTaskDelayUntil(&release, pdMS_TO_TICKS(1000));
@@ -208,7 +288,7 @@ static void drive_task(void *arg)
         bool active = elm_drive_active();
         status_get(&s_st);
         if (active && !R.on) rec_start();
-        if (R.on && active) rec_sample();
+        if (R.on && active) { rec_sample(); rec_events(); }
         if (R.on && !active) rec_finish();              /* the car ended the drive (ignition off, link lost) */
     }
 }

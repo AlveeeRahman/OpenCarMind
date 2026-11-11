@@ -239,6 +239,68 @@ int main(void)
         CHECK(ok);
     }
 
+    /* a drive's own events: collected from the ring during the drive, into the .sum.json and back */
+    {
+        static sys_event_t L[UEV_DRIVE_EVENTS], B[UEV_DRIVE_EVENTS];
+        int n = 0;
+        int64_t seen = -1;
+        reset();
+        ev(1000, EV_INFO, "before the drive");
+        ev(5000, EV_INFO, "OBD adapter connected");
+        n = uev_collect(L, n, UEV_DRIVE_EVENTS, ring, head, count, 4000, &seen, "Home");
+        CHECK(n == 1 && L[0].uptime_ms == 5000 && !strcmp(L[0].text, "OBD adapter connected"));   /* not before the start */
+        n = uev_collect(L, n, UEV_DRIVE_EVENTS, ring, head, count, 4000, &seen, "Home");
+        CHECK(n == 1);                                        /* nothing new: nothing added */
+        ev(6000, EV_WARN, "Wi-Fi 'Home' connect failed (1)");
+        ev(7000, EV_INFO, "OBD adapter connected");            /* not the newest's text: a new row */
+        ev(7500, EV_INFO, "OBD adapter connected");            /* events.c folds it: only its time moves */
+        n = uev_collect(L, n, UEV_DRIVE_EVENTS, ring, head, count, 4000, &seen, "Home");
+        CHECK(n == 3 && !strcmp(L[1].text, "Wi-Fi '<network>' connect failed (1)") && L[1].level == EV_WARN);
+        CHECK(L[2].uptime_ms == 7500);
+        /* a long drive: 40 more events through the 10-entry ring, collected every few: the list keeps the newest 24 */
+        for (int i = 0; i < 40; i++) {
+            char t[32];
+            snprintf(t, sizeof t, "event %d", i);
+            ev(10000 + i * 1000, i % 7 ? EV_INFO : EV_ERROR, t);
+            if (i % 3 == 2) n = uev_collect(L, n, UEV_DRIVE_EVENTS, ring, head, count, 4000, &seen, "Home");
+        }
+        n = uev_collect(L, n, UEV_DRIVE_EVENTS, ring, head, count, 4000, &seen, "Home");
+        CHECK(n == UEV_DRIVE_EVENTS && !strcmp(L[n - 1].text, "event 39") && !strcmp(L[0].text, "event 16"));
+        int ordered = 1;
+        for (int i = 1; i < n; i++) if (L[i].uptime_ms <= L[i - 1].uptime_ms) ordered = 0;
+        CHECK(ordered);
+        /* JSON round trip, with quotes, a backslash, braces, a comma and UTF-8 in the texts */
+        strcpy(L[0].text, "say \"hi\" \\ {x}, ok");
+        strcpy(L[1].text, "Caf\xc3\xa9 \xe2\x9c\x93 tab\there");
+        static char j[4096];
+        size_t jl = uev_events_json(L, n, j, sizeof j);
+        CHECK(jl > 0 && jl == strlen(j) && !strncmp(j, ",\"events\":[{\"up\":", 17) && j[jl - 1] == ']');
+        static char doc[4200];
+        snprintf(doc, sizeof doc, "{\"schema\":1,\"session\":12,\"duration_s\":600,\"km\":7.25%s}\n", j);
+        int m = uev_events_parse(doc, B, UEV_DRIVE_EVENTS);
+        int same = m == n;
+        for (int i = 0; same && i < n; i++) same = B[i].uptime_ms == L[i].uptime_ms && B[i].level == L[i].level && !strcmp(B[i].text, L[i].text);
+        CHECK(same);
+        CHECK(uev_events_json(L, n, j, 100) == 0 && j[0] == 0);   /* does not fit: nothing half written */
+        CHECK(uev_events_parse("{\"schema\":1}", B, 4) == 0);    /* an old summary without events */
+        CHECK(uev_events_parse("{\"events\":[]}", B, 4) == 0);
+        CHECK(uev_events_parse("{\"events\":[{\"up\":5,\"lv\":\"W\",\"tx\":\"a\"},{\"up\":", B, 4) == 1 && B[0].level == EV_WARN);  /* cut file */
+        CHECK(uev_events_parse(doc, B, 3) == 3);                 /* max respected */
+        CHECK(uev_json_num(doc, "duration_s", -1) == 600 && uev_json_num(doc, "km", -1) == 7.25 && uev_json_num(doc, "fuel_l", -1) == -1);
+        CHECK(uev_json_num("{\"session\":\"x\"}", "session", -2) == -2);
+        /* .sys.txt rows (the test firmware's per-session event log) */
+        sys_event_t e;
+        CHECK(!uev_sys_line("uptime_ms,kind,text\n", &e));      /* the header */
+        CHECK(!uev_sys_line("12000,H,rows=5 row_age_ms=100 ble=5\n", &e));   /* a heartbeat */
+        CHECK(uev_sys_line("12345,W,Fuel trim high, check the car\r\n", &e) && e.uptime_ms == 12345 && e.level == EV_WARN &&
+              !strcmp(e.text, "Fuel trim high, check the car"));
+        CHECK(uev_sys_line("7,E,x", &e) && e.level == EV_ERROR && !strcmp(e.text, "x"));
+        CHECK(!uev_sys_line("abc,I,x", &e) && !uev_sys_line("5,I", &e) && !uev_sys_line("", &e));
+        char lng[200];
+        memset(lng, 'y', sizeof lng); memcpy(lng, "9,I,", 4); lng[199] = 0;
+        CHECK(uev_sys_line(lng, &e) && strlen(e.text) == EVENT_TEXT - 1);   /* cut to an event's size */
+    }
+
     printf("ui_events: %d checks, %d failures\n", runs, fails);
     return fails ? 1 : 0;
 }

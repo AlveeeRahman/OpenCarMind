@@ -62,3 +62,28 @@ void        uev_pattern(char *b, size_t n, uint32_t windows, int16_t id, float n
 int64_t     uev_epoch_ms(int64_t ev_up_ms, int64_t now_up_ms, int64_t now_epoch_ms);
 /* a cheap fingerprint of what the rows show: the app reformats only when it changes */
 uint32_t    uev_sig(const sys_event_t ring[EVENT_MAX], uint8_t head, uint8_t count, power_state_t power, uint32_t pattern_windows);
+
+/* ---------- a drive's own events (they outlive the 10-entry ring and a restart) ----------
+   During a drive mosaico_drive.c copies each new ring entry into the drive's list (uev_collect); at the drive's end the
+   list goes into its sNNNNNN.sum.json as "events" (uev_events_json). After a restart the Summary reads the last drive
+   back: from its sNNNNNN.sys.txt when the firmware writes one (the test firmware: rows "uptime_ms,kind,text", kind I/W/E
+   for events, H for heartbeats; uev_sys_line), else from the .sum.json (uev_events_parse). Texts in the file have the
+   network name in force replaced by "<network>" (uev_redact): files leave the board through the USB door. */
+#define UEV_DRIVE_EVENTS 24
+
+/* Append the ring's entries newer than *seen_ms and not before from_ms to list (n entries, at most max: the oldest go
+   when it is full), oldest first. An entry whose text repeats the list's last one only moves its time (events.c folds
+   an identical repeat the same way). name (may be NULL or ""): replaced by "<network>" in the copied texts. Returns
+   the new count; *seen_ms is the newest time copied. */
+int         uev_collect(sys_event_t *list, int n, int max, const sys_event_t ring[EVENT_MAX], uint8_t head, uint8_t count,
+                        int64_t from_ms, int64_t *seen_ms, const char *name);
+/* ,"events":[{"up":<uptime ms>,"lv":"I|W|E","tx":"<text, JSON-escaped>"},...] into out; returns the length, or 0 when
+   it does not fit (out is then ""). */
+size_t      uev_events_json(const sys_event_t *list, int n, char *out, size_t cap);
+/* The "events" array of a .sum.json back into list (at most max); entries that do not parse are skipped. Returns how many. */
+int         uev_events_parse(const char *json, sys_event_t *list, int max);
+/* One .sys.txt row: true for an event row (I, W or E), with its time, level and text (the rest of the line, CR/LF cut). */
+bool        uev_sys_line(const char *line, sys_event_t *out);
+/* A number from a flat JSON object ("key":value), def when the key is missing. */
+double      uev_json_num(const char *json, const char *key, double def);
+

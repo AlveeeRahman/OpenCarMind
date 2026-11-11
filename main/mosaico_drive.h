@@ -14,6 +14,7 @@
 #include "sdkconfig.h"
 #include <stdbool.h>
 #include <stdint.h>
+#include "ui_events_logic.h"
 
 #define MD_PTS 240
 #define MD_HIST 20
@@ -31,6 +32,9 @@ typedef struct {
     float    step_s;                   /* seconds per point */
     float    spd[MD_PTS], fuel[MD_PTS];
     int8_t   cls[MD_PTS];              /* -1 = none */
+    bool     past;                     /* read back from its files after a restart: no curves, start_up_ms of that boot */
+    int      nev;                      /* the drive's own events, oldest first (newest UEV_DRIVE_EVENTS kept) */
+    sys_event_t ev[UEV_DRIVE_EVENTS];
 } md_summary_t;
 
 typedef struct {
