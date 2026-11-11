@@ -1970,16 +1970,17 @@ static bool light_wanted(const app_status_t *st, bool *is_auto)
                                                  : (tm.tm_hour >= rc->day_start_hour || tm.tm_hour < rc->day_end_hour);
 }
 
-static void theme_tick(const ui_snap_t *s, bool force)
+static bool theme_tick(const ui_snap_t *s, bool force)
 {
     bool is_auto;
     bool want = light_wanted(s->st, &is_auto);
-    if (want == s_light) return;
-    if (!force && (lv_display_get_inactive_time(s_disp) < 1500 || s_modal_open())) return;   /* not mid-gesture */
+    if (want == s_light) return false;
+    if (!force && (lv_display_get_inactive_time(s_disp) < 1500 || s_modal_open())) return false;   /* not mid-gesture */
     s_light = want;
     build_launcher();                                     /* one rebuild; both wallpapers are already in PSRAM */
     s_sb_mode = -1;
     ESP_LOGI(TAG, "theme -> %s (%s, %s)", s_light ? "light" : "dark", is_auto ? "auto" : "set", s->clock);
+    return true;
 }
 
 /* ---------- panel power ---------- */
@@ -2038,8 +2039,13 @@ static void tick_cb(lv_timer_t *t)
         next_us += UI_PERIOD_MS * 1000;
         if (t0 - next_us > 1000000) next_us = t0;          /* after a long stall, start the cadence again */
     } else next_us = t0 + UI_PERIOD_MS * 1000;
-    sched_begin(s_job);
 
+    /* Page pictures (tile_snap, 90-130 ms of CPU each, and a slide that the Function key starts from here, whose
+       SCROLL_BEGIN takes the Home picture) are aperiodic work and run outside the "ui" job, like home_pic_cb. The job
+       measures only the periodic screen work. Measured on the test firmware (2026-11-11, slides started from the tick,
+       back to back): with the pictures inside, 46 of 191 slides gave ui runs of 100-875 ms (a flash FAT sync stalls the
+       LVGL task while the cache is off) and sched_mon's 3x-deadline limit (150 ms) restarted the board; with them outside,
+       0 of 269 runs passed 100 ms (worst 63 ms). */
     slide_tick();
     static bool s_first_tick;
     if (!s_first_tick) { s_first_tick = true; ESP_LOGI(TAG, "ui: first tick"); esp_task_wdt_add(NULL); }
@@ -2061,6 +2067,9 @@ static void tick_cb(lv_timer_t *t)
         else go_home_tile();
     }
     if (s_req_off) { s_req_off = false; panel_power(false); }
+
+    int64_t tj = esp_timer_get_time();
+    sched_begin(s_job);
     if (s_req_bright >= 0) {                              /* at most one brightness command per tick (50 ms) */
         if (s_panel_on) { esp_lcd_panel_co5300_set_brightness(s_panel, (uint8_t)s_req_bright); s_bright_cmds++; }
         s_req_bright = -1;
@@ -2072,6 +2081,7 @@ static void tick_cb(lv_timer_t *t)
     if (s_panel_on && set.screen_off_s && idle_ms > set.screen_off_s * 1000u) panel_power(false);
     else if (!s_panel_on && idle_ms < 200) panel_power(true);   /* a touch wakes it */
 
+    bool sec_due = false;
     if (s_panel_on) {
         int64_t now = t0 / 1000;
         if (now - s_last_sec_ms >= 1000 || s_theme_check) {
@@ -2081,13 +2091,9 @@ static void tick_cb(lv_timer_t *t)
                 if (s_pw_n == 60) { memmove(s_pw_hist, s_pw_hist + 1, 59 * sizeof(float)); s_pw_n = 59; }
                 s_pw_hist[s_pw_n++] = s_snap.gauge.mv * fabsf((float)s_snap.gauge.ma) / 1e6f;
             } else s_pw_n = 0;
-            theme_tick(&s_snap, s_theme_check);
-            s_theme_check = false;
+            sec_due = true;
             refresh_status_bar(&s_snap);
             if (s_cur < 0 && lv_screen_active() == s_home) refresh_home(&s_snap);
-#if CONFIG_OCM_SWIPE_INTENT
-            si_warm_tick();
-#endif
         }
         if (mosaico_drive_take_auto_open())                  /* after End drive: the drive summary */
             for (int i = 0; i < ui_app_count(); i++) if (!strcmp(ui_app(i)->id, "summary")) { open_app(i); break; }
@@ -2117,10 +2123,23 @@ static void tick_cb(lv_timer_t *t)
         s_render_max_us = 0;
     }
     sched_end(s_job);
-    uint32_t us = (uint32_t)(esp_timer_get_time() - t0);
+    uint32_t us = (uint32_t)(esp_timer_get_time() - tj);
     s_runs++;
     if (us > s_max_us) s_max_us = us;
     if (us > UI_PERIOD_MS * 1000u) s_misses++;
+
+    /* once a second, after the job: a theme change rebuilds the launcher; smart swipe may retake the Home picture */
+    if (sec_due) {
+        bool force = s_theme_check;
+        s_theme_check = false;
+        if (theme_tick(&s_snap, force)) {
+            refresh_status_bar(&s_snap);
+            if (s_cur < 0 && lv_screen_active() == s_home) refresh_home(&s_snap);
+        }
+#if CONFIG_OCM_SWIPE_INTENT
+        si_warm_tick();
+#endif
+    }
 }
 
 /* ---------- touch ----------
