@@ -12,7 +12,12 @@
 #include "esp_system.h"
 #include "esp_timer.h"
 #include "esp_heap_caps.h"
+#include "board.h"
+#if BOARD_MOSAICO
+#include "mosaico_console.h"        /* the Type-C port is USB OTG: the door runs on the TinyUSB CDC console */
+#else
 #include "driver/usb_serial_jtag.h"
+#endif
 #include "psa/crypto.h"
 #include "mbedtls/base64.h"
 #include "cJSON.h"
@@ -51,7 +56,11 @@ static void write_all(const char *s, size_t n)
 {
     while (n) {
         size_t piece = n < 256 ? n : 256;
+#if BOARD_MOSAICO
+        int w = mosaico_console_write(s, piece);
+#else
         int w = usb_serial_jtag_write_bytes(s, piece, pdMS_TO_TICKS(500));
+#endif
         if (w <= 0) return;                         /* nobody is reading: drop it */
         s += w; n -= (size_t)w;
     }
@@ -392,7 +401,11 @@ static void door_task(void *arg)
     bool overflow = false;
     for (;;) {
         uint8_t c;
+#if BOARD_MOSAICO
+        if (mosaico_console_read(&c, 1, portMAX_DELAY) != 1) continue;
+#else
         if (usb_serial_jtag_read_bytes(&c, 1, portMAX_DELAY) != 1) continue;
+#endif
         if (c == '\r') continue;
         if (c != '\n') {
             if (n < LINE_CAP - 1) line[n++] = (char)c; else overflow = true;
@@ -408,7 +421,11 @@ static void door_task(void *arg)
 
 void usb_door_start(void)
 {
+#if BOARD_MOSAICO
+    if (!mosaico_console_ready()) { ESP_LOGW(TAG, "TinyUSB CDC not up: no desktop setup over USB"); return; }
+#else
     usb_serial_jtag_driver_config_t cfg = { .tx_buffer_size = 1024, .rx_buffer_size = 1024 };
     if (usb_serial_jtag_driver_install(&cfg) != ESP_OK) { ESP_LOGW(TAG, "USB driver not installed: no desktop setup over USB"); return; }
+#endif
     if (xTaskCreate(door_task, "usb_door", 6144, NULL, 2, NULL) != pdPASS) ESP_LOGW(TAG, "USB door task did not start");
 }

@@ -244,13 +244,15 @@ static bool sync_once(void)
     return ok;
 }
 
+static TaskHandle_t s_task;                        /* the sync task, woken early by wifi_sync_connect_now() */
+
 static void sync_task(void *arg)
 {
     /* A clock kept by the RTC through a software reset or deep sleep counts as set: the first drift correction is
        then a full resync interval away instead of a scan every few seconds. */
     uint32_t wait_s = clock_is_set() && !uploader_wifi_enabled() ? CONFIG_SYNC_RESYNC_INTERVAL_H * 3600U : 0;
     for (;;) {
-        if (wait_s) vTaskDelay(pdMS_TO_TICKS(wait_s * 1000U));
+        if (wait_s) ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(wait_s * 1000U));   /* wifi_sync_connect_now() wakes it early */
         while (driving()) vTaskDelay(pdMS_TO_TICKS(2000));   /* never scan or connect while the car is being logged */
         bool ok = sync_once();
         if (uploader_wifi_enabled()) wait_s = CONFIG_SYNC_SCAN_INTERVAL_S;   /* paired: get back on Wi-Fi soon after parking */
@@ -260,6 +262,13 @@ static void sync_task(void *arg)
 }
 
 bool wifi_sync_connected(void) { return s_connected; }
+
+bool wifi_sync_connect_now(void)
+{
+    if (!s_task) return false;                       /* no known network at boot: the task never started */
+    xTaskNotifyGive(s_task);
+    return true;
+}
 
 esp_err_t wifi_sync_start(void)
 {
@@ -283,7 +292,7 @@ esp_err_t wifi_sync_start(void)
     ESP_ERROR_CHECK(esp_wifi_start());
     set_wifi_state(WIFI_ST_IDLE);
 
-    if (xTaskCreatePinnedToCore(sync_task, "sync", 8192, NULL, 4, NULL, 0) != pdPASS)
+    if (xTaskCreatePinnedToCore(sync_task, "sync", 8192, NULL, 4, &s_task, 0) != pdPASS)
         sys_event(EV_ERROR, "Clock-sync task could not start (internal RAM %u B)", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
     return ESP_OK;
 }
@@ -298,5 +307,6 @@ esp_err_t wifi_sync_start(void)
 }
 
 bool wifi_sync_connected(void) { return false; }
+bool wifi_sync_connect_now(void) { return false; }
 
 #endif

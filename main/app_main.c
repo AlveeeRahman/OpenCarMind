@@ -29,6 +29,10 @@
 #include "usb_door.h"
 #include "cpu_monitor.h"
 #include "remote_config.h"
+#if BOARD_MOSAICO
+#include "mosaico_console.h"
+#include "mosaico_board.h"
+#endif
 
 static const char *TAG = "app";
 
@@ -63,6 +67,11 @@ static void set_shutdown(uint8_t stage)
    goes dark. Both pins are held low through deep sleep, so neither lights up again until BOOT wakes the board. */
 static void power_off(void)
 {
+#if BOARD_MOSAICO
+    /* no deep-sleep power-off from the key on the ESP-Mosaico (holds are ignored in button_task) */
+    ESP_LOGW(TAG, "power-off is not mapped on the ESP-Mosaico");
+    return;
+#else
     set_shutdown(1);
     /* Logging already stopped when the hold passed 2 s; wait for the drive to be saved and closed. */
     if (!elm_wait_stopped(4000)) ESP_LOGW(TAG, "poll loop still busy after 4 s; saving what is logged");
@@ -78,6 +87,7 @@ static void power_off(void)
     vTaskDelay(pdMS_TO_TICKS(100));
     esp_sleep_enable_ext0_wakeup(BOARD_BUTTON, 0);
     esp_deep_sleep_start();
+#endif
 }
 
 static void set_hold(uint8_t pct, uint8_t stage)
@@ -135,6 +145,16 @@ static void button_task(void *arg)
                 STATUS_UNLOCK();
             }
         }
+#if BOARD_MOSAICO
+        /* Function key (GPIO7): a press counts only after the key has read released once since boot, and holds do
+           nothing. A 2 s hold mapped to download mode / deep sleep rebooted the board every ~2 s on USB (2026-11-11,
+           cause UNVERIFIED: GPIO7 may read low after boot), so power-off and forget-adapter stay on the desktop app. */
+        static bool seen_up;
+        if (!down) seen_up = true;
+        if (!seen_up) continue;
+        if (down) { held_ms += 20; continue; }
+        if (held_ms >= 1000) { held_ms = 0; continue; }
+#endif
         if (down) {
             if (held_ms == 0) status_led_set(255, 255, 255);              /* press acknowledged at once */
             held_ms += 20;
@@ -240,6 +260,9 @@ static void led_task(void *arg)
 
 void app_main(void)
 {
+#if BOARD_MOSAICO
+    mosaico_console_init();           /* TinyUSB CDC on the Type-C port, first, so every later line reaches the computer */
+#endif
     sched_boot_check();               /* reset reason and boot-loop count, before anything can fail */
     esp_err_t err = nvs_flash_init();
     if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
@@ -257,9 +280,13 @@ void app_main(void)
         gettimeofday(&tv, NULL);
         if (tv.tv_sec > 1700000000) { STATUS_LOCK(); g_status.time_synced = true; STATUS_UNLOCK(); }
     }
+#if BOARD_MOSAICO
+    mosaico_board_init();             /* 3.3 V rail on, I2C0, fuel gauge: before the display and the touch controller */
+#else
     gpio_deep_sleep_hold_dis();       /* a power-off held the backlight and LED pins low: release them */
     gpio_hold_dis(BOARD_LCD_BL);
     gpio_hold_dis(BOARD_RGB_LED);
+#endif
     status_led_init();
     status_led_set(64, 64, 64);
 

@@ -6,3 +6,6 @@
  * is known. */
 esp_err_t wifi_sync_start(void);
 bool      wifi_sync_connected(void);
+/* Try the known networks now instead of at the next scheduled scan (the same scan, connect and clock sync).
+   False when no network was known at boot or Wi-Fi is compiled out. */
+bool      wifi_sync_connect_now(void);

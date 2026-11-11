@@ -1,0 +1,26 @@
+# Espressif ESP-Mosaico V1.2 (ESP32-S31NRV16): 16 MB NOR flash, 16 MB in-package PSRAM, CO5300 AMOLED, CST9220 touch
+CONFIG_IDF_TARGET="esp32s31"
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions_mosaico.csv"
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_PARTITION_TABLE_CUSTOM=y
+# console and USB door: TinyUSB CDC-ACM on the Type-C (USB OTG) port (main/mosaico_console.c); never TinyUSB MSC
+CONFIG_TINYUSB_CDC_ENABLED=y
+CONFIG_TINYUSB_CDC_COUNT=1
+CONFIG_TINYUSB_MSC_ENABLED=n
+# app is the car firmware plus three models and the launcher: -Os keeps it inside the 6 MB slot
+CONFIG_COMPILER_OPTIMIZATION_SIZE=y
+CONFIG_ESP_BROWNOUT_DET=y
+# Wi-Fi only sets the clock (one HTTPS HEAD): 2 static RX and 4 static TX buffers, ~1.6 KB internal RAM each.
+# The S31 Wi-Fi driver checks RX_BA_WIN <= 2 x STATIC_RX_BUFFER_NUM.
+CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=2
+CONFIG_ESP_WIFI_RX_BA_WIN=4
+CONFIG_ESP_WIFI_STATIC_TX_BUFFER_NUM=4
+# a clock for the Mosaico (no RTC): the car firmware's HTTPS time sync over the known Wi-Fi networks, as on the S3
+CONFIG_OCM_WIFI_CLOCK_SYNC=y
+# Clock sync over HTTPS: www.google.com sends GTS Root R4 cross-signed by GlobalSign Root CA (R1). R1 is not in
+# the 6.1 bundle, so the plain bundle check fails on the last certificate. This option lets mbedTLS stop at
+# GTS Root R4, which is in the bundle. About 700 bytes of heap during the handshake.
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_CROSS_SIGNED_VERIFY=y
+# Software AES: the hardware AES engine needs up to 8 KB of DMA-capable internal RAM per TLS record when buffers are
+# in PSRAM ("esp-aes: Failed to allocate memory" with Wi-Fi up, measured).
+CONFIG_MBEDTLS_HARDWARE_AES=n

@@ -24,6 +24,7 @@ extern "C" {                     /* C headers without their own C++ guards, befo
 }
 #include "sdkconfig.h"
 #include "ml_infer.h"
+#include "cpu_monitor.h"
 #include "ml_params.h"
 #include "harden.h"
 #include "sched_mon.h"
@@ -411,6 +412,7 @@ static void ml_task(void *arg)
             n += snprintf(line + n, sizeof line - n, ",,,,,,,%.4f,\n", cal);
         }
         sdlog_write_ml_line(header, line);
+        cpu_monitor_add_ai_us(us + us2);
 #if CONFIG_CARMIND_ML_SYNTH_TEST
         ESP_LOGI(TAG, "%.*s", (int)strlen(line) - 1, line);
 #endif

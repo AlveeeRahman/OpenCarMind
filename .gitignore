@@ -9,6 +9,8 @@ sdkconfig.old
 tests/host/carmind_tests
 tests/host/rev_tests
 tests/host/tank_tests
+# ESP-Mosaico (esp32s31) model exports: local until a model for that target is published here
+ml/onboard_s31/*
 # editor / OS
 .vscode/
 .DS_Store

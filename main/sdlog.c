@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <math.h>
 #include <sys/stat.h>
@@ -10,6 +11,10 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "esp_vfs_fat.h"
+#include "ff.h"
+#if !BOARD_HAS_SD
+#include "diskio_wl.h"
+#endif
 #include "sdmmc_cmd.h"
 #include "driver/sdmmc_host.h"
 #include "nvs_flash.h"
@@ -29,7 +34,12 @@
 
 static const char *TAG = "sdlog";
 
+#if BOARD_HAS_SD
 static sdmmc_card_t *s_card;
+#else
+#include "wear_levelling.h"
+static wl_handle_t s_wl = WL_INVALID_HANDLE;   /* no card slot (ESP-Mosaico): FAT "storage" partition in the NOR flash */
+#endif
 static bool     s_ok;
 static uint32_t s_session;
 static bool     s_open;           /* a session is open for rows; false after sdlog_end_drive() until the next drive */
@@ -247,11 +257,70 @@ static esp_err_t open_session_locked(void)
     return ESP_OK;
 }
 
+#if !BOARD_HAS_SD
+/* ---------- boot-time storage audit (2026-11-11): the old TinyUSB MSC door had formatted "storage" with one FAT and an
+   MBR; one torn FAT-sector update (erase done, rewrite lost) left the FAT all 0xFFF = every cluster "end of chain",
+   so the volume showed 0 KB free while its files held 94 KB. This compares the space the files need (whole clusters)
+   with the space the FAT says is used, and names a single-FAT volume, so a repeat is seen at the next boot. ---------- */
+static uint64_t tree_bytes(const char *dir, uint32_t clu, int *files, int depth)
+{
+    uint64_t sum = clu;                                   /* the directory's own cluster (the root's is outside the data area: close enough) */
+    DIR *d = depth < 6 ? opendir(dir) : NULL;
+    struct dirent *e;
+    while (d && (e = readdir(d)) != NULL) {
+        char p[160];
+        struct stat st;
+        snprintf(p, sizeof p, "%s/%s", dir, e->d_name);
+        if (stat(p, &st) != 0) continue;
+        if (S_ISDIR(st.st_mode)) sum += tree_bytes(p, clu, files, depth + 1);
+        else { sum += ((uint64_t)st.st_size + clu - 1) / clu * clu; (*files)++; }
+    }
+    if (d) closedir(d);
+    return sum;
+}
+
+static void storage_audit(void)
+{
+    char drv[4] = {(char)('0' + ff_diskio_get_pdrv_wl(s_wl)), ':', 0};
+    FATFS *fs = NULL;
+    DWORD free_cl = 0;
+    if (f_getfree(drv, &free_cl, &fs) != FR_OK || !fs) { ESP_LOGW(TAG, "storage audit: f_getfree failed"); return; }
+    uint32_t clu = (uint32_t)fs->csize * FF_MAX_SS;
+    uint64_t total = (uint64_t)(fs->n_fatent - 2) * clu, freeb = (uint64_t)free_cl * clu, used = total - freeb;
+    int files = 0;
+    uint64_t need = tree_bytes(CONFIG_SDLOG_MOUNT_POINT, clu, &files, 0);
+    bool bad = used > need + need / 10 + 2 * clu;          /* more than 10 % (and two clusters) used beyond what the files need */
+    ESP_LOGI(TAG, "storage audit: FAT%d, %d FAT cop%s, %lu B clusters: %llu KB used by the FAT, %llu KB needed by %d files, %llu of %llu KB free%s",
+             fs->fs_type == FS_FAT12 ? 12 : fs->fs_type == FS_FAT16 ? 16 : 32, fs->n_fats, fs->n_fats == 1 ? "y" : "ies",
+             (unsigned long)clu, (unsigned long long)(used / 1024), (unsigned long long)(need / 1024), files,
+             (unsigned long long)(freeb / 1024), (unsigned long long)(total / 1024), bad ? "  <- LOST CLUSTERS" : "");
+    if (bad) sys_event(EV_ERROR, "Log storage: %llu KB used but files need %llu KB (lost clusters): format storage in Settings",
+                       (unsigned long long)(used / 1024), (unsigned long long)(need / 1024));
+    if (fs->n_fats < 2) sys_event(EV_WARN, "Log storage has one FAT copy (old USB-disk format): format storage in Settings");
+#ifdef SDLOG_SELFTEST
+    /* one-off proof after a format: write 64 KB, close, delete; free space must come back exactly */
+    static uint8_t blk[4096];
+    memset(blk, 0xA5, sizeof blk);
+    FILE *f = fopen(SDLOG_DIR "/selftest.bin", "wb");
+    int wr = 0;
+    for (int i = 0; f && i < 16; i++) wr += fwrite(blk, 1, sizeof blk, f) == sizeof blk;
+    if (f) { fflush(f); fsync(fileno(f)); fclose(f); }
+    DWORD mid = 0, end = 0;
+    f_getfree(drv, &mid, &fs);
+    unlink(SDLOG_DIR "/selftest.bin");
+    f_getfree(drv, &end, &fs);
+    ESP_LOGW(TAG, "storage selftest: wrote %d of 16 x 4 KB, free %lu -> %lu -> %lu clusters: %s", wr, (unsigned long)free_cl,
+             (unsigned long)mid, (unsigned long)end, wr == 16 && end == free_cl && mid + 16 <= free_cl ? "PASS" : "FAIL");
+#endif
+}
+#endif
+
 /* ---------- public ---------- */
 esp_err_t sdlog_init(void)
 {
     s_lock = xSemaphoreCreateMutex();
 
+#if BOARD_HAS_SD
     esp_vfs_fat_sdmmc_mount_config_t mount_config = {
 #ifdef CONFIG_SDLOG_FORMAT_IF_MOUNT_FAILED
         .format_if_mount_failed = true,
@@ -274,6 +343,12 @@ esp_err_t sdlog_init(void)
     slot.flags |= SDMMC_SLOT_FLAG_INTERNAL_PULLUP;
 
     esp_err_t err = esp_vfs_fat_sdmmc_mount(CONFIG_SDLOG_MOUNT_POINT, &host, &slot, &mount_config, &s_card);
+#else
+    /* the wear-levelled FAT on "storage" is formatted on first use (nothing to lose: it is the board's own log space) */
+    const esp_vfs_fat_mount_config_t mount_config = { .format_if_mount_failed = true, .max_files = 8,
+                                                      .allocation_unit_size = CONFIG_WL_SECTOR_SIZE };
+    esp_err_t err = esp_vfs_fat_spiflash_mount_rw_wl(CONFIG_SDLOG_MOUNT_POINT, "storage", &mount_config, &s_wl);
+#endif
     if (err != ESP_OK) {
         sys_event(EV_ERROR, "SD card mount failed: %s", esp_err_to_name(err));
         STATUS_LOCK();
@@ -282,10 +357,22 @@ esp_err_t sdlog_init(void)
         STATUS_UNLOCK();
         return err;
     }
+#if BOARD_HAS_SD
     sdmmc_card_print_info(stdout, s_card);
+#else
+    {
+        uint64_t total = 0, free_b = 0;
+        esp_vfs_fat_info(CONFIG_SDLOG_MOUNT_POINT, &total, &free_b);
+        ESP_LOGI(TAG, "flash FAT \"storage\" at %s: %llu of %llu KB free", CONFIG_SDLOG_MOUNT_POINT,
+                 (unsigned long long)(free_b / 1024), (unsigned long long)(total / 1024));
+    }
+#endif
 
     mkdir(SDLOG_DIR, 0775);
     mkdir(SDLOG_SESSIONS_DIR, 0775);
+#if !BOARD_HAS_SD
+    storage_audit();
+#endif
     restore_clock();                  /* before the session opens, so its start time is not 1970 */
 
     /* Remove sessions from earlier boots that never logged a row (header-only CSV, no raw file). */
@@ -518,6 +605,123 @@ bool sdlog_save_text_atomic(const char *path, const char *text)
     return rename(tmp, path) == 0;
 }
 
+bool session_name_valid(const char *n)
+{
+    if (!n || strlen(n) < 11 || n[0] != 's') return false;
+    for (int i = 1; i <= 6; i++) if (n[i] < '0' || n[i] > '9') return false;
+    const char *e = n + 7;
+    return !strcmp(e, ".csv") || !strcmp(e, ".ml.csv") || !strcmp(e, ".pat") || !strcmp(e, ".raw") || !strcmp(e, ".json");
+}
+
+/* lock held; id = 0 means every session but the current one */
+static int delete_locked(uint32_t id, int *sessions)
+{
+    DIR *d = opendir(SDLOG_SESSIONS_DIR);
+    if (!d) return -1;
+    int files = 0;
+    if (sessions) *sessions = 0;
+    struct dirent *e;
+    EXT_RAM_BSS_ATTR static char names[512][24];      /* collected first: no remove() while readdir() walks the directory */
+    int n = 0;
+    while ((e = readdir(d)) != NULL && n < 512) {
+        if (!session_name_valid(e->d_name)) continue;
+        unsigned long sid = strtoul(e->d_name + 1, NULL, 10);
+        if (sid == s_session) continue;                 /* never the session being written */
+        if (id && sid != id) continue;
+        snprintf(names[n++], sizeof names[0], "%.20s", e->d_name);
+    }
+    closedir(d);
+    for (int i = 0; i < n; i++) {
+        char path[96];
+        snprintf(path, sizeof path, SDLOG_SESSIONS_DIR "/%s", names[i]);
+        if (remove(path) != 0) continue;
+        files++;
+        bool first = true;                              /* count each session once */
+        for (int k = 0; k < i && first; k++) if (!strncmp(names[k], names[i], 7)) first = false;
+        if (sessions && first) (*sessions)++;
+    }
+    return files;
+}
+
+int sdlog_delete_session(uint32_t id)
+{
+    if (!s_ok || id == 0 || id == s_session) return -1;
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    int files = delete_locked(id, NULL);
+    xSemaphoreGive(s_lock);
+    if (files >= 0) sys_event(EV_INFO, "Drive log s%06lu deleted on the board (%d files)", (unsigned long)id, files);
+    return files;
+}
+
+int sdlog_delete_all_sessions(int *sessions_out)
+{
+    if (!s_ok) return -1;
+    int sessions = 0;
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    int files = delete_locked(0, &sessions);
+    xSemaphoreGive(s_lock);
+    if (sessions_out) *sessions_out = sessions;
+    if (files >= 0) sys_event(EV_INFO, "All drive logs deleted on the board: %d files (current session kept)", files);
+    return files;
+}
+
+#if !BOARD_HAS_SD
+esp_err_t sdlog_format_storage(uint32_t *free_kb, int *kept_files, char *why, size_t why_n)
+{
+    if (!s_ok) { snprintf(why, why_n, "storage not mounted"); return ESP_ERR_INVALID_STATE; }
+    if (s_open) { snprintf(why, why_n, "a drive is being logged"); return ESP_ERR_INVALID_STATE; }
+    typedef struct { char name[48]; uint8_t *data; size_t n; } keep_t;
+    static keep_t keep[24];
+    int nk = 0;
+    size_t total = 0;
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    meta_flush_locked();
+    if (s_csv) { fclose(s_csv); s_csv = NULL; }
+    if (s_raw) { fclose(s_raw); s_raw = NULL; }
+    if (s_pat) { fclose(s_pat); s_pat = NULL; }
+    if (s_ml) { fclose(s_ml); s_ml = NULL; }
+    DIR *d = opendir(SDLOG_DIR);
+    for (struct dirent *e; d && (e = readdir(d)) != NULL && nk < 24;) {
+        if (!strcmp(e->d_name, "drives.csv") || strlen(e->d_name) >= sizeof keep[0].name) continue;
+        char path[96];
+        struct stat st;
+        snprintf(path, sizeof path, SDLOG_DIR "/%s", e->d_name);
+        if (stat(path, &st) != 0 || S_ISDIR(st.st_mode) || st.st_size <= 0 || total + st.st_size > 512 * 1024) continue;
+        uint8_t *buf = heap_caps_malloc(st.st_size, MALLOC_CAP_SPIRAM);
+        FILE *f = buf ? fopen(path, "rb") : NULL;
+        size_t n = f ? fread(buf, 1, st.st_size, f) : 0;
+        if (f) fclose(f);
+        if (n != (size_t)st.st_size) { free(buf); continue; }
+        snprintf(keep[nk].name, sizeof keep[nk].name, "%s", e->d_name);
+        keep[nk].data = buf; keep[nk].n = n; nk++;
+        total += n;
+    }
+    if (d) closedir(d);
+    esp_err_t err = esp_vfs_fat_spiflash_format_rw_wl(CONFIG_SDLOG_MOUNT_POINT, "storage");
+    int back = 0;
+    if (err == ESP_OK) {
+        mkdir(SDLOG_DIR, 0775);
+        mkdir(SDLOG_SESSIONS_DIR, 0775);
+        for (int i = 0; i < nk; i++) {
+            char path[96];
+            snprintf(path, sizeof path, SDLOG_DIR "/%s", keep[i].name);
+            FILE *f = fopen(path, "wb");
+            if (f && fwrite(keep[i].data, 1, keep[i].n, f) == keep[i].n) back++;
+            if (f) fclose(f);
+        }
+    } else snprintf(why, why_n, "format failed: %s", esp_err_to_name(err));
+    for (int i = 0; i < nk; i++) free(keep[i].data);
+    uint64_t tot = 0, fr = 0;
+    esp_vfs_fat_info(CONFIG_SDLOG_MOUNT_POINT, &tot, &fr);
+    xSemaphoreGive(s_lock);
+    if (free_kb) *free_kb = (uint32_t)(fr / 1024);
+    if (kept_files) *kept_files = back;
+    if (err == ESP_OK) sys_event(EV_INFO, "Log storage formatted on the board: %d of %d state files kept, %lu KB free", back, nk,
+                                 (unsigned long)(fr / 1024));
+    return err;
+}
+#endif
+
 void sdlog_prepare_sleep(void)
 {
     if (!s_ok) return;
@@ -527,7 +731,12 @@ void sdlog_prepare_sleep(void)
     if (s_raw) { fflush(s_raw); fsync(fileno(s_raw)); fclose(s_raw); s_raw = NULL; }
     if (s_pat) { fflush(s_pat); fsync(fileno(s_pat)); fclose(s_pat); s_pat = NULL; }
     if (s_ml) { fflush(s_ml); fsync(fileno(s_ml)); fclose(s_ml); s_ml = NULL; }
+#if BOARD_HAS_SD
     esp_vfs_fat_sdcard_unmount(CONFIG_SDLOG_MOUNT_POINT, s_card);
+#else
+    esp_vfs_fat_spiflash_unmount_rw_wl(CONFIG_SDLOG_MOUNT_POINT, s_wl);
+    s_wl = WL_INVALID_HANDLE;
+#endif
     s_ok = false;
     xSemaphoreGive(s_lock);
 }

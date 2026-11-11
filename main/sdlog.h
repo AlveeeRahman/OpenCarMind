@@ -51,5 +51,20 @@ void sdlog_write_ml_line(const char *header, const char *line);         /* value
 bool sdlog_load_text(const char *path, char *buf, size_t n);
 bool sdlog_save_text_atomic(const char *path, const char *text);
 
+/* Drive-log file name: "s" + 6 digits + a suffix the logger writes (.csv, .ml.csv, .pat, .raw, .json). */
+bool session_name_valid(const char *name);
+
+/* Delete drive logs (every sNNNNNN.<known suffix> file in SDLOG_SESSIONS_DIR, nothing else) under the logger's own lock,
+   so a delete never races a save. The current session is refused. Each delete is a sys_event. Returns the number of
+   files removed, -1 when refused (current session, no storage). sdlog_delete_all_sessions keeps the current session. */
+int  sdlog_delete_session(uint32_t id);
+int  sdlog_delete_all_sessions(int *sessions_out);
+
+/* Boards with the log in a flash FAT (ESP-Mosaico): format it under the logger's lock. Every plain file directly in
+   SDLOG_DIR (learned R.E.V state, clock.txt, config.json, wifi.csv, ...; at most 512 KB in all) is copied to PSRAM
+   first and written back; drive logs (sessions/) and drives.csv are erased. Refused while a session is open for rows.
+   Returns ESP_OK and the free KB after, or an error with the reason in why. */
+esp_err_t sdlog_format_storage(uint32_t *free_kb, int *kept_files, char *why, size_t why_n);
+
 /* Flush and unmount before deep sleep. */
 void sdlog_prepare_sleep(void);

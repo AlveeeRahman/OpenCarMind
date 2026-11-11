@@ -1,5 +1,18 @@
+# Board by target: esp32s3 = Waveshare ESP32-S3-LCD-1.47B (the car board), esp32s31 = Espressif ESP-Mosaico V1.2 (board.h).
+idf_build_get_property(ocm_target IDF_TARGET)
+if(ocm_target STREQUAL "esp32s31")
+    set(ocm_board_srcs "mosaico_console.c" "mosaico_board.c" "mosaico_files.c" "mosaico_headless.c")   # no launcher yet: headless
+    set(ocm_board_reqs esp_driver_i2c wear_levelling esp_pm esp_psram spi_flash esp_mm)
+    set(ocm_ml_dir "${CMAKE_CURRENT_LIST_DIR}/../ml/onboard_s31")   # E.V and R.E.V re-quantized for the S31
+else()
+    set(ocm_board_srcs "display.c")
+    set(ocm_board_reqs perfmon)                                      # Xtensa PMU (cpu_monitor.c)
+    set(ocm_ml_dir "${CMAKE_CURRENT_LIST_DIR}/../ml/onboard")
+endif()
+
 idf_component_register(
-    SRCS "app_main.c"
+    SRCS ${ocm_board_srcs}
+         "app_main.c"
          "obd_ble.c"
          "adapter_match.c"
          "econ.c"
@@ -14,7 +27,6 @@ idf_component_register(
          "elm327.c"
          "ecu_select.c"
          "sdlog.c"
-         "display.c"
          "wifi_sync.c"
          "status_led.c"
          "custom_pids.c"
@@ -32,12 +44,16 @@ idf_component_register(
          "rev_state.c"
          "rev_task.c"
     INCLUDE_DIRS "."
-    REQUIRES bt nvs_flash driver esp_driver_tsens perfmon esp_wifi esp_netif esp_event esp_http_client mbedtls esp_driver_usb_serial_jtag
+    REQUIRES bt nvs_flash driver esp_driver_tsens esp_wifi esp_netif esp_event esp_http_client mbedtls esp_driver_usb_serial_jtag
              esp_lcd fatfs sdmmc vfs esp_timer esp_driver_gpio
-             esp_driver_spi esp_driver_sdmmc esp_driver_ledc
+             esp_driver_spi esp_driver_sdmmc esp_driver_ledc ${ocm_board_reqs}
 )
 
 target_compile_definitions(${COMPONENT_LIB} PRIVATE CARMIND_VERSION="${PROJECT_VER}")
+if(ocm_target STREQUAL "esp32s31")
+    # the RISC-V GCC flags snprintf("%s") copies whose length the code checks just before (custom_pids.c): warn, not fail
+    target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-error=format-truncation)
+endif()
 
 # On-board model (ml/onboard/onboard.espdl), embedded on a 16-byte boundary with ESP-DL's own helper so the loader
 # does not warn or copy. Symbol: _binary_onboard_espdl_start.
@@ -45,12 +61,12 @@ if(CONFIG_CARMIND_ML_ENABLE)
     idf_component_get_property(esp_dl_dir espressif__esp-dl COMPONENT_DIR)
     set(cmake_dir ${esp_dl_dir}/fbs_loader/cmake)
     include(${cmake_dir}/utilities.cmake)
-    target_add_aligned_binary_data(${COMPONENT_LIB} "${CMAKE_CURRENT_LIST_DIR}/../ml/onboard/onboard.espdl" BINARY)
+    target_add_aligned_binary_data(${COMPONENT_LIB} "${ocm_ml_dir}/onboard.espdl" BINARY)
     # CarMind R.E.V (ml/onboard/rev/onboard.espdl). The helper names the symbol and its generated .S after the file name, so the
     # file is copied into the build folder under its own name first. Symbol: _binary_onboard_rev_espdl_start.
     if(CONFIG_CARMIND_REV_ENABLE)
         idf_build_get_property(build_dir BUILD_DIR)
-        configure_file("${CMAKE_CURRENT_LIST_DIR}/../ml/onboard/rev/onboard.espdl" "${build_dir}/onboard_rev.espdl" COPYONLY)
+        configure_file("${ocm_ml_dir}/rev/onboard.espdl" "${build_dir}/onboard_rev.espdl" COPYONLY)
         target_add_aligned_binary_data(${COMPONENT_LIB} "${build_dir}/onboard_rev.espdl" BINARY)
     endif()
 endif()

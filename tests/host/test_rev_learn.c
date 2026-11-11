@@ -654,6 +654,38 @@ static void test_torque(void)
     CHECK(rev_tq_row(&T, &big, &P, &r) && r.t_b <= 200.0f * 2.0f + 1e-3f);                                         /* clip */
 }
 
+/* rev_blob_save/load with a blob far over the 1 KB static scratch: the A.E.V student state is 35,168 B. Before the fix
+   rev_blob_load returned false for any size over 1 KB, so that state never reloaded. */
+static void test_big_blob(void)
+{
+    const char *path = "/tmp/ocm_rev_big_blob_test.bin";
+    char tmp[64]; snprintf(tmp, sizeof tmp, "%s.tmp", path);
+    remove(path); remove(tmp);
+    const uint32_t N = 35168, MAG = 0x31564541u;
+    uint8_t *a = malloc(N), *b = malloc(N), *keep = malloc(N);
+    for (uint32_t i = 0; i < N; i++) a[i] = (uint8_t)(i * 2654435761u >> 24);
+    CHECK(rev_blob_save(path, MAG, a, N));
+    memset(b, 0xA5, N);
+    CHECK(rev_blob_load(path, MAG, b, N));                                /* the whole 35,168 B comes back */
+    CHECK(memcmp(a, b, N) == 0);
+    memset(b, 0xA5, N); memcpy(keep, b, N);
+    CHECK(!rev_blob_load(path, MAG, b, N - 8));                            /* stored size differs from the caller's */
+    CHECK(!rev_blob_load(path, MAG ^ 1, b, N));                            /* wrong magic */
+    FILE *f = fopen(path, "r+b");                                          /* one payload byte flipped: CRC fails */
+    fseek(f, 8 + 20000, SEEK_SET); int c = fgetc(f); fseek(f, 8 + 20000, SEEK_SET); fputc(c ^ 0x40, f); fclose(f);
+    CHECK(!rev_blob_load(path, MAG, b, N));
+    CHECK(memcmp(b, keep, N) == 0);                                        /* a rejected file leaves the caller's data alone */
+    CHECK(rev_blob_save(path, MAG, a, N));
+    f = fopen(path, "r+b"); fseek(f, 0, SEEK_END); long len = ftell(f); fclose(f);
+    CHECK(truncate(path, len - 1) == 0);                                   /* truncated: rejected */
+    CHECK(!rev_blob_load(path, MAG, b, N));
+    CHECK(rev_blob_save(path, MAG, a, 64));                                /* small blobs still use the static path */
+    memset(b, 0, 64);
+    CHECK(rev_blob_load(path, MAG, b, 64) && memcmp(a, b, 64) == 0);
+    remove(path); remove(tmp);
+    free(a); free(b); free(keep);
+}
+
 static void test_tank_file(void)
 {
     const char *path = "/tmp/ocm_rev_tank_test.bin";
@@ -694,6 +726,7 @@ int main(void)
     test_phys_maf_fault();
     test_torque();
     test_tank_file();
+    test_big_blob();
     printf("%d checks, %d failures\n", checks, fails);
     return fails ? 1 : 0;
 }

@@ -1,8 +1,15 @@
 #include "rev_state.h"
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#ifdef ESP_PLATFORM
+#include "esp_heap_caps.h"
+#define BLOB_ALLOC(n) heap_caps_malloc_prefer((n), 2, MALLOC_CAP_SPIRAM, MALLOC_CAP_DEFAULT)
+#else
+#define BLOB_ALLOC(n) malloc(n)
+#endif
 
 #define MAGIC   0x31564552u              /* "REV1" */
 #define VERSION 1
@@ -179,9 +186,16 @@ static bool blob_read(const char *path, uint32_t magic, void *data, uint32_t siz
 
 bool rev_blob_load(const char *path, uint32_t magic, void *data, uint32_t size)
 {
-    static uint8_t scratch[1024];                    /* the caller's struct is left untouched unless a file checks out */
-    if (size > sizeof scratch) return false;
+    /* The file is read into a scratch copy and checked (magic, stored size == size, CRC, nothing after the CRC) before
+       the caller's struct is touched. Small blobs use a static 1 KB copy. Larger ones (A.E.V's 35,168 B student state)
+       get a heap copy, PSRAM first on the board: the old code returned false for anything over 1 KB, so such a state
+       never reloaded. */
+    static uint8_t small[1024];
+    uint8_t *scratch = size <= sizeof small ? small : (uint8_t *)BLOB_ALLOC(size);
+    if (!scratch) return false;
     char tmp[128];
     snprintf(tmp, sizeof tmp, "%s.tmp", path);
-    return blob_read(path, magic, data, size, scratch) || blob_read(tmp, magic, data, size, scratch);
+    bool ok = blob_read(path, magic, data, size, scratch) || blob_read(tmp, magic, data, size, scratch);
+    if (scratch != small) free(scratch);
+    return ok;
 }
