@@ -166,6 +166,14 @@ static void fold(const char *in, char *out, size_t n)
 void wifi_creds_dedupe(const char *good_ssid)
 {
     char a[40], b[40];
+#if CONFIG_IDF_TARGET_ESP32S31
+    /* good_ssid may point into s_creds (sync_once passes net->ssid): a removal's memmove would slide another name under
+       it, and the next comparison would then remove the real one. Compare against a copy. (The S3 copy of this fix comes
+       with a later S3 release: the S3 build stays byte-identical to main for now.) */
+    char good[sizeof s_creds[0].ssid];
+    strlcpy(good, good_ssid, sizeof good);
+    good_ssid = good;
+#endif
     fold(good_ssid, a, sizeof a);
     for (size_t i = 0; i < s_n; ) {
         fold(s_creds[i].ssid, b, sizeof b);

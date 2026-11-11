@@ -85,6 +85,15 @@ events: events_tests
 events_tests: test_ui_events.c ../../main/ui_events_logic.c ../../main/ui_events_logic.h ../../main/power_state.c
 	$(CC) $(CFLAGS) -o $@ test_ui_events.c ../../main/ui_events_logic.c ../../main/power_state.c
 
+# wifi_creds.c itself (copied to a scratch dir so its includes find stubs/wifi_creds): the near-duplicate cleanup when its
+# argument points into the list (S31; the S3 copy of the fix comes later)
+wificreds: wificreds_tests
+	./wificreds_tests
+
+wificreds_tests: test_wifi_creds.c ../../main/wifi_creds.c ../../main/wifi_creds.h ../../main/harden.c stubs/wifi_creds/*.h
+	mkdir -p wificreds_src && cp ../../main/wifi_creds.c wificreds_src/
+	$(CC) $(CFLAGS:-I../../main=-Istubs/wifi_creds -I../../main) -o $@ test_wifi_creds.c wificreds_src/wifi_creds.c ../../main/harden.c
+
 # ESP-Mosaico palettes: every text/ground pair >= 4.5:1, graphics >= 3:1, read from mosaico_display.c (T1)
 theme: theme_tests
 	./theme_tests
@@ -108,5 +117,5 @@ rev_tests: $(REV_SRCS) ../../main/rev_learn.h ../../main/rev_cal.h ../../main/re
 	$(CC) $(CFLAGS) -o $@ $(REV_SRCS) -lm
 
 clean:
-	rm -f carmind_tests rev_tests tank_tests session_tests reset_tests swipe_tests clock_tests uimetrics_tests prefetch_tests logstore_tests nandfat_tests settings_tests wifi_tests events_tests theme_tests
-.PHONY: run rev session reset swipe clock uimetrics prefetch logstore clean settings wifi events theme
+	rm -f carmind_tests rev_tests tank_tests session_tests reset_tests swipe_tests clock_tests uimetrics_tests prefetch_tests logstore_tests nandfat_tests settings_tests wifi_tests events_tests theme_tests wificreds_tests
+.PHONY: run rev session reset swipe clock uimetrics prefetch logstore clean settings wifi events theme wificreds
