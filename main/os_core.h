@@ -20,6 +20,14 @@
  *    runlevel acts like a circuit breaker. A service never asks which runlevel is in force, it asks os_allows(svc).
  *    The runlevel shown on the Board page and in the log is the active one highest in the order
  *    Update > Saving > Driving > Safe > Boot > Parked.
+ *
+ * 3. Boot health. About a minute after boot (after sched_mon's first summary) the OS combines the model self-test,
+ *    the flash FAT preflight and audit, the NAND mount, the first UI tick, the touch probe and the scheduler summary
+ *    into one verdict. Bad means this firmware image is not fit to keep: no UI tick at all, or safe mode (three
+ *    crashes in a row). Degraded means something works less well than it should but the image runs: a model
+ *    self-test that differs or did not run, a repaired or damaged store, no NAND, touch failing, deadline misses or
+ *    stalls, a failed response-time analysis, a slow first frame. Good is everything else. A damaged store is not
+ *    Bad: older firmware would not repair the data, so it is no reason to go back to it.
  */
 #ifndef OS_CORE_H
 #define OS_CORE_H
@@ -91,6 +99,34 @@ const char   *os_rl_name(os_runlevel_t r);                       /* "Parked", "D
    "safe mode is on", "the board is starting", "the board is saving power", "an update or format is running" */
 const char   *os_rl_phrase(os_runlevel_t r, const os_rl_in_t *in);
 const char   *os_svc_name(os_svc_t svc);
+
+/* ---------- 3. boot health ---------- */
+enum { OS_H_PENDING = 0, OS_H_GOOD, OS_H_DEGRADED, OS_H_BAD };
+enum {
+    OS_HF_MODEL_DIFF = 1u << 0, OS_HF_MODEL_NOT_RUN = 1u << 1, OS_HF_NOR_REPAIRED = 1u << 2, OS_HF_NOR_WARN = 1u << 3,
+    OS_HF_NOR_DOWN = 1u << 4, OS_HF_NAND = 1u << 5, OS_HF_NO_FRAME = 1u << 6, OS_HF_SLOW_FRAME = 1u << 7,
+    OS_HF_TOUCH = 1u << 8, OS_HF_MISSES = 1u << 9, OS_HF_STALLS = 1u << 10, OS_HF_UNSCHED = 1u << 11, OS_HF_SAFE = 1u << 12,
+};
+#define OS_H_BAD_FLAGS   (OS_HF_NO_FRAME | OS_HF_SAFE)
+#define OS_H_SLOW_FRAME_MS 15000          /* the first UI tick later than this is Degraded */
+#define OS_H_VERDICT_MS    65000          /* uptime at which the verdict is formed (sched_mon summarises at 60 s) */
+typedef struct {
+    int8_t   selftest;        /* ml_selftest_state(): 1 exact, 0 differs, -1 not run */
+    bool     model_expected;  /* a model should be loaded (the ML service runs, a model is built in) */
+    int8_t   nor;             /* the flash FAT: 1 mounted, 0 not mounted, -1 damaged (left unmounted to protect it) */
+    uint16_t nor_repairs;     /* FAT sectors the preflight rewrote from the other copy */
+    bool     nor_warn;        /* the audit found lost clusters or a single FAT copy */
+    int8_t   nand;            /* 1 mounted, 0 absent (logs on the flash FAT), -1 unreadable or failed, 2 not built */
+    uint32_t first_tick_ms;   /* uptime of the first UI tick, 0 = none yet */
+    bool     touch_ok;        /* the touch controller opened and is not failing */
+    uint32_t misses, stalls;  /* sched_mon, every job */
+    bool     schedulable;     /* sched_mon's response-time analysis: every analysed job meets its deadline */
+    bool     safe;
+} os_health_in_t;
+uint8_t os_health_verdict(const os_health_in_t *in, uint16_t *flags);    /* OS_H_GOOD / DEGRADED / BAD and why */
+const char *os_health_name(uint8_t verdict);                             /* "pending", "good", "degraded", "bad" */
+/* "good" or "degraded: model self-test differs, NAND not mounted" (truncated to n) */
+int os_health_text(uint8_t verdict, uint16_t flags, char *buf, size_t n);
 
 #ifdef __cplusplus
 }

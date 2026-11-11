@@ -995,7 +995,7 @@ static void engine_update(const ui_snap_t *s)
 
 /* ======================= Board: flex columns and rows; the deadline table is an lv grid sized to its texts ======= */
 static lv_obj_t *o_dot, *o_jobs_ok, *o_touch, *o_ram_v, *o_ram_note, *o_psram, *o_bat_v, *o_bat_note, *o_cal, *o_store,
-                *o_sbar, *o_fw, *o_chip;
+                *o_sbar, *o_fw, *o_chip, *o_health;
 #define O_ROWS 6
 static lv_obj_t *o_rn[O_ROWS], *o_rr[O_ROWS], *o_rw[O_ROWS], *o_rb[O_ROWS], *o_rm[O_ROWS];
 
@@ -1106,6 +1106,7 @@ static void board_create(lv_obj_t *p)
     }
     r = frow(col);
     o_fw = ui_label(r, UI_THEME.f_small, UI_MUTED, CARMIND_FW_STRING);
+    o_health = ui_label(r, UI_THEME.f_small, UI_MUTED, "");   /* mossREV OS: runlevel and boot health (os.h) */
     o_chip = ui_label(r, UI_THEME.f_small, UI_MUTED, "");
 }
 
@@ -1154,7 +1155,10 @@ static void board_update(const ui_snap_t *s)
     }
     esp_chip_info_t ci;
     esp_chip_info(&ci);
-    ui_set_fmt(o_chip, "ESP32-S31 rev %d.%d  IDF %.8s", ci.revision / 100, ci.revision % 100, esp_get_idf_version() + (esp_get_idf_version()[0] == 'v'));
+    ui_set_fmt(o_chip, "S31 rev %d.%d", ci.revision / 100, ci.revision % 100);   /* the IDF version is in the boot log */
+    uint8_t hv = os_health(NULL);                  /* widest "Update, health degraded" 160 px: the row fits 440 px */
+    ui_set_fmt(o_health, "%s, health %s", os_rl_name(os_runlevel()), os_health_name(hv));
+    ui_set_color(o_health, hv == OS_H_GOOD ? UI_GREEN : hv == OS_H_DEGRADED ? UI_WARN : hv == OS_H_BAD ? UI_RED : UI_MUTED);
 }
 
 /* ======================= Drive (H_Drive): dark = pure black and near-black panels, light = white panels on the light

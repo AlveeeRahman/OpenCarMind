@@ -1,5 +1,6 @@
 /* os_core.c: the pure rules of the mossREV OS layer. See os_core.h. */
 #include "os_core.h"
+#include <stdio.h>
 #include <string.h>
 
 /* ---------- 1. resets ----------
@@ -105,4 +106,46 @@ const char *os_svc_name(os_svc_t svc)
     static const char *const N[OS_SVC_N] = { "model switch", "clock", "format", "Wi-Fi edit", "Wi-Fi radio", "door", "model",
                                              "learner" };
     return (unsigned)svc < OS_SVC_N ? N[svc] : "?";
+}
+
+/* ---------- 3. boot health ---------- */
+uint8_t os_health_verdict(const os_health_in_t *in, uint16_t *flags)
+{
+    uint16_t f = 0;
+    if (in->model_expected && in->selftest == 0) f |= OS_HF_MODEL_DIFF;
+    if (in->model_expected && in->selftest < 0) f |= OS_HF_MODEL_NOT_RUN;
+    if (in->nor_repairs) f |= OS_HF_NOR_REPAIRED;
+    if (in->nor_warn) f |= OS_HF_NOR_WARN;
+    if (in->nor <= 0) f |= OS_HF_NOR_DOWN;
+    if (in->nand == 0 || in->nand == -1) f |= OS_HF_NAND;
+    if (!in->first_tick_ms) f |= OS_HF_NO_FRAME;
+    else if (in->first_tick_ms > OS_H_SLOW_FRAME_MS) f |= OS_HF_SLOW_FRAME;
+    if (!in->touch_ok) f |= OS_HF_TOUCH;
+    if (in->misses) f |= OS_HF_MISSES;
+    if (in->stalls) f |= OS_HF_STALLS;
+    if (!in->schedulable) f |= OS_HF_UNSCHED;
+    if (in->safe) f |= OS_HF_SAFE;
+    if (flags) *flags = f;
+    return f & OS_H_BAD_FLAGS ? OS_H_BAD : f ? OS_H_DEGRADED : OS_H_GOOD;
+}
+
+const char *os_health_name(uint8_t v)
+{
+    static const char *const N[4] = { "pending", "good", "degraded", "bad" };
+    return v < 4 ? N[v] : "?";
+}
+
+int os_health_text(uint8_t verdict, uint16_t flags, char *buf, size_t n)
+{
+    static const char *const W[13] = { "model self-test differs", "model self-test not run", "flash FAT repaired",
+        "flash FAT audit warning", "flash FAT not mounted", "NAND not mounted", "no UI tick", "UI slow to start",
+        "touch failing", "deadline misses", "job stalls", "not schedulable", "safe mode" };
+    if (!buf || !n) return 0;
+    int o = snprintf(buf, n, "%s", os_health_name(verdict)), first = 1;
+    for (int i = 0; i < 13 && (size_t)o < n; i++) {
+        if (!(flags & (1u << i))) continue;
+        o += snprintf(buf + o, n - (size_t)o, "%s%s", first ? ": " : ", ", W[i]);
+        first = 0;
+    }
+    return o < (int)n ? o : (int)n - 1;
 }

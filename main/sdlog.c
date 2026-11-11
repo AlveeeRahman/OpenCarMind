@@ -358,6 +358,7 @@ static uint64_t tree_bytes(const char *dir, uint32_t clu, int *files, int depth)
 /* ---------- flash FAT checks before FatFs mounts (see fat_mirror.h for why) ---------- */
 static int  s_fat_repairs;        /* FAT sectors rewritten from the other copy at this boot */
 static bool s_unreadable;         /* the volume holds data FatFs cannot use: left unmounted, nothing overwritten */
+static bool s_audit_warn;         /* the boot audit found lost clusters or a single FAT copy (mossREV OS health) */
 static uint32_t s_reclaimed_kb;    /* lost clusters freed at this boot */
 static int      s_scrubbed;        /* torn directory entries marked deleted at this boot */
 
@@ -486,6 +487,7 @@ static void storage_audit(void)
     if (bad) sys_event(EV_ERROR, "Flash FAT: %llu KB used, files %llu KB: Format it",
                        (unsigned long long)(used / 1024), (unsigned long long)(need / 1024));
     if (fs->n_fats < 2) sys_event(EV_WARN, "Flash FAT has one FAT copy (old format): Format it");
+    s_audit_warn = bad || fs->n_fats < 2;
 #ifdef SDLOG_SELFTEST
     /* one-off proof after a format: write 64 KB, close, delete; free space must come back exactly */
     static uint8_t blk[4096];
@@ -1295,4 +1297,15 @@ bool sdlog_move_lock(void)
 }
 
 void sdlog_move_unlock(void) { xSemaphoreGive(s_lock); }
+#endif
+
+#if BOARD_MOSAICO
+/* mossREV OS boot health (os.c): 1 mounted, 0 not mounted, -1 damaged and left unmounted; the preflight's repairs and the
+   audit's warning */
+int sdlog_flash_health(uint16_t *repairs, bool *audit_warn)
+{
+    if (repairs) *repairs = (uint16_t)s_fat_repairs;
+    if (audit_warn) *audit_warn = s_audit_warn;
+    return s_unreadable ? -1 : s_ok ? 1 : 0;
+}
 #endif

@@ -97,3 +97,7 @@ void sdlog_prepare_sleep(void);
 /* Before a software reset: flush the logger's files and hold the file system's lock so no flash sector is half written when
    the reset hits. Never returns the lock; the caller resets right after. Not for the panic handler. */
 void sdlog_quiesce_for_reset(void);
+#if CONFIG_IDF_TARGET_ESP32S31
+/* mossREV OS boot health: the flash FAT's state (1 mounted, 0 not, -1 damaged), FAT sectors repaired, audit warning */
+int  sdlog_flash_health(uint16_t *repairs, bool *audit_warn);
+#endif

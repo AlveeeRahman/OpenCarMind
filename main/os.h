@@ -24,8 +24,10 @@ os_runlevel_t os_runlevel(void);
 /* Update runlevel while a format runs (the board task brackets it). sys_reset enters it by itself. */
 void          os_update_begin(void);
 void          os_update_end(void);
-/* the board task, every 2 s: logs runlevel changes */
+/* the board task, every 2 s: logs runlevel changes, forms the boot health verdict at OS_H_VERDICT_MS */
 void          os_tick(void);
+/* the boot health verdict (os_core.h): OS_H_PENDING until it is formed; flags = the reasons */
+uint8_t       os_health(uint16_t *flags);
 
 #ifdef __cplusplus
 }

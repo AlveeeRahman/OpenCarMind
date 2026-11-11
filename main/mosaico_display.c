@@ -2572,7 +2572,8 @@ static void slide_tick(void);
 #define STALL_ARM_US   20000000
 #define STALL_LIMIT_US 15000000
 #endif
-static volatile int64_t s_tick_seen_us;
+static volatile int64_t s_tick_seen_us, s_first_tick_us;
+uint32_t mosaico_ui_first_tick_ms(void) { return (uint32_t)(s_first_tick_us / 1000); }
 static void stall_cb(void *arg)
 {
     (void)arg;
@@ -2588,6 +2589,7 @@ static void tick_cb(lv_timer_t *t)
     static int64_t next_us;
     int64_t t0 = esp_timer_get_time();
     s_tick_seen_us = t0;
+    if (!s_first_tick_us) s_first_tick_us = t0;        /* the boot health verdict's "first UI tick" (os.c) */
     if (s_job < 0) s_job = sched_register("ui", UI_PERIOD_MS, UI_PERIOD_MS, false);
     if (next_us) {
         int64_t late_ms = (t0 - next_us) / 1000;
@@ -2742,6 +2744,8 @@ static uint32_t s_touch_bad, s_touch_bad_burst;
 static uint32_t s_touch_reopens;
 static int64_t s_touch_retry_us, s_touch_probe_us, s_touch_log_us;
 static bool s_touch_muted;
+
+bool mosaico_touch_ok(void) { return s_tp && s_touch_bad < TOUCH_BAD_MAX; }   /* the boot health verdict (os.c) */
 
 static bool touch_open(void)
 {

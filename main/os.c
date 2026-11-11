@@ -14,6 +14,13 @@
 #include "sdlog.h"
 #include "elm327.h"
 #include "sys_mode.h"
+#include "esp_timer.h"
+#include "events.h"
+#include "ml_infer.h"
+#include "mosaico_ui.h"
+#if CONFIG_OCM_NAND_LOGS
+#include "nand_store.h"
+#endif
 
 static const char *TAG = "os";
 
@@ -108,9 +115,54 @@ os_runlevel_t os_runlevel(void)
 void os_update_begin(void) { s_updates++; }
 void os_update_end(void) { if (s_updates) s_updates--; }
 
+/* ---------- boot health ---------- */
+static volatile uint8_t s_health;
+static volatile uint16_t s_health_flags;
+
+uint8_t os_health(uint16_t *flags)
+{
+    if (flags) *flags = s_health_flags;
+    return s_health;
+}
+
+static void health_form(void)
+{
+    os_health_in_t in = { 0 };
+    sched_stats_t js[8];
+    sched_system_t sys;
+    int n = sched_get_stats(js, 8);
+    sched_get_system(&sys);
+    in.selftest = (int8_t)ml_selftest_state();
+    in.model_expected = os_allows(OS_SVC_ML) && (ml_model_available(ML_MODEL_EV) || ml_model_available(ML_MODEL_REV));
+    in.nor = (int8_t)sdlog_flash_health(&in.nor_repairs, &in.nor_warn);
+#if CONFIG_OCM_NAND_LOGS
+    nand_state_t ns = nand_store_state();
+    in.nand = ns == NAND_MOUNTED ? 1 : ns == NAND_ABSENT ? 0 : -1;
+#else
+    in.nand = 2;
+#endif
+    in.first_tick_ms = mosaico_ui_first_tick_ms();
+    in.touch_ok = mosaico_touch_ok();
+    for (int i = 0; i < n; i++) { in.misses += js[i].misses; in.stalls += js[i].stalls; }
+    in.schedulable = sys.schedulable;
+    in.safe = sys.safe_mode;
+    uint16_t f = 0;
+    uint8_t v = os_health_verdict(&in, &f);
+    s_health_flags = f;
+    s_health = v;
+    char t[160];
+    os_health_text(v, f, t, sizeof t);
+    ESP_LOGI(TAG, "boot health %s | model self-test %d, flash FAT %d (%u repaired%s), NAND %d, first UI tick %lu ms, touch %s, "
+             "%lu misses, %lu stalls, %sschedulable, runlevel %s", t, in.selftest, in.nor, (unsigned)in.nor_repairs,
+             in.nor_warn ? ", audit warning" : "", in.nand, (unsigned long)in.first_tick_ms, in.touch_ok ? "ok" : "failing",
+             (unsigned long)in.misses, (unsigned long)in.stalls, in.schedulable ? "" : "not ", os_rl_name(os_runlevel()));
+    sys_event(v == OS_H_GOOD ? EV_INFO : v == OS_H_DEGRADED ? EV_WARN : EV_ERROR, "Boot health: %s", t);
+}
+
 void os_tick(void)
 {
     static uint8_t last = 0xFF;
+    if (s_health == OS_H_PENDING && esp_timer_get_time() >= (int64_t)OS_H_VERDICT_MS * 1000) health_form();
     os_rl_in_t in;
     rl_inputs(&in);
     uint8_t a = os_rl_active(&in);

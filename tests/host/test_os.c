@@ -114,10 +114,61 @@ static void test_runlevels(void)
     printf("\n");
 }
 
+/* ---------- 3. boot health ---------- */
+static void test_health(void)
+{
+    const os_health_in_t good = { .selftest = 1, .model_expected = true, .nor = 1, .nand = 1, .first_tick_ms = 1900,
+                                  .touch_ok = true, .schedulable = true };
+    uint16_t f = 0xFFFF;
+    char t[200];
+    CHECK(os_health_verdict(&good, &f) == OS_H_GOOD && f == 0, "all fine: good");
+    os_health_text(OS_H_GOOD, 0, t, sizeof t);
+    CHECK(!strcmp(t, "good"), "good text '%s'", t);
+    struct { const char *what; os_health_in_t in; uint8_t v; uint16_t flag; } C[] = {
+        { "self-test differs",      good, OS_H_DEGRADED, OS_HF_MODEL_DIFF },
+        { "self-test not run",      good, OS_H_DEGRADED, OS_HF_MODEL_NOT_RUN },
+        { "FAT repaired",           good, OS_H_DEGRADED, OS_HF_NOR_REPAIRED },
+        { "audit warning",          good, OS_H_DEGRADED, OS_HF_NOR_WARN },
+        { "flash FAT damaged",      good, OS_H_DEGRADED, OS_HF_NOR_DOWN },
+        { "flash FAT not mounted",  good, OS_H_DEGRADED, OS_HF_NOR_DOWN },
+        { "NAND absent",            good, OS_H_DEGRADED, OS_HF_NAND },
+        { "NAND unreadable",        good, OS_H_DEGRADED, OS_HF_NAND },
+        { "no UI tick",             good, OS_H_BAD,      OS_HF_NO_FRAME },
+        { "slow first tick",        good, OS_H_DEGRADED, OS_HF_SLOW_FRAME },
+        { "touch failing",          good, OS_H_DEGRADED, OS_HF_TOUCH },
+        { "misses",                 good, OS_H_DEGRADED, OS_HF_MISSES },
+        { "stalls",                 good, OS_H_DEGRADED, OS_HF_STALLS },
+        { "not schedulable",        good, OS_H_DEGRADED, OS_HF_UNSCHED },
+        { "safe mode",              good, OS_H_BAD,      OS_HF_SAFE },
+    };
+    C[0].in.selftest = 0; C[1].in.selftest = -1; C[2].in.nor_repairs = 2; C[3].in.nor_warn = true; C[4].in.nor = -1;
+    C[5].in.nor = 0; C[6].in.nand = 0; C[7].in.nand = -1; C[8].in.first_tick_ms = 0; C[9].in.first_tick_ms = OS_H_SLOW_FRAME_MS + 1;
+    C[10].in.touch_ok = false; C[11].in.misses = 3; C[12].in.stalls = 1; C[13].in.schedulable = false; C[14].in.safe = true;
+    for (size_t i = 0; i < sizeof C / sizeof C[0]; i++) {
+        uint8_t v = os_health_verdict(&C[i].in, &f);
+        CHECK(v == C[i].v && f == C[i].flag, "%s: verdict %d flags 0x%x", C[i].what, v, f);
+    }
+    os_health_in_t x = good;
+    x.model_expected = false; x.selftest = -1;
+    CHECK(os_health_verdict(&x, &f) == OS_H_GOOD, "no model expected (safe mode or none built): its self-test is not asked");
+    x = good; x.nand = 2;
+    CHECK(os_health_verdict(&x, &f) == OS_H_GOOD, "NAND not built: not a fault");
+    x = good; x.first_tick_ms = OS_H_SLOW_FRAME_MS;
+    CHECK(os_health_verdict(&x, &f) == OS_H_GOOD, "first tick at the limit: good");
+    x = C[0].in; x.nand = 0; x.safe = true;
+    CHECK(os_health_verdict(&x, &f) == OS_H_BAD, "Bad wins over Degraded");
+    os_health_text(OS_H_DEGRADED, OS_HF_MODEL_DIFF | OS_HF_NAND, t, sizeof t);
+    CHECK(!strcmp(t, "degraded: model self-test differs, NAND not mounted"), "text '%s'", t);
+    os_health_text(OS_H_BAD, 0x1FFF, t, 24);
+    CHECK(strlen(t) == 23, "text truncates to the buffer");
+    CHECK(!strcmp(os_health_name(OS_H_PENDING), "pending") && !strcmp(os_health_name(9), "?"), "names");
+}
+
 int main(void)
 {
     test_reset_plans();
     test_runlevels();
+    test_health();
     printf("os: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail != 0;
 }
