@@ -289,7 +289,7 @@ static void audit(void)
              fs->fs_type == FS_FAT12 ? 12 : fs->fs_type == FS_FAT16 ? 16 : 32, fs->n_fats, fs->n_fats == 1 ? "y" : "ies",
              (unsigned long)clu, (unsigned long long)(used / 1024), (unsigned long long)(need / 1024), files,
              (unsigned long long)(freeb / 1024), (unsigned long long)(total / 1024), bad ? "  <- LOST CLUSTERS" : "");
-    if (bad) sys_event(EV_ERROR, "Drive store (NAND): %llu KB used but files need %llu KB: format storage in Settings",
+    if (bad) sys_event(EV_ERROR, "Drive store: %llu KB used, files %llu KB. Format",
                        (unsigned long long)(used / 1024), (unsigned long long)(need / 1024));
 }
 
@@ -391,17 +391,17 @@ esp_err_t nand_store_init(void)
     }
     if (err == ESP_OK && s_state != NAND_UNREADABLE) {
         s_state = NAND_MOUNTED;
-        if (s_repairs) sys_event(EV_WARN, "Drive store: %d FAT sector%s repaired from the other copy after a reset", s_repairs,
+        if (s_repairs) sys_event(EV_WARN, "Drive store: %d FAT sector%.1s repaired from the copy", s_repairs,
                                  s_repairs == 1 ? "" : "s");
-        if (s_scrubbed) sys_event(EV_ERROR, "Drive store: a directory sector was damaged by a reset; %d entries removed", s_scrubbed);
+        if (s_scrubbed) sys_event(EV_ERROR, "Drive store: reset tore a folder, %d files lost", s_scrubbed);
         audit();
 #if CONFIG_OCM_NAND_SELFTEST
         selftest();
 #endif
     }
     if (s_state == NAND_UNREADABLE)
-        sys_event(EV_ERROR, "Drive store (NAND) damaged: not mounted so nothing is overwritten. Format storage in Settings erases it");
-    else if (s_state == NAND_FAILED) sys_event(EV_ERROR, "Drive store (NAND) failed: %s; drive logs go to the flash FAT", esp_err_to_name(err));
+        sys_event(EV_ERROR, "Drive store unreadable, left as is. Format erases it");
+    else if (s_state == NAND_FAILED) sys_event(EV_ERROR, "Drive store off: %s; flash used", esp_err_to_name(err));
     xSemaphoreGive(s_nlock);
     return s_state == NAND_MOUNTED ? ESP_OK : ESP_FAIL;
 }

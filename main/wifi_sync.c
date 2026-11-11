@@ -405,8 +405,8 @@ bool wifi_sync_up(void)
         if (e == ESP_OK) e = esp_wifi_start();
         if (e != ESP_OK) {
             s_up_failed = true;
-            sys_event(EV_WARN, "Wi-Fi could not start (%s, internal RAM %lu B); off until restart", esp_err_to_name(e),
-                      (unsigned long)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+            sys_event(EV_WARN, "Wi-Fi off until restart: %s", esp_err_to_name(e));
+            ESP_LOGW(TAG, "Wi-Fi start failed: internal RAM %lu B", (unsigned long)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
             return false;
         }
         ESP_LOGI(TAG, "Wi-Fi started for the Wi-Fi app: internal RAM %lu B free (was %lu B)",

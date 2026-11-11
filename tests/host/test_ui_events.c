@@ -76,6 +76,12 @@ int main(void)
     CHECK(uev_category("ECU online: ISO 15765-4 CAN") == UEV_CAT_DRIVE);
     CHECK(uev_category("Engine ECU 7E8 picked (2 answering)") == UEV_CAT_DRIVE);
     CHECK(uev_category("Drive s000123 saved (812 rows)") == UEV_CAT_DRIVE);
+    /* R11b: the storage texts cut to fit EVENT_TEXT keep their categories (NAND ones under Drive, flash FAT ones none) */
+    CHECK(uev_category("Drive store unreadable, left as is. Format erases it") == UEV_CAT_DRIVE);
+    CHECK(uev_category("Drive store formatted: 117000 KB, 3 state files kept") == UEV_CAT_DRIVE);
+    CHECK(uev_category("Flash FAT unreadable, left untouched. Format erases it") == 0);
+    CHECK(uev_category("All drive logs deleted: 12 files (current kept)") == 0);
+    CHECK(uev_category("Wi-Fi off until restart: ESP_ERR_NO_MEM") == UEV_CAT_WIFI);
     CHECK(uev_category("End drive pressed on the screen") == UEV_CAT_DRIVE);
     CHECK(uev_category("Safe to turn off") == UEV_CAT_DRIVE);
     CHECK(uev_category("Fill-up applied: fuel x1.020, 1 tank") == UEV_CAT_DRIVE);

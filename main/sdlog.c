@@ -483,9 +483,9 @@ static void storage_audit(void)
              fs->fs_type == FS_FAT12 ? 12 : fs->fs_type == FS_FAT16 ? 16 : 32, fs->n_fats, fs->n_fats == 1 ? "y" : "ies",
              (unsigned long)clu, (unsigned long long)(used / 1024), (unsigned long long)(need / 1024), files,
              (unsigned long long)(freeb / 1024), (unsigned long long)(total / 1024), bad ? "  <- LOST CLUSTERS" : "");
-    if (bad) sys_event(EV_ERROR, "Log storage: %llu KB used but files need %llu KB (lost clusters): format storage in Settings",
+    if (bad) sys_event(EV_ERROR, "Flash FAT: %llu KB used, files %llu KB: Format it",
                        (unsigned long long)(used / 1024), (unsigned long long)(need / 1024));
-    if (fs->n_fats < 2) sys_event(EV_WARN, "Log storage has one FAT copy (old USB-disk format): format storage in Settings");
+    if (fs->n_fats < 2) sys_event(EV_WARN, "Flash FAT has one FAT copy (old format): Format it");
 #ifdef SDLOG_SELFTEST
     /* one-off proof after a format: write 64 KB, close, delete; free space must come back exactly */
     static uint8_t blk[4096];
@@ -575,14 +575,14 @@ esp_err_t sdlog_init(void)
                           "raw, then use Format storage in Settings");
         }
     }
-    if (s_unreadable) sys_event(EV_ERROR, "Log storage damaged: not mounted so nothing is overwritten. Format storage in Settings "
+    if (s_unreadable) sys_event(EV_ERROR, "Flash FAT unreadable, left untouched. Format "
                                           "erases it");
     if (err == ESP_OK) esp_register_shutdown_handler(sdlog_quiesce_for_reset);   /* every esp_restart() */
     if (err == ESP_OK && s_scrubbed)
-        sys_event(EV_ERROR, "Log storage: a directory sector was torn by an abnormal reset; %d broken entries removed, those files "
-                            "are lost", s_scrubbed);
+        sys_event(EV_ERROR, "Flash FAT: reset tore a folder, %d files "
+                            "lost", s_scrubbed);
     if (err == ESP_OK && s_fat_repairs)
-        sys_event(EV_WARN, "Log storage: %d FAT sector%s torn by an abnormal reset, repaired from the other FAT copy", s_fat_repairs,
+        sys_event(EV_WARN, "Flash FAT: %d FAT sector%.1s torn by a reset, repaired", s_fat_repairs,
                   s_fat_repairs == 1 ? "" : "s");
 #endif
     if (err != ESP_OK) {
@@ -939,7 +939,7 @@ int sdlog_delete_all_sessions(int *sessions_out)
     int files = delete_locked(0, &sessions);
     xSemaphoreGive(s_lock);
     if (sessions_out) *sessions_out = sessions;
-    if (files >= 0) sys_event(EV_INFO, "All drive logs deleted on the board: %d files (current session kept)", files);
+    if (files >= 0) sys_event(EV_INFO, "All drive logs deleted: %d files (current kept)", files);
     return files;
 }
 
@@ -973,8 +973,8 @@ static esp_err_t format_drive_store(uint32_t *free_kb, int *kept_files, char *wh
     xSemaphoreGive(s_lock);
     if (free_kb) *free_kb = (uint32_t)(fr / 1024);
     if (kept_files) *kept_files = state;
-    if (err == ESP_OK) sys_event(EV_INFO, "Drive store (NAND) formatted on the board: %lu KB free; the %d state files on the flash FAT "
-                                 "were not touched", (unsigned long)(fr / 1024), state);
+    if (err == ESP_OK) sys_event(EV_INFO, "Drive store formatted: %lu KB, %d state files "
+                                 "kept", (unsigned long)(fr / 1024), state);
     return err;
 }
 #endif
@@ -1050,8 +1050,8 @@ esp_err_t sdlog_format_storage(uint32_t *free_kb, int *kept_files, char *why, si
     xSemaphoreGive(s_lock);
     if (free_kb) *free_kb = (uint32_t)(fr / 1024);
     if (kept_files) *kept_files = back;
-    if (err == ESP_OK) sys_event(EV_INFO, "Log storage formatted on the board: %d of %d state files kept, %lu KB free", back, nk,
-                                 (unsigned long)(fr / 1024));
+    if (err == ESP_OK) sys_event(EV_INFO, "Flash FAT formatted: %d of %d state files kept", back,
+                                 nk);
     return err;
 }
 #endif

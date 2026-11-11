@@ -95,6 +95,10 @@ wificreds_tests: test_wifi_creds.c ../../main/wifi_creds.c ../../main/wifi_creds
 	$(CC) $(CFLAGS:-I../../main=-Istubs/wifi_creds -I../../main) -o $@ test_wifi_creds.c wificreds_src/wifi_creds.c ../../main/harden.c
 
 # app lists updated in place: which rows an update writes, hides or creates (main/ui_rows_logic.c)
+# every sys_event() text fits the event ring (EVENT_TEXT) once formatted, so the screen and the log never cut it
+eventtext:
+	python3 check_event_text.py ../../main
+
 rows: rows_tests
 	./rows_tests
 
@@ -125,4 +129,4 @@ rev_tests: $(REV_SRCS) ../../main/rev_learn.h ../../main/rev_cal.h ../../main/re
 
 clean:
 	rm -f carmind_tests rev_tests tank_tests session_tests reset_tests swipe_tests clock_tests uimetrics_tests prefetch_tests logstore_tests nandfat_tests settings_tests wifi_tests events_tests theme_tests wificreds_tests rows_tests
-.PHONY: run rev session reset swipe clock uimetrics prefetch logstore clean settings wifi events theme wificreds rows
+.PHONY: run rev session reset swipe clock uimetrics prefetch logstore clean settings wifi events theme wificreds rows eventtext
