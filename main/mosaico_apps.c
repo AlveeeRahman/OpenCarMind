@@ -442,7 +442,7 @@ static void rev_update(const ui_snap_t *s)
     else ui_set_text(v_l2[0], "E.V runs now");
     ui_set_text(v_big[1], ready ? selftest_word() : "--");
     if (ready && m->selftest_us) ui_set_fmt(v_l1[1], "one run %.1f ms", m->selftest_us / 1000.0); else ui_set_text(v_l1[1], "");
-    ui_set_text(v_l2[1], t >= 0 ? "vs the PC simulation, 1 LSB" : on ? "" : "runs when R.E.V loads");
+    ui_set_text(v_l2[1], t >= 0 ? "vs PC simulation, 1 LSB" : on ? "" : "runs when R.E.V loads");
     ui_set_text(v_ok, on ? LV_SYMBOL_OK : LV_SYMBOL_PAUSE);
     ui_set_color(v_ok, on ? UI_GREEN : UI_WARN);
     if (on) ui_set_text(v_learn, r->learning ? "Learning fuel use in this car" : r->safe ? "Learning off: safe mode" : "Learning off");
