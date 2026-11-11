@@ -20,6 +20,9 @@
 #include "freertos/queue.h"
 #include "mosaico_clock.h"
 #include "ml_infer.h"
+#include "wifi_creds.h"
+#include "ui_settings_logic.h"
+#include "esp_timer.h"
 
 static const char *TAG = "mosaico";
 
@@ -66,6 +69,62 @@ static void model_set(int id)
     portEXIT_CRITICAL(&s_mux);
 }
 
+static mosaico_wifi_list_t s_wifi;                 /* published under s_mux */
+static char s_wifi_forget[33];                     /* the network a forget request names, under s_mux */
+
+void mosaico_board_wifi_list(mosaico_wifi_list_t *out)
+{
+    portENTER_CRITICAL(&s_mux);
+    *out = s_wifi;
+    portEXIT_CRITICAL(&s_mux);
+}
+
+bool mosaico_board_wifi_forget(const char *ssid)
+{
+    portENTER_CRITICAL(&s_mux);
+    strlcpy(s_wifi_forget, ssid, sizeof s_wifi_forget);
+    portEXIT_CRITICAL(&s_mux);
+    return mosaico_board_request(MB_WIFI_FORGET, 0);
+}
+
+static void wifi_list_copy(const char *note)
+{
+    static mosaico_wifi_list_t w;                  /* board task only */
+    memset(&w, 0, sizeof w);
+    size_t n = wifi_creds_count();
+    for (size_t i = 0; i < n && w.n < MB_WIFI_NETS; i++) {
+        const wifi_cred_t *c = wifi_creds_get(i);
+        if (!c) continue;
+        strlcpy(w.net[w.n].ssid, c->ssid, sizeof w.net[0].ssid);
+        w.net[w.n].rssi = c->last_rssi;
+        w.net[w.n].fails = c->fail_count;
+        w.n++;
+    }
+    portENTER_CRITICAL(&s_mux);
+    w.gen = s_wifi.gen + 1;
+    if (note) strlcpy(w.note, note, sizeof w.note);
+    else memcpy(w.note, s_wifi.note, sizeof w.note);
+    s_wifi = w;
+    portEXIT_CRITICAL(&s_mux);
+}
+
+static void wifi_forget(void)
+{
+    char ssid[33];
+    portENTER_CRITICAL(&s_mux);
+    memcpy(ssid, s_wifi_forget, sizeof ssid);
+    portEXIT_CRITICAL(&s_mux);
+    STATUS_LOCK();
+    wifi_state_t st = g_status.wifi;
+    STATUS_UNLOCK();
+    const char *note;
+    if (st == WIFI_ST_SCANNING || st == WIFI_ST_CONNECTING || st == WIFI_ST_CONNECTED) note = "Not forgotten: Wi-Fi is busy. Try again when it is idle.";
+    else if (wifi_creds_remove(ssid)) note = "Network forgotten.";
+    else note = "Not forgotten: the network is no longer saved.";
+    ESP_LOGI(TAG, "Wi-Fi network forget from the screen: %s", note);     /* the name stays out of the log */
+    wifi_list_copy(note);
+}
+
 static void do_request(const mb_req_t *r)
 {
     switch ((mb_cmd_t)r->cmd) {
@@ -96,12 +155,15 @@ static void do_request(const mb_req_t *r)
     case MB_CLOCK_SET:        mosaico_clock_do_set(); break;
     case MB_MODEL_SET:        model_set((int)r->arg); break;
     case MB_WIFI_NOW:         ESP_LOGI(TAG, "Wi-Fi clock sync now: %s", wifi_sync_connect_now() ? "started" : "not available"); break;
+    case MB_SETTINGS_KICK:    break;                /* wakes the loop: the settings debounce sets the next wake-up */
+    case MB_WIFI_LIST:        wifi_list_copy(NULL); break;
+    case MB_WIFI_FORGET:      wifi_forget(); break;
     }
 }
 #define SET_MAX 64
 static uint8_t s_set[SET_MAX];
 static size_t s_set_n;
-static volatile bool s_set_dirty;
+static ocm_debounce_t s_set_deb;                   /* under s_mux */
 
 void mosaico_storage_read(mosaico_storage_t *out)
 {
@@ -113,11 +175,23 @@ void mosaico_storage_read(mosaico_storage_t *out)
 void mosaico_settings_save_request(const void *blob, size_t n)
 {
     if (n > SET_MAX) return;
+    int64_t now = esp_timer_get_time() / 1000;
     portENTER_CRITICAL(&s_mux);
     memcpy(s_set, blob, n);
     s_set_n = n;
-    s_set_dirty = true;
+    ocm_debounce_touch(&s_set_deb, now, OCM_SAVE_QUIET_MS);
     portEXIT_CRITICAL(&s_mux);
+    mosaico_board_request(MB_SETTINGS_KICK, 0);    /* a full queue only delays the write to the next 2 s round */
+}
+
+/* ms until the settings write is due (cap when none is pending) */
+static int32_t settings_wait_ms(int32_t cap)
+{
+    int64_t now = esp_timer_get_time() / 1000;
+    portENTER_CRITICAL(&s_mux);
+    int32_t w = ocm_debounce_wait_ms(&s_set_deb, now, OCM_SAVE_MAX_MS, cap);
+    portEXIT_CRITICAL(&s_mux);
+    return w;
 }
 
 bool mosaico_settings_load(void *blob, size_t n)
@@ -134,11 +208,11 @@ static void settings_flush(void)
 {
     uint8_t copy[SET_MAX];
     size_t n;
+    int64_t now = esp_timer_get_time() / 1000;
     portENTER_CRITICAL(&s_mux);
-    if (!s_set_dirty) { portEXIT_CRITICAL(&s_mux); return; }
+    if (!ocm_debounce_fire(&s_set_deb, now, OCM_SAVE_MAX_MS)) { portEXIT_CRITICAL(&s_mux); return; }
     memcpy(copy, s_set, s_set_n);
     n = s_set_n;
-    s_set_dirty = false;
     portEXIT_CRITICAL(&s_mux);
     nvs_handle_t h;
     if (nvs_open("ocm_ui", NVS_READWRITE, &h) != ESP_OK) return;
@@ -314,12 +388,15 @@ static void board_task(void *arg)
         if (tick % 30 == 0 && g.ok)
             ESP_LOGI(TAG, "PWR soc=%d%% mv=%d ma=%d rem=%d/%d mAh design=%d%s", g.soc, g.mv, g.ma, g.rem_mah, g.full_mah,
                      g.design_mah, mosaico_gauge_uncalibrated(&g) ? " (gauge not configured for the 65 mAh cell)" : "");
-        /* sleep until the next 2 s release, serving UI requests meanwhile */
+        /* sleep until the next 2 s release, serving UI requests and writing the settings when their debounce is due */
         for (;;) {
             TickType_t now = xTaskGetTickCount(), due = release + pdMS_TO_TICKS(2000);
             if ((int32_t)(due - now) <= 0) { release = due; break; }
+            TickType_t wait = due - now, sw = pdMS_TO_TICKS(settings_wait_ms(2000));
+            if (sw < wait) wait = sw ? sw : 1;
             mb_req_t r;
-            if (xQueueReceive(s_q, &r, due - now) == pdTRUE) do_request(&r);
+            if (xQueueReceive(s_q, &r, wait) == pdTRUE) do_request(&r);
+            settings_flush();
         }
     }
 }

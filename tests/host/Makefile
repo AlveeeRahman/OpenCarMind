@@ -37,6 +37,13 @@ clock: clock_tests
 clock_tests: test_clock_set.c ../../main/clock_set.c ../../main/clock_set.h ../../main/harden.c
 	$(CC) $(CFLAGS) -o $@ test_clock_set.c ../../main/clock_set.c ../../main/harden.c -lm
 
+# ESP-Mosaico Settings: the blob migration (Wi-Fi app, no app hiding), order moves, change rules, the save debounce
+settings: settings_tests
+	./settings_tests
+
+settings_tests: test_ui_settings.c ../../main/ui_settings_logic.c ../../main/ui_settings_logic.h
+	$(CC) $(CFLAGS) -o $@ test_ui_settings.c ../../main/ui_settings_logic.c
+
 swipe_tests: test_swipe_intent.c ../../main/swipe_intent.c ../../main/swipe_intent.h
 	$(CC) $(CFLAGS) -O2 -o $@ test_swipe_intent.c -lm
 
@@ -56,5 +63,5 @@ rev_tests: $(REV_SRCS) ../../main/rev_learn.h ../../main/rev_cal.h ../../main/re
 	$(CC) $(CFLAGS) -o $@ $(REV_SRCS) -lm
 
 clean:
-	rm -f carmind_tests rev_tests tank_tests session_tests reset_tests swipe_tests clock_tests
-.PHONY: run rev session reset swipe clock clean
+	rm -f carmind_tests rev_tests tank_tests session_tests reset_tests swipe_tests clock_tests settings_tests
+.PHONY: run rev session reset swipe clock settings clean

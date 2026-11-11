@@ -18,6 +18,7 @@
 #include "esp_psram.h"
 #include "esp_idf_version.h"
 #include "esp_system.h"
+#include "esp_timer.h"
 #include <time.h>
 #include "mosaico_files.h"
 #include "mosaico_drive.h"
@@ -27,7 +28,7 @@
 extern const lv_image_dsc_t ocm_mark_rev_34, ocm_mark_rev_24, ocm_mark_rev_tile, ocm_mark_ev_34, ocm_mark_ev_24;
 #define LEARNED_STATE "R.E.V"
 #define LEARNED_STATE_AND "R.E.V"
-extern const lv_image_dsc_t ocm_icon_drive_52, ocm_icon_ai_52, ocm_icon_learn_52, ocm_icon_summary_52, ocm_icon_live_52, ocm_icon_fuel_52, ocm_icon_brakes_52, ocm_icon_trip_52, ocm_icon_engine_52, ocm_icon_faults_52, ocm_icon_board_52, ocm_icon_files_52, ocm_icon_settings_52;
+extern const lv_image_dsc_t ocm_icon_drive_52, ocm_icon_ai_52, ocm_icon_learn_52, ocm_icon_summary_52, ocm_icon_live_52, ocm_icon_fuel_52, ocm_icon_brakes_52, ocm_icon_trip_52, ocm_icon_engine_52, ocm_icon_faults_52, ocm_icon_board_52, ocm_icon_files_52, ocm_icon_settings_52, ocm_icon_wifi_52;
 #include "elm327.h"
 #include "mosaico_clock.h"
 #include "remote_config.h"
@@ -1705,18 +1706,44 @@ static void files_update(const ui_snap_t *s)
 }
 
 /* ======================= 12. Settings ======================= */
-static lv_obj_t *g_list, *g_ble, *g_wifi;
+/* Touch targets (S1, owner feedback 2026-11-11): every control is at least ST_H x ST_H, rows are full width and
+   targets are ST_GAP apart; where the drawing is smaller (the slider track) the hit area is bigger. A tap restyles
+   only the tapped control in that frame; the value applies in RAM at once and the slow work (NVS write, launcher
+   rebuild, theme switch) runs later, debounced (ui_settings_set, ui_settings_logic.h). Nothing here rebuilds the page. */
+#define ST_W   424                                 /* full row width inside the list (432) less the scroll bar */
+#define ST_H   64
+#define ST_GAP 10
+static lv_obj_t *g_list, *g_ble;
 static void settings_fill(void);
-static void rebuild_async(void *arg) { (void)arg; settings_fill(); }
 
-static void chip_cb(lv_event_t *e)
+/* the raised Row I look: a 1 px top-left highlight, no shadow or gradient, so the list still scrolls cheaply */
+static void st_bevel(lv_obj_t *o)
 {
-    int app = (int)(intptr_t)lv_event_get_user_data(e);
-    ui_settings_t s;
-    ui_settings_get(&s);
-    s.hidden ^= (uint16_t)(1u << app);
-    ui_settings_set(&s);
-    lv_async_call(rebuild_async, NULL);
+    lv_obj_set_style_border_side(o, LV_BORDER_SIDE_TOP | LV_BORDER_SIDE_LEFT, 0);
+    lv_obj_set_style_border_width(o, 1, 0);
+    lv_obj_set_style_border_color(o, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_border_opa(o, 46, 0);
+}
+static lv_color_t st_pressed(void) { return lv_color_mix(lv_color_hex(0xFFFFFF), lv_color_hex(UI_THEME.track), 48); }
+
+/* ---- HOME APPS ORDER: one full-width row per launcher place, a big Up and Down button on each. A move swaps the two
+   rows' labels in place and scrolls the list one row with it, so the moved app stays under the finger. ---- */
+static lv_obj_t *g_ord_row[UI_MAX_APPS], *g_ord_tile[UI_MAX_APPS], *g_ord_icon[UI_MAX_APPS], *g_ord_name[UI_MAX_APPS];
+static int g_ord_n, g_ord_mark = -1;
+
+static void ord_paint(int pos, int app)
+{
+    const ocm_app_t *a = ui_app(app);
+    ui_set_bg(g_ord_tile[pos], a->icon_bg);
+    if (lv_image_get_src(g_ord_icon[pos]) != (const void *)a->icon52) lv_image_set_src(g_ord_icon[pos], a->icon52);
+    ui_set_text(g_ord_name[pos], a->name);
+}
+
+static void ord_mark(int pos)                      /* an accent edge on the row of the app that just moved */
+{
+    if (g_ord_mark >= 0 && g_ord_mark < g_ord_n) lv_obj_set_style_border_color(g_ord_row[g_ord_mark], lv_color_hex(UI_BORDER), 0);
+    g_ord_mark = pos;
+    lv_obj_set_style_border_color(g_ord_row[pos], lv_color_hex(UI_ORANGE), 0);
 }
 
 static void move_cb(lv_event_t *e)
@@ -1725,25 +1752,74 @@ static void move_cb(lv_event_t *e)
     int pos = code / 2, dir = code % 2 ? 1 : -1;
     ui_settings_t s;
     ui_settings_get(&s);
-    int to = pos + dir;
-    if (to < 0 || to >= s.n) return;
-    uint8_t t = s.order[pos]; s.order[pos] = s.order[to]; s.order[to] = t;
+    if (pos >= g_ord_n || !ocm_order_move(&s, pos, dir)) return;
     ui_settings_set(&s);
-    lv_async_call(rebuild_async, NULL);                       /* not from inside the clicked button's own event */
+    ord_paint(pos, s.order[pos]);
+    ord_paint(pos + dir, s.order[pos + dir]);
+    ord_mark(pos + dir);
+    lv_obj_scroll_by_bounded(g_list, 0, -dir * (ST_H + ST_GAP), LV_ANIM_OFF);
 }
 
-static void widget_cb(lv_event_t *e)
+static lv_obj_t *ord_btn(lv_obj_t *row, int x, const char *sym, int code, bool on)
 {
-    ui_settings_t s;
-    ui_settings_get(&s);
-    s.widget = (uint8_t)lv_dropdown_get_selected(lv_event_get_target_obj(e));
-    ui_settings_set(&s);
+    lv_obj_t *b = lv_obj_create(row);
+    lv_obj_remove_style_all(b);
+    lv_obj_set_pos(b, x, 0);
+    lv_obj_set_size(b, ST_H, ST_H);
+    lv_obj_set_style_radius(b, UI_THEME.radius_button, 0);
+    lv_obj_set_style_bg_color(b, lv_color_hex(on ? UI_THEME.track : UI_CARD), 0);
+    lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
+    lv_obj_remove_flag(b, LV_OBJ_FLAG_SCROLLABLE);
+    if (on) {
+        lv_obj_set_style_bg_color(b, st_pressed(), LV_STATE_PRESSED);
+        st_bevel(b);
+        lv_obj_add_event_cb(b, move_cb, LV_EVENT_CLICKED, (void *)(intptr_t)code);
+    } else lv_obj_remove_flag(b, LV_OBJ_FLAG_CLICKABLE);      /* the top row has no Up, the bottom row no Down */
+    lv_obj_center(ui_label(b, F20, on ? UI_TEXT : UI_THEME.dim, sym));
+    return b;
 }
 
-/* repaint one segment of segmented() as selected or not */
+static int ord_rows(lv_obj_t *p, int y, const ui_settings_t *s)
+{
+    g_ord_n = s->n;
+    g_ord_mark = -1;
+    for (int i = 0; i < s->n; i++, y += ST_H + ST_GAP) {
+        lv_obj_t *r = lv_obj_create(p);
+        lv_obj_remove_style_all(r);
+        lv_obj_set_pos(r, 0, y);
+        lv_obj_set_size(r, ST_W, ST_H);
+        lv_obj_set_style_radius(r, UI_THEME.radius_row, 0);
+        lv_obj_set_style_bg_color(r, lv_color_hex(UI_CARD), 0);
+        lv_obj_set_style_bg_opa(r, LV_OPA_COVER, 0);
+        lv_obj_set_style_border_width(r, 1, 0);
+        lv_obj_set_style_border_color(r, lv_color_hex(UI_BORDER), 0);
+        lv_obj_remove_flag(r, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);   /* a drag on a row scrolls the list */
+        g_ord_row[i] = r;
+        g_ord_tile[i] = ui_rect(r, 6, 6, 52, 52, 0, 14);
+        g_ord_icon[i] = lv_image_create(g_ord_tile[i]);
+        lv_obj_set_style_image_recolor(g_ord_icon[i], lv_color_hex(0x0B0B0D), 0);
+        lv_obj_set_style_image_recolor_opa(g_ord_icon[i], LV_OPA_COVER, 0);
+        lv_obj_center(g_ord_icon[i]);
+        lv_obj_t *num = ui_label(r, F14, UI_MUTED, "");
+        ui_set_fmt(num, "%d", i + 1);
+        lv_obj_align(num, LV_ALIGN_LEFT_MID, 70, 0);
+        g_ord_name[i] = ui_label(r, F20, UI_TEXT, "");
+        lv_obj_set_width(g_ord_name[i], ST_W - 98 - 2 * ST_H - 2 * ST_GAP);
+        lv_label_set_long_mode(g_ord_name[i], LV_LABEL_LONG_DOT);
+        lv_obj_align(g_ord_name[i], LV_ALIGN_LEFT_MID, 96, 0);
+        ord_paint(i, s->order[i]);
+        ord_btn(r, ST_W - 2 * ST_H - ST_GAP, LV_SYMBOL_UP, i * 2, i > 0);
+        ord_btn(r, ST_W - ST_H, LV_SYMBOL_DOWN, i * 2 + 1, i < s->n - 1);
+    }
+    return y;
+}
+
+/* repaint one segment as selected or not: a style change on the segment only */
 static void seg_paint(lv_obj_t *b, bool on)
 {
     lv_obj_set_style_bg_color(b, lv_color_hex(on ? UI_ORANGE : UI_THEME.track), 0);
+    if (on) lv_obj_set_style_bg_color(b, lv_color_hex(UI_ORANGE), LV_STATE_PRESSED);
+    else lv_obj_set_style_bg_color(b, st_pressed(), LV_STATE_PRESSED);
     ui_set_color(lv_obj_get_child(b, 0), on ? UI_BG : UI_TEXT);
 }
 
@@ -1798,8 +1874,9 @@ static void model_poll(void)
 }
 
 /* segmented controls: user data = (setting << 8) | option */
-enum { SEG_THEME = 1, SEG_UNITS, SEG_OFF, SEG_MODEL };
+enum { SEG_THEME = 1, SEG_UNITS, SEG_OFF, SEG_MODEL, SEG_N };
 static const uint16_t OFF_S[] = {0, 10, 20, 60};
+static lv_obj_t *g_seg[SEG_N][4];                         /* the segments of each row, painted in place */
 static void seg_cb(lv_event_t *e)
 {
     int code = (int)(intptr_t)lv_event_get_user_data(e), what = code >> 8, opt = code & 0xFF;
@@ -1810,13 +1887,14 @@ static void seg_cb(lv_event_t *e)
         model_show(ml_model_active(), m.ready);
         return;
     }
+    if (what <= 0 || what >= SEG_N || opt > 3) return;
+    for (int i = 0; i < 4; i++) if (g_seg[what][i]) seg_paint(g_seg[what][i], i == opt);   /* shown in this frame */
     ui_settings_t s;
     ui_settings_get(&s);
     if (what == SEG_THEME) s.theme = (uint8_t)opt;
     else if (what == SEG_UNITS) s.econ_l100 = (uint8_t)opt;
     else if (what == SEG_OFF) s.screen_off_s = OFF_S[opt];
-    ui_settings_set(&s);
-    lv_async_call(rebuild_async, NULL);
+    ui_settings_set(&s);                                   /* RAM now; the save and a theme switch follow, debounced */
 }
 
 /* brightness: a slider, 10..100 %. Dragging previews on the panel (at most one command per 50 ms UI tick); the release
@@ -1922,8 +2000,8 @@ static void ck_cancel_cb(lv_event_t *e) { (void)e; lv_async_call(ck_close, NULL)
 static lv_obj_t *ck_button(lv_obj_t *p, const char *t, uint32_t bg, uint32_t fg, int x, lv_event_cb_t cb)
 {
     lv_obj_t *b = lv_button_create(p);
-    lv_obj_set_pos(b, x, 400);
-    lv_obj_set_size(b, 196, 54);
+    lv_obj_set_pos(b, x, 392);
+    lv_obj_set_size(b, 196, ST_H);
     lv_obj_set_style_bg_color(b, lv_color_hex(bg), 0);
     lv_obj_set_style_radius(b, UI_THEME.radius_row, 0);
     lv_obj_set_style_shadow_width(b, 0, 0);
@@ -1986,12 +2064,16 @@ static void ck_open(void)
     if (ck_tz_extra) k += snprintf(zones, sizeof zones, "Now: %.36s", ck_tz_cur);
     for (int i = 0; i < clock_tz_count(); i++) k += snprintf(zones + k, sizeof zones - k, "%s%s", k ? "\n" : "", clock_tz(i)->label);
     ck_tz = lv_dropdown_create(ck_page);
-    lv_obj_set_pos(ck_tz, 24, 284);
-    lv_obj_set_width(ck_tz, UI_W - 48);
+    lv_obj_set_pos(ck_tz, 24, 280);
+    lv_obj_set_size(ck_tz, UI_W - 48, ST_H);
     lv_dropdown_set_options(ck_tz, zones);
     lv_dropdown_set_selected(ck_tz, (uint32_t)(cur < 0 ? 0 : cur));
     style_dropdown(ck_tz);
-    ck_msg = at(ui_label(ck_page, F14, UI_MUTED, "24-hour time, local to the zone. Wi-Fi time replaces it when it syncs."), 24, 340);
+    /* each zone in the open list is a 64 px row: the line spacing is part of an option's touch area in lv_dropdown */
+    lv_obj_t *zl = lv_dropdown_get_list(ck_tz);
+    lv_obj_set_style_text_line_space(zl, ST_H - lv_font_get_line_height(F16), 0);
+    lv_obj_set_style_text_font(zl, F16, 0);
+    ck_msg = at(ui_label(ck_page, F14, UI_MUTED, "24-hour time, local to the zone. Wi-Fi time replaces it when it syncs."), 24, 350);
     lv_obj_set_width(ck_msg, UI_W - 48);
     lv_label_set_long_mode(ck_msg, LV_LABEL_LONG_WRAP);
     ck_button(ck_page, "Cancel", UI_THEME.track, UI_TEXT, 24, ck_cancel_cb);
@@ -2043,29 +2125,15 @@ static void format_cb(lv_event_t *e)
 static void do_forget(void *arg) { (void)arg; mosaico_board_request(MB_BLE_FORGET, 0); }
 static void forget_cb(lv_event_t *e) { (void)e; ui_confirm("Forget the paired OBD adapter? The board then searches for one again.", "Forget", do_forget, NULL); }
 static void search_cb(lv_event_t *e) { (void)e; mosaico_board_request(MB_BLE_SEARCH, 0); }
-#if CONFIG_OCM_WIFI_CLOCK_SYNC
-static void wifi_cb(lv_event_t *e) { (void)e; mosaico_board_request(MB_WIFI_NOW, 0); }
-#endif
 
-static lv_obj_t *small_btn(lv_obj_t *p, const char *sym, int x, int y, lv_event_cb_t cb, int code)
-{
-    lv_obj_t *b = lv_button_create(p);
-    lv_obj_set_pos(b, x, y);
-    lv_obj_set_size(b, 44, 40);
-    lv_obj_set_style_bg_color(b, lv_color_hex(UI_THEME.track), 0);
-    lv_obj_set_style_radius(b, UI_THEME.radius_button, 0);
-    lv_obj_set_style_shadow_width(b, 0, 0);
-    lv_obj_add_event_cb(b, cb, LV_EVENT_CLICKED, (void *)(intptr_t)code);
-    lv_obj_center(ui_label(b, F16, UI_TEXT, sym));
-    return b;
-}
-
+/* a full-height button: ST_H tall, the label in colour c, a 1 px border in c, darker while pressed */
 static lv_obj_t *text_btn(lv_obj_t *p, const char *t, int x, int y, int w, uint32_t c, lv_event_cb_t cb)
 {
     lv_obj_t *b = lv_button_create(p);
     lv_obj_set_pos(b, x, y);
-    lv_obj_set_size(b, w, 46);
+    lv_obj_set_size(b, w, ST_H);
     lv_obj_set_style_bg_color(b, lv_color_hex(UI_THEME.track), 0);
+    lv_obj_set_style_bg_color(b, st_pressed(), LV_STATE_PRESSED);
     lv_obj_set_style_border_width(b, UI_THEME.border_card, 0);
     lv_obj_set_style_border_color(b, lv_color_hex(c), 0);
     lv_obj_set_style_radius(b, UI_THEME.radius_row, 0);
@@ -2075,23 +2143,26 @@ static lv_obj_t *text_btn(lv_obj_t *p, const char *t, int x, int y, int w, uint3
     return b;
 }
 
-/* a row of n equal segments; the selected one is filled with the app accent. out (n entries, or NULL) gets the segments. */
+/* a row of n equal segments across the full width; the selected one is filled with the app accent. out (n entries, or
+   NULL) gets the segments. */
 static void segmented(lv_obj_t *p, int y, const char *const *opts, int n, int sel, int what, lv_obj_t **out)
 {
-    int w = (380 - (n - 1) * 6) / n;
+    int w = (ST_W - (n - 1) * ST_GAP) / n;
     for (int i = 0; i < n; i++) {
         lv_obj_t *b = lv_obj_create(p);
         lv_obj_remove_style_all(b);
-        lv_obj_set_pos(b, 4 + i * (w + 6), y);
-        lv_obj_set_size(b, w, 44);
+        lv_obj_set_pos(b, i * (w + ST_GAP), y);
+        lv_obj_set_size(b, w, ST_H);
         lv_obj_set_style_radius(b, UI_THEME.radius_row, 0);
-        lv_obj_set_style_bg_color(b, lv_color_hex(i == sel ? UI_ORANGE : UI_THEME.track), 0);
         lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
+        st_bevel(b);
         lv_obj_add_flag(b, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_remove_flag(b, LV_OBJ_FLAG_SCROLLABLE);
         lv_obj_add_event_cb(b, seg_cb, LV_EVENT_CLICKED, (void *)(intptr_t)((what << 8) | i));
-        lv_obj_center(ui_label(b, F16, i == sel ? UI_BG : UI_TEXT, opts[i]));
+        lv_obj_center(ui_label(b, F16, UI_TEXT, opts[i]));
+        seg_paint(b, i == sel);
         if (out) out[i] = b;
+        if (what > 0 && what < SEG_N && i < 4) g_seg[what][i] = b;
     }
 }
 
@@ -2104,21 +2175,31 @@ static void style_dropdown(lv_obj_t *d)
     lv_obj_set_style_text_font(d, F16, 0);
 }
 
+static lv_obj_t *st_note(lv_obj_t *p, int y, const char *t)        /* a muted, wrapped line across the row */
+{
+    lv_obj_t *l = at(ui_label(p, F14, UI_MUTED, t), 0, y);
+    lv_obj_set_width(l, ST_W);
+    lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
+    return l;
+}
+
 static void settings_fill(void)
 {
     if (!g_list) return;
     lv_obj_clean(g_list);
     g_bright_sl = g_bright_val = g_clk_time = g_clk_src = g_model = NULL;
+    memset(g_seg, 0, sizeof g_seg);
     ui_settings_t s;
     ui_settings_get(&s);
     int y = 0;
-    at(ui_caption(g_list, "BRIGHTNESS"), 4, y);
-    g_bright_val = at(ui_label(g_list, F14, UI_MUTED, ""), 330, y);
+    at(ui_caption(g_list, "BRIGHTNESS"), 0, y);
+    g_bright_val = ui_label(g_list, F14, UI_MUTED, "");
+    lv_obj_align(g_bright_val, LV_ALIGN_TOP_RIGHT, -(432 - ST_W), y);
     ui_set_fmt(g_bright_val, "%d %%", s.brightness);
-    y += 34;
+    /* a 12 px track and a 28 px knob, a 64 px tall touch area: 26 px above and below the track */
     g_bright_sl = lv_slider_create(g_list);
-    lv_obj_set_pos(g_bright_sl, 14, y);
-    lv_obj_set_size(g_bright_sl, 360, 12);
+    lv_obj_set_pos(g_bright_sl, 26, y + 22 + 26);
+    lv_obj_set_size(g_bright_sl, ST_W - 52, 12);
     lv_slider_set_range(g_bright_sl, 10, 100);
     lv_slider_set_value(g_bright_sl, s.brightness, LV_ANIM_OFF);
     lv_obj_set_style_bg_color(g_bright_sl, lv_color_hex(UI_THEME.track), LV_PART_MAIN);
@@ -2128,119 +2209,77 @@ static void settings_fill(void)
     lv_obj_set_style_bg_color(g_bright_sl, lv_color_hex(UI_TEXT), LV_PART_KNOB);
     lv_obj_set_style_bg_opa(g_bright_sl, LV_OPA_COVER, LV_PART_KNOB);
     lv_obj_set_style_pad_all(g_bright_sl, 8, LV_PART_KNOB);           /* a 28 px knob on the 12 px track */
-    lv_obj_set_ext_click_area(g_bright_sl, 18);
+    lv_obj_set_ext_click_area(g_bright_sl, 26);
     lv_obj_remove_flag(g_bright_sl, LV_OBJ_FLAG_GESTURE_BUBBLE);      /* a fast drag is not the app-to-app swipe */
     lv_obj_add_event_cb(g_bright_sl, bright_cb, LV_EVENT_VALUE_CHANGED, NULL);
     lv_obj_add_event_cb(g_bright_sl, bright_cb, LV_EVENT_RELEASED, NULL);
     lv_obj_add_event_cb(g_bright_sl, bright_cb, LV_EVENT_PRESS_LOST, NULL);
-    y += 40;
+    y += 22 + ST_H + ST_GAP;
     static const char *const TH[] = {"Auto", "Light", "Dark"};
-    at(ui_caption(g_list, "THEME (HOME AND APPS)"), 4, y); y += 22;
-    segmented(g_list, y, TH, 3, s.theme, SEG_THEME, NULL); y += 54;
-    at(ui_label(g_list, F14, UI_MUTED, "Auto: Light 06:00 to 17:00 once the clock is set, else Dark."), 4, y); y += 30;
+    at(ui_caption(g_list, "THEME (HOME AND APPS)"), 0, y); y += 22;
+    segmented(g_list, y, TH, 3, s.theme, SEG_THEME, NULL); y += ST_H + 6;
+    st_note(g_list, y, "Auto: Light 06:00 to 17:00 once the clock is set, else Dark."); y += 28;
     static const char *const MD[2] = {"R.E.V", "E.V"};    /* MODEL_SEG order */
-    at(ui_caption(g_list, "MODEL"), 4, y); y += 22;
+    at(ui_caption(g_list, "MODEL"), 0, y); y += 22;
     int act = ml_model_active(), msel = g_model_req >= 0 ? g_model_req : act;
-    segmented(g_list, y, MD, 2, MODEL_SEG[0] == msel ? 0 : 1, SEG_MODEL, g_mseg); y += 54;
+    segmented(g_list, y, MD, 2, MODEL_SEG[0] == msel ? 0 : 1, SEG_MODEL, g_mseg); y += ST_H + 6;
     g_model_shown = msel;
-    g_model = at(ui_label(g_list, F14, UI_MUTED, ""), 4, y);
-    lv_obj_set_width(g_model, 380);
-    lv_label_set_long_mode(g_model, LV_LABEL_LONG_WRAP);
+    g_model = st_note(g_list, y, "");
     ml_stats_t mst;
     ml_get_stats(&mst);
     model_show(act, mst.ready);
     y += 46;
-    at(ui_caption(g_list, "CLOCK"), 4, y); y += 22;
-    g_clk_time = at(ui_label(g_list, F20, UI_TEXT, "--"), 4, y); y += 30;
-    g_clk_src = at(ui_label(g_list, F14, UI_MUTED, ""), 4, y);
-    lv_obj_set_width(g_clk_src, 380);
+    at(ui_caption(g_list, "CLOCK"), 0, y); y += 22;
+    g_clk_time = at(ui_label(g_list, F20, UI_TEXT, "--"), 0, y); y += 30;
+    g_clk_src = at(ui_label(g_list, F14, UI_MUTED, ""), 0, y);
+    lv_obj_set_width(g_clk_src, ST_W);
     lv_label_set_long_mode(g_clk_src, LV_LABEL_LONG_DOT);
     y += 26;
-    text_btn(g_list, LV_SYMBOL_EDIT " Set clock", 4, y, 380, UI_ORANGE, clock_cb);
-    y += 60;
+    text_btn(g_list, LV_SYMBOL_EDIT " Set clock", 0, y, ST_W, UI_ORANGE, clock_cb);
+    y += ST_H + ST_GAP + 6;
     status_get(&ck_st);
     clock_show(&ck_st);
-    at(ui_caption(g_list, "HOME APPS (TAP TO SHOW / HIDE) AND ORDER"), 4, y); y += 24;
-    for (int i = 0; i < s.n; i++) {
-        int app = s.order[i];
-        bool on = !(s.hidden & (1u << app)), settings = app == ui_app_count() - 1;
-        lv_obj_t *c = lv_obj_create(g_list);
-        lv_obj_remove_style_all(c);
-        lv_obj_set_pos(c, 4, y);
-        lv_obj_set_size(c, 270, 40);
-        lv_obj_set_style_radius(c, LV_RADIUS_CIRCLE, 0);
-        lv_obj_set_style_border_width(c, 1, 0);
-        lv_obj_set_style_border_color(c, lv_color_hex(on ? UI_THEME.section[ui_app(app)->section] : UI_BORDER), 0);
-        lv_obj_set_style_bg_color(c, lv_color_hex(on ? UI_CARD : UI_BG), 0);
-        lv_obj_set_style_bg_opa(c, LV_OPA_COVER, 0);
-        lv_obj_remove_flag(c, LV_OBJ_FLAG_SCROLLABLE);
-        if (!settings) { lv_obj_add_flag(c, LV_OBJ_FLAG_CLICKABLE); lv_obj_add_event_cb(c, chip_cb, LV_EVENT_CLICKED, (void *)(intptr_t)app); }
-        lv_obj_t *l = ui_label(c, F16, on ? UI_TEXT : UI_MUTED, "");
-        ui_set_fmt(l, "%s  %s%s", ui_app(app)->glyph, ui_app(app)->name, settings ? " (always)" : on ? "" : "   hidden");
-        lv_obj_align(l, LV_ALIGN_LEFT_MID, 14, 0);
-        small_btn(g_list, LV_SYMBOL_UP, 284, y, move_cb, i * 2);
-        small_btn(g_list, LV_SYMBOL_DOWN, 334, y, move_cb, i * 2 + 1);
-        y += 46;
-    }
-    y += 8;
-    at(ui_caption(g_list, "VALUE UNDER THE SPEED"), 4, y); y += 22;
-    lv_obj_t *d = lv_dropdown_create(g_list);
-    lv_obj_set_pos(d, 4, y);
-    lv_obj_set_width(d, 380);
-    lv_dropdown_set_options(d, "Fuel rate (L/h)\nFuel use now (L/100 km)\nEconomy (units below)\nSpeed\nEngine speed\nTorque");
-    lv_dropdown_set_selected(d, s.widget);
-    style_dropdown(d);
-    lv_obj_add_event_cb(d, widget_cb, LV_EVENT_VALUE_CHANGED, NULL);
-    y += 56;
     static const char *const UN[] = {"km/L", "L/100 km"};
-    at(ui_caption(g_list, "ECONOMY UNITS"), 4, y); y += 22;
-    segmented(g_list, y, UN, 2, s.econ_l100 ? 1 : 0, SEG_UNITS, NULL); y += 58;
+    at(ui_caption(g_list, "ECONOMY UNITS"), 0, y); y += 22;
+    segmented(g_list, y, UN, 2, s.econ_l100 ? 1 : 0, SEG_UNITS, NULL); y += ST_H + ST_GAP + 6;
     static const char *const OFF[] = {"Never", "10 s", "20 s", "60 s"};
     int sel = 0;
     for (int i = 0; i < 4; i++) if (OFF_S[i] == s.screen_off_s) sel = i;
-    at(ui_caption(g_list, "SCREEN OFF AFTER"), 4, y); y += 22;
-    segmented(g_list, y, OFF, 4, sel, SEG_OFF, NULL); y += 58;
-    at(ui_caption(g_list, "OBD ADAPTER (BLUETOOTH)"), 4, y); y += 22;
-    g_ble = at(ui_label(g_list, F16, UI_TEXT, "--"), 4, y); y += 28;
-    text_btn(g_list, LV_SYMBOL_REFRESH " Search now", 4, y, 186, UI_ORANGE, search_cb);
-    text_btn(g_list, LV_SYMBOL_CLOSE " Forget", 198, y, 186, UI_RED, forget_cb);
-    y += 60;
-    at(ui_caption(g_list, "WI-FI CLOCK"), 4, y); y += 22;
-    g_wifi = at(ui_label(g_list, F16, UI_TEXT, "--"), 4, y); y += 28;
-#if CONFIG_OCM_WIFI_CLOCK_SYNC
-    text_btn(g_list, LV_SYMBOL_WIFI " Sync clock now", 4, y, 380, UI_ORANGE, wifi_cb);
-    y += 60;
-    at(ui_label(g_list, F14, UI_MUTED, "Networks are added from the desktop app."), 4, y); y += 30;
-#else
-    at(ui_label(g_list, F14, UI_MUTED, "Wi-Fi is compiled out of this firmware."), 4, y); y += 30;
-#endif
+    at(ui_caption(g_list, "SCREEN OFF AFTER"), 0, y); y += 22;
+    segmented(g_list, y, OFF, 4, sel, SEG_OFF, NULL); y += ST_H + ST_GAP + 6;
+    at(ui_caption(g_list, "HOME APPS ORDER"), 0, y); y += 22;
+    st_note(g_list, y, "Up and Down move an app one place on Home. The list follows the app."); y += 40;
+    y = ord_rows(g_list, y, &s) + 6;
+    at(ui_caption(g_list, "OBD ADAPTER (BLUETOOTH)"), 0, y); y += 22;
+    g_ble = at(ui_label(g_list, F16, UI_TEXT, "--"), 0, y); y += 28;
+    int half = (ST_W - ST_GAP) / 2;
+    text_btn(g_list, LV_SYMBOL_REFRESH " Search now", 0, y, half, UI_ORANGE, search_cb);
+    text_btn(g_list, LV_SYMBOL_CLOSE " Forget", half + ST_GAP, y, half, UI_RED, forget_cb);
+    y += ST_H + ST_GAP + 6;
 #if CONFIG_OCM_SWIPE_INTENT
-    at(ui_caption(g_list, "SMART SWIPE (KEEPS ITSELF IF FASTER)"), 4, y); y += 22;
-    g_swipe = at(ui_label(g_list, F14, UI_TEXT, "--"), 4, y);
-    lv_obj_set_width(g_swipe, 380);
-    lv_label_set_long_mode(g_swipe, LV_LABEL_LONG_WRAP);
+    at(ui_caption(g_list, "SMART SWIPE (KEEPS ITSELF IF FASTER)"), 0, y); y += 22;
+    g_swipe = st_note(g_list, y, "--");
+    ui_set_color(g_swipe, UI_TEXT);
     y += 46;
 #endif
-    at(ui_caption(g_list, "STORAGE"), 4, y); y += 22;
-    g_store = at(ui_label(g_list, F16, UI_TEXT, "--"), 4, y); y += 28;
-    text_btn(g_list, LV_SYMBOL_WARNING " Format storage", 4, y, 380, UI_RED, format_cb);
-    y += 56;
-    lv_obj_t *fn = at(ui_label(g_list, F14, UI_MUTED, "Erases drive logs, summaries and drives.csv. Learned " LEARNED_STATE " state, "
-                                                      "clock and config files are copied to RAM and written back."), 4, y);
-    lv_obj_set_width(fn, 380);
-    lv_label_set_long_mode(fn, LV_LABEL_LONG_WRAP);
+    at(ui_caption(g_list, "STORAGE"), 0, y); y += 22;
+    g_store = at(ui_label(g_list, F16, UI_TEXT, "--"), 0, y); y += 28;
+    text_btn(g_list, LV_SYMBOL_WARNING " Format storage", 0, y, ST_W, UI_RED, format_cb);
+    y += ST_H + 6;
+    st_note(g_list, y, "Erases drive logs, summaries and drives.csv. Learned " LEARNED_STATE " state, "
+                       "clock and config files are copied to RAM and written back.");
     y += 64;
-    at(ui_caption(g_list, "FIRMWARE AND BOARD"), 4, y); y += 22;
+    at(ui_caption(g_list, "FIRMWARE AND BOARD"), 0, y); y += 22;
     esp_chip_info_t ci;
     esp_chip_info(&ci);
     uint32_t flash = 0;
     esp_flash_get_size(NULL, &flash);
-    lv_obj_t *info = at(ui_label(g_list, F14, UI_TEXT, ""), 4, y);
+    lv_obj_t *info = at(ui_label(g_list, F14, UI_TEXT, ""), 0, y);
     ui_set_fmt(info, "%s\nESP-IDF %s\nESP32-S31 rev %d.%d, %d cores\nFlash %lu MB, PSRAM %u MB\nESP-Mosaico V1.2", CARMIND_FW_STRING,
                esp_get_idf_version(), ci.revision / 100, ci.revision % 100, ci.cores, (unsigned long)(flash >> 20),
                (unsigned)(esp_psram_get_size() >> 20));
     y += 104;
-    at(ui_label(g_list, F14, UI_MUTED, "Saved on the board (NVS). Function key: home."), 4, y);
+    st_note(g_list, y, "Saved on the board (NVS). Wi-Fi networks: the Wi-Fi app. Function key: home.");
 }
 
 static void settings_create(lv_obj_t *p)
@@ -2257,8 +2296,11 @@ static void settings_create(lv_obj_t *p)
 
 static void settings_destroy(void)
 {
-    g_list = g_ble = g_wifi = g_bright_sl = g_bright_val = g_store = g_swipe = g_clk_time = g_clk_src = g_model = NULL;
+    g_list = g_ble = g_bright_sl = g_bright_val = g_store = g_swipe = g_clk_time = g_clk_src = g_model = NULL;
     g_mseg[0] = g_mseg[1] = NULL;
+    memset(g_seg, 0, sizeof g_seg);
+    g_ord_n = 0;
+    g_ord_mark = -1;
     g_model_err[0] = 0;                                  /* a refusal is shown once, not on every visit */
     if (ck_page) lv_async_call(ck_close, NULL);
 }
@@ -2279,13 +2321,162 @@ static void settings_update(const ui_snap_t *s)
         if (s->fat.ok) ui_set_fmt(g_store, "%lu of %lu KB free", (unsigned long)s->fat.free_kb, (unsigned long)s->fat.total_kb);
         else ui_set_text(g_store, "measuring");
     }
-    if (g_wifi) {
-        static const char *const W[] = {"off", "scanning", "connecting", "connected", "idle between clock syncs"};
-        ui_set_fmt(g_wifi, "%s%s", st->wifi <= WIFI_ST_IDLE ? W[st->wifi] : "?", st->time_synced ? ", clock synced" : ", clock not synced");
-    }
     clock_show(st);
     model_poll();
     model_show(s->model, s->ml.ready);
+}
+
+/* ======================= 13. Wi-Fi ======================= */
+/* The networks the board uses to set its clock (and, paired with the desktop app, to send data while parked): the
+   status, a "Sync clock now" button, the saved list with a Forget on each, and where new networks come from. Moved
+   here from Settings (S1). The list is a copy the board task makes (wifi_creds is the Wi-Fi task's); names are shown
+   on this screen only. */
+static lv_obj_t *w_list, *w_state, *w_clock, *w_note, *w_rows, *w_det[MB_WIFI_NETS];
+static mosaico_wifi_list_t w_copy;                       /* LVGL task: the last copy shown */
+static uint32_t w_gen;
+static int64_t w_asked_ms;
+static char w_forget_ssid[33];
+
+static void w_do_forget(void *arg)
+{
+    (void)arg;
+    if (!mosaico_board_wifi_forget(w_forget_ssid)) ui_confirm("The board is busy. Try again in a moment.", "OK", NULL, NULL);
+}
+
+static void w_forget_cb(lv_event_t *e)
+{
+    int i = (int)(intptr_t)lv_event_get_user_data(e);
+    if (i < 0 || i >= w_copy.n) return;
+    strlcpy(w_forget_ssid, w_copy.net[i].ssid, sizeof w_forget_ssid);
+    static char q[96];
+    snprintf(q, sizeof q, "Forget %.32s? The board stops using it to set the clock.", w_forget_ssid);
+    ui_confirm(q, "Forget", w_do_forget, NULL);
+}
+
+#if CONFIG_OCM_WIFI_CLOCK_SYNC
+static void w_sync_cb(lv_event_t *e) { (void)e; mosaico_board_request(MB_WIFI_NOW, 0); }
+#endif
+
+static void w_detail(int i)                              /* the line under a network name, changed in place */
+{
+    lv_obj_t *d = w_det[i];
+    if (w_copy.net[i].fails) ui_set_fmt(d, "%u failed connect%s", w_copy.net[i].fails, w_copy.net[i].fails == 1 ? "" : "s");
+    else if (w_copy.net[i].rssi > -127) ui_set_fmt(d, "seen at %d dBm", w_copy.net[i].rssi);
+    else ui_set_text(d, "not seen since the start");
+    ui_set_color(d, w_copy.net[i].fails ? UI_WARN : UI_MUTED);
+}
+
+static void w_fill_rows(void)
+{
+    lv_obj_clean(w_rows);                                  /* at most 8 rows, only when the saved list changed */
+    memset(w_det, 0, sizeof w_det);
+    if (!w_copy.n) {
+        st_note(w_rows, 0, "No network saved yet.");
+        lv_obj_set_height(w_rows, 24);
+        return;
+    }
+    int y = 0;
+    for (int i = 0; i < w_copy.n; i++, y += ST_H + ST_GAP) {
+        lv_obj_t *r = lv_obj_create(w_rows);
+        lv_obj_remove_style_all(r);
+        lv_obj_set_pos(r, 0, y);
+        lv_obj_set_size(r, ST_W, ST_H);
+        lv_obj_set_style_radius(r, UI_THEME.radius_row, 0);
+        lv_obj_set_style_bg_color(r, lv_color_hex(UI_CARD), 0);
+        lv_obj_set_style_bg_opa(r, LV_OPA_COVER, 0);
+        lv_obj_set_style_border_width(r, 1, 0);
+        lv_obj_set_style_border_color(r, lv_color_hex(UI_BORDER), 0);
+        lv_obj_remove_flag(r, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_t *n = ui_label(r, F16, UI_TEXT, w_copy.net[i].ssid);
+        lv_obj_set_width(n, ST_W - 140 - 28);
+        lv_label_set_long_mode(n, LV_LABEL_LONG_DOT);
+        lv_obj_set_pos(n, 14, 10);
+        w_det[i] = ui_label(r, F14, UI_MUTED, "");
+        w_detail(i);
+        lv_obj_set_pos(w_det[i], 14, 36);
+        lv_obj_t *b = lv_button_create(r);
+        lv_obj_set_pos(b, ST_W - 140, 0);
+        lv_obj_set_size(b, 140, ST_H);
+        lv_obj_set_style_bg_color(b, lv_color_hex(UI_THEME.track), 0);
+        lv_obj_set_style_bg_color(b, st_pressed(), LV_STATE_PRESSED);
+        lv_obj_set_style_border_width(b, UI_THEME.border_card, 0);
+        lv_obj_set_style_border_color(b, lv_color_hex(UI_RED), 0);
+        lv_obj_set_style_radius(b, UI_THEME.radius_row, 0);
+        lv_obj_set_style_shadow_width(b, 0, 0);
+        lv_obj_add_event_cb(b, w_forget_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+        lv_obj_center(ui_label(b, F16, UI_RED, LV_SYMBOL_CLOSE " Forget"));
+    }
+    lv_obj_set_height(w_rows, y - ST_GAP);
+}
+
+static void wifi_create(lv_obj_t *p)
+{
+    ui_header(p, "Wi-Fi");
+    w_list = lv_obj_create(p);
+    lv_obj_remove_style_all(w_list);
+    lv_obj_set_pos(w_list, UI_MARGIN + 8, Y0);
+    lv_obj_set_size(w_list, CW - 16, UI_H - Y0 - UI_MARGIN);
+    lv_obj_set_scroll_dir(w_list, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(w_list, LV_SCROLLBAR_MODE_ACTIVE);
+    lv_obj_set_flex_flow(w_list, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(w_list, 8, 0);
+    ui_caption(w_list, "STATUS");
+    w_state = ui_label(w_list, F20, UI_TEXT, "--");
+    lv_obj_set_width(w_state, ST_W);
+    lv_label_set_long_mode(w_state, LV_LABEL_LONG_WRAP);
+    w_clock = ui_label(w_list, F14, UI_MUTED, "");
+#if CONFIG_OCM_WIFI_CLOCK_SYNC
+    lv_obj_t *sb = text_btn(w_list, LV_SYMBOL_WIFI " Sync clock now", 0, 0, ST_W, UI_ORANGE, w_sync_cb);
+    lv_obj_set_style_margin_top(sb, 4, 0);
+#else
+    ui_label(w_list, F14, UI_MUTED, "Wi-Fi is compiled out of this firmware.");
+#endif
+    lv_obj_t *cap = ui_caption(w_list, "SAVED NETWORKS");
+    lv_obj_set_style_margin_top(cap, 10, 0);
+    w_rows = lv_obj_create(w_list);
+    lv_obj_remove_style_all(w_rows);
+    lv_obj_set_size(w_rows, ST_W, 24);
+    lv_obj_remove_flag(w_rows, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+    w_note = ui_label(w_list, F14, UI_GREEN, "");
+    lv_obj_set_width(w_note, ST_W);
+    lv_label_set_long_mode(w_note, LV_LABEL_LONG_WRAP);
+    lv_obj_t *n = ui_label(w_list, F14, UI_MUTED, "Networks are added from the desktop app (up to 8). The board uses them to set "
+                                                  "its clock and, when paired with the app, to send new data while parked.");
+    lv_obj_set_width(n, ST_W);
+    lv_label_set_long_mode(n, LV_LABEL_LONG_WRAP);
+    mosaico_board_wifi_list(&w_copy);
+    w_gen = w_copy.gen;
+    w_fill_rows();
+    ui_set_text(w_note, w_copy.note);
+    mosaico_board_request(MB_WIFI_LIST, 0);              /* a fresh copy (the desktop app may have added one) */
+    w_asked_ms = esp_timer_get_time() / 1000;
+}
+
+static void wifi_destroy(void) { w_list = w_state = w_clock = w_note = w_rows = NULL; memset(w_det, 0, sizeof w_det); }
+
+static void wifi_update(const ui_snap_t *s)
+{
+    if (!w_list) return;
+    const app_status_t *st = s->st;
+    switch (st->wifi) {
+    case WIFI_ST_CONNECTED:  ui_set_fmt(w_state, "Connected to %.32s, %d dBm", st->wifi_ssid, st->wifi_rssi); break;
+    case WIFI_ST_CONNECTING: ui_set_fmt(w_state, "Connecting to %.32s", st->wifi_ssid); break;
+    case WIFI_ST_SCANNING:   ui_set_text(w_state, "Looking for a saved network"); break;
+    case WIFI_ST_IDLE:       ui_set_text(w_state, "Idle between clock syncs"); break;
+    default:                 ui_set_text(w_state, w_copy.n ? "Off: restart the board to use the saved networks" : "Off: no network saved"); break;
+    }
+    ui_set_text(w_clock, st->time_synced ? "The clock is synced over Wi-Fi." : "The clock is not synced over Wi-Fi yet.");
+    if (s->now_ms - w_asked_ms >= 5000) { mosaico_board_request(MB_WIFI_LIST, 0); w_asked_ms = s->now_ms; }
+    mosaico_wifi_list_t c;
+    mosaico_board_wifi_list(&c);
+    if (c.gen == w_gen) return;
+    w_gen = c.gen;
+    bool rows = c.n != w_copy.n;                           /* a network added or forgotten: new rows */
+    for (int i = 0; !rows && i < c.n; i++) rows = strcmp(c.net[i].ssid, w_copy.net[i].ssid) != 0;
+    w_copy = c;
+    if (rows) w_fill_rows();
+    else for (int i = 0; i < c.n; i++) if (w_det[i]) w_detail(i);   /* signal and failures: the label only */
+    ui_set_text(w_note, c.note);
 }
 
 /* ======================= registry ======================= */
@@ -2303,6 +2494,7 @@ static const ocm_app_t APPS[] = {          /* launcher order and tile colours as
     { "faults",   "Faults",   LV_SYMBOL_WARNING,   faults_create,   faults_update,   faults_destroy,   1000, SEC_RED,   0xFD5A4A, 0xC92A2A, 0, &ocm_icon_faults_52, NULL, NULL },
     { "board",    "Board",    LV_SYMBOL_SD_CARD,   board_create,    board_update,    NULL,             1000, SEC_AQUA,  0x72ECE4, 0x087F5B, 0, &ocm_icon_board_52, NULL, NULL },
     { "files",    "Files",    LV_SYMBOL_DIRECTORY, files_create,    files_update,    files_destroy,    500, SEC_AQUA,   0xFFB38A, 0x3B5BDB, 0, &ocm_icon_files_52, NULL, NULL },
+    { "wifi",     "Wi-Fi",    LV_SYMBOL_WIFI,      wifi_create,     wifi_update,     wifi_destroy,     1000, SEC_CYAN,  0x66D9E8, 0x0B7285, 0, &ocm_icon_wifi_52, NULL, NULL },   /* S1: just before Settings */
     { "settings", "Settings", LV_SYMBOL_SETTINGS,  settings_create, settings_update, settings_destroy, 1000, SEC_VIOLET, 0xB8B8B8, 0x5F6368, 0, &ocm_icon_settings_52, NULL, NULL },   /* keep last */
 };
 

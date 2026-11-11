@@ -25,12 +25,27 @@ typedef struct { bool ok; uint32_t total_kb, free_kb; } mosaico_storage_t;
 /* Work the UI hands to the board task (internal-RAM stack, lowest priority), so the LVGL task never touches FatFs, NVS,
    BLE or Wi-Fi itself. Never blocks: false when the queue (8 deep) is full. */
 typedef enum { MB_FILES_SCAN = 0, MB_FILES_DETAIL, MB_FILES_DELETE, MB_FILES_DELETE_ALL, MB_BLE_FORGET, MB_BLE_SEARCH,
-               MB_WIFI_NOW, MB_FORMAT, MB_BUZZ, MB_CLOCK_SET, MB_MODEL_SET } mb_cmd_t;
+               MB_WIFI_NOW, MB_FORMAT, MB_BUZZ, MB_CLOCK_SET, MB_MODEL_SET, MB_SETTINGS_KICK, MB_WIFI_LIST,
+               MB_WIFI_FORGET } mb_cmd_t;
 bool mosaico_board_request(mb_cmd_t cmd, uint32_t arg);
 /* Settings > Model (MB_MODEL_SET, arg = ml_model_id_t): the board task switches with ml_select_model, the path the USB door's
    MODEL SET takes, after the same "drive running" check. gen counts finished requests; why is the refusal when ok is false. */
 typedef struct { uint32_t gen; bool ok; int model; char why[80]; } mosaico_model_result_t;
 void mosaico_board_model_result(mosaico_model_result_t *out);
+
+/* the Wi-Fi app: the saved networks (wifi_creds), copied by the board task on MB_WIFI_LIST and after a forget; gen
+   counts the copies. Network names are shown on the screen only, never logged. */
+#define MB_WIFI_NETS 8                                 /* WIFI_CREDS_MAX */
+typedef struct {
+    uint32_t gen;
+    int      n;
+    struct { char ssid[33]; int8_t rssi; uint8_t fails; } net[MB_WIFI_NETS];
+    char     note[72];                                 /* the last forget's result, "" before one */
+} mosaico_wifi_list_t;
+void mosaico_board_wifi_list(mosaico_wifi_list_t *out);
+/* forget one saved network (the board task removes it with wifi_creds_remove, the USB door's WIFI-FORGET path); refused
+   while the Wi-Fi task scans or is connected, because it holds a pointer into the list then. False when the queue is full. */
+bool mosaico_board_wifi_forget(const char *ssid);
 
 void mosaico_board_init(void);                     /* after the console, before the display */
 i2c_master_bus_handle_t mosaico_i2c_bus(void);
@@ -38,7 +53,8 @@ bool mosaico_gauge_read(mosaico_gauge_t *g);       /* last reading (refreshed ev
 bool mosaico_gauge_uncalibrated(const mosaico_gauge_t *g);
 /* free space of the log FAT, measured by the board task every 10 s (the UI never calls into FatFs) */
 void mosaico_storage_read(mosaico_storage_t *out);
-/* UI settings blob: the board task (internal-RAM stack) writes it to NVS when it changed */
+/* UI settings blob: the board task (internal-RAM stack) writes it to NVS 500 ms after the last change, at most 3 s after
+   the first one of a burst (ui_settings_logic.h), so a burst of taps is one write and the LVGL task never waits on flash */
 void mosaico_settings_save_request(const void *blob, size_t n);
 bool mosaico_settings_load(void *blob, size_t n);
 /* CONFIG_OCM_SWIPE_INTENT: the smart-swipe learner blob (swipe_intent.h, SI_BLOB_BYTES), NVS "ocm_ui"/"si", written
