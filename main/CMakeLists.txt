@@ -5,6 +5,9 @@ if(ocm_target STREQUAL "esp32s31")
     set(ocm_board_reqs esp_driver_i2c wear_levelling esp_pm esp_psram spi_flash esp_mm)
     list(APPEND ocm_board_srcs "swipe_intent.c")                   # smart swipe (CONFIG_OCM_SWIPE_INTENT)
     list(APPEND ocm_board_srcs "mosaico_clock.c" "clock_set.c")    # Settings > Clock: set the clock by hand
+    if(CONFIG_OCM_NAND_LOGS)                                       # drive logs on the 128 MB SPI NAND (F1)
+        list(APPEND ocm_board_srcs "nand_store.c" "log_store.c" "log_move.c")
+    endif()
     list(APPEND ocm_board_reqs esp_app_format)                    # its firmware tag: the app ELF SHA
     set(ocm_ml_dir "${CMAKE_CURRENT_LIST_DIR}/../ml/onboard_s31")   # CarMind E.V (ev/) and R.E.V (rev/) re-quantized for the S31
 else()

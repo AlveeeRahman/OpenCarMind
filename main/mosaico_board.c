@@ -20,6 +20,9 @@
 #include "freertos/queue.h"
 #include "mosaico_clock.h"
 #include "ml_infer.h"
+#if CONFIG_OCM_NAND_LOGS
+#include "nand_store.h"
+#endif
 
 static const char *TAG = "mosaico";
 
@@ -80,9 +83,13 @@ static void do_request(const mb_req_t *r)
         uint32_t fr = 0;
         int kept = 0;
         if (elm_drive_active()) snprintf(note, sizeof note, "not formatted: a drive is active");
-        else if (sdlog_format_storage(&fr, &kept, why, sizeof why) == ESP_OK)
+        else if (sdlog_format_storage(&fr, &kept, why, sizeof why) == ESP_OK) {
+#if CONFIG_OCM_NAND_LOGS
+            if (nand_store_mounted()) snprintf(note, sizeof note, "NAND drive store formatted: %lu KB free", (unsigned long)fr);
+            else
+#endif
             snprintf(note, sizeof note, "formatted: %lu KB free, %d state files kept", (unsigned long)fr, kept);
-        else snprintf(note, sizeof note, "not formatted: %s", why);
+        } else snprintf(note, sizeof note, "not formatted: %s", why);
         ESP_LOGI(TAG, "format storage: %s", note);
         mosaico_files_note(note);
         mosaico_files_scan();
@@ -265,6 +272,17 @@ static void storage_report(void)
     ESP_LOGI(TAG, "FAT: %llu of %llu KB free, %d files holding %llu KB", (unsigned long long)(free_b / 1024),
              (unsigned long long)(total / 1024), files, (unsigned long long)(bytes / 1024));
     for (int i = 0; i < 5 && big[i].bytes; i++) ESP_LOGI(TAG, "FAT largest %d: %s %lu B", i + 1, big[i].name, (unsigned long)big[i].bytes);
+#if CONFIG_OCM_NAND_LOGS
+    ESP_LOGI(TAG, "NAND: %s, %s", nand_store_describe(), nand_store_mounted() ? "mounted" : "NOT mounted");
+    if (nand_store_info(&total, &free_b)) {
+        memset(big, 0, sizeof big);
+        files = 0;
+        bytes = 0;
+        walk(CONFIG_OCM_NAND_MOUNT_POINT, 0, big, &files, &bytes);
+        ESP_LOGI(TAG, "NAND FAT: %llu of %llu KB free, %d files holding %llu KB", (unsigned long long)(free_b / 1024),
+                 (unsigned long long)(total / 1024), files, (unsigned long long)(bytes / 1024));
+    }
+#endif
 }
 
 /* period 2 s, lowest priority: the gauge changes slowly and the I2C bus is shared with the touch controller */
@@ -287,6 +305,13 @@ static void board_task(void *arg)
             uint64_t total = 0, free_b = 0;
             mosaico_storage_t f = { .ok = esp_vfs_fat_info(CONFIG_SDLOG_MOUNT_POINT, &total, &free_b) == ESP_OK };
             f.total_kb = (uint32_t)(total / 1024); f.free_kb = (uint32_t)(free_b / 1024);
+#if CONFIG_OCM_NAND_LOGS
+            if (nand_store_info(&total, &free_b)) {
+                f.nand = true;
+                f.flash_total_kb = f.total_kb; f.flash_free_kb = f.free_kb;
+                f.total_kb = (uint32_t)(total / 1024); f.free_kb = (uint32_t)(free_b / 1024);
+            }
+#endif
             portENTER_CRITICAL(&s_mux);
             s_fat = f;
             portEXIT_CRITICAL(&s_mux);

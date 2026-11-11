@@ -21,7 +21,7 @@
 
 static const char *TAG = "drive";
 #define HARD_BRAKE_BAR 40.0f            /* model brake-pressure estimate counted as a hard brake (assumption, see report) */
-#define DRIVES_CSV SDLOG_DIR "/drives.csv"
+#define DRIVES_CSV SDLOG_DRIVES_CSV                 /* the drive store: the NAND when it is mounted */
 
 static SemaphoreHandle_t s_mx;
 EXT_RAM_BSS_ATTR static md_summary_t s_pub, s_work;
@@ -156,7 +156,7 @@ static void rec_finish(void)
              (double)w->cls_share[2], (double)w->cls_share[3], w->brake_events, w->hard_brakes, (double)HARD_BRAKE_BAR
              );
     char path[96];
-    snprintf(path, sizeof path, SDLOG_SESSIONS_DIR "/s%06lu.sum.json", (unsigned long)w->session);
+    SDLOG_DRIVE_PATH(path, "/s%06lu.sum.json", (unsigned long)w->session);
     bool ok = sdlog_ok() && sdlog_save_text_atomic(path, j);
     struct stat st;
     bool fresh = stat(DRIVES_CSV, &st) != 0 || st.st_size == 0;
@@ -170,7 +170,7 @@ static void rec_finish(void)
     }
     ESP_LOGI(TAG, "drive summary s%06lu: %ld s, %.1f km, %.2f L, %d hard brakes; %s %s, drives.csv %s",
              (unsigned long)w->session, (long)w->dur_s, (double)w->km, (double)w->fuel_l, w->hard_brakes,
-             path + strlen(SDLOG_SESSIONS_DIR) + 1, ok ? "written" : "NOT written", f ? "appended" : "NOT appended");
+             strrchr(path, '/') + 1, ok ? "written" : "NOT written", f ? "appended" : "NOT appended");
     xSemaphoreTake(s_mx, portMAX_DELAY);
     uint32_t g = s_pub.gen + 1;
     s_pub = *w;

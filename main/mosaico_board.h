@@ -20,7 +20,8 @@ typedef struct {
     int  tte_min;     /* TimeToEmpty() 0x16, minutes; 65535 = not available (standard TI command; UNVERIFIED on this chip) */
 } mosaico_gauge_t;
 
-typedef struct { bool ok; uint32_t total_kb, free_kb; } mosaico_storage_t;
+/* total/free = the drive store (the NAND when nand is true, else the flash FAT); flash_* = the flash FAT with the state files */
+typedef struct { bool ok; uint32_t total_kb, free_kb; bool nand; uint32_t flash_total_kb, flash_free_kb; } mosaico_storage_t;
 
 /* Work the UI hands to the board task (internal-RAM stack, lowest priority), so the LVGL task never touches FatFs, NVS,
    BLE or Wi-Fi itself. Never blocks: false when the queue (8 deep) is full. */

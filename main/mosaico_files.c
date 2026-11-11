@@ -10,6 +10,9 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "sdlog.h"
+#if CONFIG_OCM_NAND_LOGS
+#include "nand_store.h"
+#endif
 
 static const char *TAG = "files";
 static SemaphoreHandle_t s_mx;
@@ -75,14 +78,36 @@ void mosaico_files_scan(void)
     if (sdlog_ok() && esp_vfs_fat_info(CONFIG_SDLOG_MOUNT_POINT, &total, &free_b) == ESP_OK) {
         s_work.total_kb = (uint32_t)(total / 1024); s_work.free_kb = (uint32_t)(free_b / 1024);
     }
+#if CONFIG_OCM_NAND_LOGS
+    if (sdlog_ok() && nand_store_info(&total, &free_b)) {
+        s_work.nand = true;
+        s_work.flash_total_kb = s_work.total_kb; s_work.flash_free_kb = s_work.free_kb;
+        s_work.total_kb = (uint32_t)(total / 1024); s_work.free_kb = (uint32_t)(free_b / 1024);
+    }
+    const char *dirs[2];
+    int nd = sdlog_ok() ? sdlog_drive_dirs(dirs) : 0;
+    if (!nd) { publish_busy(false); return; }
+#else
     DIR *d = sdlog_ok() ? opendir(SDLOG_SESSIONS_DIR) : NULL;
     if (!d) { publish_busy(false); return; }
+#endif
     /* every session id with its file count and bytes; the newest MF_MAX are kept */
     EXT_RAM_BSS_ATTR static mf_session_t all[256];
     int n = 0;
     uint32_t cur = sdlog_session_id();
+#if CONFIG_OCM_NAND_LOGS
+    for (int dk = 0; dk < nd; dk++) {                  /* the NAND, then drives still on the flash FAT */
+    DIR *d = opendir(dirs[dk]);
+    for (struct dirent *e; d && (e = readdir(d)) != NULL;) {
+        if (!session_name_valid(e->d_name)) continue;
+        char other[96];
+        struct stat ost;
+        snprintf(other, sizeof other, "%s/%.20s", dirs[0], e->d_name);
+        if (dk > 0 && stat(other, &ost) == 0) continue;  /* on both stores: counted once */
+#else
     for (struct dirent *e; (e = readdir(d)) != NULL;) {
         if (!session_name_valid(e->d_name)) continue;
+#endif
         uint32_t id = (uint32_t)strtoul(e->d_name + 1, NULL, 10);
         int k = 0;
         while (k < n && all[k].id != id) k++;
@@ -94,19 +119,33 @@ void mosaico_files_scan(void)
         }
         char path[96];
         struct stat st;
+#if CONFIG_OCM_NAND_LOGS
+        snprintf(path, sizeof path, "%s/%.20s", dirs[dk], e->d_name);
+        if (stat(path, &st) == 0) all[k].bytes += (uint32_t)st.st_size;
+        all[k].nfiles++;
+    }
+    if (d) closedir(d);
+    }
+#else
         snprintf(path, sizeof path, SDLOG_SESSIONS_DIR "/%.20s", e->d_name);
         if (stat(path, &st) == 0) all[k].bytes += (uint32_t)st.st_size;
         all[k].nfiles++;
     }
     closedir(d);
+#endif
     qsort(all, n, sizeof all[0], cmp_desc);
     s_work.total = n;
     s_work.n = n < MF_MAX ? n : MF_MAX;
     for (int i = 0; i < s_work.n; i++) {
         mf_session_t *s = &s_work.s[i];
         *s = all[i];
-        char path[96];
-        snprintf(path, sizeof path, SDLOG_SESSIONS_DIR "/s%06lu.json", (unsigned long)s->id);
+        char path[96], name[24];
+        snprintf(name, sizeof name, "s%06lu.json", (unsigned long)s->id);
+#if CONFIG_OCM_NAND_LOGS
+        sdlog_drive_file(name, path, sizeof path);
+#else
+        snprintf(path, sizeof path, SDLOG_SESSIONS_DIR "/%s", name);
+#endif
         if (read_head(path, s_buf, sizeof s_buf)) {
             s->rows = (uint32_t)json_num(s_buf, "\"rows\"", 0);
             s->start_epoch_ms = (int64_t)json_num(s_buf, "\"started_epoch_ms\"", 0);
@@ -144,8 +183,13 @@ void mosaico_files_detail(uint32_t id)
     mf_detail_t *o = &s_det_work;
     o->id = id; o->km = o->fuel_l = -1;
     o->current = id == sdlog_session_id();
-    char path[96];
-    snprintf(path, sizeof path, SDLOG_SESSIONS_DIR "/s%06lu.json", (unsigned long)id);
+    char path[96], name[24];
+    snprintf(name, sizeof name, "s%06lu.json", (unsigned long)id);
+#if CONFIG_OCM_NAND_LOGS
+    sdlog_drive_file(name, path, sizeof path);
+#else
+    snprintf(path, sizeof path, SDLOG_SESSIONS_DIR "/%s", name);
+#endif
     if (read_head(path, s_buf, sizeof s_buf)) {
         o->rows = (uint32_t)json_num(s_buf, "\"rows\"", 0);
         o->start_epoch_ms = (int64_t)json_num(s_buf, "\"started_epoch_ms\"", 0);
@@ -153,20 +197,41 @@ void mosaico_files_detail(uint32_t id)
         json_str(s_buf, "\"vehicle\"", "\"protocol\"", o->protocol, sizeof o->protocol);
         json_str(s_buf, "\"adapter\"", "\"name\"", o->adapter, sizeof o->adapter);
     }
-    DIR *d = opendir(SDLOG_SESSIONS_DIR);
     char pre[8];
     snprintf(pre, sizeof pre, "s%06lu", (unsigned long)id);
+#if CONFIG_OCM_NAND_LOGS
+    const char *dirs[2];
+    int nd = sdlog_drive_dirs(dirs);
+    for (int dk = 0; dk < nd; dk++) {
+    DIR *d = opendir(dirs[dk]);
+    for (struct dirent *e; d && (e = readdir(d)) != NULL && o->nf < MF_FILES;) {
+        if (!session_name_valid(e->d_name) || strncmp(e->d_name, pre, 7)) continue;
+        struct stat st;
+        snprintf(path, sizeof path, "%s/%.20s", dirs[0], e->d_name);
+        if (dk > 0 && stat(path, &st) == 0) continue;     /* on both stores: once */
+        snprintf(path, sizeof path, "%s/%.20s", dirs[dk], e->d_name);
+#else
+    DIR *d = opendir(SDLOG_SESSIONS_DIR);
     for (struct dirent *e; d && (e = readdir(d)) != NULL && o->nf < MF_FILES;) {
         if (!session_name_valid(e->d_name) || strncmp(e->d_name, pre, 7)) continue;
         struct stat st;
         snprintf(path, sizeof path, SDLOG_SESSIONS_DIR "/%.20s", e->d_name);
+#endif
         snprintf(o->f[o->nf].name, sizeof o->f[0].name, "%.20s", e->d_name);
         o->f[o->nf].bytes = stat(path, &st) == 0 ? (uint32_t)st.st_size : 0;
         o->nf++;
     }
     if (d) closedir(d);
+#if CONFIG_OCM_NAND_LOGS
+    }
+#endif
     /* start, duration and distance from the CSV: header + first row, and the last row (never the file being written) */
-    snprintf(path, sizeof path, SDLOG_SESSIONS_DIR "/s%06lu.csv", (unsigned long)id);
+    snprintf(name, sizeof name, "s%06lu.csv", (unsigned long)id);
+#if CONFIG_OCM_NAND_LOGS
+    sdlog_drive_file(name, path, sizeof path);
+#else
+    snprintf(path, sizeof path, SDLOG_SESSIONS_DIR "/%s", name);
+#endif
     FILE *f = o->current ? NULL : fopen(path, "r");
     if (f) {
         size_t r = fread(s_buf, 1, sizeof s_buf - 1, f);
@@ -220,7 +285,10 @@ void mosaico_files_delete(uint32_t id)
         else snprintf(note, sizeof note, "s%06lu deleted (%d files)", (unsigned long)id, files);
     } else {
         int sessions = 0, files = sdlog_delete_all_sessions(&sessions);
-        if (files >= 0) remove(SDLOG_DIR "/drives.csv");    /* the drive history goes with "delete all" only */
+        if (files >= 0) remove(SDLOG_DRIVES_CSV);           /* the drive history goes with "delete all" only */
+#if CONFIG_OCM_NAND_LOGS
+        if (files >= 0) remove(SDLOG_DIR "/drives.csv");    /* and an old one not merged into the NAND's yet */
+#endif
         if (files < 0) snprintf(note, sizeof note, "nothing deleted (no storage)");
         else snprintf(note, sizeof note, "%d drive logs deleted (%d files), current kept", sessions, files);
     }
