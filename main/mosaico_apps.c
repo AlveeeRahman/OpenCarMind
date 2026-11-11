@@ -36,6 +36,7 @@ extern const lv_image_dsc_t ocm_icon_drive_52, ocm_icon_ai_52, ocm_icon_learn_52
 #include "mosaico_clock.h"
 #include "remote_config.h"
 #include "ui_events_logic.h"
+#include "ui_rows_logic.h"
 #include "power_state.h"
 #include "sdlog.h"
 #include "sys_mode.h"
@@ -1294,6 +1295,21 @@ static void faults_fill(const ui_snap_t *s)
     ui_set_fmt(end, "End of list. Read %lld min ago.", (long long)((s->now_ms - q_read_ms) / 60000));
 }
 
+/* the card list is rebuilt only when the codes were read again (fault_rev), and after the timed ui job (lv_async) */
+static const app_status_t *q_st;
+static bool q_due;
+static void faults_async(void *arg)
+{
+    (void)arg;
+    q_due = false;
+    if (!q_list || !q_st) return;
+    int32_t y = lv_obj_get_scroll_y(q_list);
+    ui_snap_t s = { .st = (app_status_t *)q_st, .now_ms = esp_timer_get_time() / 1000 };
+    faults_fill(&s);
+    lv_obj_update_layout(q_list);
+    lv_obj_scroll_to_y(q_list, y, LV_ANIM_OFF);          /* the list keeps its place */
+}
+
 static void faults_update(const ui_snap_t *s)
 {
     const fault_report_t *r = &s->st->faults;
@@ -1307,7 +1323,11 @@ static void faults_update(const ui_snap_t *s)
     ui_set_fmt(q_chip[0], "STORED %d", ns);
     ui_set_fmt(q_chip[1], "PENDING %d", np);
     ui_set_fmt(q_chip[2], "PERMANENT %d", nperm);
-    if (s->st->fault_rev != q_rev) { q_rev = s->st->fault_rev; q_read_ms = s->now_ms; faults_fill(s); }
+    q_st = s->st;
+    if (s->st->fault_rev != q_rev) {
+        q_rev = s->st->fault_rev; q_read_ms = s->now_ms;
+        if (!q_due) { q_due = true; lv_async_call(faults_async, NULL); }
+    }
 }
 
 /* ======================= Drive summary (D_Summary): 4 KPI tiles, speed + fuel lines, the AI timeline every 10 s, share
@@ -1792,6 +1812,8 @@ static void summary_destroy(void)
     memset(ev_line, 0, sizeof ev_line);
 }
 
+static bool sm_due;
+static void summary_async(void *arg);
 static void summary_update(const ui_snap_t *s)
 {
     ev_st = s->st;
@@ -1803,6 +1825,18 @@ static void summary_update(const ui_snap_t *s)
         return;
     }
     sm_gen = sm.gen; sm_hgen = sm_h.gen;
+    if (!sm_due) { sm_due = true; lv_async_call(summary_async, NULL); }
+    ev_card_refresh(s);
+    ev_page_fill(s, false);
+}
+
+/* a drive ended (or the history changed): the two pages are rebuilt, after the timed ui job (lv_async) */
+static void summary_async(void *arg)
+{
+    (void)arg;
+    sm_due = false;
+    if (!sm_p1 || !ev_st) return;
+    ui_snap_t snap = { .st = (app_status_t *)ev_st, .now_ms = esp_timer_get_time() / 1000 }, *s = &snap;
     /* sm_fill cleans the pages: the dots go with them, so draw them again */
     sm_fill();
     for (int t = 0; t < 2; t++) {
@@ -1856,7 +1890,10 @@ static lv_obj_t *wide_button(lv_obj_t *p, const char *t, uint32_t border, lv_eve
 static void fl_show_list(void *arg);
 static void fl_show_detail(void *arg);
 
-static void fl_row_cb(lv_event_t *e) { lv_async_call(fl_show_detail, lv_event_get_user_data(e)); }
+/* the list's rows are reused for the whole visit: a row's id is looked up when it is tapped */
+static uint32_t fl_row_id[MF_MAX];
+static int fl_deletable;
+static void fl_row_cb(lv_event_t *e) { lv_async_call(fl_show_detail, (void *)(uintptr_t)fl_row_id[(int)(intptr_t)lv_event_get_user_data(e)]); }
 static void fl_back_cb(lv_event_t *e) { (void)e; lv_async_call(fl_show_list, NULL); }
 
 static void fl_do_delete_all(void *arg) { (void)arg; mosaico_board_request(MB_FILES_DELETE_ALL, 0); fl_show_list(NULL); }
@@ -1869,7 +1906,8 @@ static void fl_ask_all_again(void *arg)
 }
 static void fl_all_cb(lv_event_t *e)
 {
-    ui_confirm("Delete ALL drive logs on the board? This cannot be undone.", "Continue", fl_ask_all_again, lv_event_get_user_data(e));
+    (void)e;
+    ui_confirm("Delete ALL drive logs on the board? This cannot be undone.", "Continue", fl_ask_all_again, (void *)(intptr_t)fl_deletable);
 }
 
 static void fl_do_delete(void *arg) { mosaico_board_request(MB_FILES_DELETE, (uint32_t)(uintptr_t)arg); fl_show_list(NULL); }
@@ -1883,99 +1921,158 @@ static void fl_del_cb(lv_event_t *e)
 static void fl_trash_cb(lv_event_t *e)
 {
     static char q[96];
-    uint32_t id = (uint32_t)(uintptr_t)lv_event_get_user_data(e);
+    uint32_t id = fl_row_id[(int)(intptr_t)lv_event_get_user_data(e)];
     snprintf(q, sizeof q, "Delete drive log s%06lu and all its files? This cannot be undone.", (unsigned long)id);
     ui_confirm(q, "Delete", fl_do_delete, (void *)(uintptr_t)id);
 }
 
-static void fl_fill_list(void)
+/* The list page is built once when it is shown (fl_build_list) and updated in place (fl_fill_list): only rows whose
+   content changed are rewritten (ui_rows_logic.h), rows are hidden instead of deleted. UI1 measured the old clean +
+   refill at 177-185 ms of CPU inside the timed ui job. */
+typedef struct { lv_obj_t *r, *t, *z, *d, *pill, *trash; } fl_row_t;
+static fl_row_t fl_rows[MF_MAX];
+static uint32_t fl_row_sig[MF_MAX];
+static int fl_rows_shown, fl_rows_built;
+static lv_obj_t *fl_sl, *fl_sb, *fl_flash_l, *fl_msg, *fl_note, *fl_empty, *fl_more, *fl_delall, *fl_foot;
+
+static void fl_row_create(int i)
+{
+    fl_row_t *w = &fl_rows[i];
+    lv_obj_t *r = w->r = lv_obj_create(fl_body);
+    lv_obj_remove_style_all(r);
+    lv_obj_set_size(r, CW - 16, 72);
+    lv_obj_set_style_bg_color(r, lv_color_hex(UI_CARD), 0);
+    lv_obj_set_style_bg_opa(r, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(r, UI_THEME.radius_row, 0);
+    lv_obj_set_style_border_width(r, UI_THEME.border_card, 0);
+    lv_obj_set_style_border_color(r, lv_color_hex(UI_BORDER), 0);
+    lv_obj_remove_flag(r, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(r, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_GESTURE_BUBBLE);
+    lv_obj_add_event_cb(r, fl_row_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+    w->t = ui_label(r, F20, UI_TEXT, "");
+    lv_obj_set_pos(w->t, 14, 10);
+    w->z = ui_label(r, F14, UI_MUTED, "");
+    lv_obj_set_pos(w->z, 130, 14);
+    w->d = ui_label(r, F14, UI_MUTED, "");
+    lv_obj_set_pos(w->d, 14, 42);
+    w->pill = ui_pill(r, "WRITING", UI_GREEN);
+    lv_obj_align(w->pill, LV_ALIGN_RIGHT_MID, -12, 0);
+    lv_obj_t *b = w->trash = lv_obj_create(r);           /* 44 px trash button: opens the confirm sheet, never deletes */
+    lv_obj_remove_style_all(b);
+    lv_obj_set_size(b, 44, 44);
+    lv_obj_align(b, LV_ALIGN_RIGHT_MID, -12, 0);
+    lv_obj_set_style_radius(b, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(b, lv_color_hex(UI_THEME.track), 0);
+    lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
+    lv_obj_add_flag(b, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_remove_flag(b, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_event_cb(b, fl_trash_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+    lv_obj_center(ui_label(b, F16, UI_RED, LV_SYMBOL_TRASH));
+    lv_obj_move_to_index(r, (int32_t)lv_obj_get_index(fl_more));   /* rows stay above the footer */
+}
+
+static void fl_row_write(int i, const mf_session_t *s)
+{
+    fl_row_t *w = &fl_rows[i];
+    fl_row_id[i] = s->id;
+    char when[24], size[16], car[16] = "";
+    fmt_when(when, sizeof when, s->start_epoch_ms);
+    fmt_size(size, sizeof size, s->bytes);
+    if (s->model_year > 1980) snprintf(car, sizeof car, "  MY %d", s->model_year);
+    ui_set_fmt(w->t, "s%06lu", (unsigned long)s->id);
+    ui_set_text(w->z, size);
+    ui_set_fmt(w->d, "%s  %lu rows%s", when, (unsigned long)s->rows, car);
+    if (s->current) { lv_obj_remove_flag(w->pill, LV_OBJ_FLAG_HIDDEN); lv_obj_add_flag(w->trash, LV_OBJ_FLAG_HIDDEN); }
+    else { lv_obj_add_flag(w->pill, LV_OBJ_FLAG_HIDDEN); lv_obj_remove_flag(w->trash, LV_OBJ_FLAG_HIDDEN); }
+    lv_obj_remove_flag(w->r, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void fl_show(lv_obj_t *o, bool on) { if (on) lv_obj_remove_flag(o, LV_OBJ_FLAG_HIDDEN); else lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN); }
+
+static void fl_build_list(void)
 {
     lv_obj_clean(fl_body);
+    memset(fl_rows, 0, sizeof fl_rows);
+    fl_rows_shown = fl_rows_built = 0;
+    lv_obj_t *sc = ui_card(fl_body, 0, 0, CW - 16, 70, UI_BORDER);
+    ui_caption(sc, "STORAGE");
+    fl_flash_l = ui_label(sc, F14, UI_MUTED, "");
+    lv_obj_set_pos(fl_flash_l, 0, 42);
+    lv_obj_add_flag(fl_flash_l, LV_OBJ_FLAG_HIDDEN);
+    fl_sl = ui_label(sc, F14, UI_TEXT, "--");
+    lv_obj_align(fl_sl, LV_ALIGN_TOP_RIGHT, 0, -2);
+    fl_sb = bar(sc, 0, 26, CW - 16 - 2 * UI_THEME.pad_card, 10, UI_ORANGE, 1000);
+    fl_msg = ui_label(fl_body, F16, UI_MUTED, "Reading the log storage...");
+    fl_note = ui_label(fl_body, F14, UI_GREEN, "");
+    fl_empty = ui_label(fl_body, F16, UI_MUTED, "No drive logs yet.");
+    fl_more = ui_label(fl_body, F14, UI_MUTED, "");
+    fl_delall = wide_button(fl_body, LV_SYMBOL_TRASH "  Delete all drive logs", UI_RED, fl_all_cb, NULL);
+    fl_foot = ui_label(fl_body, F14, UI_MUTED, "Learned " LEARNED_STATE_AND " state, the clock and config.json are never deleted here.");
+    lv_obj_set_width(fl_foot, CW - 24);
+    lv_label_set_long_mode(fl_foot, LV_LABEL_LONG_WRAP);
+    fl_show(fl_note, false); fl_show(fl_empty, false); fl_show(fl_more, false); fl_show(fl_delall, false); fl_show(fl_foot, false);
+}
+
+static void fl_fill_list(void)
+{
     const mf_list_t *L = &fl_list;
+    if (!fl_sl) return;
     /* storage: used bar and free of total */
+    lv_obj_t *sc = lv_obj_get_parent(fl_sl);
 #if CONFIG_OCM_NAND_LOGS
-    lv_obj_t *sc = ui_card(fl_body, 0, 0, CW - 16, L->nand ? 92 : 70, UI_BORDER);
-    ui_caption(sc, L->nand ? "DRIVE LOGS: 128 MB NAND" : "STORAGE");
+    lv_obj_set_height(sc, L->nand ? 92 : 70);
+    ui_set_text(lv_obj_get_child(sc, 0), L->nand ? "DRIVE LOGS: 128 MB NAND" : "STORAGE");
     if (L->nand && L->flash_total_kb) {
         char a[16], b[16];
         fmt_size(a, sizeof a, L->flash_free_kb * 1024u);
         fmt_size(b, sizeof b, L->flash_total_kb * 1024u);
-        lv_obj_t *fl = ui_label(sc, F14, UI_MUTED, "");
-        ui_set_fmt(fl, "State files (flash): %s free of %s", a, b);
-        lv_obj_set_pos(fl, 0, 42);
-    }
-#else
-    lv_obj_t *sc = ui_card(fl_body, 0, 0, CW - 16, 70, UI_BORDER);
-    ui_caption(sc, "STORAGE");
+        ui_set_fmt(fl_flash_l, "State files (flash): %s free of %s", a, b);
+        fl_show(fl_flash_l, true);
+    } else fl_show(fl_flash_l, false);
 #endif
-    lv_obj_t *sl = ui_label(sc, F14, UI_TEXT, "--");
-    lv_obj_align(sl, LV_ALIGN_TOP_RIGHT, 0, -2);
-    lv_obj_t *sb = bar(sc, 0, 26, CW - 16 - 2 * UI_THEME.pad_card, 10, UI_ORANGE, 1000);
     if (L->total_kb) {
         char a[16], b[16];
         fmt_size(a, sizeof a, L->free_kb * 1024u);
         fmt_size(b, sizeof b, L->total_kb * 1024u);
-        ui_set_fmt(sl, "%s free of %s", a, b);
-        bar_set(sb, (int)((uint64_t)(L->total_kb - L->free_kb) * 1000 / L->total_kb));
-        if (L->free_kb * 10 < L->total_kb) lv_obj_set_style_bg_color(sb, lv_color_hex(UI_RED), LV_PART_INDICATOR);
+        ui_set_fmt(fl_sl, "%s free of %s", a, b);
+        bar_set(fl_sb, (int)((uint64_t)(L->total_kb - L->free_kb) * 1000 / L->total_kb));
+        lv_obj_set_style_bg_color(fl_sb, lv_color_hex(L->free_kb * 10 < L->total_kb ? UI_RED : UI_ORANGE), LV_PART_INDICATOR);
     }
-    if (!L->ok) { ui_label(fl_body, F16, UI_MUTED, L->busy || !L->gen ? "Reading the log storage..." : "No log storage"); return; }
-    if (L->note[0]) ui_label(fl_body, F14, UI_GREEN, L->note);
-    if (!L->n) ui_label(fl_body, F16, UI_MUTED, "No drive logs yet.");
-    int deletable = 0;
-    for (int i = 0; i < L->n; i++) {
-        const mf_session_t *s = &L->s[i];
-        deletable += !s->current;
-        lv_obj_t *r = lv_obj_create(fl_body);
-        lv_obj_remove_style_all(r);
-        lv_obj_set_size(r, CW - 16, 72);
-        lv_obj_set_style_bg_color(r, lv_color_hex(UI_CARD), 0);
-        lv_obj_set_style_bg_opa(r, LV_OPA_COVER, 0);
-        lv_obj_set_style_radius(r, UI_THEME.radius_row, 0);
-        lv_obj_set_style_border_width(r, UI_THEME.border_card, 0);
-        lv_obj_set_style_border_color(r, lv_color_hex(UI_BORDER), 0);
-        lv_obj_remove_flag(r, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_add_flag(r, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_GESTURE_BUBBLE);
-        lv_obj_add_event_cb(r, fl_row_cb, LV_EVENT_CLICKED, (void *)(uintptr_t)s->id);
-        char when[24], size[16], car[16] = "";
-        fmt_when(when, sizeof when, s->start_epoch_ms);
-        fmt_size(size, sizeof size, s->bytes);
-        if (s->model_year > 1980) snprintf(car, sizeof car, "  MY %d", s->model_year);
-        lv_obj_t *t = ui_label(r, F20, UI_TEXT, "");
-        ui_set_fmt(t, "s%06lu", (unsigned long)s->id);
-        lv_obj_set_pos(t, 14, 10);
-        lv_obj_t *z = ui_label(r, F14, UI_MUTED, size);
-        lv_obj_set_pos(z, 130, 14);
-        lv_obj_t *d = ui_label(r, F14, UI_MUTED, "");
-        ui_set_fmt(d, "%s  %lu rows%s", when, (unsigned long)s->rows, car);
-        lv_obj_set_pos(d, 14, 42);
-        if (s->current) {
-            lv_obj_t *w = ui_pill(r, "WRITING", UI_GREEN);
-            lv_obj_align(w, LV_ALIGN_RIGHT_MID, -12, 0);
-        } else {
-            lv_obj_t *b = lv_obj_create(r);                  /* 44 px trash button: opens the confirm sheet, never deletes */
-            lv_obj_remove_style_all(b);
-            lv_obj_set_size(b, 44, 44);
-            lv_obj_align(b, LV_ALIGN_RIGHT_MID, -12, 0);
-            lv_obj_set_style_radius(b, LV_RADIUS_CIRCLE, 0);
-            lv_obj_set_style_bg_color(b, lv_color_hex(UI_THEME.track), 0);
-            lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
-            lv_obj_add_flag(b, LV_OBJ_FLAG_CLICKABLE);
-            lv_obj_remove_flag(b, LV_OBJ_FLAG_SCROLLABLE);
-            lv_obj_add_event_cb(b, fl_trash_cb, LV_EVENT_CLICKED, (void *)(uintptr_t)s->id);
-            lv_obj_center(ui_label(b, F16, UI_RED, LV_SYMBOL_TRASH));
-        }
+    fl_show(fl_msg, !L->ok);
+    if (!L->ok) ui_set_text(fl_msg, L->busy || !L->gen ? "Reading the log storage..." : "No log storage");
+    int n = L->ok ? L->n : 0;
+    if (L->ok && L->note[0]) ui_set_text(fl_note, L->note);
+    fl_show(fl_note, L->ok && L->note[0]);
+    fl_show(fl_empty, L->ok && !L->n);
+    uint32_t sig[MF_MAX];
+    uint8_t act[MF_MAX];
+    fl_deletable = 0;
+    for (int i = 0; i < n; i++) {
+        const mf_session_t *x = &L->s[i];
+        fl_deletable += !x->current;
+        uint32_t h = urow_mix(UROW_SEED, &x->id, sizeof x->id);
+        h = urow_mix(h, &x->bytes, sizeof x->bytes); h = urow_mix(h, &x->rows, sizeof x->rows);
+        h = urow_mix(h, &x->start_epoch_ms, sizeof x->start_epoch_ms); h = urow_mix(h, &x->model_year, sizeof x->model_year);
+        h = urow_mix(h, &x->current, sizeof x->current);
+        sig[i] = h;
     }
-    if (L->total > L->n) ui_set_fmt(ui_label(fl_body, F14, UI_MUTED, ""), "newest %d of %d shown", L->n, L->total);
-    if (deletable) wide_button(fl_body, LV_SYMBOL_TRASH "  Delete all drive logs", UI_RED, fl_all_cb, (void *)(intptr_t)deletable);
-    lv_obj_t *n = ui_label(fl_body, F14, UI_MUTED, "Learned " LEARNED_STATE_AND " state, the clock and config.json are never deleted here.");
-    lv_obj_set_width(n, CW - 24);
-    lv_label_set_long_mode(n, LV_LABEL_LONG_WRAP);
+    int top = n > fl_rows_shown ? n : fl_rows_shown;
+    urow_plan(fl_row_sig, &fl_rows_shown, &fl_rows_built, sig, n, act, MF_MAX);
+    for (int i = 0; i < top; i++) {
+        if (act[i] & UROW_CREATE) fl_row_create(i);
+        if (act[i] & UROW_WRITE) fl_row_write(i, &L->s[i]);
+        else if (act[i] == UROW_HIDE) lv_obj_add_flag(fl_rows[i].r, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (L->ok && L->total > L->n) ui_set_fmt(fl_more, "newest %d of %d shown", L->n, L->total);
+    fl_show(fl_more, L->ok && L->total > L->n);
+    fl_show(fl_delall, fl_deletable > 0);
+    fl_show(fl_foot, L->ok);
 }
 
 static void fl_fill_detail(void)
 {
     lv_obj_clean(fl_body);
+    fl_sl = NULL;                                         /* the list page's objects went with the clean */
     wide_button(fl_body, LV_SYMBOL_LEFT "  All drive logs", UI_ORANGE, fl_back_cb, NULL);
     const mf_detail_t *D = &fl_det;
     lv_obj_t *t = ui_label(fl_body, F28, UI_TEXT, "");
@@ -2013,7 +2110,15 @@ static void fl_fill_detail(void)
     else ui_label(fl_body, F14, UI_MUTED, "The drive being written cannot be deleted.");
 }
 
-static void fl_show_list(void *arg) { (void)arg; if (!fl_body) return; fl_mode = 0; fl_gen = 0; mosaico_board_request(MB_FILES_SCAN, 0); fl_fill_list(); }
+static void fl_show_list(void *arg)
+{
+    (void)arg;
+    if (!fl_body) return;
+    fl_mode = 0; fl_gen = 0;
+    mosaico_board_request(MB_FILES_SCAN, 0);
+    fl_build_list();
+    fl_fill_list();
+}
 static void fl_show_detail(void *arg)
 {
     if (!fl_body) return;
@@ -2039,7 +2144,10 @@ static void files_create(lv_obj_t *p)
     fl_show_list(NULL);
 }
 
-static void files_destroy(void) { fl_body = NULL; }
+static void files_destroy(void) { fl_body = fl_sl = NULL; }
+
+/* a new detail (one file read, after a tap) is a rebuild of the page: it runs after the timed ui job (lv_async), not in it */
+static void fl_detail_async(void *arg) { (void)arg; if (fl_body && fl_mode == 1) fl_fill_detail(); }
 
 static void files_update(const ui_snap_t *s)
 {
@@ -2050,7 +2158,7 @@ static void files_update(const ui_snap_t *s)
         if (L->gen != fl_gen && !L->busy) { fl_gen = L->gen; fl_fill_list(); }
     } else {
         mosaico_files_get_detail(&fl_det);
-        if (fl_det.gen != fl_dgen && fl_det.id == fl_id) { fl_dgen = fl_det.gen; fl_fill_detail(); }
+        if (fl_det.gen != fl_dgen && fl_det.id == fl_id) { fl_dgen = fl_det.gen; lv_async_call(fl_detail_async, NULL); }
     }
 }
 
@@ -3300,6 +3408,12 @@ static void wifi_destroy(void)
     if (pw_page) lv_async_call(pw_close, NULL);
 }
 
+/* a new search list or a changed saved list rebuilds those rows, after the timed ui job (lv_async), never inside it */
+static bool w_scan_due, w_rows_due;
+static void w_scan_async(void *arg) { (void)arg; w_scan_due = false; if (w_list) w_scan_show(); }
+static void w_rows_async(void *arg) { (void)arg; w_rows_due = false; if (w_list) w_fill_rows(); }
+static void w_defer(bool *due, lv_async_cb_t fn) { if (!*due) { *due = true; lv_async_call(fn, NULL); } }
+
 static void wifi_update(const ui_snap_t *s)
 {
     if (!w_list) return;
@@ -3313,7 +3427,7 @@ static void wifi_update(const ui_snap_t *s)
     }
     ui_set_text(w_clock, st->time_synced ? "The clock is synced over Wi-Fi." : "The clock is not synced over Wi-Fi yet.");
 #if CONFIG_OCM_WIFI_CLOCK_SYNC
-    if (mosaico_board_wifi_scan(&w_scan, w_scan_gen)) { w_scan_gen = w_scan.gen; w_scan_show(); }
+    if (mosaico_board_wifi_scan(&w_scan, w_scan_gen)) { w_scan_gen = w_scan.gen; w_defer(&w_scan_due, w_scan_async); }
     mosaico_wifi_join_t j;
     mosaico_board_wifi_join_state(&j);
     if (j.gen != w_join_gen) { w_join_gen = j.gen; w_join_show(&j); }
@@ -3328,7 +3442,7 @@ static void wifi_update(const ui_snap_t *s)
     bool clock_note = c.clock_gen != w_clock_gen;
     w_clock_gen = c.clock_gen;
     w_copy = c;
-    if (rows) w_fill_rows();
+    if (rows) w_defer(&w_rows_due, w_rows_async);
     else for (int i = 0; i < c.n; i++) if (w_det[i]) w_detail(i);   /* signal and failures: the label only */
     ui_set_text(w_note, c.note);
     if (clock_note && w_clock_note) {

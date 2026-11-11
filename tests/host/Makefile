@@ -94,6 +94,13 @@ wificreds_tests: test_wifi_creds.c ../../main/wifi_creds.c ../../main/wifi_creds
 	mkdir -p wificreds_src && cp ../../main/wifi_creds.c wificreds_src/
 	$(CC) $(CFLAGS:-I../../main=-Istubs/wifi_creds -I../../main) -o $@ test_wifi_creds.c wificreds_src/wifi_creds.c ../../main/harden.c
 
+# app lists updated in place: which rows an update writes, hides or creates (main/ui_rows_logic.c)
+rows: rows_tests
+	./rows_tests
+
+rows_tests: test_ui_rows.c ../../main/ui_rows_logic.c ../../main/ui_rows_logic.h
+	$(CC) $(CFLAGS) -o $@ test_ui_rows.c ../../main/ui_rows_logic.c
+
 # ESP-Mosaico palettes: every text/ground pair >= 4.5:1, graphics >= 3:1, read from mosaico_display.c (T1)
 theme: theme_tests
 	./theme_tests
@@ -117,5 +124,5 @@ rev_tests: $(REV_SRCS) ../../main/rev_learn.h ../../main/rev_cal.h ../../main/re
 	$(CC) $(CFLAGS) -o $@ $(REV_SRCS) -lm
 
 clean:
-	rm -f carmind_tests rev_tests tank_tests session_tests reset_tests swipe_tests clock_tests uimetrics_tests prefetch_tests logstore_tests nandfat_tests settings_tests wifi_tests events_tests theme_tests wificreds_tests
-.PHONY: run rev session reset swipe clock uimetrics prefetch logstore clean settings wifi events theme wificreds
+	rm -f carmind_tests rev_tests tank_tests session_tests reset_tests swipe_tests clock_tests uimetrics_tests prefetch_tests logstore_tests nandfat_tests settings_tests wifi_tests events_tests theme_tests wificreds_tests rows_tests
+.PHONY: run rev session reset swipe clock uimetrics prefetch logstore clean settings wifi events theme wificreds rows
