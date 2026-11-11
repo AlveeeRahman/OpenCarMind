@@ -92,9 +92,6 @@ theme: theme_tests
 theme_tests: test_ui_theme.c ../../main/mosaico_display.c
 	$(CC) $(CFLAGS) -o $@ test_ui_theme.c -lm
 
-swipe_tests: test_swipe_intent.c ../../main/swipe_intent.c ../../main/swipe_intent.h
-	$(CC) $(CFLAGS) -O2 -o $@ test_swipe_intent.c -lm
-
 carmind_tests: $(SRCS) ../../main/custom_pids.h ../../main/fault_engine.h
 	$(CC) $(CFLAGS) -o $@ $(SRCS) -lm
 

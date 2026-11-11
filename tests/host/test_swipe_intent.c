@@ -290,7 +290,7 @@ static void test_quantile(void)
     static const int NS[] = { 50, 120, 400, 1000 };
     double worst_ms = 0, worst_pct = 0;
     int all_ok = 1, cases = 0;
-    for (int dist = 0; dist < 3; dist++)
+    for (int dist = 0; dist < 4; dist++)
         for (int k = 0; k < 4; k++)
             for (int rep = 0; rep < 20; rep++) {
                 si_init(&si, 5, 1);
@@ -299,22 +299,43 @@ static void test_quantile(void)
                 for (int i = 0; i < n; i++) {
                     double ms = dist == 0 ? 180 + 25 * tr_n(&r)                              /* normal */
                               : dist == 1 ? 150 + exp(3.5 + 0.6 * tr_n(&r))                 /* skewed tail */
-                              : (tr_u(&r) < 0.85 ? 190 + 10 * tr_n(&r) : 330 + 30 * tr_n(&r));   /* bimodal: redraw */
+                              : dist == 2 ? (tr_u(&r) < 0.85 ? 190 + 10 * tr_n(&r) : 330 + 30 * tr_n(&r))   /* bimodal */
+                              : exp(5.99 + 0.59 * tr_n(&r));                                /* the owner's swipes: p50 ~400, p95 ~1055 ms */
                     if (ms < 0) ms = 0;
-                    if (ms > 470) ms = 470;
+                    if (ms > 3000) ms = 3000;
                     v[i] = (uint32_t)ms;
                     hist_add(s, 0, v[i]);
                 }
                 qsort(v, (size_t)n, sizeof v[0], cmp_u32);
                 uint32_t exact = v[(95 * n + 99) / 100 - 1];
                 double e = fabs((double)hist_p95(s->hist[0]) - exact), ep = 100 * e / exact;
+                double bin = exact < UM_NB1 * UM_BIN_MS ? UM_BIN_MS : UM_BIN2_MS;
                 if (e > worst_ms) worst_ms = e;
                 if (ep > worst_pct) worst_pct = ep;
-                if (!(e <= BIN_MS || ep <= 2)) all_ok = 0;
+                if (!(e <= bin || ep <= 2)) all_ok = 0;
                 cases++;
             }
-    row("p95 histogram vs exact sort", all_ok, "%d cases (normal, skewed, bimodal; n 50..1000): worst %.1f ms = %.2f%% (limit 1 bin = 5 ms or 2%%)",
+    row("p95 histogram vs exact sort", all_ok, "%d cases (normal, skewed, bimodal, owner-like; n 50..1000, 0..3 s): worst %.1f ms = %.2f%% (limit 1 bin or 2%%)",
         cases, worst_ms, worst_pct);
+
+    /* the range: the owner's real swipe p95 was 1,055 ms; the old 96 x 5 ms bins read anything above 475 ms as 477 */
+    si_init(&si, 5, 1);
+    for (int i = 0; i < 100; i++) hist_add(s, 0, i < 95 ? 600 : 1055);
+    uint16_t p_slow = hist_p95(s->hist[0]);
+    for (int i = 0; i < 100; i++) hist_add(s, 1, 2900);
+    uint16_t p_cap = hist_p95(s->hist[1]);
+    si_init(&si, 5, 1);
+    for (int i = 0; i < 200; i++) hist_add(s, 0, 4000);    /* past 3 s: the overflow bin */
+    uint16_t p_over = hist_p95(s->hist[0]);
+    int range_ok = p_slow > 475 && p_slow >= 600 - 4 && p_slow <= 604 + 4 && p_cap >= 2900 - 16 && p_cap <= 2900 + 16 &&
+                   p_over >= 3024 && p_over <= 3056;
+    /* two arms that differ only above 475 ms: the rank test now sees it (the old bins put both in one overflow bin, z 0) */
+    si_init(&si, 5, 1);
+    for (int i = 0; i < 80; i++) { hist_add(s, 0, 700 + (uint32_t)(200 * tr_u(&r))); hist_add(s, 1, 950 + (uint32_t)(200 * tr_u(&r))); }
+    int16_t z = mw_z100(s->hist[0], s->hist[1]);
+    range_ok = range_ok && z > 164;
+    row("histogram range 0..3 s", range_ok, "p95 %u ms (600 x95, 1055 x5), %u ms (2900), %u ms (4000 -> overflow); A 700-900 vs B 950-1150 z %+.2f",
+        p_slow, p_cap, p_over, z / 100.0);
 }
 
 /* ---------- gate ---------- */
@@ -478,7 +499,7 @@ static void test_cost(void)
 
 int main(void)
 {
-    printf("swipe_intent host tests: sizeof(si_t) = %zu B (limit 1536), blob %d B\n", sizeof(si_t), SI_BLOB_BYTES);
+    printf("swipe_intent host tests: sizeof(si_t) = %zu B (limit 1792), blob %d B\n", sizeof(si_t), SI_BLOB_BYTES);
     test_tanh();
     test_rls_batch();
     test_learning();
@@ -489,7 +510,7 @@ int main(void)
     test_runtime_gate();
     test_prior();
     test_cost();
-    row("object size", sizeof(si_t) <= 1536, "%zu B", sizeof(si_t));
+    row("object size", sizeof(si_t) <= 1792, "%zu B", sizeof(si_t));
     printf("\n%-40s %-5s %s\n", "test", "", "result");
     for (int i = 0; i < g_nrows; i++) printf("%-40s %-5s %s\n", g_rows[i].name, g_rows[i].pass ? "PASS" : "FAIL", g_rows[i].detail);
     printf("\n%s (%d failure%s)\n", g_fail ? "FAILED" : "ALL PASS", g_fail, g_fail == 1 ? "" : "s");

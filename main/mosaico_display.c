@@ -1804,7 +1804,7 @@ static void slide_attach(void) {}
    Arm B predicts and measures only. Settled = the snap's SCROLL_END if the destination's picture was current, else the
    end of the corrective redraw (the next RENDER_READY after slide_tick re-enables invalidation). */
 EXT_RAM_BSS_ATTR static uint8_t s_si_blob[SI_BLOB_BYTES];
-static si_t s_si;                                      /* 1296 B, internal RAM: the RLS loop stays out of PSRAM */
+static si_t s_si;                                      /* 1680 B, internal RAM: the RLS loop stays out of PSRAM */
 static bool s_si_on, s_si_gest, s_si_lifted;
 static int s_si_wait = -1;                             /* page whose corrective redraw ends the settle, -1 none */
 static uint8_t s_si_page0, s_si_state_saved = 0xFF;

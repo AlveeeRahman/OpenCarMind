@@ -36,11 +36,13 @@
  *    - Features are clipped, so no input can overflow tanh or the products.
  *
  * 4. Latency metric: fixed histograms, not P-square
- *    Two arms x 96 bins x 5 ms (uint16) = 384 B. P-square (Jain & Chlamtac 1985, as recalled, UNVERIFIED) would need
- *    5 heights + 5 positions per arm (about 40 B) but it gives no error bound for small n and cannot feed a rank test.
- *    The histogram gives the p95 within half a bin (2.5 ms), and the Mann-Whitney U of the two arms straight from the
- *    bins (section 5). That second use decided it: the gate needs an uncertainty figure, and the histogram is the
- *    smallest structure that gives one on the device. Bins halve when an arm reaches 1024 samples (recency decay).
+ *    Two arms x 192 bins (uint16) = 768 B: the Smart UI latency bins (ui_metrics.h), 8 ms up to 1 s, then 32 ms up to
+ *    3 s. The first version had 96 bins of 5 ms, which capped every swipe at 475 ms while the owner's real swipes had a
+ *    p95 of 1,055 ms, so the KEEP test could never see a difference above 475 ms. P-square (Jain & Chlamtac 1985, as
+ *    recalled, UNVERIFIED) would need 5 heights + 5 positions per arm (about 40 B) but it gives no error bound for small n
+ *    and cannot feed a rank test. The histogram gives the p95 within half a bin (4 ms below 1 s, 16 ms above), and the
+ *    Mann-Whitney U of the two arms straight from the bins (section 5). That second use decided it: the gate needs an
+ *    uncertainty figure, and the histogram is the smallest structure that gives one on the device. Bins halve when an arm reaches 1024 samples (recency decay).
  *
  * 5. Gate uncertainty: Mann-Whitney U from the binned counts
  *    U = #{(a, b): a < b} + 0.5 #{a == b} over all pairs of an A and a B sample (same bin = tie). Under "no difference"
@@ -61,8 +63,7 @@
 #define DELTA  1e-2f
 #define P0     (1.0f / DELTA)
 #define TRACE_MAX ((float)H * P0)
-#define BINS   96
-#define BIN_MS 5
+#define BINS   UM_NB                      /* the Smart UI latency bins: 8 ms to 1 s, then 32 ms to 3 s (ui_metrics.h) */
 #define HALVE_AT 1024
 #define WARMUP 30                         /* RLS updates before arm A may act and metrics count */
 #define MAX_PER_ARM (3 * SI_MIN_PER_ARM)  /* "A looks better but not significant": keep sampling up to this */
@@ -221,13 +222,12 @@ static si_pred_t predict(struct si_impl *s, uint32_t t)
 /* ---------- histograms (the binned histogram and the rank test live in ui_metrics.c, shared with the Smart UI gate) ---------- */
 static uint32_t hist_n(const uint16_t *hb) { return um_hist_n(hb, BINS); }
 
-static uint16_t hist_p95(const uint16_t *hb) { return um_hist_pct(hb, BINS, BIN_MS, 95); }   /* bin centre, +-2.5 ms */
+static uint16_t hist_p95(const uint16_t *hb) { return um_lat_pct(hb, 95); }   /* bin centre: +-4 ms below 1 s, +-16 ms above */
 
 static void hist_add(struct si_impl *s, int arm, uint32_t ms)
 {
-    uint32_t b = ms / BIN_MS;
     uint16_t *hb = s->hist[arm];
-    hb[b < BINS ? b : BINS - 1]++;                             /* last bin = overflow (>= 475 ms) */
+    hb[um_lat_bin(ms)]++;                                      /* last bin = overflow (>= 3040 ms) */
     if (hist_n(hb) >= HALVE_AT) {                              /* recency decay */
         for (int i = 0; i < BINS; i++) hb[i] = (uint16_t)((hb[i] + 1) / 2);
         s->rdy_hit[arm] /= 2;

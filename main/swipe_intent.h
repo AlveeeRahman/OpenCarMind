@@ -28,7 +28,7 @@ extern "C" {
 #define SI_D           7      /* input features (a bias input is added inside) */
 #define SI_T_PREDICT   40     /* ms after touch-down at which the prediction is made */
 #define SI_MIN_PER_ARM 50     /* completed swipes per arm before the gate may decide */
-#define SI_WORDS       324    /* opaque storage, 4-byte words; the .c checks it matches the real layout */
+#define SI_WORDS       420    /* opaque storage, 4-byte words; the .c checks it matches the real layout */
 
 enum { SI_NEXT = 0, SI_PREV = 1, SI_STAY = 2, SI_NONE = -1 };
 enum { SI_LEARNING = 0, SI_KEEP = 1, SI_OFF = 2 };                         /* gate state */
