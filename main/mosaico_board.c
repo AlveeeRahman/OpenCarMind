@@ -1,6 +1,7 @@
 #include "mosaico_board.h"
 #include <string.h>
 #include "board.h"
+#include "board_pins_safe.h"
 #include "esp_log.h"
 #include "esp_rom_sys.h"
 #include "freertos/FreeRTOS.h"
@@ -629,6 +630,9 @@ void mosaico_board_init(void)
     gpio_set_level(BOARD_LCD_PWR, 0);
     gpio_set_level(BOARD_MOTOR, 0);
     if (rtc_gpio_is_valid_gpio(BOARD_BUTTON)) rtc_gpio_deinit(BOARD_BUTTON);
+    /* every pin the firmware does not use: disabled, no pull (held, strapping pins not), the amplifier enable low */
+    esp_err_t pe = board_pins_safe_apply();
+    if (pe != ESP_OK) ESP_LOGW(TAG, "safe pin state not applied: %s", esp_err_to_name(pe));
     mosaico_clock_boot();                          /* app_main has just marked a time the RTC kept as synced */
 
     i2c_master_bus_config_t bc = { .i2c_port = BOARD_I2C_PORT, .sda_io_num = BOARD_I2C_SDA, .scl_io_num = BOARD_I2C_SCL,

@@ -36,6 +36,8 @@ The S3 build is not changed by any of this. For the Waveshare ESP32-S3 board, ke
 
 There is no SD card slot. The drive logs live on the NAND, and the learned model state, the clock, the settings files and the Wi-Fi list live in the flash FAT.
 
+**Unused pins.** At boot every GPIO the firmware does not use is put in a safe state: input and output off and no pull resistor, held (the strapping pins 37 to 40 are not held), and the speaker amplifier's enable (GPIO45) is driven low, so the amplifier stays off. The flash, USB, UART0 console and BOOT pins are never touched. This gives the same pin state at every boot. Its power saving is not measured.
+
 ## Flashing
 
 You need the merged image `mossREV-1.2.0-esp32s31-merged.bin` (its SHA-256 is in the `.sha256` file next to it), a USB-C cable, Python with pyserial (`pip install pyserial`), and esptool 5.6.0 or later (`pip install "esptool>=5.6.0"`), the version this release was tested with.
