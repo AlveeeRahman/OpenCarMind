@@ -204,7 +204,7 @@ static int64_t s_rs_us;
 static uint32_t s_tsnap_us __attribute__((unused));                              /* snapshot sliding: the last page picture's render time */
 static uint32_t s_render_max_us;
 #if CONFIG_OCM_SWIPE_INTENT
-/* smart swipe (swipe_intent.h, the block before build_grid): Home's content generation and the Home picture's copy of
+/* smart swipe (swipe_intent.h, the block before the boot splash): Home's content generation and the Home picture's copy of
    it, so a picture counts as current only if nothing on Home changed since it was taken; s_si_act = the learner acts on
    the gesture in flight (arm A of the A/B test) */
 static uint32_t s_ui_mut, s_home_gen, s_home_pic_gen = UINT32_MAX;
@@ -220,7 +220,7 @@ static void si_render_ready(void);
 #define SI_HOME_PIC_CURRENT() false
 #endif
 #if CONFIG_OCM_UI_METRICS
-/* Smart UI metrics (ui_metrics.h, the block before build_grid). The settle detector's two flag writes in the display
+/* Smart UI metrics (ui_metrics.h, the block before the boot splash). The settle detector's two flag writes in the display
    event callbacks are the only per-frame work; everything else runs once per touch event. */
 #include "ui_metrics.h"
 static um_settle_t s_ums;
@@ -449,6 +449,7 @@ static lv_obj_t *modal_button(lv_obj_t *p, const char *t, uint32_t bg, uint32_t 
 {
     lv_obj_t *b = lv_button_create(p);
     lv_obj_set_size(b, 196, 54);
+    lv_obj_set_ext_click_area(b, 5);                      /* a 64 px tall touch target on the 54 px button */
     lv_obj_align(b, al, 0, 0);
     lv_obj_set_style_bg_color(b, lv_color_hex(bg), 0);
     lv_obj_set_style_radius(b, UI_THEME.radius_row, 0);
@@ -632,20 +633,24 @@ void ui_settings_get(ui_settings_t *out)
     portEXIT_CRITICAL(&s_set_mux);
 }
 
-static void build_grid(void);
-static void build_home_row(void);
 static volatile bool s_theme_check;
+/* deferred launcher work after a Settings change (LVGL task only): one theme check once the theme taps stop, one
+   launcher rebuild once the Home order moves stop. A tap itself only restyles the tapped control. */
+static ocm_debounce_t s_theme_deb, s_launch_deb;
 
 void ui_settings_set(const ui_settings_t *in)
 {
+    ui_settings_t old;
     portENTER_CRITICAL(&s_set_mux);
+    old = s_set;
     s_set = *in;
     portEXIT_CRITICAL(&s_set_mux);
-    mosaico_settings_save_request(in, sizeof *in);
-    s_req_bright = in->brightness;
-    build_grid();                                        /* LVGL task (Settings app callbacks) */
-    build_home_row();
-    s_theme_check = true;                                /* a new theme choice applies on the next tick */
+    unsigned act = ocm_settings_actions(ocm_settings_diff(&old, in));
+    int64_t now = esp_timer_get_time() / 1000;
+    if (act & OCM_DO_SAVE) mosaico_settings_save_request(in, sizeof *in);   /* the board task writes it, debounced */
+    if (act & OCM_DO_PANEL) s_req_bright = in->brightness;
+    if (act & OCM_DO_THEME) ocm_debounce_touch(&s_theme_deb, now, OCM_THEME_QUIET_MS);
+    if (act & OCM_DO_LAUNCHER) ocm_debounce_touch(&s_launch_deb, now, OCM_LAUNCHER_QUIET_MS);
 }
 
 /* Settings brightness slider: the preview is applied by the next UI tick, so the panel gets at most one command per
@@ -685,21 +690,26 @@ static void settings_defaults(ui_settings_t *s)
 static bool s_set_loaded;                              /* false: defaults (a first boot or a settings reset) */
 static void settings_load(void)
 {
-    ui_settings_t s;
+    ui_settings_t s, m;
     settings_defaults(&s_set);
-    if (!mosaico_settings_load(&s, sizeof s) || s.ver != UI_SETTINGS_VER || s.n > UI_MAX_APPS) return;
-    /* keep only valid indices; apps added in a newer firmware are appended */
-    ui_settings_t m = s;
-    m.n = 0;
-    uint32_t seen = 0;
-    for (int i = 0; i < s.n; i++)
-        if (s.order[i] < ui_app_count() && !(seen & (1u << s.order[i]))) { seen |= 1u << s.order[i]; m.order[m.n++] = s.order[i]; }
-    for (int i = 0; i < ui_app_count(); i++) if (!(seen & (1u << i))) m.order[m.n++] = (uint8_t)i;
+    if (!mosaico_settings_load(&s, sizeof s)) return;
+    int wifi = -1;
+    for (int i = 0; i < ui_app_count(); i++) if (!strcmp(ui_app(i)->id, "wifi")) wifi = i;
+    /* version 5 -> 6: the Wi-Fi app goes in before Settings and every hidden app shows again (read once, then saved);
+       invalid indices are dropped and apps added in a newer firmware are appended */
+    int r = ocm_settings_migrate(&s, &m, ui_app_count(), wifi);
+    if (r == OCM_SET_REJECT) return;
     if (m.widget >= W_COUNT) m.widget = W_KPL;
     if (m.theme > 2) m.theme = 0;
     if (m.brightness < 5 || m.brightness > 100) m.brightness = 60;
     s_set = m;
     s_set_loaded = true;
+    if (r == OCM_SET_CHANGED) {
+        int hidden = 0;
+        for (int i = 0; i < 16; i++) hidden += (s.hidden_v5 >> i) & 1;
+        ESP_LOGI(TAG, "UI settings: version %u -> %u, %d hidden app(s) shown again, order kept", s.ver, m.ver, hidden);
+        mosaico_settings_save_request(&s_set, sizeof s_set);
+    }
 }
 
 /* ---------- snapshot: one copy of every producer's published state ---------- */
@@ -1124,7 +1134,7 @@ static int home_order(int *out)
     ui_settings_t set;
     ui_settings_get(&set);
     int n = 0;
-    for (int i = 0; i < set.n; i++) if (!(set.hidden & (1u << set.order[i]))) out[n++] = set.order[i];
+    for (int i = 0; i < set.n; i++) out[n++] = set.order[i];
     return n;
 }
 
@@ -1444,7 +1454,7 @@ static void refresh_home(const ui_snap_t *s)
 /* one apps page: title row, 2 x 2 lifted cards with a 100 px flat icon (radius 26, dark glyph) and an 18 px label */
 static void build_apps_page(lv_obj_t *t, int page, const int *apps, int n)
 {
-    static const char *const TITLE[N_APP_PAGES] = {"DRIVE AND AI", "CAR DATA", "TRIP AND SYSTEM", "FILES AND SETTINGS"};
+    static const char *const TITLE[N_APP_PAGES] = {"DRIVE AND AI", "CAR DATA", "TRIP AND SYSTEM", "FILES, WI-FI, SETTINGS"};
     lv_obj_t *col = page_col(t, 56, 10);
     lv_obj_t *r = flex_box(col, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, 0);
     lv_obj_set_size(r, LV_PCT(100), LV_SIZE_CONTENT);
@@ -1691,7 +1701,9 @@ static void slide_tick(void)
     }
 #endif
     if (s_sliding && !moving) slide_set(false);
-    if (!s_sliding && !moving) {
+    /* missing pictures (after a rebuild) are taken only while the launcher is on screen: a Settings change made in an
+       app costs no picture work there (measured before S1: 4-5 pictures of 40-195 ms each right after a tap) */
+    if (!s_sliding && !moving && s_cur < 0 && lv_screen_active() == s_home) {
         /* fill missing pictures one per tick; Home once too, so the first slide after boot does not pay for the buffers */
         static bool home_warm;
         int todo = -1;
@@ -2281,7 +2293,10 @@ static bool pf_go_home(void)
 {
     uint16_t target = (uint16_t)(((unsigned)(s_cur & 0xFF) << 8) | (unsigned)(s_return_tile & 0xFF));
     int a = upf_click(&s_pf, UPF_K_BACK, target);
-    if (a != UPF_COMMIT || !s_pf_home || s_cur < 0) { s_pf_home = false; if (a == UPF_COMMIT) s_pf.st = UPF_IDLE; return false; }
+    /* a Settings theme or order change still waiting for its debounce: the launcher refreshed at the press is stale,
+       so the plain path runs (launcher_catch_up rebuilds it once) */
+    bool stale = s_theme_deb.pending || s_launch_deb.pending;
+    if (a != UPF_COMMIT || !s_pf_home || s_cur < 0 || stale) { s_pf_home = false; if (a == UPF_COMMIT) s_pf.st = UPF_IDLE; return false; }
     s_pf_home = false;
     s_pd_app = s_cur;                                     /* its widgets go after the settle (pd_run) */
     s_cur = -1;
@@ -2292,8 +2307,6 @@ static bool pf_go_home(void)
 
 #endif
 
-static void build_grid(void) { build_launcher(); }
-static void build_home_row(void) {}
 
 /* ---------- boot splash: the 160 px mark on black until the launcher is up (at most 1.5 s, or the wallpaper is ready) ---- */
 static lv_obj_t *s_splash;
@@ -2331,12 +2344,14 @@ static void open_app(int idx)
 }
 
 /* back from an app: the launcher page it was opened from */
+static void launcher_catch_up(void);
 void ui_go_home(void)
 {
 #if CONFIG_OCM_UI_PREFETCH
     if (pf_go_home()) return;                             /* the launcher was refreshed at the Back press */
 #endif
     close_app();
+    launcher_catch_up();
     if (lv_screen_active() != s_home) lv_screen_load(s_home);
     if (s_tv) lv_tileview_set_tile_by_index(s_tv, (uint32_t)(s_return_tile < s_ntiles ? s_return_tile : 0), 0, LV_ANIM_OFF);
     take_snapshot();
@@ -2398,10 +2413,25 @@ static bool theme_tick(const ui_snap_t *s, bool force)
     if (want == s_light) return false;
     if (!force && (lv_display_get_inactive_time(s_disp) < 1500 || s_modal_open())) return false;   /* not mid-gesture */
     s_light = want;
+    int64_t tb = esp_timer_get_time();
     build_launcher();                                     /* one rebuild; both wallpapers are already in PSRAM */
     s_sb_mode = -1;
-    ESP_LOGI(TAG, "theme -> %s (%s, %s)", s_light ? "light" : "dark", is_auto ? "auto" : "set", s->clock);
+    ESP_LOGI(TAG, "theme -> %s (%s, %s), launcher rebuilt in %.1f ms", s_light ? "light" : "dark", is_auto ? "auto" : "set", s->clock,
+             (esp_timer_get_time() - tb) / 1000.0);
     return true;
+}
+
+/* Back to the launcher while a theme or order change still waits for its debounce: do it now, one rebuild at most */
+static void launcher_catch_up(void)
+{
+    bool theme = s_theme_deb.pending, order = s_launch_deb.pending;
+    ocm_debounce_cancel(&s_theme_deb);
+    ocm_debounce_cancel(&s_launch_deb);
+    if (theme) {
+        take_snapshot();
+        if (theme_tick(&s_snap, true)) { s_theme_check = false; return; }
+    }
+    if (order) build_launcher();
 }
 
 /* ---------- panel power ---------- */
@@ -2488,6 +2518,9 @@ static void tick_cb(lv_timer_t *t)
         else go_home_tile();
     }
     if (s_req_off) { s_req_off = false; panel_power(false); }
+    /* a theme change from Settings: one check (and at most one launcher rebuild) once the taps stopped */
+    if (s_theme_deb.pending && lv_display_get_inactive_time(s_disp) >= OCM_IDLE_FINGER_MS &&
+        ocm_debounce_fire(&s_theme_deb, t0 / 1000, INT32_MAX)) s_theme_check = true;
 
     int64_t tj = esp_timer_get_time();
     sched_begin(s_job);
@@ -2559,12 +2592,21 @@ static void tick_cb(lv_timer_t *t)
         bool force = s_theme_check;
         s_theme_check = false;
         if (theme_tick(&s_snap, force)) {
+            ocm_debounce_cancel(&s_launch_deb);          /* the rebuild carries a new Home order too */
             refresh_status_bar(&s_snap);
             if (s_cur < 0 && lv_screen_active() == s_home) refresh_home(&s_snap);
         }
 #if CONFIG_OCM_SWIPE_INTENT
         si_warm_tick();
 #endif
+    }
+    /* Home order moved in Settings: one launcher rebuild once the moves stopped, outside the job, finger up (the
+       launcher is off screen; its pictures follow on the next launcher visit) */
+    if (s_launch_deb.pending && lv_display_get_inactive_time(s_disp) >= OCM_IDLE_FINGER_MS &&
+        ocm_debounce_fire(&s_launch_deb, esp_timer_get_time() / 1000, INT32_MAX)) {
+        int64_t tb = esp_timer_get_time();
+        build_launcher();
+        ESP_LOGI(TAG, "launcher rebuilt for the new Home order in %.1f ms", (esp_timer_get_time() - tb) / 1000.0);
     }
 }
 

@@ -65,6 +65,22 @@ prefetch_tests: test_ui_prefetch.c ../../main/ui_prefetch.c ../../main/ui_prefet
 
 swipe_tests: test_swipe_intent.c ../../main/swipe_intent.c ../../main/swipe_intent.h ../../main/ui_metrics.c ../../main/ui_metrics.h
 	$(CC) $(CFLAGS) -O2 -o $@ test_swipe_intent.c ../../main/ui_metrics.c -lm
+# ESP-Mosaico Settings: the blob migration (Wi-Fi app, no app hiding), order moves, change rules, the save debounce
+settings: settings_tests
+	./settings_tests
+
+settings_tests: test_ui_settings.c ../../main/ui_settings_logic.c ../../main/ui_settings_logic.h
+	$(CC) $(CFLAGS) -o $@ test_ui_settings.c ../../main/ui_settings_logic.c
+
+# ESP-Mosaico Wi-Fi app: the search list merge, the password rules (WIFI-ADD's), the join result texts (main/wifi_ui_logic.c)
+wifi: wifi_tests
+	./wifi_tests
+
+wifi_tests: test_wifi_ui.c ../../main/wifi_ui_logic.c ../../main/wifi_ui_logic.h ../../main/harden.c
+	$(CC) $(CFLAGS) -o $@ test_wifi_ui.c ../../main/wifi_ui_logic.c ../../main/harden.c -lm
+
+swipe_tests: test_swipe_intent.c ../../main/swipe_intent.c ../../main/swipe_intent.h
+	$(CC) $(CFLAGS) -O2 -o $@ test_swipe_intent.c -lm
 
 carmind_tests: $(SRCS) ../../main/custom_pids.h ../../main/fault_engine.h
 	$(CC) $(CFLAGS) -o $@ $(SRCS) -lm
@@ -82,5 +98,5 @@ rev_tests: $(REV_SRCS) ../../main/rev_learn.h ../../main/rev_cal.h ../../main/re
 	$(CC) $(CFLAGS) -o $@ $(REV_SRCS) -lm
 
 clean:
-	rm -f carmind_tests rev_tests tank_tests session_tests reset_tests swipe_tests clock_tests uimetrics_tests prefetch_tests logstore_tests nandfat_tests
-.PHONY: run rev session reset swipe clock uimetrics prefetch logstore clean
+	rm -f carmind_tests rev_tests tank_tests session_tests reset_tests swipe_tests clock_tests uimetrics_tests prefetch_tests logstore_tests nandfat_tests settings_tests wifi_tests
+.PHONY: run rev session reset swipe clock uimetrics prefetch logstore clean settings wifi

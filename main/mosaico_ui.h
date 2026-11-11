@@ -105,24 +105,15 @@ void ui_swipe_status(char *buf, size_t n);      /* CONFIG_OCM_SWIPE_INTENT: the 
 int               ui_app_count(void);
 const ocm_app_t  *ui_app(int i);
 
-/* settings, kept in NVS by the board task (the LVGL task never writes flash) */
-#define UI_MAX_APPS 16
-typedef struct {
-    uint8_t  ver;
-    uint8_t  n;                      /* entries in order[] */
-    uint8_t  order[UI_MAX_APPS];     /* app indices, home order */
-    uint16_t hidden;                 /* bit per app index: not on home */
-    uint8_t  widget;                 /* ui_widget_t */
-    uint8_t  brightness;             /* percent */
-    uint16_t screen_off_s;           /* 0 = never */
-    uint8_t  econ_l100;              /* economy shown as 0 = km/L, 1 = L/100 km */
-    uint8_t  theme;                  /* 0 auto (Colour by day once the clock is known, Night otherwise), 1 Colour, 2 Night */
-} ui_settings_t;
-#define UI_SETTINGS_VER 5
+/* settings, kept in NVS by the board task (the LVGL task never writes flash); the blob, its migration and the
+   change rules are in ui_settings_logic.h (pure C, host-tested) */
+#include "ui_settings_logic.h"
 typedef enum { W_FUEL_LPH = 0, W_L100, W_KPL, W_SPEED, W_RPM, W_TORQUE, W_COUNT } ui_widget_t;
 const char *ui_widget_name(int w);
 void ui_settings_get(ui_settings_t *out);
-void ui_settings_set(const ui_settings_t *in);   /* applies at once, saved within a few seconds */
+/* applies in RAM at once; the NVS write (500 ms after the last change), a launcher rebuild (Home order) and the theme
+   switch run later, debounced, outside the tap (ui_settings_logic.h). Nothing on the Settings page is rebuilt. */
+void ui_settings_set(const ui_settings_t *in);
 void ui_brightness_preview(int pct);             /* slider drag: panel only (<= 1 command per 50 ms UI tick), not saved */
 void ui_settings_set_brightness(int pct);        /* slider release: 10..100 %, applied and saved, nothing rebuilt */
 

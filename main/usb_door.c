@@ -28,6 +28,9 @@
 #include "uploader.h"
 #include "elm327.h"
 #include "wifi_creds.h"
+#if BOARD_MOSAICO
+#include "wifi_sync.h"
+#endif
 #include "remote_config.h"
 #include "sdlog.h"
 #include "status.h"
@@ -362,7 +365,16 @@ static void handle(char *line, char *buf, char *b64)
     } else if (!strcmp(cmd, "WIFI-FORGET")) {
         char ssid[40];
         if (!a1 || !unb64(a1, ssid, sizeof ssid)) { reply("ERR usage: WIFI-FORGET <ssid b64>"); return; }
+#if BOARD_MOSAICO
+        /* not while the Wi-Fi task holds a pointer into the list (a round running), the screen's Forget rule */
+        int fr = wifi_sync_forget(ssid);
+        if (fr > 0) reply("OK WIFI-FORGET");
+        else if (fr == 0) reply("ERR no such network");
+        else if (fr == -1) reply("ERR busy: Wi-Fi is using the network list, try again in a minute");
+        else reply("ERR could not write the network list");
+#else
         if (wifi_creds_remove(ssid)) reply("OK WIFI-FORGET"); else reply("ERR no such network");
+#endif
     } else if (!strcmp(cmd, "CONFIG")) {
         if (!a1 || !unb64(a1, buf, GET_MAX)) { reply("ERR usage: CONFIG <json b64>"); return; }
         cJSON *root = cJSON_Parse(buf);

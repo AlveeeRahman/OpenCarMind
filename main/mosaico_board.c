@@ -23,6 +23,13 @@
 #if CONFIG_OCM_NAND_LOGS
 #include "nand_store.h"
 #endif
+#include "wifi_creds.h"
+#include "ui_settings_logic.h"
+#include "esp_timer.h"
+#include "esp_attr.h"
+#include "esp_heap_caps.h"
+#include "sys_mode.h"
+#include "wifi_ui_logic.h"
 
 static const char *TAG = "mosaico";
 
@@ -69,6 +76,199 @@ static void model_set(int id)
     portEXIT_CRITICAL(&s_mux);
 }
 
+static mosaico_wifi_list_t s_wifi;                 /* published under s_mux */
+static char s_wifi_forget[33];                     /* the network a forget request names, under s_mux */
+EXT_RAM_BSS_ATTR static mosaico_wifi_scan_t s_scan;   /* published under s_mux */
+static mosaico_wifi_join_t s_join_st;              /* published under s_mux */
+static struct { char ssid[33]; char pw[65]; bool keep; } s_join_req;   /* under s_mux; the password is wiped once read */
+
+void mosaico_board_wifi_list(mosaico_wifi_list_t *out)
+{
+    portENTER_CRITICAL(&s_mux);
+    *out = s_wifi;
+    portEXIT_CRITICAL(&s_mux);
+}
+
+bool mosaico_board_wifi_forget(const char *ssid)
+{
+    portENTER_CRITICAL(&s_mux);
+    strlcpy(s_wifi_forget, ssid, sizeof s_wifi_forget);
+    portEXIT_CRITICAL(&s_mux);
+    return mosaico_board_request(MB_WIFI_FORGET, 0);
+}
+
+static void wifi_list_copy(const char *note, const char *clock_note)
+{
+    static mosaico_wifi_list_t w;                  /* board task only */
+    memset(&w, 0, sizeof w);
+    size_t n = wifi_creds_count();
+    for (size_t i = 0; i < n && w.n < MB_WIFI_NETS; i++) {
+        const wifi_cred_t *c = wifi_creds_get(i);
+        if (!c) continue;
+        strlcpy(w.net[w.n].ssid, c->ssid, sizeof w.net[0].ssid);
+        w.net[w.n].rssi = c->last_rssi;
+        w.net[w.n].fails = c->fail_count;
+        w.n++;
+    }
+    portENTER_CRITICAL(&s_mux);
+    w.gen = s_wifi.gen + 1;
+    if (note) strlcpy(w.note, note, sizeof w.note);
+    else memcpy(w.note, s_wifi.note, sizeof w.note);
+    if (clock_note) strlcpy(w.clock_note, clock_note, sizeof w.clock_note);
+    else memcpy(w.clock_note, s_wifi.clock_note, sizeof w.clock_note);
+    w.clock_gen = s_wifi.clock_gen + (clock_note ? 1 : 0);
+    s_wifi = w;
+    portEXIT_CRITICAL(&s_mux);
+}
+
+static void wifi_forget(void)
+{
+    char ssid[33];
+    portENTER_CRITICAL(&s_mux);
+    memcpy(ssid, s_wifi_forget, sizeof ssid);
+    portEXIT_CRITICAL(&s_mux);
+    int r = wifi_sync_forget(ssid);                /* refused while a Wi-Fi round holds a pointer into the list */
+    const char *note = r > 0 ? "Network forgotten."
+                     : r == 0 ? "Not forgotten: the network is no longer saved."
+                     : r == -1 ? "Not forgotten: Wi-Fi is busy. Try again in a minute."
+                     : "Not forgotten: the list could not be written.";
+    ESP_LOGI(TAG, "Wi-Fi network forget from the screen: %s", note);     /* the name stays out of the log */
+    wifi_list_copy(note, NULL);
+}
+
+static void wifi_now(void)
+{
+    const char *note;
+    if (wifi_creds_count() == 0) note = "No saved network yet: search and join one first.";
+    else if (!wifi_sync_up()) note = "Wi-Fi could not start. Restart the board and try again.";
+    else if (!wifi_sync_connect_now()) note = "Wi-Fi is not available in this firmware.";
+    else note = "Looking for a saved network to set the clock.";
+    ESP_LOGI(TAG, "Wi-Fi clock sync now: %s", note);
+    wifi_list_copy(NULL, note);
+}
+
+static void scan_publish(int state, int n, int n_seen, const ws_row_t *rows)
+{
+    portENTER_CRITICAL(&s_mux);
+    s_scan.state = state;
+    s_scan.n = n;
+    s_scan.n_seen = n_seen;
+    if (rows && n > 0) memcpy(s_scan.row, rows, (size_t)n * sizeof rows[0]);
+    s_scan.gen++;
+    portEXIT_CRITICAL(&s_mux);
+}
+
+bool mosaico_board_wifi_search(void)
+{
+    scan_publish(WS_ST_SEARCHING, 0, 0, NULL);
+    if (mosaico_board_request(MB_WIFI_SCAN, 0)) return true;
+    scan_publish(WS_ST_FAILED, 0, 0, NULL);
+    return false;
+}
+
+bool mosaico_board_wifi_scan(mosaico_wifi_scan_t *out, uint32_t have_gen)
+{
+    portENTER_CRITICAL(&s_mux);
+    bool changed = s_scan.gen != have_gen;
+    if (changed) *out = s_scan;
+    portEXIT_CRITICAL(&s_mux);
+    return changed;
+}
+
+static bool saved_cb(const char *ssid, void *ctx) { (void)ctx; return wifi_creds_find(ssid) != NULL; }
+
+static void ram_line(const char *when)
+{
+    ESP_LOGI(TAG, "Wi-Fi search %s: internal RAM %u B free, lowest %u B, largest block %u B", when,
+             (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL), (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL),
+             (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
+}
+
+#define SCAN_RECORDS 40
+static void wifi_scan(void)
+{
+    EXT_RAM_BSS_ATTR static wifi_seen_t seen[SCAN_RECORDS];
+    EXT_RAM_BSS_ATTR static ws_raw_t raw[SCAN_RECORDS];
+    EXT_RAM_BSS_ATTR static ws_row_t rows[SCAN_RECORDS + 8];
+    if (sys_mode_get() == MODE_DRIVE) { scan_publish(WS_ST_DRIVING, 0, 0, NULL); return; }
+    ram_line("before");
+    int64_t t0 = esp_timer_get_time();
+    int n = wifi_sync_up() ? wifi_sync_scan(seen, SCAN_RECORDS) : -1;   /* not before app_main's wifi_sync_started() */
+    ram_line("after");
+    if (n < 0) { scan_publish(WS_ST_FAILED, 0, 0, NULL); return; }
+    for (int i = 0; i < n; i++) {
+        memcpy(raw[i].ssid, seen[i].ssid, sizeof raw[i].ssid);
+        raw[i].ssid[sizeof raw[i].ssid - 1] = 0;
+        raw[i].rssi = seen[i].rssi;
+        raw[i].secure = seen[i].secure;
+    }
+    int n_seen = 0;
+    int k = ws_merge(raw, n, rows, SCAN_RECORDS + 8, WS_ROWS_MAX, saved_cb, NULL, &n_seen);
+    ESP_LOGI(TAG, "Wi-Fi search from the screen: %d networks, %d shown, %lld ms", n_seen, k,
+             (long long)((esp_timer_get_time() - t0) / 1000));                     /* counts only, no names */
+    scan_publish(WS_ST_DONE, k, n_seen, rows);
+}
+
+static void join_publish(int result, const char *ssid, bool bump)
+{
+    portENTER_CRITICAL(&s_mux);
+    s_join_st.result = result;
+    if (ssid) strlcpy(s_join_st.ssid, ssid, sizeof s_join_st.ssid);
+    if (bump) s_join_st.gen++;
+    portEXIT_CRITICAL(&s_mux);
+}
+
+/* runs in the Wi-Fi task when its join round has an answer */
+static void join_done(int result, void *ctx)
+{
+    (void)ctx;
+    join_publish(result, NULL, true);
+    ESP_LOGI(TAG, "Wi-Fi join from the screen: result %d", result);
+    mosaico_board_request(MB_WIFI_LIST, 0);        /* the saved list changed (or went back) */
+}
+
+bool mosaico_board_wifi_join(const char *ssid, const char *password)
+{
+    portENTER_CRITICAL(&s_mux);
+    strlcpy(s_join_req.ssid, ssid, sizeof s_join_req.ssid);
+    s_join_req.keep = password == NULL;
+    strlcpy(s_join_req.pw, password ? password : "", sizeof s_join_req.pw);
+    s_join_st.result = WJ_WAIT;
+    strlcpy(s_join_st.ssid, ssid, sizeof s_join_st.ssid);
+    s_join_st.gen++;
+    portEXIT_CRITICAL(&s_mux);
+    if (mosaico_board_request(MB_WIFI_JOIN, 0)) return true;
+    portENTER_CRITICAL(&s_mux);
+    ws_wipe(s_join_req.pw, sizeof s_join_req.pw);
+    portEXIT_CRITICAL(&s_mux);
+    join_publish(WJ_BUSY, NULL, true);
+    return false;
+}
+
+void mosaico_board_wifi_join_state(mosaico_wifi_join_t *out)
+{
+    portENTER_CRITICAL(&s_mux);
+    *out = s_join_st;
+    portEXIT_CRITICAL(&s_mux);
+}
+
+static void wifi_join(void)
+{
+    char ssid[33], pw[65];
+    portENTER_CRITICAL(&s_mux);
+    memcpy(ssid, s_join_req.ssid, sizeof ssid);
+    memcpy(pw, s_join_req.pw, sizeof pw);
+    bool keep = s_join_req.keep;
+    ws_wipe(s_join_req.pw, sizeof s_join_req.pw);
+    portEXIT_CRITICAL(&s_mux);
+    int r = WJ_WAIT;
+    if (sys_mode_get() == MODE_DRIVE) r = WJ_DRIVING;
+    else if (!wifi_sync_up()) r = WJ_NO_RADIO;
+    else if (!wifi_sync_join(ssid, keep ? NULL : pw, join_done, NULL)) r = WJ_BUSY;
+    ws_wipe(pw, sizeof pw);
+    if (r != WJ_WAIT) join_publish(r, NULL, true);
+}
+
 static void do_request(const mb_req_t *r)
 {
     switch ((mb_cmd_t)r->cmd) {
@@ -102,13 +302,18 @@ static void do_request(const mb_req_t *r)
         break;
     case MB_CLOCK_SET:        mosaico_clock_do_set(); break;
     case MB_MODEL_SET:        model_set((int)r->arg); break;
-    case MB_WIFI_NOW:         ESP_LOGI(TAG, "Wi-Fi clock sync now: %s", wifi_sync_connect_now() ? "started" : "not available"); break;
+    case MB_WIFI_NOW:         wifi_now(); break;
+    case MB_SETTINGS_KICK:    break;                /* wakes the loop: the settings debounce sets the next wake-up */
+    case MB_WIFI_LIST:        wifi_list_copy(NULL, NULL); break;
+    case MB_WIFI_FORGET:      wifi_forget(); break;
+    case MB_WIFI_SCAN:        wifi_scan(); break;
+    case MB_WIFI_JOIN:        wifi_join(); break;
     }
 }
 #define SET_MAX 64
 static uint8_t s_set[SET_MAX];
 static size_t s_set_n;
-static volatile bool s_set_dirty;
+static ocm_debounce_t s_set_deb;                   /* under s_mux */
 
 void mosaico_storage_read(mosaico_storage_t *out)
 {
@@ -120,11 +325,23 @@ void mosaico_storage_read(mosaico_storage_t *out)
 void mosaico_settings_save_request(const void *blob, size_t n)
 {
     if (n > SET_MAX) return;
+    int64_t now = esp_timer_get_time() / 1000;
     portENTER_CRITICAL(&s_mux);
     memcpy(s_set, blob, n);
     s_set_n = n;
-    s_set_dirty = true;
+    ocm_debounce_touch(&s_set_deb, now, OCM_SAVE_QUIET_MS);
     portEXIT_CRITICAL(&s_mux);
+    mosaico_board_request(MB_SETTINGS_KICK, 0);    /* a full queue only delays the write to the next 2 s round */
+}
+
+/* ms until the settings write is due (cap when none is pending) */
+static int32_t settings_wait_ms(int32_t cap)
+{
+    int64_t now = esp_timer_get_time() / 1000;
+    portENTER_CRITICAL(&s_mux);
+    int32_t w = ocm_debounce_wait_ms(&s_set_deb, now, OCM_SAVE_MAX_MS, cap);
+    portEXIT_CRITICAL(&s_mux);
+    return w;
 }
 
 bool mosaico_settings_load(void *blob, size_t n)
@@ -141,11 +358,11 @@ static void settings_flush(void)
 {
     uint8_t copy[SET_MAX];
     size_t n;
+    int64_t now = esp_timer_get_time() / 1000;
     portENTER_CRITICAL(&s_mux);
-    if (!s_set_dirty) { portEXIT_CRITICAL(&s_mux); return; }
+    if (!ocm_debounce_fire(&s_set_deb, now, OCM_SAVE_MAX_MS)) { portEXIT_CRITICAL(&s_mux); return; }
     memcpy(copy, s_set, s_set_n);
     n = s_set_n;
-    s_set_dirty = false;
     portEXIT_CRITICAL(&s_mux);
     nvs_handle_t h;
     if (nvs_open("ocm_ui", NVS_READWRITE, &h) != ESP_OK) return;
@@ -387,12 +604,15 @@ static void board_task(void *arg)
         if (tick % 30 == 0 && g.ok)
             ESP_LOGI(TAG, "PWR soc=%d%% mv=%d ma=%d rem=%d/%d mAh design=%d%s", g.soc, g.mv, g.ma, g.rem_mah, g.full_mah,
                      g.design_mah, mosaico_gauge_uncalibrated(&g) ? " (gauge not configured for the 65 mAh cell)" : "");
-        /* sleep until the next 2 s release, serving UI requests meanwhile */
+        /* sleep until the next 2 s release, serving UI requests and writing the settings when their debounce is due */
         for (;;) {
             TickType_t now = xTaskGetTickCount(), due = release + pdMS_TO_TICKS(2000);
             if ((int32_t)(due - now) <= 0) { release = due; break; }
+            TickType_t wait = due - now, sw = pdMS_TO_TICKS(settings_wait_ms(2000));
+            if (sw < wait) wait = sw ? sw : 1;
             mb_req_t r;
-            if (xQueueReceive(s_q, &r, due - now) == pdTRUE) do_request(&r);
+            if (xQueueReceive(s_q, &r, wait) == pdTRUE) do_request(&r);
+            settings_flush();
         }
     }
 }
