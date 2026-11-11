@@ -164,11 +164,89 @@ static void test_health(void)
     CHECK(!strcmp(os_health_name(OS_H_PENDING), "pending") && !strcmp(os_health_name(9), "?"), "names");
 }
 
+/* ---------- 4. response-time analysis ---------- */
+/* sched_mon.c's analyse() loop, copied as it is in 1.2.0, as a reference (it stops after 50 steps) */
+static uint32_t sched_mon_wcrt(const os_rt_task_t *t, int n, int i)
+{
+    uint64_t r = t[i].c_us, prev = 0, limit = t[i].d_us;
+    for (int it = 0; it < 50 && r != prev && r <= limit; it++) {
+        prev = r;
+        r = t[i].c_us;
+        for (int j = 0; j < n; j++) {
+            if (j == i || t[j].core != t[i].core || t[j].prio <= t[i].prio) continue;
+            uint64_t tj = t[j].t_us;
+            r += ((prev + tj - 1) / tj) * t[j].c_us;
+        }
+    }
+    return r > UINT32_MAX ? UINT32_MAX : (uint32_t)r;
+}
+
+static uint32_t rng32(uint32_t *s) { *s ^= *s << 13; *s ^= *s >> 17; *s ^= *s << 5; return *s; }
+
+static void test_rta(void)
+{
+    /* the classic three-task example: C 3/3/5, T 7/12/20, D = T, rate-monotonic priorities. By hand:
+       R1 = 3; R2 = 3 + ceil(3/7)3 = 6, then 3 + ceil(6/7)3 = 6; R3: 5 -> 11 -> 14 -> 17 -> 20 -> 20 */
+    os_rt_task_t t[3] = { { "a", 3, 7, 7, 3, 1 }, { "b", 3, 12, 12, 2, 1 }, { "c", 5, 20, 20, 1, 1 } };
+    uint32_t r[OS_RTA_MAX];
+    CHECK(os_rta(t, 3, 1, r) == 0 && r[0] == 3 && r[1] == 6 && r[2] == 20, "classic example: R = %u %u %u", r[0], r[1], r[2]);
+    t[2].c_us = 6;
+    CHECK(os_rta(t, 3, 1, r) == 1 && r[2] == OS_RTA_MISS && r[0] == 3 && r[1] == 6, "C3 = 6: the lowest task misses");
+    t[2].c_us = 5; t[2].d_us = 19;
+    CHECK(os_rta(t, 3, 1, r) == 1, "D3 = 19 < R3 = 20: a miss");
+    t[2].d_us = 20; t[1].core = 0;
+    CHECK(os_rta(t, 3, 1, r) == 0 && r[1] == 0 && r[2] == 5 + 2 * 3, "a task on the other core does not interfere (R3 %u)", r[2]);
+    os_rt_task_t eq[2] = { { "x", 4, 10, 10, 2, 1 }, { "y", 4, 10, 10, 2, 1 } };
+    CHECK(os_rta(eq, 2, 1, r) == 0 && r[0] == 4 && r[1] == 4, "equal priorities do not interfere (as sched_mon)");
+    os_rt_task_t over[2] = { { "hi", 10, 10, 10, 3, 1 }, { "lo", 5, 1000, 1000, 1, 1 } };
+    CHECK(os_rta(over, 2, 1, r) == 1 && r[1] == OS_RTA_MISS, "U = 1 on the core: the low task never fits inside D");
+    /* the same answers as sched_mon's own loop on random task sets where that loop converged */
+    uint32_t seed = 12345, agree = 0, cases = 0;
+    for (int c = 0; c < 20000; c++) {
+        int n = 2 + (int)(rng32(&seed) % 6);
+        os_rt_task_t s[8];
+        for (int i = 0; i < n; i++) {
+            uint32_t T = 1000 + rng32(&seed) % 200000;
+            s[i] = (os_rt_task_t){ "t", 1 + rng32(&seed) % (T / 4), T, T, (uint8_t)(1 + rng32(&seed) % 5), (int8_t)(rng32(&seed) % 2) };
+        }
+        uint32_t ra[8], rb[8];
+        os_rta(s, n, 0, ra);
+        os_rta(s, n, 1, rb);
+        for (int i = 0; i < n; i++) {
+            uint32_t mine = s[i].core ? rb[i] : ra[i], ref = sched_mon_wcrt(s, n, i);
+            if (ref > s[i].d_us) { cases++; agree += mine == OS_RTA_MISS; continue; }
+            cases++;
+            agree += mine == ref;
+        }
+    }
+    CHECK(agree == cases, "agrees with sched_mon's loop: %u of %u", agree, cases);
+    printf("  rta: classic example R = 3, 6, 20; random sets: %u of %u task results equal to sched_mon's\n", agree, cases);
+
+    /* admission: core 1 as on the board (obd prio 5, ml 3, rev 2), measured C from sched_mon */
+    os_rt_task_t b[3] = { { "obd", 30000, 200000, 200000, 5, 1 }, { "rev", 20000, 1000000, 1000000, 2, 1 },
+                          { "ui", 40000, 50000, 50000, 2, 0 } };
+    const os_rt_task_t ml = { "ml", 0, 1000000, 1000000, 3, 1 };
+    os_admit_t a;
+    CHECK(os_admit(b, 3, &ml, 2000, OS_ADMIT_FACTOR_PM, &a) && a.c_us == 4000, "R.E.V-size run admitted, C x2 = %u", a.c_us);
+    CHECK(a.r_us[3] == 4000 + 30000 && a.r_us[1] == 20000 + 4000 + 30000 && a.r_us[2] == 0, "R ml %u, rev %u, ui not analysed",
+          a.r_us[3], a.r_us[1]);
+    CHECK(a.margin_us == 200000 - 30000 && a.worst == 0, "margin %d us at %d (obd: R 30 ms of 200)", a.margin_us, a.worst);
+    CHECK(!os_admit(b, 3, &ml, 500000, OS_ADMIT_FACTOR_PM, &a) && a.r_us[3] == OS_RTA_MISS && a.margin_us < 0,
+          "a 500 ms model x2 = 1 s plus obd misses: refused (margin %d)", a.margin_us);
+    CHECK(os_admit(b, 3, &ml, 450000, 1000, &a), "the same set admits 450 ms with no factor");
+    CHECK(!os_admit(b, 3, &ml, 450000, OS_ADMIT_FACTOR_PM, &a), "and refuses it with the factor 2");
+    b[1].d_us = 60000;
+    CHECK(!os_admit(b, 3, &ml, 6000, OS_ADMIT_FACTOR_PM, &a) && a.worst == 1, "a lower-priority job's deadline counts too (rev)");
+    b[1].d_us = 1000000; b[1].core = -1;
+    CHECK(os_admit(b, 3, &ml, 6000, OS_ADMIT_FACTOR_PM, &a) && a.r_us[1] == 0, "a job that never ran is not analysed");
+}
+
 int main(void)
 {
     test_reset_plans();
     test_runlevels();
     test_health();
+    test_rta();
     printf("os: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail != 0;
 }

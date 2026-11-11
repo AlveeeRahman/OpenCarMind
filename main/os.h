@@ -29,6 +29,11 @@ void          os_tick(void);
 /* the boot health verdict (os_core.h): OS_H_PENDING until it is formed; flags = the reasons */
 uint8_t       os_health(uint16_t *flags);
 
+/* Model admission (os_core.h section 4): the jobs sched_mon measured plus the model's job with C = its self-test run x 2,
+   response-time analysis on its core. Logs every job's R and the margin. false (why filled) when a deadline would fail. */
+bool          os_admit_model(const char *name, uint32_t measured_us, uint32_t period_ms, uint32_t deadline_ms, uint8_t prio,
+                             int core, char *why, size_t why_n);
+
 #ifdef __cplusplus
 }
 #endif

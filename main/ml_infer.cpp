@@ -516,6 +516,9 @@ extern "C" int ml_get_last_probs(float *out, int max)
     return n;
 }
 
+#if CONFIG_IDF_TARGET_ESP32S31
+#define ML_JOB_MS ((ML_STRIDE_S > 0 ? ML_STRIDE_S : 10) * 1000)   /* the ml job's period and deadline (sched_register below) */
+#endif
 static volatile int s_selftest_state = -1;           /* 1 exact, 0 differs, -1 not run (ml_selftest_state) */
 
 /* One timed run on the model's embedded test input. Caller holds the model lock. */
@@ -612,6 +615,18 @@ extern "C" bool ml_select_model(int id, char *why, size_t why_n)
                      (esp_timer_get_time() - t0) / 1000, (unsigned)(heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024), (unsigned)(ps0 / 1024));
             uint32_t us = selftest();
             xSemaphoreTake(s_stats_lock, portMAX_DELAY); s_stats.selftest_us = us; xSemaphoreGive(s_stats_lock);
+#if CONFIG_IDF_TARGET_ESP32S31
+            /* mossREV OS admission (os_core.h): its measured run x 2 must leave every core-1 deadline met, else the old
+               model comes back, as after a failed load */
+            if (!os_admit_model(MODELS[id].name, us, ML_JOB_MS, ML_JOB_MS, 3, 1, why, why_n)) {
+                ok = false;
+                delete s_model;
+                s_active = old;
+                s_model = load_model();
+                if (s_model) { check_outputs(s_model); us = selftest(); }
+                xSemaphoreTake(s_stats_lock, portMAX_DELAY); s_stats.selftest_us = us; xSemaphoreGive(s_stats_lock);
+            }
+#endif
         }
         ml_reset_history();
     }
@@ -652,6 +667,14 @@ extern "C" void ml_init(void)
              MODELS[s_active].quant, MODELS[s_active].target, (esp_timer_get_time() - t0) / 1000, ML_RAM_DELTA(heap0, heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
              s_z_ok ? "yes" : "no");
     s_stats.selftest_us = selftest();
+#if CONFIG_IDF_TARGET_ESP32S31
+    if (!os_admit_model(MODELS[s_active].name, s_stats.selftest_us, ML_JOB_MS, ML_JOB_MS, 3, 1, NULL, 0)) {
+        sys_event(EV_ERROR, "Model refused: a deadline would fail");   /* the response-time analysis (os_core.h) */
+        delete s_model;
+        s_model = nullptr;
+        return;
+    }
+#endif
     s_job = sched_register("ml", (ML_STRIDE_S > 0 ? ML_STRIDE_S : 10) * 1000, (ML_STRIDE_S > 0 ? ML_STRIDE_S : 10) * 1000, true);
     /* The model runs once per OBD row, which the car paces: about 1.4 s on a real car with gaps over 3 s, so three 1 s
        periods is too tight. A stall is no run for a whole 10 s label window while rows are expected. */

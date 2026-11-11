@@ -171,3 +171,38 @@ void os_tick(void)
         last = a;
     }
 }
+
+/* ---------- model admission ---------- */
+/* Called with the model lock held (ml_select_model) or before any other task can switch (ml_init), so the static
+   buffers below are never shared. */
+bool os_admit_model(const char *name, uint32_t measured_us, uint32_t period_ms, uint32_t deadline_ms, uint8_t prio,
+                    int core, char *why, size_t why_n)
+{
+    /* in PSRAM, not on the caller's stack (app_main's is 3.5 KB): one caller at a time (above) */
+    EXT_RAM_BSS_ATTR static sched_stats_t js[OS_RTA_MAX - 1];
+    EXT_RAM_BSS_ATTR static os_rt_task_t set[OS_RTA_MAX - 1];
+    EXT_RAM_BSS_ATTR static os_admit_t a;
+    EXT_RAM_BSS_ATTR static char rl[96];
+    int n = sched_get_stats(js, OS_RTA_MAX - 1), k = 0;
+    for (int i = 0; i < n; i++) {
+        if (!strcmp(js[i].name, "ml")) continue;                  /* the model's own job: replaced by the candidate */
+        set[k++] = (os_rt_task_t){ js[i].name, js[i].cpu_max_us, js[i].period_ms * 1000u, js[i].deadline_ms * 1000u,
+                                   js[i].prio, (int8_t)(js[i].runs ? js[i].core : -1) };
+    }
+    const os_rt_task_t cand = { "ml", 0, period_ms * 1000u, deadline_ms * 1000u, prio, (int8_t)core };
+    bool ok = os_admit(set, k, &cand, measured_us, OS_ADMIT_FACTOR_PM, &a);
+    int o = 0;
+    rl[0] = 0;
+    for (int i = 0; i < a.n && o < (int)sizeof rl - 1; i++) {
+        const os_rt_task_t *t = i < k ? &set[i] : &cand;
+        if (t->core != core) continue;
+        if (a.r_us[i] == OS_RTA_MISS) o += snprintf(rl + o, sizeof rl - (size_t)o, " %s miss", t->name);
+        else o += snprintf(rl + o, sizeof rl - (size_t)o, " %s %.1f/%lu ms", t->name, a.r_us[i] / 1000.0, (unsigned long)(t->d_us / 1000));
+    }
+    const char *worst = a.worst < k ? set[a.worst].name : "ml";
+    ESP_LOGI(TAG, "admission %s: C %lu us (self-test %lu us x %u.%u) on core %d, R:%s, margin %.1f ms (%s): %s", name,
+             (unsigned long)a.c_us, (unsigned long)measured_us, OS_ADMIT_FACTOR_PM / 1000, OS_ADMIT_FACTOR_PM % 1000 / 100,
+             core, rl, a.margin_us / 1000.0, worst, ok ? "admitted" : "REFUSED");
+    if (!ok && why) snprintf(why, why_n, "%s refused: %s would miss its deadline", name, worst);
+    return ok;
+}

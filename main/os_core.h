@@ -28,6 +28,16 @@
  *    self-test that differs or did not run, a repaired or damaged store, no NAND, touch failing, deadline misses or
  *    stalls, a failed response-time analysis, a slow first frame. Good is everything else. A damaged store is not
  *    Bad: older firmware would not repair the data, so it is no reason to go back to it.
+ *
+ * 4. Model admission by response-time analysis. Fixed-priority tasks i with worst-case CPU time C_i, period T_i and
+ *    deadline D_i on one core. Task i's worst-case response time R_i is the smallest fixed point of
+ *        R = C_i + sum over higher-priority tasks j on the same core of ceil(R / T_j) * C_j
+ *    (Joseph and Pandya 1986), found by iterating from R = C_i. Task i is schedulable when R_i <= D_i. The sum counts
+ *    how many times each higher-priority task can be released inside a window of length R and charges its full C_j for
+ *    each release: the critical instant, all tasks released together. Equal priorities do not interfere here, as in
+ *    sched_mon.c. A model is admitted on a switch or a load only if every task on its core still meets its deadline when
+ *    the model's C is its measured self-test run times OS_ADMIT_FACTOR_PM / 1000. The factor is a safety margin: one
+ *    measured run is not a worst case (cache state, PSRAM contention).
  */
 #ifndef OS_CORE_H
 #define OS_CORE_H
@@ -127,6 +137,30 @@ uint8_t os_health_verdict(const os_health_in_t *in, uint16_t *flags);    /* OS_H
 const char *os_health_name(uint8_t verdict);                             /* "pending", "good", "degraded", "bad" */
 /* "good" or "degraded: model self-test differs, NAND not mounted" (truncated to n) */
 int os_health_text(uint8_t verdict, uint16_t flags, char *buf, size_t n);
+
+/* ---------- 4. response-time analysis and model admission ---------- */
+#define OS_RTA_MAX         12
+#define OS_ADMIT_FACTOR_PM 2000           /* C = measured self-test run x 2 */
+#define OS_RTA_MISS        UINT32_MAX
+typedef struct {
+    const char *name;
+    uint32_t    c_us, t_us, d_us;         /* worst CPU time, period, deadline */
+    uint8_t     prio;                     /* FreeRTOS priority: higher number = higher priority */
+    int8_t      core;                     /* -1: not analysed (has not run yet) */
+} os_rt_task_t;
+/* R_i for every task on `core` (OS_RTA_MISS when it passes D_i or does not converge; 0 for tasks elsewhere).
+   Returns the number of tasks on that core that miss. */
+int os_rta(const os_rt_task_t *t, int n, int core, uint32_t *r_us);
+typedef struct {
+    bool     ok;                          /* every task on the core meets its deadline */
+    uint32_t c_us;                        /* the candidate's C used (measured x factor) */
+    int32_t  margin_us;                   /* min over the core's tasks of D_i - R_i (negative: the worst miss) */
+    int      worst;                       /* the task with the smallest margin (index into the analysed set) */
+    int      n;                           /* tasks analysed: set + the candidate (the last one) */
+    uint32_t r_us[OS_RTA_MAX];
+} os_admit_t;
+/* The set without the candidate's old entry, plus the candidate with C = measured_us x factor_pm / 1000. */
+bool os_admit(const os_rt_task_t *set, int n, const os_rt_task_t *cand, uint32_t measured_us, uint32_t factor_pm, os_admit_t *out);
 
 #ifdef __cplusplus
 }

@@ -149,3 +149,51 @@ int os_health_text(uint8_t verdict, uint16_t flags, char *buf, size_t n)
     }
     return o < (int)n ? o : (int)n - 1;
 }
+
+/* ---------- 4. response-time analysis and model admission ---------- */
+int os_rta(const os_rt_task_t *t, int n, int core, uint32_t *r_us)
+{
+    int misses = 0;
+    for (int i = 0; i < n; i++) {
+        r_us[i] = 0;
+        if (t[i].core != core) continue;
+        uint64_t r = t[i].c_us, prev = UINT64_MAX;
+        int it = 0;
+        while (r != prev && r <= t[i].d_us && it++ < 1000) {
+            prev = r;
+            r = t[i].c_us;
+            for (int j = 0; j < n; j++) {
+                if (j == i || t[j].core != core || t[j].prio <= t[i].prio || !t[j].t_us) continue;
+                r += ((prev + t[j].t_us - 1) / t[j].t_us) * t[j].c_us;      /* ceil(prev / T_j) releases of j */
+            }
+        }
+        bool ok = r == prev && r <= t[i].d_us;
+        r_us[i] = ok ? (uint32_t)r : OS_RTA_MISS;
+        misses += !ok;
+    }
+    return misses;
+}
+
+bool os_admit(const os_rt_task_t *set, int n, const os_rt_task_t *cand, uint32_t measured_us, uint32_t factor_pm, os_admit_t *out)
+{
+    os_rt_task_t t[OS_RTA_MAX];
+    memset(out, 0, sizeof *out);
+    if (n > OS_RTA_MAX - 1) n = OS_RTA_MAX - 1;
+    memcpy(t, set, (size_t)n * sizeof t[0]);
+    t[n] = *cand;
+    uint64_t c = (uint64_t)measured_us * factor_pm / 1000u;
+    t[n].c_us = c > UINT32_MAX ? UINT32_MAX : (uint32_t)c;
+    out->c_us = t[n].c_us;
+    out->n = n + 1;
+    int miss = os_rta(t, n + 1, cand->core, out->r_us);
+    int64_t best = INT64_MAX;
+    out->worst = n;
+    for (int i = 0; i <= n; i++) {
+        if (t[i].core != cand->core) continue;
+        int64_t m = out->r_us[i] == OS_RTA_MISS ? -(int64_t)t[i].d_us : (int64_t)t[i].d_us - out->r_us[i];
+        if (m < best) { best = m; out->worst = i; }
+    }
+    out->margin_us = best < INT32_MIN ? INT32_MIN : best > INT32_MAX ? INT32_MAX : (int32_t)best;
+    out->ok = miss == 0;
+    return out->ok;
+}
