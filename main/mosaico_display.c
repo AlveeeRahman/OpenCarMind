@@ -1491,7 +1491,9 @@ static void refresh_home(const ui_snap_t *s)
 /* one apps page: title row, 2 x 2 lifted cards with a 100 px flat icon (radius 26, dark glyph) and an 18 px label */
 static void build_apps_page(lv_obj_t *t, int page, const int *apps, int n)
 {
-    static const char *const TITLE[N_APP_PAGES] = {"DRIVE AND AI", "CAR DATA", "TRIP AND SYSTEM", "FILES, WI-FI, SETTINGS"};
+    /* the default order (registry order, four a page): Drive AI Learning R.E.V | E.V Summary Live Fuel |
+       Brakes Trip Engine Faults | Board Files Wi-Fi Settings */
+    static const char *const TITLE[N_APP_PAGES] = {"DRIVE AND AI", "E.V AND CAR DATA", "TRIP AND FAULTS", "BOARD AND SETTINGS"};
     lv_obj_t *col = page_col(t, 56, 10);
     lv_obj_t *r = flex_box(col, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, 0);
     lv_obj_set_size(r, LV_PCT(100), LV_SIZE_CONTENT);
