@@ -58,6 +58,16 @@
  *               POWER_SWITCH request, documented as open-drain low = shutdown) or, without that, deep sleep.
  *    A hard floor: at or below floor_mv on battery the board goes to OFF at once, from any state, before a brownout
  *    can tear a write. GRACE is the Saving runlevel.
+ *
+ * 7. Degradation ladder (mixed-criticality style). Every 10 s the OS reads the ml job's deadline misses. A window with
+ *    a new miss climbs one rung, six clean windows in a row (a minute) step one rung down:
+ *      0 normal,
+ *      1 the UI refresh period goes from 16 to 33 ms (half the frames, LVGL's own timer),
+ *      2 the R.E.V learner's CPU reservation drops to 1 per mille (it pauses, its learned values stay),
+ *      3 the model's inference pauses (windows are skipped, the same model stays loaded).
+ *    The ladder never changes which model is loaded: no model switch while driving is the owner's rule, and a switch
+ *    while parked stays the owner's own action. Rung 3 is left only when parked, so the model does not go on and off
+ *    during one drive.
  */
 #ifndef OS_CORE_H
 #define OS_CORE_H
@@ -213,6 +223,15 @@ typedef struct { uint8_t state, low_samples; uint32_t since_ms; } os_ups_t;
 /* One gauge sample (every 2 s). ok = false: the gauge did not answer, nothing changes. Returns OS_UPS_A_* to do now. */
 uint8_t os_ups_step(os_ups_t *u, const os_ups_cfg_t *c, bool ok, int16_t ma, uint16_t mv, uint32_t now_ms);
 const char *os_ups_name(uint8_t state);
+
+/* ---------- 7. degradation ladder ---------- */
+enum { OS_DL_NORMAL = 0, OS_DL_UI_SLOW, OS_DL_NO_LEARNER, OS_DL_MODEL_OFF };
+#define OS_DL_WINDOW_MS 10000
+#define OS_DL_CLEAN     6
+typedef struct { uint8_t level, clean; uint32_t last_misses; bool primed; } os_ladder_t;
+/* one 10 s window: ml_misses = the ml job's miss counter so far. Returns the level now. */
+uint8_t os_ladder_step(os_ladder_t *l, uint32_t ml_misses, bool driving);
+const char *os_ladder_name(uint8_t level);
 
 #ifdef __cplusplus
 }

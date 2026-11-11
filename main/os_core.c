@@ -273,3 +273,26 @@ const char *os_ups_name(uint8_t s)
     static const char *const N[3] = { "USB", "battery grace", "power off" };
     return s < 3 ? N[s] : "?";
 }
+
+/* ---------- 7. degradation ladder ---------- */
+uint8_t os_ladder_step(os_ladder_t *l, uint32_t ml_misses, bool driving)
+{
+    if (!l->primed) { l->primed = true; l->last_misses = ml_misses; return l->level; }   /* misses before the ladder ran */
+    uint32_t d = ml_misses - l->last_misses;
+    l->last_misses = ml_misses;
+    if (d) {
+        if (l->level < OS_DL_MODEL_OFF) l->level++;
+        l->clean = 0;
+        return l->level;
+    }
+    if (l->level == OS_DL_NORMAL) return l->level;
+    if (l->clean < 255) l->clean++;
+    if (l->clean >= OS_DL_CLEAN && !(l->level == OS_DL_MODEL_OFF && driving)) { l->level--; l->clean = 0; }
+    return l->level;
+}
+
+const char *os_ladder_name(uint8_t level)
+{
+    static const char *const N[4] = { "normal", "UI slowed", "learner paused", "model paused" };
+    return level < 4 ? N[level] : "?";
+}

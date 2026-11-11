@@ -364,6 +364,9 @@ static void ml_task(void *arg)
             if (got == 0) sched_set_expected(s_job, false);   /* nothing for 5 s: no OBD link or model paused, not a stall */
             continue;
         }
+#if CONFIG_IDF_TARGET_ESP32S31
+        if (os_ml_paused()) { sched_set_expected(s_job, false); continue; }   /* the degradation ladder's last rung (os.h) */
+#endif
         sched_set_expected(s_job, true);
         if (xSemaphoreTake(s_model_lock, pdMS_TO_TICKS(1000)) != pdTRUE) continue;
         if (!s_model || s_run.model != s_active) { xSemaphoreGive(s_model_lock); continue; }   /* unloaded or switched meanwhile */

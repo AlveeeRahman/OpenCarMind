@@ -34,9 +34,11 @@ uint8_t       os_health(uint16_t *flags);
 bool          os_admit_model(int ai_id, uint32_t measured_us, char *why, size_t why_n);
 /* The UPS state (CONFIG_OCM_UPS, os_core.h section 6): the board task's gauge sample every 2 s */
 void          os_power_sample(bool ok, int ma, int mv);
-/* Requests to the LVGL task, read once per UI tick (50 ms): OS_UI_DIM (the UPS state) */
+/* Requests to the LVGL task, read once per UI tick (50 ms): OS_UI_DIM (the UPS state), OS_UI_SLOW (the ladder) */
 enum { OS_UI_DIM = 1, OS_UI_SLOW = 2 };
 uint8_t       os_ui_request(void);
+/* The degradation ladder's last rung (os_core.h section 7): the ml task skips its windows while this is true */
+bool          os_ml_paused(void);
 
 /* The AI service contract (os_core.h section 5): register the service's sched_mon job from its table entry, with its
    stall limit and CPU reservation. Returns the job. */

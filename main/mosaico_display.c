@@ -2631,14 +2631,15 @@ static void tick_cb(lv_timer_t *t)
 
     int64_t tj = esp_timer_get_time();
     sched_begin(s_job);
-#if CONFIG_OCM_UPS
-    {   /* mossREV OS: the UPS state dims the screen on battery and restores it when USB is back (os.h) */
+    {   /* mossREV OS (os.h): the UPS state dims the screen on battery; the degradation ladder halves the frame rate */
         static uint8_t s_os_req;
         uint8_t q = os_ui_request();
-        if ((q ^ s_os_req) & OS_UI_DIM) { ui_settings_t bs; ui_settings_get(&bs); s_req_bright = q & OS_UI_DIM ? 5 : bs.brightness; }
-        s_os_req = q;
+        if (q != s_os_req) {
+            if ((q ^ s_os_req) & OS_UI_DIM) { ui_settings_t bs; ui_settings_get(&bs); s_req_bright = q & OS_UI_DIM ? 5 : bs.brightness; }
+            if ((q ^ s_os_req) & OS_UI_SLOW) lv_timer_set_period(lv_display_get_refr_timer(s_disp), q & OS_UI_SLOW ? 33 : CONFIG_LV_DEF_REFR_PERIOD);
+            s_os_req = q;
+        }
     }
-#endif
     if (s_req_bright >= 0) {                              /* at most one brightness command per tick (50 ms) */
         if (s_panel_on) { esp_lcd_panel_co5300_set_brightness(s_panel, (uint8_t)s_req_bright); s_bright_cmds++; }
         s_req_bright = -1;

@@ -321,6 +321,38 @@ static void test_ups(void)
     CHECK(!os_rl_allows(os_rl_active(&sv), OS_SVC_FORMAT) && !os_rl_allows(os_rl_active(&sv), OS_SVC_MODEL_SWITCH), "grace is the Saving runlevel");
 }
 
+/* ---------- 7. degradation ladder ---------- */
+static void test_ladder(void)
+{
+    os_ladder_t l = { 0 };
+    uint32_t m = 7;                                       /* misses from before the ladder ran do not count */
+    CHECK(os_ladder_step(&l, m, false) == OS_DL_NORMAL, "priming window");
+    CHECK(os_ladder_step(&l, m, false) == OS_DL_NORMAL, "no new miss: normal");
+    CHECK(os_ladder_step(&l, ++m, true) == OS_DL_UI_SLOW, "first miss: UI slowed first");
+    CHECK(os_ladder_step(&l, m += 3, true) == OS_DL_NO_LEARNER, "more misses: the learner's reservation goes next");
+    CHECK(os_ladder_step(&l, ++m, true) == OS_DL_MODEL_OFF, "still missing: the model pauses last");
+    CHECK(os_ladder_step(&l, ++m, true) == OS_DL_MODEL_OFF, "the top rung holds");
+    int lvl = 0;
+    for (int i = 0; i < 30; i++) lvl = os_ladder_step(&l, m, true);
+    CHECK(lvl == OS_DL_MODEL_OFF, "while driving the model stays paused (no on/off within one drive)");
+    CHECK(os_ladder_step(&l, m, false) == OS_DL_NO_LEARNER, "parked after a clean minute of driving: one rung down at once");
+    os_ladder_t p2 = { .level = OS_DL_MODEL_OFF, .primed = true, .last_misses = 5 };
+    for (int i = 0; i < OS_DL_CLEAN - 1; i++) lvl = os_ladder_step(&p2, 5, false);
+    CHECK(lvl == OS_DL_MODEL_OFF, "parked, 5 clean windows: still paused");
+    CHECK(os_ladder_step(&p2, 5, false) == OS_DL_NO_LEARNER, "parked, the sixth clean window: one rung down");
+    for (int i = 0; i < OS_DL_CLEAN; i++) lvl = os_ladder_step(&l, m, true);
+    CHECK(lvl == OS_DL_UI_SLOW, "lower rungs step down while driving too");
+    CHECK(os_ladder_step(&l, ++m, true) == OS_DL_NO_LEARNER, "a miss climbs again and clears the clean count");
+    for (int i = 0; i < OS_DL_CLEAN - 1; i++) lvl = os_ladder_step(&l, m, true);
+    CHECK(lvl == OS_DL_NO_LEARNER, "the clean count restarted at the miss");
+    for (int i = 0; i < 3 * OS_DL_CLEAN; i++) lvl = os_ladder_step(&l, m, true);
+    CHECK(lvl == OS_DL_NORMAL, "back to normal after enough clean windows");
+    os_ladder_t w = { 0 };
+    os_ladder_step(&w, 0xFFFFFFFFu, false);
+    CHECK(os_ladder_step(&w, 0, false) == OS_DL_UI_SLOW, "counter wrap counts as a new miss, never as none");
+    CHECK(!strcmp(os_ladder_name(OS_DL_MODEL_OFF), "model paused"), "name");
+}
+
 int main(void)
 {
     test_reset_plans();
@@ -329,6 +361,7 @@ int main(void)
     test_rta();
     test_contract();
     test_ups();
+    test_ladder();
     printf("os: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail != 0;
 }

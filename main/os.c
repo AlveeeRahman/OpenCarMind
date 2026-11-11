@@ -28,6 +28,8 @@ static const char *TAG = "os";
 
 static volatile bool s_boot = true, s_resetting, s_saving;
 static volatile uint8_t s_ui_req;
+static volatile bool s_ml_paused;
+static int s_ai_job[OS_AI_N] = { -1, -1, -1 };          /* the jobs os_ai_register made, for the ladder */
 static volatile uint8_t s_updates;                      /* formats in progress (board task) */
 
 /* ---------- resets ---------- */
@@ -183,10 +185,32 @@ static void health_form(void)
     sys_event(v == OS_H_GOOD ? EV_INFO : v == OS_H_DEGRADED ? EV_WARN : EV_ERROR, "Boot health: %s", t);
 }
 
+/* ---------- degradation ladder ---------- */
+bool os_ml_paused(void) { return s_ml_paused; }
+
+static void ladder_window(void)
+{
+    static os_ladder_t l;
+    sched_stats_t js[8];
+    int n = sched_get_stats(js, 8);
+    uint32_t miss = 0;
+    for (int i = 0; i < n; i++) if (!strcmp(js[i].name, "ml")) miss = js[i].misses;
+    uint8_t was = l.level, lv = os_ladder_step(&l, miss, elm_drive_active());
+    if (lv == was) return;
+    if (lv >= OS_DL_UI_SLOW) s_ui_req |= OS_UI_SLOW; else s_ui_req &= (uint8_t)~OS_UI_SLOW;
+    const os_ai_contract_t *c = os_ai_contract(OS_AI_REV_LEARNER);
+    if (s_ai_job[OS_AI_REV_LEARNER] >= 0) sched_set_cpu_share(s_ai_job[OS_AI_REV_LEARNER], lv >= OS_DL_NO_LEARNER ? 1 : c->share_pm, c->burst_ms);
+    s_ml_paused = lv >= OS_DL_MODEL_OFF;
+    sys_event(lv > was ? EV_WARN : EV_INFO, "Model deadlines: %s (%lu misses)", os_ladder_name(lv), (unsigned long)miss);
+}
+
 void os_tick(void)
 {
     static uint8_t last = 0xFF;
-    if (s_health == OS_H_PENDING && esp_timer_get_time() >= (int64_t)OS_H_VERDICT_MS * 1000) health_form();
+    static int64_t next_ladder_us = (int64_t)OS_DL_WINDOW_MS * 1000;
+    int64_t now_us = esp_timer_get_time();
+    if (s_health == OS_H_PENDING && now_us >= (int64_t)OS_H_VERDICT_MS * 1000) health_form();
+    if (now_us >= next_ladder_us) { next_ladder_us = now_us + (int64_t)OS_DL_WINDOW_MS * 1000; ladder_window(); }
     os_rl_in_t in;
     rl_inputs(&in);
     uint8_t a = os_rl_active(&in);
@@ -240,6 +264,7 @@ int os_ai_register(int ai_id, bool watchdog)
     const os_ai_contract_t *c = os_ai_contract(ai_id);
     if (!c) return -1;
     sched_job_t j = sched_register(c->job, c->period_ms, c->deadline_ms, watchdog);
+    s_ai_job[ai_id] = j;
     if (c->stall_ms) sched_set_stall_ms(j, c->stall_ms);
     if (c->share_pm) sched_set_cpu_share(j, c->share_pm, c->burst_ms);   /* the token bucket, for any service that declares one */
     ESP_LOGI(TAG, "service %s: job %s, T %lu ms, D %lu ms, stall %lu ms, CPU %u per mille in %u ms bursts, prio %u core %d",
