@@ -47,13 +47,7 @@ Version 2.5.1. Licence: MIT. Website: <https://alveeerahman.github.io/OpenCarMin
 </ol>
 </li>
 <li><a href="#status">Status</a></li>
-<li><a href="#next-board-esp-mosaico-with-the-esp32-s31">Next board: ESP-Mosaico with the ESP32-S31</a>
-<ol type="A">
-<li><a href="#how-the-s3-and-the-s31-are-compatible">How the S3 and the S31 are compatible</a></li>
-<li><a href="#continual-learning-on-the-s31">Continual learning on the S31</a></li>
-<li><a href="#a-release-for-the-mosaico">A release for the Mosaico</a></li>
-</ol>
-</li>
+<li><a href="#esp-mosaico-mossrev">ESP-Mosaico: mossREV</a></li>
 <li><a href="#limitations-and-future-work">Limitations and future work</a></li>
 <li><a href="#planned">Planned</a></li>
 <li><a href="#references">References</a></li>
@@ -73,6 +67,7 @@ Version 2.5.1. Licence: MIT. Website: <https://alveeerahman.github.io/OpenCarMin
 | Steady cruising with your foot on the gas | can be shown as braking | corrected in 2.5.1 |
 | Fill-up calibration | yes | yes |
 | Best for | a fixed, tested model | older cars, roughly pre-2020, that have no fuel-rate PID and can lose the airflow (MAF) reading |
+| On the ESP-Mosaico (mossREV) | included, switch in Settings > MODEL | included, the default on a new board |
 
 <p align="center"><img src="docs/images/ev-to-rev.gif" width="900" alt="Animated, from CarMind E.V to CarMind R.E.V in seven steps: E.V with 38,679 parameters, 89 KB and 3.5 ms per run. Structured pruning removes whole channels, down to 19,815 parameters. Knowledge distillation, E.V teaching R.E.V. Quantised for the chip: 66 KB and 2.9 ms. Learns in your car: fuel R2 from 0.709 to 0.867 on 31 unseen cars with the airflow hidden. Explainable AI fix: cruising called right on my drives from 10.7 to 87.5 percent. Shrugs off bad data: with 1 percent bad labels fuel R2 stays 0.867, where 2.5.0 fell to 0.696"></p>
 
@@ -106,7 +101,7 @@ Renders, not photos, with example values. Left: page 5 with E.V. Middle: page 5 
 
 Most car loggers stream your driving to a server and do the thinking there. OpenCarMind does the thinking on the board, the way TinyML work runs networks on microcontrollers<sup>[[1]](#ref-1)–[[3]](#ref-3)</sup>. R.E.V's learning also happens on the board, and what it learns stays on your SD card. Your data is plain CSV, JSON and text on a card you hold.
 
-Wi-Fi is optional and does one thing: while the car is parked on a known network, the board asks one HTTPS time server for the time. It checks the server's certificate, sends nothing else, and listens on no port. You can compile Wi-Fi out with `OCM_WIFI_CLOCK_SYNC`.
+Wi-Fi is optional and does one thing: while the car is parked on a known network, the board asks one HTTPS time server for the time. It checks the server's certificate, sends nothing else, and listens on no port. You can compile Wi-Fi out with `OCM_WIFI_CLOCK_SYNC`. On the ESP-Mosaico you can also search for a network and join it from the touch screen, for the same clock sync.
 
 ## How it works
 
@@ -175,6 +170,7 @@ The app in [desktop/](desktop/README.md) runs on Windows, macOS and Linux. Over 
 ## Hardware
 
 - Board: Waveshare ESP32-S3-LCD-1.47B (the pin map in `main/board.h` matches it).
+- Or the Espressif ESP-Mosaico V1.2 (ESP32-S31) with the mossREV build. It needs no SD card: see [docs/MOSAICO.md](docs/MOSAICO.md#the-hardware).
 - Adapter: a Bluetooth LE adapter that speaks ELM327 commands (see below). Classic Bluetooth adapters will not work, because the S3 has no classic radio.
 - A FAT-formatted SD card.
 
@@ -210,6 +206,8 @@ idf.py set-target esp32s3
 idf.py build
 idf.py -p /dev/cu.usbmodemXXXX flash monitor
 ```
+
+For the ESP-Mosaico, build with `idf.py --preview set-target esp32s31` and flash as [docs/MOSAICO.md](docs/MOSAICO.md#flashing) describes (no buttons, esptool 5.6.0 or later).
 
 The first build downloads ESP-DL, LVGL, led_strip and cJSON through the IDF component manager. If you built an earlier version in the same folder, delete `sdkconfig` first. If the board stays in download mode after flashing, reset it with `python -m esptool --chip esp32s3 -p <port> --after watchdog-reset chip-id`.
 
@@ -294,37 +292,13 @@ Checked on the bench or in code: the build, the host unit tests (including R.E.V
 
 Not checked yet: R.E.V over many drives and other cars, the corrected R.E.V on the road, the HTTPS clock on the board, other boards, and any adapter other than the LELink. The checks that need a car are in [docs/FIELD_CHECKS.md](docs/FIELD_CHECKS.md), with tables for you to fill in. Known security limits are in [SECURITY.md](SECURITY.md#known-limits).
 
-## Next board: ESP-Mosaico with the ESP32-S31
+## ESP-Mosaico: mossREV
 
 <p align="center"><img src="docs/images/mosaico-rev.png" width="900" alt="Concept: OpenCarMind with CarMind R.E.V on ESP-Mosaico, three 480 by 480 screens in the dark, light and dark themes: drive gauges, what R.E.V sees and estimates, and what it has learned"></p>
 
-The next board is Espressif's ESP-Mosaico<sup>[[12]](#ref-12)</sup>, built on the ESP32-S31, with a 480 × 480 touch screen, Bluetooth Classic, a motion sensor and a small battery. mossREV 1.0.0 below runs on it, and the concept above (a render with example values) shows CarMind R.E.V on it. The full board comparison is in the [detailed README](https://github.com/AlveeeRahman/OpenCarMind/blob/rev-c2/README.md#next-board-esp-mosaico-with-the-esp32-s31).
+OpenCarMind also runs on Espressif's ESP-Mosaico<sup>[[12]](#ref-12)</sup>, an ESP32-S31 board with a 480 × 480 AMOLED touch screen, 32 MB of PSRAM and a 128 MB NAND for the drive logs. That build is called **mossREV** and the current version is **mossREV 1.2.0**. It comes from the same source tree as the S3 version, carries both models (CarMind R.E.V, the default on a new board, and CarMind E.V, each re-quantized for the S31) and has 15 apps on the touch screen, including Wi-Fi search and join, a light and a dark theme, and per-drive event logs. The image above is a render with example values.
 
-### How the S3 and the S31 are compatible
-
-The two chips do not share machine code, but OpenCarMind builds for both from the same source through ESP-IDF. A test build for the S31 compiled with only the board's pins and one wake-up call changed. The models need to be exported again for the S31, with the same trained weights.
-
-### Continual learning on the S31
-
-The Mosaico's accelerometer can label braking and acceleration in the car, so the manoeuvre classifier could finally learn there, not only the fuel estimate. Its larger memory can keep past drives so new ones do not erase what the model knew, and its battery lets an update finish after the ignition is off.
-
-### A release for the Mosaico
-
-**mossREV** is the ESP-Mosaico build of OpenCarMind. It comes from the same source tree as the S3 version and carries both models, CarMind R.E.V and CarMind E.V, each re-quantized for the ESP32-S31. A new board starts on R.E.V. Settings > MODEL on the screen, or the desktop app's `MODEL SET`, switches between them while the car is parked, and the board keeps the choice. Every model mark and name on the screen follows the model in use; the R.E.V page says when R.E.V is not active and keeps what it learned. The version, `mossREV 1.0.0`, is in the boot log and on the Board page (the USB door reports it as `fw=mossREV-1.0.0`, because a key=value field has no spaces). The S3 build is unchanged: E.V by default, R.E.V from the desktop app.
-
-```sh
-. $IDF_PATH/export.sh
-idf.py --preview set-target esp32s31
-idf.py build
-```
-
-The S31 is a preview target in ESP-IDF 6.1, hence `--preview`. The board's settings are in `sdkconfig.defaults.esp32s31` and its partition table in `partitions_mosaico.csv`: two 6 MB app slots and 3.75 MB of flash for the logs, since the board has no SD card slot.
-
-- **The models.** `ml/onboard_s31/rev/onboard.espdl` is the public R.E.V, re-quantized by ESP-PPQ for the esp32s31 (8-bit weights, 16-bit activations) from the same trained weights and calibration windows as the S3 file. The S31 stores one weight exponent per output channel, and the classifier head dequantises to exactly the S3 values. It is exported without ESP-PPQ's int16 lookup table (`int16_lut_step=-1`): ESP-DL reads a stepped int16 table by nearest neighbour while ESP-PPQ computes the exact ReLU, and that was the whole gap between the chip and the PC. Without the table the board's self-test is bit-exact (0 of 64, 0 of 3 and 0 of 4 values off), and the quantised model picks the same manoeuvre class as the float model on 255 of 255 calibration windows and 16 of 16 test windows. `main/ml_params_rev_s31.h` is generated from that folder with `tools/gen_ml_params.py`. `ml/onboard_s31/ev/onboard.espdl` is the public E.V, made the same way (no int16 table) from the ONNX graph and the 255 calibration windows of the S3 file: every weight dequantises to the S3 value and every bias to within one S3 step, and the quantised model picks the same class as the float model on 255 of 255 calibration windows and 16 of 16 test windows. `main/ml_params_ev_s31.h` is generated from that folder.
-- **The screens.** A launcher with touch on the 480 × 480 AMOLED: Drive, AI, Learning, R.E.V (whether it is the model in use, its self-test and the fuel-learning counts), Summary, Live, Fuel, Brakes, Trip, Engine, Faults, Board, Files and Settings. Swiping between pages runs at 17.9 frames per second over a whole run (median slide frame 29 ms).
-- **Smart swipe.** A small learner on the board (`main/swipe_intent.c`, 1.3 KB: an online extreme learning machine with 16 hidden units and a recursive-least-squares output layer) predicts 40 ms after your finger lands whether a launcher swipe goes to the next page, the previous page or stays. It never moves a page itself. When it may act, it keeps the Home picture current while you rest on a page you usually leave for Home, and starts the snap at the lift. It learns on your device and turns itself off if it does not help: after a 30-swipe warm-up it runs an interleaved A/B test, and it stays on only if the 95th-percentile time from lift to a settled page drops and the predicted page was ready on more than 80 % of swipes (at least 50 swipes in each arm). The verdict is kept in NVS and re-tested after a firmware update; Settings shows it under SMART SWIPE. `CONFIG_OCM_SWIPE_INTENT` (on by default) is S31-only; the S3 build does not contain it.
-- **Flashing without buttons.** The Type-C port is the S31's USB OTG port, so the console and the USB door run on TinyUSB there. When a computer opens that port at 1200 baud (the Arduino upload convention), the board sets the chip's force-download flag and restarts into its ROM download mode. No BOOT or RESET press is needed: open the port at 1200 baud, for example with pyserial, `python -c "import serial; serial.Serial('/dev/cu.usbmodemXXXX', 1200).close()"`, then flash to the ROM's port when it appears with `idf.py -p <that port> flash`.
-- **Log storage that survives resets.** The logs live in a wear-levelled FAT in the 16 MB flash. ESP-IDF writes each 4 KB sector as an erase followed by a write, so a reset between the two leaves an erased sector, and FatFs then copies a torn first FAT over the good second one. This lost the whole volume twice on the bench. Now the logger flushes and holds the file system's lock before every software reset, the two FAT copies are compared before mounting and a torn copy is rewritten from the good one, lost clusters are freed, and a volume that holds data but does not mount is never formatted on its own (Settings has Format storage for that). In a reset-injection bench test (`CONFIG_OCM_STORAGE_RESET_TEST`, off by default, never in a car build) the volume was lost 8 times in 90 resets before the fix and 0 times in 200 after; with the screen frozen until the stall guard resets the board, 2 in 40 before and 0 in 60 after. A panic can still damage the files whose directory sector it was writing: 21 of the 200 cycles damaged a file, almost all after a panic. There is no journal yet.
+The guide for it is [docs/MOSAICO.md](docs/MOSAICO.md): the hardware, flashing, every app, the two models, Smart swipe and Smart UI, the storage, the NAND and the known limits. Nothing in this README about the S3 changes with it, and the S3 build stays byte-identical to the current S3 release.
 
 ## Limitations and future work
 
@@ -335,7 +309,7 @@ The S31 is a preview target in ESP-IDF 6.1, hence `--preview`. The board's setti
 
 ## Planned
 
-- The ESP-Mosaico port, and a build without a display.
+- A build without a display.
 - Code-signed installers.
 - A test drive of the corrected R.E.V, and learning each car's closed-throttle position on the board.
 - A manoeuvre forecast as a self-check, so the classifier can learn in the car.
