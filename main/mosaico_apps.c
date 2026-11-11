@@ -1648,12 +1648,14 @@ static void sm_fill(void)
         int w4 = (DW - 24) / 4;
         char e[16];
         const char *eu = ui_econ(sm.l100 > 0 ? 100.0f / sm.l100 : -1, e, sizeof e);
-        const char *K[4] = {"DISTANCE", "TIME", "ECONOMY", "HARD BRAKES"};
+        /* "HARD BRAKES" (111 px at 12 px, letter space 2) did not fit the 88 px inside a tile: the caption is "BRAKES" (61 px)
+           and the value says "hard" */
+        const char *K[4] = {"DISTANCE", "TIME", "ECONOMY", "BRAKES"};
         char V[4][16], U[4][12];
         snprintf(V[0], 16, "%.1f", (double)sm.km); snprintf(U[0], 12, "km");
         snprintf(V[1], 16, "%ld", (long)(sm.dur_s / 60)); snprintf(U[1], 12, "min");
         snprintf(V[2], 16, "%s", e); snprintf(U[2], 12, "%s", strcmp(eu, "L/100 km") ? eu : "L/100");
-        snprintf(V[3], 16, "%d", sm.hard_brakes); U[3][0] = 0;
+        snprintf(V[3], 16, "%d", sm.hard_brakes); snprintf(U[3], 12, "hard");
         for (int k = 0; k < 4; k++) {
             lv_obj_t *c = d_card(sm_p1, DX + k * (w4 + 8), DY, w4, 54, UI_BORDER, false);
             lv_obj_set_style_radius(c, 14, 0);
