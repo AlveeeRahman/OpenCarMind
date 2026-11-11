@@ -19,7 +19,11 @@
 #include "sdlog.h"
 #include "events.h"
 #if CONFIG_CARMIND_REV_ENABLE
+#if CONFIG_IDF_TARGET_ESP32S31
+#include "ml_params_rev_s31.h"   /* generated from ml/onboard_s31/rev: the S31 export has its own hash, exponents and W0 */
+#else
 #include "ml_params_rev.h"
+#endif
 #define PRIOR_ID MLR_PRIOR_ID
 #define REV_ON   1
 #else

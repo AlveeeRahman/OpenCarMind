@@ -30,7 +30,11 @@ extern "C" {                     /* C headers without their own C++ guards, befo
 #include "sched_mon.h"
 #include "rev_task.h"
 #if CONFIG_CARMIND_REV_ENABLE
+#if CONFIG_IDF_TARGET_ESP32S31
+#include "ml_params_rev_s31.h"   /* generated from ml/onboard_s31/rev: the S31 export has its own hash, exponents and W0 */
+#else
 #include "ml_params_rev.h"
+#endif
 /* Both models are fed by the same window builder and read by the same code: only normalisation and weights may differ. */
 static_assert(MLR_WINDOW == ML_WINDOW && MLR_BIN_S == ML_BIN_S && MLR_CHANNELS == ML_CHANNELS && MLR_IN_CHANNELS == ML_IN_CHANNELS &&
               MLR_DELTAS == ML_DELTAS && MLR_N_CLASSES == ML_N_CLASSES && MLR_N_ESTIMATES == ML_N_ESTIMATES, "E.V and R.E.V inputs differ");
@@ -57,17 +61,17 @@ extern const uint8_t ml_rev_model_start[] asm("_binary_onboard_rev_espdl_start")
 /* The models built into this firmware. The window layout, classes and estimates are shared (checked above); each model has its
    own normalisation, de-standardisation and hash. */
 typedef struct {
-    const char *key, *name, *version;
+    const char *key, *name, *version, *quant, *target;   /* quant and target: what the .espdl was exported for */
     const uint8_t *data;
     const float *norm_mean, *norm_std, *est_mean, *est_std;
     const unsigned char *trained;
 } ml_model_desc_t;
 static const ml_model_desc_t MODELS[ML_MODEL_COUNT] = {
-    {"ev", "CarMind E.V", ML_MODEL_VERSION, ml_model_start, ML_NORM_MEAN, ML_NORM_STD, ML_EST_MEAN, ML_EST_STD, ML_TRAINED},
+    {"ev", "CarMind E.V", ML_MODEL_VERSION, ML_QUANT, ML_TARGET_CHIP, ml_model_start, ML_NORM_MEAN, ML_NORM_STD, ML_EST_MEAN, ML_EST_STD, ML_TRAINED},
 #if CONFIG_CARMIND_REV_ENABLE
-    {"rev", "CarMind R.E.V", MLR_MODEL_VERSION, ml_rev_model_start, MLR_NORM_MEAN, MLR_NORM_STD, MLR_EST_MEAN, MLR_EST_STD, MLR_TRAINED},
+    {"rev", "CarMind R.E.V", MLR_MODEL_VERSION, MLR_QUANT, MLR_TARGET_CHIP, ml_rev_model_start, MLR_NORM_MEAN, MLR_NORM_STD, MLR_EST_MEAN, MLR_EST_STD, MLR_TRAINED},
 #else
-    {"rev", "CarMind R.E.V", "", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr},
+    {"rev", "CarMind R.E.V", "", "", "", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr},
 #endif
 };
 static volatile int s_active = ML_MODEL_EV;          /* the model that is loaded (or being loaded) */
@@ -614,7 +618,7 @@ extern "C" void ml_init(void)
     }
     if (!s_model) { sys_event(EV_ERROR, "ML model failed to load"); return; }
     ESP_LOGI(TAG, "model %s %s (%s, %s) loaded in %lld ms, internal RAM %u B, z output %s", MODELS[s_active].name, MODELS[s_active].version,
-             ML_QUANT, ML_TARGET_CHIP, (esp_timer_get_time() - t0) / 1000, (unsigned)(heap0 - heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
+             MODELS[s_active].quant, MODELS[s_active].target, (esp_timer_get_time() - t0) / 1000, (unsigned)(heap0 - heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
              s_z_ok ? "yes" : "no");
     s_stats.selftest_us = selftest();
     s_job = sched_register("ml", (ML_STRIDE_S > 0 ? ML_STRIDE_S : 10) * 1000, (ML_STRIDE_S > 0 ? ML_STRIDE_S : 10) * 1000, true);

@@ -95,13 +95,20 @@ class Espdl:
                 "exp": self._ints64(t(self.TENSOR_EXP)), "raw": raw}
 
     def values(self, name, test=False):
-        """Dequantised values of an initializer (or of a test output): integer x 2^exponent."""
+        """Dequantised values of an initializer (or of a test output): integer x 2^exponent.
+
+        The esp32s3 target stores one exponent per tensor. The esp32s31 (esp32p4 path) stores one per output channel;
+        the values are output-major, so exponent k covers the k-th contiguous block of n / len(exp) values."""
         t = (self.test_out if test else self.init)[name]
         n = 1
         for d in t["dims"]:
             n *= d
         fmt = {self.INT8: "b", self.INT16: "h", self.INT64: "q"}[t["type"]]
-        return [v * 2.0 ** t["exp"][0] for v in struct.unpack_from(f"<{n}{fmt}", t["raw"])]
+        e = t["exp"]
+        if n % len(e):
+            raise ValueError(f"{name}: {n} values, {len(e)} exponents")
+        block = n // len(e)
+        return [v * 2.0 ** e[i // block] for i, v in enumerate(struct.unpack_from(f"<{n}{fmt}", t["raw"]))]
 
 
 def est_fuel_row(m, fuel_index, z_dim):
