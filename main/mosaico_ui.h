@@ -147,6 +147,7 @@ void      ui_set_color(lv_obj_t *o, uint32_t c);
 void      ui_go_home(void);
 /* true while the shell rebuilds the open app for a theme switch: an app may keep its scroll position across it */
 bool      ui_theme_reopening(void);
+bool      ui_apps_overlay_open(void);   /* the Wi-Fi password page or the clock picker is open (a theme switch waits) */
 /* economy in the unit chosen in Settings: writes the number into buf ("--" when kpl < 0.05) and returns the unit */
 const char *ui_econ(float kpl, char *buf, size_t n);
 /* modal question on top of everything: only the yes button runs cb (never a single tap on the item itself) */

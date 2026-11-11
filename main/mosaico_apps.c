@@ -3266,6 +3266,10 @@ static void wifi_create(lv_obj_t *p)
 #endif
 }
 
+/* a theme switch re-creates the open app, and the app's destroy closes these pages (the password typed so far, the time
+   being set): mosaico_display.c's theme_tick waits until they are closed */
+bool ui_apps_overlay_open(void) { return pw_page != NULL || ck_page != NULL; }
+
 static void wifi_destroy(void)
 {
     w_list = w_state = w_clock = w_clock_note = w_note = w_rows = NULL;

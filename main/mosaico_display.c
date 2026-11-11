@@ -2276,7 +2276,7 @@ static void pf_build(void)
         uint8_t acc = s_accent_sec;
         s_accent_sec = ui_app(idx)->section;
         lv_obj_set_style_bg_grad_dir(s_pf_scr, LV_GRAD_DIR_NONE, 0);
-        lv_obj_set_style_bg_color(s_pf_scr, lv_color_hex(0x000000), 0);
+        lv_obj_set_style_bg_color(s_pf_scr, lv_color_hex(UI_BG), 0);   /* the app ground of the theme in force (T1) */
         ui_app(idx)->create(s_pf_body);
         take_snapshot();
         ui_app(idx)->update(&s_snap);
@@ -2452,6 +2452,7 @@ static bool theme_tick(const ui_snap_t *s, bool force)
     bool is_auto;
     bool want = light_wanted(s->st, &is_auto);
     if (want == s_light) return false;
+    if (ui_apps_overlay_open()) return false;             /* the Wi-Fi password page or the clock picker: after it closes */
     if (!force && (lv_display_get_inactive_time(s_disp) < 1500 || s_modal_open())) return false;   /* not mid-gesture */
     s_light = want;
     ui_th = s_light ? &THEME_LIGHT : &THEME_DARK;
@@ -2459,6 +2460,9 @@ static bool theme_tick(const ui_snap_t *s, bool force)
     /* one rebuild in the new palette: the status row and its banner, the launcher (both wallpapers are already in
        PSRAM) and the app on screen; the Power sheet closes */
     if (s_psheet) { lv_obj_delete(s_psheet); s_psheet = NULL; }
+#if CONFIG_OCM_UI_PREFETCH
+    pf_cancel_app();                                      /* an app built at a press in the old palette */
+#endif
     if (s_sb) lv_obj_delete(s_sb);
     if (s_banner) lv_obj_delete(s_banner);
     build_status_bar();
