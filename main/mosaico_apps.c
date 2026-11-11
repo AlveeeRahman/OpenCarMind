@@ -71,13 +71,6 @@ static lv_obj_t *row(lv_obj_t *card, int y, const char *name)
     return v;
 }
 
-static lv_obj_t *pill_right(lv_obj_t *parent, const char *t, uint32_t c, int y)
-{
-    lv_obj_t *p = ui_pill(parent, t, c);
-    lv_obj_align(p, LV_ALIGN_TOP_RIGHT, -UI_MARGIN - 4, y);
-    return p;
-}
-
 static void pill_set(lv_obj_t *p, const char *t, uint32_t c)
 {
     ui_set_text(p, t);
@@ -87,6 +80,10 @@ static void pill_set(lv_obj_t *p, const char *t, uint32_t c)
 }
 
 static bool have_f(const ui_snap_t *s, int f) { return s->obd_live && OBD_HAS(&s->st->obd, f); }
+/* Where the torque figure comes from, the same rule on Drive, AI and Brakes: the physics torque (from fuel and rpm) while
+   the car reports it, else the model's estimate. The badge shows it on every update, also before the first value. */
+static bool torque_physics(const ui_snap_t *s) { return s->obd_live && isfinite(s->st->obd.torque_nm); }
+#define TORQUE_SRC(s) (torque_physics(s) ? "PHYSICS" : "MODEL")
 static float fv(const ui_snap_t *s, int f) { return s->st->obd.f[f]; }
 static void set_int_or_dash(lv_obj_t *o, bool ok, float v) { if (ok) ui_set_fmt(o, "%d", (int)lroundf(v)); else ui_set_text(o, "--"); }
 static int pct(float p) { return (int)lroundf(p * 100.0f); }
@@ -240,7 +237,7 @@ static void ai_create(lv_obj_t *p)
     a_brk_bar = d_bar(c, 130, 37, 150, 6, UI_CRIMSON, 100);
     a_brk = d_value(c, UI_THEME.f_title, "bar", 300, 22);
     d_txt(c, UI_THEME.f_body, UI_TEXT, "Engine torque", 0, 74);
-    a_tq_tag = at(ui_pill(c, "PHYSICS", UI_THEME.estimate), 130, 76);
+    a_tq_tag = at(ui_pill(c, "MODEL", UI_CRIMSON), 130, 76);
     a_tq = d_value(c, UI_THEME.f_title, "N m", 300, 66);
     d_txt(c, UI_THEME.f_body, UI_TEXT, "Fuel rate", 0, 118);
     a_fu_tag = at(ui_pill(c, "LEARNED", UI_GREEN), 130, 120);
@@ -275,8 +272,10 @@ static void ai_update(const ui_snap_t *s)
     else { snprintf(b, sizeof b, "--"); bar_set(a_brk_bar, 0); }
     d_value_set(&a_brk, b);
     const obd_values_t *o = &s->st->obd;
-    if (s->obd_live && isfinite(o->torque_nm)) { snprintf(b, sizeof b, "%.0f", (double)o->torque_nm); pill_set(a_tq_tag, "PHYSICS", UI_THEME.estimate); }
-    else if (have) { snprintf(b, sizeof b, "%.0f", (double)m->last_est[1]); pill_set(a_tq_tag, "MODEL", UI_CRIMSON); }
+    bool tq = torque_physics(s);
+    pill_set(a_tq_tag, TORQUE_SRC(s), tq ? UI_THEME.estimate : UI_CRIMSON);
+    if (tq) snprintf(b, sizeof b, "%.0f", (double)o->torque_nm);
+    else if (have) snprintf(b, sizeof b, "%.0f", (double)m->last_est[1]);
     else snprintf(b, sizeof b, "--");
     d_value_set(&a_tq, b);
     ui_set_color(a_tq.v, UI_THEME.estimate);
@@ -618,7 +617,7 @@ static void brakes_create(lv_obj_t *p)
     d_header(p, "Brakes and torque");
     d_right(p, "last 60 s", UI_MUTED);
     br_card(p, 0, DY, "BRAKE PRESSURE", "MODEL", "bar", UI_THEME.section[SEC_RED], 20);
-    br_card(p, 1, DY + 175, "ENGINE TORQUE", "PHYSICS", "N m", UI_THEME.section[SEC_AMBER], 300);
+    br_card(p, 1, DY + 175, "ENGINE TORQUE", "MODEL", "N m", UI_THEME.section[SEC_AMBER], 300);
     br_n = 0;
 }
 
@@ -629,9 +628,9 @@ static void brakes_update(const ui_snap_t *s)
     const ml_stats_t *m = &s->ml;
     const obd_values_t *o = &s->st->obd;
     bool have = m->last_class >= 0 && s->obd_live;
-    bool tq = s->obd_live && isfinite(o->torque_nm);
+    bool tq = torque_physics(s);
     float v[2] = { have ? m->last_est[0] : NAN, tq ? o->torque_nm : (have ? m->last_est[1] : NAN) };
-    pill_set(br_tag[1], tq ? "PHYSICS" : "MODEL", UI_THEME.estimate);
+    pill_set(br_tag[1], TORQUE_SRC(s), UI_THEME.estimate);
     if (br_n == 60) { memmove(br_hist[0], br_hist[0] + 1, 59 * sizeof(float)); memmove(br_hist[1], br_hist[1] + 1, 59 * sizeof(float)); br_n = 59; }
     for (int k = 0; k < 2; k++) {
         br_hist[k][br_n] = v[k];
@@ -1087,16 +1086,20 @@ static void drive_create(lv_obj_t *p)
     /* three estimate tiles: label + outlined tag, value + unit */
     r = fbox(col, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, 8);
     lv_obj_set_size(r, LV_PCT(100), 78);
-    static const char *const EL[3] = {"BRAKE", "TORQUE", "FUEL"}, *const ET[3] = {"MODEL", "PHYSICS", "LEARNED"};
+    static const char *const EL[3] = {"BRAKE", "TORQUE", "FUEL"}, *const ET[3] = {"MODEL", "MODEL", "LEARNED"};
+    /* fixed widths, 420 px with the two 8 px gaps. With 1 px letter spacing and 4 px pill padding the label row needs
+       128 px for "TORQUE" + "PHYSICS", 110 for "BRAKE" + "MODEL" and 112 for "FUEL" + "LEARNED" (Montserrat 12 advance
+       widths); each tile leaves width - 2 x 8 padding - 2 x 1 border for it */
+    static const int EW[3] = {134, 152, 134};
     const uint32_t EC[3] = {0xFD5A4A, 0xF2A13A, 0x56F487}, TC[3] = {0xF2A13A, 0xF2A13A, 0x56F487};
     for (int k = 0; k < 3; k++) {
         c = dk_card(r, 18);
-        lv_obj_set_height(c, 78);
-        lv_obj_set_flex_grow(c, 1);
-        lv_obj_set_style_pad_hor(c, 10, 0);
+        lv_obj_set_size(c, EW[k], 78);
+        lv_obj_set_style_pad_hor(c, 8, 0);
         lv_obj_t *hrow = frow(c);
-        dk_lab(hrow, EL[k]);
+        lv_obj_set_style_text_letter_space(dk_lab(hrow, EL[k]), 1, 0);
         d_tag[k] = dk_tag(hrow, ET[k], TC[k]);
+        lv_obj_set_style_pad_hor(d_tag[k], 4, 0);
         d_ev[k] = ui_label(c, UI_THEME.f_value, EC[k], "--");
     }
     /* tank */
@@ -1144,8 +1147,9 @@ static void drive_update(const ui_snap_t *s)
         lv_obj_set_style_bg_color(d_pb[k], lv_color_hex(have && k == m->last_class ? DCLS[k] : 0x4A4A4A), LV_PART_INDICATOR);
     }
     if (have) ui_set_fmt(d_ev[0], "%.1f bar", (double)m->last_est[0]); else ui_set_text(d_ev[0], "--");
-    if (s->obd_live && isfinite(o->torque_nm)) { ui_set_fmt(d_ev[1], "%.0f N m", (double)o->torque_nm); ui_set_text(d_tag[1], "PHYSICS"); }
-    else if (have) { ui_set_fmt(d_ev[1], "%.0f N m", (double)m->last_est[1]); ui_set_text(d_tag[1], "MODEL"); }
+    ui_set_text(d_tag[1], TORQUE_SRC(s));
+    if (torque_physics(s)) ui_set_fmt(d_ev[1], "%.0f N m", (double)o->torque_nm);
+    else if (have) ui_set_fmt(d_ev[1], "%.0f N m", (double)m->last_est[1]);
     else ui_set_text(d_ev[1], "--");
     if (m->learned_ok) { ui_set_fmt(d_ev[2], "%.1f L/h", (double)m->learned_lph); ui_set_text(d_tag[2], "LEARNED"); }
     else if (s->obd_live && o->fuel_lph_calc >= 0) {
@@ -1217,7 +1221,8 @@ static void faults_fill(const ui_snap_t *s)
         lv_obj_t *c = fcard(q_list, 0);
         lv_obj_set_width(c, LV_PCT(100));
         ui_label(c, UI_THEME.f_value, UI_GREEN, r->mil_on ? "MIL on, no codes read yet" : "No codes, MIL off");
-        ui_label(c, UI_THEME.f_label, UI_MUTED, "Stored, pending and permanent codes are read from the engine computer.");
+        lv_obj_set_width(ui_label(c, UI_THEME.f_label, UI_MUTED, "Stored, pending and permanent codes are read from the engine computer."),
+                         LV_PCT(100));
         return;
     }
     for (int i = 0; i < r->n; i++) {
@@ -1452,7 +1457,7 @@ static void summary_update(const ui_snap_t *s)
 
 /* ======================= 11. Files (drive logs) ======================= */
 /* Everything that touches the file system runs in the board task (mosaico_files.c); this app only asks and shows. */
-static lv_obj_t *fl_space, *fl_body;
+static lv_obj_t *fl_body;
 static int fl_mode;                       /* 0 list, 1 detail */
 static uint32_t fl_gen, fl_dgen, fl_id;
 EXT_RAM_BSS_ATTR static mf_list_t fl_list;
@@ -1538,7 +1543,6 @@ static void fl_fill_list(void)
         fmt_size(a, sizeof a, L->free_kb * 1024u);
         fmt_size(b, sizeof b, L->total_kb * 1024u);
         ui_set_fmt(sl, "%s free of %s", a, b);
-        ui_set_text(fl_space, "");
         bar_set(sb, (int)((uint64_t)(L->total_kb - L->free_kb) * 1000 / L->total_kb));
         if (L->free_kb * 10 < L->total_kb) lv_obj_set_style_bg_color(sb, lv_color_hex(UI_RED), LV_PART_INDICATOR);
     }
@@ -1649,7 +1653,6 @@ static void fl_show_detail(void *arg)
 static void files_create(lv_obj_t *p)
 {
     ui_header(p, "Files");
-    fl_space = pill_right(p, "", UI_MUTED, UI_TOP + 4);
     fl_body = lv_obj_create(p);
     lv_obj_remove_style_all(fl_body);
     lv_obj_set_pos(fl_body, UI_MARGIN + 8, Y0);
@@ -1663,7 +1666,7 @@ static void files_create(lv_obj_t *p)
     fl_show_list(NULL);
 }
 
-static void files_destroy(void) { fl_body = NULL; fl_space = NULL; }
+static void files_destroy(void) { fl_body = NULL; }
 
 static void files_update(const ui_snap_t *s)
 {
@@ -1830,7 +1833,7 @@ static void settings_fill(void)
     static const char *const TH[] = {"Auto", "Light", "Dark"};
     at(ui_caption(g_list, "THEME (HOME AND APPS)"), 4, y); y += 22;
     segmented(g_list, y, TH, 3, s.theme, SEG_THEME); y += 54;
-    at(ui_label(g_list, F14, UI_MUTED, "Auto: Light 06:00 to 17:00 once the clock is known, else Dark."), 4, y); y += 30;
+    at(ui_label(g_list, F14, UI_MUTED, "Auto: Light 06:00 to 17:00 once the clock is set, else Dark."), 4, y); y += 30;
     at(ui_caption(g_list, "HOME APPS (TAP TO SHOW / HIDE) AND ORDER"), 4, y); y += 24;
     for (int i = 0; i < s.n; i++) {
         int app = s.order[i];
