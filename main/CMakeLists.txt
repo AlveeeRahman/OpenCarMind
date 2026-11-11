@@ -53,6 +53,9 @@ target_compile_definitions(${COMPONENT_LIB} PRIVATE CARMIND_VERSION="${PROJECT_V
 if(ocm_target STREQUAL "esp32s31")
     # the RISC-V GCC flags snprintf("%s") copies whose length the code checks just before (custom_pids.c): warn, not fail
     target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-error=format-truncation)
+    # swipe step e: a short page snap (LVGL clamps the scroll animation to 200..400 ms; lv_obj_scroll.c lets a build set it)
+    idf_component_get_property(ocm_lvgl_lib lvgl__lvgl COMPONENT_LIB)
+    target_compile_definitions(${ocm_lvgl_lib} PRIVATE SCROLL_ANIM_TIME_MIN=150 SCROLL_ANIM_TIME_MAX=180)
 endif()
 
 # On-board model (ml/onboard/onboard.espdl), embedded on a 16-byte boundary with ESP-DL's own helper so the loader

@@ -1412,8 +1412,210 @@ static void build_launcher(void)
    page over the wallpaper, and the live widgets and the screen wallpaper are hidden, so a frame is two image copies
    instead of the wallpaper plus every glass card. Apps pages are static: their pictures are taken once after a build,
    one per UI tick. Home changes every second, so its picture is retaken when a slide starts. ---------- */
+#define UI_SNAP_SLIDE 1
+#if UI_SNAP_SLIDE
+static lv_draw_buf_t s_tsnap[1 + N_APP_PAGES];
+static uint8_t *s_tsnap_mem[1 + N_APP_PAGES];
+static bool s_tsnap_ok[1 + N_APP_PAGES], s_sliding;
+static lv_obj_t *s_tsnap_img[1 + N_APP_PAGES], *s_tile_wall[1 + N_APP_PAGES];
+
+/* ---------- swipe step e: direct panel blit. While the tileview slides LVGL draws nothing (invalidation off); each
+   scroll position is composed from two byte-swapped page pictures into one of two PSRAM frames (row memcpy), written
+   back from the cache and sent in one window by PSRAM DMA (raw link test: 23.6 ms a full frame). Rows above BLIT_Y0
+   keep the status bar LVGL drew last. At rest LVGL redraws the screen once. ---------- */
+#define UI_BLIT_SLIDE 1
+#define BLIT_Y0 48
+#define BLIT_ROWS (UI_H - BLIT_Y0)
+#if UI_BLIT_SLIDE
+static uint16_t *s_tblit[1 + N_APP_PAGES], *s_bfb[2];
+static int s_bfi;
+static uint32_t s_bl_n, s_bl_comp_us, s_bl_send_us, s_bl_comp_max, s_bl_send_max;   /* blit cost split, for the swipe line */
+static bool s_blit_on;
+
+static void blit_prepare(int i)
+{
+    size_t n = (size_t)UI_W * BLIT_ROWS;
+    if (!s_tblit[i]) s_tblit[i] = heap_caps_aligned_alloc(64, n * 2, MALLOC_CAP_SPIRAM);
+    if (!s_tblit[i]) return;
+    uint32_t st = s_tsnap[i].header.stride / 2;
+    for (int r = 0; r < BLIT_ROWS; r++) {
+        const uint16_t *src = (const uint16_t *)s_tsnap[i].data + (size_t)(r + BLIT_Y0) * st;
+        uint16_t *dst = s_tblit[i] + (size_t)r * UI_W;
+        for (int x = 0; x < UI_W; x++) { uint16_t v = src[x]; dst[x] = (uint16_t)((v >> 8) | (v << 8)); }  /* panel byte order */
+    }
+}
+
+static bool blit_ready(void)
+{
+    for (int k = 0; k < 2; k++)
+        if (!s_bfb[k]) s_bfb[k] = heap_caps_aligned_alloc(64, (size_t)UI_W * BLIT_ROWS * 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_DMA);
+    if (!s_bfb[0] || !s_bfb[1]) return false;
+    for (int i = 0; i < s_ntiles; i++) if (!s_tblit[i]) return false;
+    return true;
+}
+
+static void blit_frame(int32_t x)
+{
+    int64_t t0 = esp_timer_get_time();
+    int32_t maxx = (s_ntiles - 1) * UI_W;
+    if (x < 0) x = 0;
+    if (x > maxx) x = maxx;
+    int a = (int)(x / UI_W), off = (int)(x % UI_W);
+    uint16_t *fb = s_bfb[s_bfi];
+    const uint16_t *pa = s_tblit[a], *pb = off ? s_tblit[a + 1] : NULL;
+    for (int r = 0; r < BLIT_ROWS; r++) {
+        memcpy(fb + (size_t)r * UI_W, pa + (size_t)r * UI_W + off, (size_t)(UI_W - off) * 2);
+        if (off) memcpy(fb + (size_t)r * UI_W + (UI_W - off), pb + (size_t)r * UI_W, (size_t)off * 2);
+    }
+    esp_cache_msync(fb, (size_t)UI_W * BLIT_ROWS * 2, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
+    int64_t t1 = esp_timer_get_time();
+    esp_lcd_panel_draw_bitmap(s_panel, 0, BLIT_Y0, UI_W, UI_H, fb);   /* its window commands wait for the previous frame */
+    s_bfi ^= 1;
+    int64_t now = esp_timer_get_time();
+    uint32_t c = (uint32_t)(t1 - t0), sd = (uint32_t)(now - t1);
+    s_bl_n++; s_bl_comp_us += c; s_bl_send_us += sd;
+    if (c > s_bl_comp_max) s_bl_comp_max = c;
+    if (sd > s_bl_send_max) s_bl_send_max = sd;
+    if ((uint32_t)(now - t0) > s_render_max_us) s_render_max_us = (uint32_t)(now - t0);
+}
+#endif
+
+static int64_t s_home_snap_us;                           /* when the Home picture was taken */
+static bool tile_snap(int i)
+{
+    if (i == 0) s_home_snap_us = esp_timer_get_time();
+    if (!s_wall_ready || !s_tiles[i]) return false;
+    uint32_t stride = lv_draw_buf_width_to_stride(UI_W, LV_COLOR_FORMAT_RGB565);
+    if (!s_tsnap_mem[i]) {
+        s_tsnap_mem[i] = heap_caps_aligned_alloc(64, stride * UI_H, MALLOC_CAP_SPIRAM);
+        if (!s_tsnap_mem[i]) return false;
+    }
+    lv_draw_buf_init(&s_tsnap[i], UI_W, UI_H, LV_COLOR_FORMAT_RGB565, stride, s_tsnap_mem[i], stride * UI_H);
+    int64_t t0 = esp_timer_get_time();
+    lv_image_set_src(s_tile_wall[i], &s_wall_dsc2[s_light]);
+    lv_obj_remove_flag(s_tile_wall[i], LV_OBJ_FLAG_HIDDEN);   /* the page's own copy of the wallpaper is the picture's background */
+    lv_obj_add_flag(s_tsnap_img[i], LV_OBJ_FLAG_HIDDEN);
+    lv_result_t r = lv_snapshot_take_to_draw_buf(s_tiles[i], LV_COLOR_FORMAT_RGB565, &s_tsnap[i]);
+    lv_obj_add_flag(s_tile_wall[i], LV_OBJ_FLAG_HIDDEN);
+    s_tsnap_us = (uint32_t)(esp_timer_get_time() - t0);
+    s_tsnap_ok[i] = r == LV_RESULT_OK;
+    if (s_tsnap_ok[i]) lv_image_set_src(s_tsnap_img[i], &s_tsnap[i]);
+#if UI_BLIT_SLIDE
+    if (s_tsnap_ok[i]) blit_prepare(i);
+#endif
+    return s_tsnap_ok[i];
+}
+
+static void slide_set(bool on)
+{
+    for (int i = 0; i < s_ntiles; i++) {
+        uint32_t n = lv_obj_get_child_count(s_tiles[i]);
+        for (uint32_t k = 0; k < n; k++) {
+            lv_obj_t *c = lv_obj_get_child(s_tiles[i], (int32_t)k);
+            if (c == s_tsnap_img[i] || c == s_tile_wall[i]) continue;
+            if (on && !lv_obj_has_flag(c, LV_OBJ_FLAG_HIDDEN)) lv_obj_add_flag(c, LV_OBJ_FLAG_HIDDEN | LV_OBJ_FLAG_USER_1);
+            else if (!on && lv_obj_has_flag(c, LV_OBJ_FLAG_USER_1)) lv_obj_remove_flag(c, LV_OBJ_FLAG_HIDDEN | LV_OBJ_FLAG_USER_1);
+        }
+        if (on) lv_obj_remove_flag(s_tsnap_img[i], LV_OBJ_FLAG_HIDDEN); else lv_obj_add_flag(s_tsnap_img[i], LV_OBJ_FLAG_HIDDEN);
+    }
+    if (on) lv_obj_add_flag(s_wall_img, LV_OBJ_FLAG_HIDDEN); else lv_obj_remove_flag(s_wall_img, LV_OBJ_FLAG_HIDDEN);
+    s_sliding = on;
+}
+
+static void tv_scroll_cb(lv_event_t *e)
+{
+#if UI_BLIT_SLIDE
+    if (lv_event_get_code(e) == LV_EVENT_SCROLL) {
+        if (s_blit_on) blit_frame(lv_obj_get_scroll_x(s_tv));
+        return;
+    }
+#endif
+    if (lv_event_get_code(e) != LV_EVENT_SCROLL_BEGIN || s_sliding) return;
+    if (!s_tsnap_ok[0] || esp_timer_get_time() - s_home_snap_us > 10000000) s_tsnap_ok[0] = false;   /* e4: a picture up to 5 s old is fine */
+    for (int i = 0; i < s_ntiles; i++) if (!s_tsnap_ok[i] && !tile_snap(i)) return;   /* no picture: slide live */
+#if UI_BLIT_SLIDE
+    if (blit_ready()) {
+        lv_display_enable_invalidation(s_disp, false);    /* LVGL draws nothing until the slide ends */
+        s_blit_on = s_sliding = true;
+        blit_frame(lv_obj_get_scroll_x(s_tv));
+        return;
+    }
+#endif
+    slide_set(true);
+}
+
+/* from the UI tick: end the picture mode once the tileview rests on a page and no finger drags it; fill missing pictures */
+static void slide_tick(void)
+{
+    if (!s_tv) return;
+    lv_indev_t *id = lv_indev_get_next(NULL);
+    bool dragging = id && lv_indev_get_scroll_obj(id) == s_tv;
+    bool moving = lv_anim_get(s_tv, NULL) != NULL || dragging || lv_obj_get_scroll_x(s_tv) % UI_W != 0;
+#if UI_BLIT_SLIDE
+    if (s_blit_on && !moving) {
+        s_blit_on = s_sliding = false;
+        lv_display_enable_invalidation(s_disp, true);
+        /* e4: the panel already shows the page's picture. Redraw only the status bar and, on Home, the two cards whose
+           values may have changed while invalidation was off. */
+        lv_obj_invalidate(s_sb);
+        if (lv_obj_get_scroll_x(s_tv) / UI_W == 0) {
+            if (h_card) lv_obj_invalidate(h_card);
+            if (h_sys) lv_obj_invalidate(h_sys);
+        }
+    }
+#endif
+    if (s_sliding && !moving) slide_set(false);
+    if (!s_sliding && !moving) {
+        /* fill missing pictures one per tick; Home once too, so the first slide after boot does not pay for the buffers */
+        static bool home_warm;
+        int todo = -1;
+        for (int i = 1; i < s_ntiles && todo < 0; i++) if (!s_tsnap_ok[i]) todo = i;
+        if (todo < 0 && !home_warm && s_wall_ready) { todo = 0; home_warm = true; }
+        if (todo >= 0) tile_snap(todo);
+#if UI_BLIT_SLIDE
+        else { static bool frames_warm; if (!frames_warm) frames_warm = blit_ready(); }
+#endif
+    }
+}
+
+/* e4: keep the Home picture at most 5 s old while Home rests, on its own LVGL timer (not the "ui" sched job), so a slide
+   from Home starts at once instead of after a 120 ms picture */
+static void home_pic_cb(lv_timer_t *t)
+{
+    (void)t;
+    if (!s_tv || s_sliding || !s_wall_ready || lv_screen_active() != s_home) return;
+    lv_indev_t *id = lv_indev_get_next(NULL);
+    if (lv_anim_get(s_tv, NULL) || (id && lv_indev_get_scroll_obj(id) == s_tv) || lv_obj_get_scroll_x(s_tv) != 0) return;
+    if (esp_timer_get_time() - s_home_snap_us >= 5000000) tile_snap(0);
+}
+
+static void slide_attach(void)
+{
+    static lv_timer_t *home_pic;
+    if (!home_pic) home_pic = lv_timer_create(home_pic_cb, 1000, NULL);
+    s_sliding = false;
+    for (int i = 0; i < s_ntiles; i++) {
+        s_tsnap_ok[i] = false;
+        s_tile_wall[i] = lv_image_create(s_tiles[i]);
+        lv_obj_add_flag(s_tile_wall[i], LV_OBJ_FLAG_IGNORE_LAYOUT | LV_OBJ_FLAG_HIDDEN);
+        lv_obj_remove_flag(s_tile_wall[i], LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_set_pos(s_tile_wall[i], 0, 0);
+        lv_obj_move_to_index(s_tile_wall[i], 0);
+        s_tsnap_img[i] = lv_image_create(s_tiles[i]);
+        lv_obj_add_flag(s_tsnap_img[i], LV_OBJ_FLAG_IGNORE_LAYOUT | LV_OBJ_FLAG_HIDDEN);
+        lv_obj_remove_flag(s_tsnap_img[i], LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_set_pos(s_tsnap_img[i], 0, 0);
+    }
+    lv_obj_add_event_cb(s_tv, tv_scroll_cb, LV_EVENT_SCROLL_BEGIN, NULL);
+#if UI_BLIT_SLIDE
+    lv_obj_add_event_cb(s_tv, tv_scroll_cb, LV_EVENT_SCROLL, NULL);
+    s_blit_on = false;
+#endif
+}
+#else
 static void slide_tick(void) {}
 static void slide_attach(void) {}
+#endif
 
 static void build_grid(void) { build_launcher(); }
 static void build_home_row(void) {}

@@ -32,3 +32,9 @@ CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_CROSS_SIGNED_VERIFY=y
 # Software AES: the hardware AES engine needs up to 8 KB of DMA-capable internal RAM per TLS record when buffers are
 # in PSRAM ("esp-aes: Failed to allocate memory" with Wi-Fi up, measured).
 CONFIG_MBEDTLS_HARDWARE_AES=n
+
+# lv_snapshot: the page pictures of snapshot sliding (swipe step a)
+CONFIG_LV_USE_SNAPSHOT=y
+
+# swipe step e2: LVGL refresh, animation and touch timers every 16 ms (the slide blit takes ~14 ms)
+CONFIG_LV_DEF_REFR_PERIOD=16
