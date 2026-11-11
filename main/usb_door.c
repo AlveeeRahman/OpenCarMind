@@ -149,7 +149,11 @@ static void cmd_get(char *name, char *off_s, char *len_s, char *buf, char *b64)
     long off = off_s ? atol(off_s) : -1, len = len_s ? atol(len_s) : -1;
     if (!name || !valid_name(name) || off < 0 || len <= 0 || len > GET_MAX) { reply("ERR usage: GET <name> <offset> <1..%d>", GET_MAX); return; }
     char path[96];
+#if CONFIG_OCM_NAND_LOGS
+    sdlog_drive_file(name, path, sizeof path);       /* the NAND first, then the flash FAT (drives not moved yet) */
+#else
     snprintf(path, sizeof path, SDLOG_SESSIONS_DIR "/%.20s", name);
+#endif
     FILE *f = fopen(path, "rb");
     if (!f) { reply("ERR no such file"); return; }
     size_t n = fseek(f, off, SEEK_SET) == 0 ? fread(buf, 1, (size_t)len, f) : 0;
@@ -366,6 +370,28 @@ static void handle(char *line, char *buf, char *b64)
         cJSON_Delete(root);
         if (n < 0) reply("ERR not a JSON object"); else reply("OK CONFIG applied=%d", n);
     } else if (!strcmp(cmd, "LIST")) {
+#if CONFIG_OCM_NAND_LOGS
+        /* both stores, the NAND first; a name on both (a move cut by a reset) is listed once, from the NAND, as GET reads it */
+        const char *dirs[2];
+        int nd = sdlog_ok() ? sdlog_drive_dirs(dirs) : 0;
+        if (!nd) { reply("ERR no SD card"); return; }
+        for (int k = 0; k < nd; k++) {
+            DIR *d = opendir(dirs[k]);
+            for (struct dirent *e; d && (e = readdir(d)) != NULL;) {
+                if (!valid_name(e->d_name)) continue;
+                char path[96];
+                struct stat st;
+                if (k > 0) {
+                    snprintf(path, sizeof path, "%s/%.20s", dirs[0], e->d_name);
+                    if (stat(path, &st) == 0) continue;
+                }
+                snprintf(path, sizeof path, "%s/%.20s", dirs[k], e->d_name);
+                if (stat(path, &st) == 0) reply("D %s %ld", e->d_name, (long)st.st_size);
+            }
+            if (d) closedir(d);
+        }
+        reply("OK LIST");
+#else
         DIR *d = sdlog_ok() ? opendir(SDLOG_SESSIONS_DIR) : NULL;
         if (!d) { reply("ERR no SD card"); return; }
         struct dirent *e;
@@ -378,6 +404,7 @@ static void handle(char *line, char *buf, char *b64)
         }
         closedir(d);
         reply("OK LIST");
+#endif
     } else if (!strcmp(cmd, "GET")) {
         cmd_get(a1, a2, a3, buf, b64);
     } else if (!strcmp(cmd, "MODEL")) {

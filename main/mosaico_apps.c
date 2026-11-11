@@ -19,6 +19,9 @@
 #include "esp_idf_version.h"
 #include "esp_system.h"
 #include <time.h>
+#if CONFIG_OCM_NAND_LOGS
+#include "nand_store.h"
+#endif
 #include "mosaico_files.h"
 #include "mosaico_drive.h"
 #include "fault_engine.h"
@@ -955,6 +958,11 @@ static void board_update(const ui_snap_t *s)
         else { ui_set_fmt(o_cal, "%d %%", s->gauge.soc); ui_set_color(o_cal, UI_MUTED); }
     } else { ui_set_text(o_bat_v, "--"); ui_set_text(o_bat_note, "gauge not read"); ui_set_text(o_cal, ""); }
     if (s->fat.ok && s->fat.total_kb) {
+#if CONFIG_OCM_NAND_LOGS
+        if (s->fat.nand) ui_set_fmt(o_store, "NAND %.1f of %.1f MB free, flash %lu KB", s->fat.free_kb / 1024.0,
+                                    s->fat.total_kb / 1024.0, (unsigned long)s->fat.flash_free_kb);
+        else
+#endif
         ui_set_fmt(o_store, "%lu of %lu KB free", (unsigned long)s->fat.free_kb, (unsigned long)s->fat.total_kb);
         bar_set(o_sbar, (int)((uint64_t)(s->fat.total_kb - s->fat.free_kb) * 1000 / s->fat.total_kb));
         lv_obj_set_style_bg_color(o_sbar, lv_color_hex(s->fat.free_kb * 10 < s->fat.total_kb ? UI_RED : UI_ORANGE), LV_PART_INDICATOR);
@@ -1558,8 +1566,21 @@ static void fl_fill_list(void)
     lv_obj_clean(fl_body);
     const mf_list_t *L = &fl_list;
     /* storage: used bar and free of total */
+#if CONFIG_OCM_NAND_LOGS
+    lv_obj_t *sc = ui_card(fl_body, 0, 0, CW - 16, L->nand ? 92 : 70, UI_BORDER);
+    ui_caption(sc, L->nand ? "DRIVE LOGS: 128 MB NAND" : "STORAGE");
+    if (L->nand && L->flash_total_kb) {
+        char a[16], b[16];
+        fmt_size(a, sizeof a, L->flash_free_kb * 1024u);
+        fmt_size(b, sizeof b, L->flash_total_kb * 1024u);
+        lv_obj_t *fl = ui_label(sc, F14, UI_MUTED, "");
+        ui_set_fmt(fl, "State files (flash): %s free of %s", a, b);
+        lv_obj_set_pos(fl, 0, 42);
+    }
+#else
     lv_obj_t *sc = ui_card(fl_body, 0, 0, CW - 16, 70, UI_BORDER);
     ui_caption(sc, "STORAGE");
+#endif
     lv_obj_t *sl = ui_label(sc, F14, UI_TEXT, "--");
     lv_obj_align(sl, LV_ALIGN_TOP_RIGHT, 0, -2);
     lv_obj_t *sb = bar(sc, 0, 26, CW - 16 - 2 * UI_THEME.pad_card, 10, UI_ORANGE, 1000);
@@ -2033,6 +2054,13 @@ static void do_format(void *arg) { (void)arg; mosaico_board_request(MB_FORMAT, 0
 static void format_again(void *arg)
 {
     (void)arg;
+#if CONFIG_OCM_NAND_LOGS
+    if (nand_store_state() != NAND_ABSENT) {
+        ui_confirm("Format the NAND drive store now? Drive logs and summaries cannot be recovered. Learned state and settings "
+                   "are kept.", "Format now", do_format, NULL);
+        return;
+    }
+#endif
     ui_confirm("Format now? Drive logs and summaries cannot be recovered. Learned state and settings are kept.", "Format now", do_format, NULL);
 }
 static void format_cb(lv_event_t *e)
@@ -2225,10 +2253,23 @@ static void settings_fill(void)
 #endif
     at(ui_caption(g_list, "STORAGE"), 4, y); y += 22;
     g_store = at(ui_label(g_list, F16, UI_TEXT, "--"), 4, y); y += 28;
+#if CONFIG_OCM_NAND_LOGS
+    bool nand = nand_store_state() != NAND_ABSENT;
+    if (nand) { lv_obj_set_width(g_store, 380); lv_label_set_long_mode(g_store, LV_LABEL_LONG_WRAP); y += 22; }
+#endif
     text_btn(g_list, LV_SYMBOL_WARNING " Format storage", 4, y, 380, UI_RED, format_cb);
     y += 56;
+#if CONFIG_OCM_NAND_LOGS
+    lv_obj_t *fn = at(ui_label(g_list, F14, UI_MUTED, nand ?
+                               "Formats the drive store, the 128 MB NAND: drive logs, summaries and drives.csv (about 15 s). "
+                               "Learned " LEARNED_STATE " state, clock and config files are on the flash and are not touched." :
+                               "Erases drive logs, summaries and drives.csv. Learned " LEARNED_STATE " state, "
+                               "clock and config files are copied to RAM and written back."), 4, y);
+    if (nand) y += 20;
+#else
     lv_obj_t *fn = at(ui_label(g_list, F14, UI_MUTED, "Erases drive logs, summaries and drives.csv. Learned " LEARNED_STATE " state, "
                                                       "clock and config files are copied to RAM and written back."), 4, y);
+#endif
     lv_obj_set_width(fn, 380);
     lv_label_set_long_mode(fn, LV_LABEL_LONG_WRAP);
     y += 64;
@@ -2278,6 +2319,13 @@ static void settings_update(const ui_snap_t *s)
     if (g_swipe) { char b[96]; ui_swipe_status(b, sizeof b); ui_set_text(g_swipe, b); }
 #endif
     if (g_store) {
+#if CONFIG_OCM_NAND_LOGS
+        if (s->fat.ok && s->fat.nand)
+            ui_set_fmt(g_store, "Drive logs (NAND): %.1f of %.1f MB free\nState files (flash): %lu of %lu KB free",
+                       s->fat.free_kb / 1024.0, s->fat.total_kb / 1024.0, (unsigned long)s->fat.flash_free_kb,
+                       (unsigned long)s->fat.flash_total_kb);
+        else
+#endif
         if (s->fat.ok) ui_set_fmt(g_store, "%lu of %lu KB free", (unsigned long)s->fat.free_kb, (unsigned long)s->fat.total_kb);
         else ui_set_text(g_store, "measuring");
     }

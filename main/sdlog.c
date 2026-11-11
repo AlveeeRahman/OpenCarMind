@@ -19,6 +19,12 @@
 #include "session_next.h"
 #include "sched_mon.h"
 #endif
+#if CONFIG_OCM_NAND_LOGS
+#include "nand_store.h"
+#include "log_store.h"
+void log_move_drives_csv(void);
+void log_move_start(void);
+#endif
 #include "esp_system.h"
 #include "sdmmc_cmd.h"
 #include "driver/sdmmc_host.h"
@@ -142,6 +148,11 @@ static uint32_t next_session_id(void)
 #if !BOARD_HAS_SD
         /* a re-flash erases NVS but keeps the storage partition: never reuse the number of a drive that is still there */
         uint32_t hi = session_highest_in_dir(SDLOG_SESSIONS_DIR), next = session_next_id(id, hi);
+#if CONFIG_OCM_NAND_LOGS
+        uint32_t hi_nand = nand_store_mounted() ? session_highest_in_dir(NAND_SESSIONS_DIR) : 0;   /* both stores */
+        next = log_store_next_session(id, hi_nand, hi);
+        if (hi_nand > hi) hi = hi_nand;
+#endif
         if (next != id + 1) ESP_LOGW(TAG, "session counter %lu is behind the storage (highest s%06lu): next is %lu",
                                      (unsigned long)id, (unsigned long)hi, (unsigned long)next);
         id = next;
@@ -216,8 +227,8 @@ static void sync_task(void *arg)
 static esp_err_t open_session_locked(void)
 {
     s_session = next_session_id();
-    snprintf(s_csv_path, sizeof s_csv_path, SDLOG_SESSIONS_DIR "/s%06lu.csv", (unsigned long)s_session);
-    snprintf(s_json_path, sizeof s_json_path, SDLOG_SESSIONS_DIR "/s%06lu.json", (unsigned long)s_session);
+    SDLOG_DRIVE_PATH(s_csv_path, "/s%06lu.csv", (unsigned long)s_session);
+    SDLOG_DRIVE_PATH(s_json_path, "/s%06lu.json", (unsigned long)s_session);
 
     s_csv = fopen(s_csv_path, "w");
     if (!s_csv) {
@@ -547,11 +558,18 @@ esp_err_t sdlog_init(void)
 #if !BOARD_HAS_SD
     storage_audit();
 #endif
+#if CONFIG_OCM_NAND_LOGS
+    if (nand_store_init() == ESP_OK) {               /* drive store; without it the drive logs stay on the flash FAT */
+        mkdir(NAND_LOG_DIR, 0775);
+        mkdir(NAND_SESSIONS_DIR, 0775);
+        log_move_drives_csv();                       /* small: done here, before any drive can append to it */
+    }
+#endif
     restore_clock();                  /* before the session opens, so its start time is not 1970 */
 
     /* Remove sessions from earlier boots that never logged a row (header-only CSV, no raw file). */
     {
-        DIR *d = opendir(SDLOG_SESSIONS_DIR);
+        DIR *d = opendir(SDLOG_DRIVE_DIR);
         struct dirent *e;
         int pruned = 0;
         while (d && (e = readdir(d)) != NULL) {
@@ -560,15 +578,15 @@ esp_err_t sdlog_init(void)
                 sscanf(e->d_name + 1, "%06lu", &id) != 1) continue;
             char path[96];
             struct stat st;
-            snprintf(path, sizeof path, SDLOG_SESSIONS_DIR "/%.16s", e->d_name);
+            SDLOG_DRIVE_PATH(path, "/%.16s", e->d_name);
             if (stat(path, &st) != 0 || st.st_size > (off_t)strlen(CSV_HEADER)) continue;
-            snprintf(path, sizeof path, SDLOG_SESSIONS_DIR "/s%06lu.raw", id);
+            SDLOG_DRIVE_PATH(path, "/s%06lu.raw", id);
             if (stat(path, &st) == 0) continue;
             remove(path);
-            snprintf(path, sizeof path, SDLOG_SESSIONS_DIR "/s%06lu.csv", id);  remove(path);
-            snprintf(path, sizeof path, SDLOG_SESSIONS_DIR "/s%06lu.json", id); remove(path);
-            snprintf(path, sizeof path, SDLOG_SESSIONS_DIR "/s%06lu.pat", id);  remove(path);
-            snprintf(path, sizeof path, SDLOG_SESSIONS_DIR "/s%06lu.ml.csv", id); remove(path);
+            SDLOG_DRIVE_PATH(path, "/s%06lu.csv", id);  remove(path);
+            SDLOG_DRIVE_PATH(path, "/s%06lu.json", id); remove(path);
+            SDLOG_DRIVE_PATH(path, "/s%06lu.pat", id);  remove(path);
+            SDLOG_DRIVE_PATH(path, "/s%06lu.ml.csv", id); remove(path);
             pruned++;
         }
         if (d) closedir(d);
@@ -591,6 +609,9 @@ esp_err_t sdlog_init(void)
     /* The ESP-Mosaico keeps its logs in the NOR flash: every log write disables the flash cache, and a task with a PSRAM
        stack then trips esp_task_stack_is_sane_cache_disabled(). With an SD card the stack stays in PSRAM. */
     xTaskCreate(sync_task, "sdsync", 6144, NULL, 2, NULL);
+#endif
+#if CONFIG_OCM_NAND_LOGS
+    log_move_start();                                /* drive logs still on the flash FAT -> the NAND, in the background */
 #endif
     return ESP_OK;
 }
@@ -703,7 +724,7 @@ void sdlog_write_raw(uint8_t pid, const char *hex)
     xSemaphoreTake(s_lock, portMAX_DELAY);
     if (!s_open) { xSemaphoreGive(s_lock); return; }
     if (!s_raw) {
-        snprintf(s_raw_path, sizeof s_raw_path, SDLOG_SESSIONS_DIR "/s%06lu.raw", (unsigned long)s_session);
+        SDLOG_DRIVE_PATH(s_raw_path, "/s%06lu.raw", (unsigned long)s_session);
         s_raw = fopen(s_raw_path, "a");
         if (s_raw) { fputs("uptime_ms,pid,hex\n", s_raw); s_raw_bytes = 18; }
     }
@@ -724,7 +745,7 @@ void sdlog_write_pattern_window(uint32_t window_seq, int64_t start_ms, int64_t e
     xSemaphoreTake(s_lock, portMAX_DELAY);
     if (!s_open) { xSemaphoreGive(s_lock); return; }
     if (!s_pat) {
-        snprintf(s_pat_path, sizeof s_pat_path, SDLOG_SESSIONS_DIR "/s%06lu.pat", (unsigned long)s_session);
+        SDLOG_DRIVE_PATH(s_pat_path, "/s%06lu.pat", (unsigned long)s_session);
         s_pat = fopen(s_pat_path, "a");
         if (s_pat) {
             int h = fprintf(s_pat, "window_seq,start_ms,end_ms,samples,pattern_id,dist,novelty,spawned,sax_rpm,sax_speed");
@@ -749,7 +770,7 @@ void sdlog_write_ml_line(const char *header, const char *line)
     xSemaphoreTake(s_lock, portMAX_DELAY);
     if (!s_open) { xSemaphoreGive(s_lock); return; }
     if (!s_ml) {
-        snprintf(s_ml_path, sizeof s_ml_path, SDLOG_SESSIONS_DIR "/s%06lu.ml.csv", (unsigned long)s_session);
+        SDLOG_DRIVE_PATH(s_ml_path, "/s%06lu.ml.csv", (unsigned long)s_session);
         s_ml = fopen(s_ml_path, "a");
         if (s_ml) { int h = fputs(header, s_ml); s_ml_bytes = h >= 0 ? strlen(header) : 0; }
     }
@@ -795,9 +816,30 @@ bool session_name_valid(const char *n)
 }
 
 /* lock held; id = 0 means every session but the current one */
+#if CONFIG_OCM_NAND_LOGS
+static int delete_in_dir_locked(const char *dir, uint32_t id, int *sessions);
+static int delete_locked(uint32_t id, int *sessions)
+{
+    const char *dirs[2];
+    int nd = sdlog_drive_dirs(dirs), files = 0, any = 0;
+    if (sessions) *sessions = 0;
+    for (int k = 0; k < nd; k++) {
+        int s = 0, f = delete_in_dir_locked(dirs[k], id, &s);
+        if (f < 0) continue;
+        any = 1;
+        files += f;
+        if (sessions) *sessions += s;
+    }
+    return any ? files : -1;
+}
+static int delete_in_dir_locked(const char *dir, uint32_t id, int *sessions)
+{
+    DIR *d = opendir(dir);
+#else
 static int delete_locked(uint32_t id, int *sessions)
 {
     DIR *d = opendir(SDLOG_SESSIONS_DIR);
+#endif
     if (!d) return -1;
     int files = 0;
     if (sessions) *sessions = 0;
@@ -814,7 +856,11 @@ static int delete_locked(uint32_t id, int *sessions)
     closedir(d);
     for (int i = 0; i < n; i++) {
         char path[96];
+#if CONFIG_OCM_NAND_LOGS
+        snprintf(path, sizeof path, "%.48s/%.23s", dir, names[i]);
+#else
         snprintf(path, sizeof path, SDLOG_SESSIONS_DIR "/%s", names[i]);
+#endif
         if (remove(path) != 0) continue;
         files++;
         bool first = true;                              /* count each session once */
@@ -847,6 +893,39 @@ int sdlog_delete_all_sessions(int *sessions_out)
 }
 
 #if !BOARD_HAS_SD
+#if CONFIG_OCM_NAND_LOGS
+/* The NAND is the drive store: format it (erase + FAT, ~15 s), and remove the drive logs still on the flash FAT (drives
+   not moved yet, or logged while the NAND was down). The flash FAT and its state files are not touched. */
+static esp_err_t format_drive_store(uint32_t *free_kb, int *kept_files, char *why, size_t why_n)
+{
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    meta_flush_locked();
+    if (s_csv) { fclose(s_csv); s_csv = NULL; }
+    if (s_raw) { fclose(s_raw); s_raw = NULL; }
+    if (s_pat) { fclose(s_pat); s_pat = NULL; }
+    if (s_ml) { fclose(s_ml); s_ml = NULL; }
+    s_open = false;                                   /* the next drive opens a new session, on the formatted NAND */
+    esp_err_t err = nand_store_format(why, why_n);
+    if (err == ESP_OK) {
+        mkdir(NAND_LOG_DIR, 0775);
+        mkdir(NAND_SESSIONS_DIR, 0775);
+        delete_in_dir_locked(SDLOG_SESSIONS_DIR, 0, NULL);
+        remove(SDLOG_DIR "/drives.csv");
+    }
+    uint64_t tot = 0, fr = 0;
+    nand_store_info(&tot, &fr);
+    int state = 0;                                    /* state files on the flash FAT, untouched */
+    DIR *d = opendir(SDLOG_DIR);
+    for (struct dirent *e; d && (e = readdir(d)) != NULL;) state += e->d_type == DT_REG;
+    if (d) closedir(d);
+    xSemaphoreGive(s_lock);
+    if (free_kb) *free_kb = (uint32_t)(fr / 1024);
+    if (kept_files) *kept_files = state;
+    if (err == ESP_OK) sys_event(EV_INFO, "Drive store (NAND) formatted on the board: %lu KB free; the %d state files on the flash FAT "
+                                 "were not touched", (unsigned long)(fr / 1024), state);
+    return err;
+}
+#endif
 esp_err_t sdlog_format_storage(uint32_t *free_kb, int *kept_files, char *why, size_t why_n)
 {
     if (!s_ok && s_unreadable) {
@@ -860,6 +939,13 @@ esp_err_t sdlog_format_storage(uint32_t *free_kb, int *kept_files, char *why, si
         esp_restart();
     }
     if (!s_ok) { snprintf(why, why_n, "storage not mounted"); return ESP_ERR_INVALID_STATE; }
+#if CONFIG_OCM_NAND_LOGS
+    /* the session opened at boot stays open (s_open) until a drive with rows ends; one without rows holds no data */
+    if (nand_store_state() != NAND_ABSENT) {
+        if (s_open && s_rows) { snprintf(why, why_n, "a drive is being logged"); return ESP_ERR_INVALID_STATE; }
+        return format_drive_store(free_kb, kept_files, why, why_n);
+    }
+#endif
     if (s_open) { snprintf(why, why_n, "a drive is being logged"); return ESP_ERR_INVALID_STATE; }
     typedef struct { char name[48]; uint8_t *data; size_t n; } keep_t;
     static keep_t keep[24];
@@ -913,7 +999,19 @@ esp_err_t sdlog_format_storage(uint32_t *free_kb, int *kept_files, char *why, si
 }
 #endif
 
+#if CONFIG_OCM_NAND_LOGS
+/* the flash FAT part (below, unchanged), then the NAND: its lock comes after the logger's own flush, because that flush
+   (fsync of the drive files) runs on the NAND volume and FatFs's volume lock is not recursive */
+static void quiesce_flash_fat(void);
 void sdlog_quiesce_for_reset(void)
+{
+    quiesce_flash_fat();
+    nand_store_quiesce();
+}
+static void quiesce_flash_fat(void)
+#else
+void sdlog_quiesce_for_reset(void)
+#endif
 {
     /* The flash FAT writes a sector as erase-then-program (diskio_wl.c ff_wl_write), so a reset between the two leaves
        an erased sector. Here: flush the logger's files under its lock, mark it stopped (its writers return at s_ok), and
@@ -954,6 +1052,9 @@ void sdlog_prepare_sleep(void)
 #else
     esp_vfs_fat_spiflash_unmount_rw_wl(CONFIG_SDLOG_MOUNT_POINT, s_wl);
     s_wl = WL_INVALID_HANDLE;
+#endif
+#if CONFIG_OCM_NAND_LOGS
+    nand_store_unmount();
 #endif
     s_ok = false;
     xSemaphoreGive(s_lock);
@@ -1095,4 +1196,40 @@ void sdlog_meta_set_clock_manual(int64_t epoch_ms, int64_t uptime_ms)
     save_clock_locked();
     xSemaphoreGive(s_lock);
 }
+#endif
+
+#if CONFIG_OCM_NAND_LOGS
+const char *sdlog_drive_dir(void) { return nand_store_mounted() ? NAND_SESSIONS_DIR : SDLOG_SESSIONS_DIR; }
+const char *sdlog_drives_csv(void) { return nand_store_mounted() ? NAND_LOG_DIR "/drives.csv" : SDLOG_DIR "/drives.csv"; }
+
+int sdlog_drive_dirs(const char *dirs[2])
+{
+    int n = 0;
+    if (nand_store_mounted()) dirs[n++] = NAND_SESSIONS_DIR;
+    dirs[n++] = SDLOG_SESSIONS_DIR;
+    return n;
+}
+
+bool sdlog_drive_file(const char *name, char *path, size_t n)
+{
+    const char *dirs[2];
+    int nd = sdlog_drive_dirs(dirs);
+    struct stat st;
+    for (int k = 0; k < nd; k++) {
+        snprintf(path, n, "%s/%.20s", dirs[k], name);
+        if (stat(path, &st) == 0) return true;
+    }
+    snprintf(path, n, "%s/%.20s", dirs[0], name);
+    return false;
+}
+
+bool sdlog_move_lock(void)
+{
+    if (!s_lock || s_quiesced || !s_ok) return false;
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    if (s_quiesced || !s_ok) { xSemaphoreGive(s_lock); return false; }
+    return true;
+}
+
+void sdlog_move_unlock(void) { xSemaphoreGive(s_lock); }
 #endif

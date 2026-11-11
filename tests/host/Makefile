@@ -19,6 +19,18 @@ session: session_tests
 session_tests: test_session_next.c ../../main/session_next.c ../../main/session_next.h
 	$(CC) $(CFLAGS) -o $@ test_session_next.c ../../main/session_next.c
 
+# ESP-Mosaico drive store (F1): file routing, the session counter over two stores, the move to the NAND, drives.csv merge
+logstore: logstore_tests nandfat_tests
+	./logstore_tests
+	./nandfat_tests
+
+# the flash FAT's repair rules on the NAND volume (FAT16, 2 KB sectors) after a Dhara rollback to any prefix of the writes
+nandfat_tests: test_nand_fat.c ../../main/fat_mirror.c ../../main/fat_mirror.h
+	$(CC) $(CFLAGS) -o $@ test_nand_fat.c ../../main/fat_mirror.c
+
+logstore_tests: test_log_store.c ../../main/log_store.c ../../main/log_store.h ../../main/session_next.c
+	$(CC) $(CFLAGS) -o $@ test_log_store.c ../../main/log_store.c ../../main/session_next.c
+
 # which resets count toward the boot-loop safe mode (main/reset_class.c)
 reset: reset_tests
 	./reset_tests
@@ -70,5 +82,5 @@ rev_tests: $(REV_SRCS) ../../main/rev_learn.h ../../main/rev_cal.h ../../main/re
 	$(CC) $(CFLAGS) -o $@ $(REV_SRCS) -lm
 
 clean:
-	rm -f carmind_tests rev_tests tank_tests session_tests reset_tests swipe_tests clock_tests uimetrics_tests prefetch_tests
-.PHONY: run rev session reset swipe clock uimetrics prefetch clean
+	rm -f carmind_tests rev_tests tank_tests session_tests reset_tests swipe_tests clock_tests uimetrics_tests prefetch_tests logstore_tests nandfat_tests
+.PHONY: run rev session reset swipe clock uimetrics prefetch logstore clean

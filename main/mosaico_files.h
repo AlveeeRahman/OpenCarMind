@@ -21,7 +21,9 @@ typedef struct {
     uint32_t     gen;
     bool         ok, busy;
     int          n, total;             /* listed, and all sessions found */
-    uint32_t     free_kb, total_kb;
+    uint32_t     free_kb, total_kb;    /* the drive store: the NAND when it is mounted (nand true), else the flash FAT */
+    bool         nand;
+    uint32_t     flash_free_kb, flash_total_kb;   /* the flash FAT (state files) when the NAND is the drive store */
     char         note[64];             /* result of the last delete */
     mf_session_t s[MF_MAX];
 } mf_list_t;

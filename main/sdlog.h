@@ -3,10 +3,33 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include "esp_err.h"
+#include "sdkconfig.h"
 #include "status.h"
 
 #define SDLOG_DIR          CONFIG_SDLOG_MOUNT_POINT "/obd"
 #define SDLOG_SESSIONS_DIR SDLOG_DIR "/sessions"
+
+/* Where drive logs live. ESP-Mosaico with CONFIG_OCM_NAND_LOGS: the 128 MB SPI NAND when it is mounted (nand_store.h),
+   else the flash FAT; every other build: SDLOG_SESSIONS_DIR, as before. State files always stay in SDLOG_DIR. */
+#if CONFIG_OCM_NAND_LOGS
+const char *sdlog_drive_dir(void);           /* ".../obd/sessions" of the drive store */
+const char *sdlog_drives_csv(void);          /* ".../obd/drives.csv" of the drive store */
+#define SDLOG_DRIVE_DIR                  sdlog_drive_dir()
+#define SDLOG_DRIVES_CSV                 sdlog_drives_csv()
+#define SDLOG_DRIVE_PATH(buf, fmt, ...)  snprintf(buf, sizeof buf, "%s" fmt, sdlog_drive_dir(), __VA_ARGS__)
+/* The directories that can hold drive logs, the drive store first: the NAND, then the flash FAT (drives not moved yet).
+   Returns how many (1 or 2). */
+int  sdlog_drive_dirs(const char *dirs[2]);
+/* Full path of drive-log file name: the first directory that has it (true), else where a new one goes (false). */
+bool sdlog_drive_file(const char *name, char *path, size_t n);
+/* log_move.c: the logger's lock for one step of the move to the NAND; false (lock not held) once a reset is coming. */
+bool sdlog_move_lock(void);
+void sdlog_move_unlock(void);
+#else
+#define SDLOG_DRIVE_DIR                  SDLOG_SESSIONS_DIR
+#define SDLOG_DRIVES_CSV                 SDLOG_DIR "/drives.csv"
+#define SDLOG_DRIVE_PATH(buf, fmt, ...)  snprintf(buf, sizeof buf, SDLOG_SESSIONS_DIR fmt, __VA_ARGS__)
+#endif
 
 esp_err_t sdlog_init(void);
 bool      sdlog_ok(void);

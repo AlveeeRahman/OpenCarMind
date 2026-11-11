@@ -89,6 +89,43 @@ menu "OBD Logger Configuration"
             bool "Stall variant: freeze the UI so the ui-stall guard resets the board"
             depends on OCM_STORAGE_RESET_TEST
             default n
+        config OCM_NAND_LOGS
+            bool "ESP-Mosaico: drive logs on the 128 MB SPI NAND"
+            depends on IDF_TARGET_ESP32S31
+            default y
+            help
+                The ESP-Mosaico core board carries a GigaDevice GD5F1GM7UEYIGR (1 Gbit, 3.3 V) SPI NAND on GPIO20-25.
+                With this option the drive logs (sNNNNNN.* and drives.csv) are written to a FAT on it (Dhara wear
+                levelling, espressif/spi_nand_flash), and the flash FAT keeps the state files. A blank NAND is formatted
+                at the first boot; drive logs found on the flash FAT are moved to it once. Without a working NAND the
+                logs stay on the flash FAT.
+        config OCM_NAND_MOUNT_POINT
+            string "NAND mount point"
+            depends on OCM_NAND_LOGS
+            default "/nand"
+        config OCM_NAND_SPI_MHZ
+            int "NAND SPI clock (MHz)"
+            depends on OCM_NAND_LOGS
+            range 1 80
+            default 20
+            help
+                SPI3 through the GPIO matrix (the NAND pins are SPI2's IO MUX set, but SPI2 drives the display).
+                Half duplex: the driver adds dummy cycles for the matrix input delay.
+        config OCM_NAND_QIO
+            bool "NAND in quad I/O (WP# and HOLD# as data lines)"
+            depends on OCM_NAND_LOGS
+            default n
+            help
+                Off: single-line SPI with WP# and HOLD# held high as GPIOs. On: quad reads and writes (the driver sets
+                the chip's QE bit). Untested on the board.
+        config OCM_NAND_SELFTEST
+            bool "Bench: NAND speed self-test at boot (writes and deletes 1 MB)"
+            depends on OCM_NAND_LOGS
+            default n
+            help
+                After the mount: 1 MB written in 16 KB chunks and synced, read back and compared, then 200 drive-like
+                1 KB appends with an fsync every 25; prints "NAND selftest: write N KB/s, read N KB/s, fsync p50/max ms".
+                Test builds only.
     endmenu
 
     menu "Wi-Fi clock sync"

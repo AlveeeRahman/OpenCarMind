@@ -201,12 +201,12 @@ static bool pass_inner(void)
         size_t budget = PASS_BUDGET;
         char current[16];
         snprintf(current, sizeof current, "s%06lu.json", (unsigned long)sdlog_session_id());
-        DIR *d = opendir(SDLOG_SESSIONS_DIR);
+        DIR *d = opendir(SDLOG_DRIVE_DIR);                /* the drive store (the NAND on the ESP-Mosaico) */
         struct dirent *e;
         while (d && budget > 0 && (e = readdir(d)) != NULL && sys_mode_get() != MODE_DRIVE) {
             if (!valid_name(e->d_name)) continue;
             char path[96], q[96];
-            snprintf(path, sizeof path, SDLOG_SESSIONS_DIR "/%.20s", e->d_name);
+            SDLOG_DRIVE_PATH(path, "/%.20s", e->d_name);
             struct stat st;
             if (stat(path, &st) != 0) continue;
             long long have = remote_size(list.buf, e->d_name), size = st.st_size;
