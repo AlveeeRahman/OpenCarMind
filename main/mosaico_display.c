@@ -2567,13 +2567,106 @@ static esp_lcd_touch_handle_t s_tp;
 static uint32_t s_touch_err;
 uint32_t mosaico_touch_errors(void) { return s_touch_err; }
 
+/* CST9220 wedge recovery. Seen 2026-11-11 (once in hours of use, test firmware): one I2C write of the report address
+   NACKed, and from then on every report read returned 0xff (driver: "Malformed report header") with more NACKs: no
+   touch until a reset, and ~50 driver warnings a second from this task. The board has no TP_RST line (BOARD_TOUCH_RST
+   is NC), so the recovery is in software: after TOUCH_BAD_MAX consecutive failed or malformed reads the controller and
+   its I2C device are opened again (the driver's wake + report-page sequence), at most once per TOUCH_RETRY_US; while
+   failing the panel is read only every TOUCH_PROBE_US, and the drivers' warnings are muted after the first few, with
+   one summary line per 10 s here instead. A legitimate ACK-only report is a single miss and resets nothing. */
+#define TOUCH_BAD_MAX   30                             /* about 0.5 s of reads */
+#define TOUCH_MUTE_AT   5
+#define TOUCH_RETRY_US  2000000
+#define TOUCH_PROBE_US  100000
+static esp_lcd_panel_io_handle_t s_tp_io;
+static uint32_t s_touch_bad, s_touch_bad_burst;
+static uint32_t s_touch_reopens;
+static int64_t s_touch_retry_us, s_touch_probe_us, s_touch_log_us;
+static bool s_touch_muted;
+
+static bool touch_open(void)
+{
+    esp_lcd_panel_io_i2c_config_t io_cfg = ESP_LCD_TOUCH_IO_I2C_CST9220_CONFIG();
+    io_cfg.scl_speed_hz = 400000;
+    if (esp_lcd_new_panel_io_i2c(mosaico_i2c_bus(), &io_cfg, &s_tp_io) != ESP_OK) { s_tp_io = NULL; return false; }
+    const esp_lcd_touch_config_t cfg = {
+        .x_max = BOARD_LCD_H_RES, .y_max = BOARD_LCD_V_RES, .rst_gpio_num = BOARD_TOUCH_RST, .int_gpio_num = BOARD_TOUCH_INT,
+        .levels = { .reset = 0, .interrupt = 0 },
+    };
+    if (esp_lcd_touch_new_i2c_cst9220(s_tp_io, &cfg, &s_tp) != ESP_OK) {
+        s_tp = NULL;
+        esp_lcd_panel_io_del(s_tp_io);
+        s_tp_io = NULL;
+        return false;
+    }
+    return true;
+}
+
+static void touch_close(void)
+{
+    if (s_tp) esp_lcd_touch_del(s_tp);
+    s_tp = NULL;
+    if (s_tp_io) esp_lcd_panel_io_del(s_tp_io);
+    s_tp_io = NULL;
+}
+
+static void touch_mute(bool on)
+{
+    esp_log_level_t l = on ? ESP_LOG_NONE : ESP_LOG_INFO;
+    esp_log_level_set("cst9220", l);
+    esp_log_level_set("lcd_panel.io.i2c", l);
+    s_touch_muted = on;
+}
+
+static void touch_good(void)
+{
+    if (s_touch_bad >= TOUCH_BAD_MAX)
+        ESP_LOGW(TAG, "touch: reading again after %lu failed or malformed reads (controller re-opened %lu time%s so far)",
+                 (unsigned long)s_touch_bad, (unsigned long)s_touch_reopens, s_touch_reopens == 1 ? "" : "s");
+    if (s_touch_muted) touch_mute(false);
+    s_touch_bad = 0;
+}
+
+static void touch_failed(int64_t now)
+{
+    s_touch_bad++;
+    s_touch_bad_burst++;
+    if (s_touch_bad == TOUCH_MUTE_AT) touch_mute(true);
+    if (s_touch_bad >= TOUCH_BAD_MAX) {
+        s_touch_probe_us = now + TOUCH_PROBE_US;
+        if (now >= s_touch_retry_us) {
+            s_touch_retry_us = now + TOUCH_RETRY_US;
+            touch_close();
+            bool ok = touch_open();
+            s_touch_reopens++;
+            ESP_LOGW(TAG, "touch: %lu failed or malformed reads in a row: controller re-opened (%s)", (unsigned long)s_touch_bad,
+                     ok ? "ok" : "failed, retrying");
+        }
+    }
+    if (s_touch_muted && now - s_touch_log_us >= 10000000) {
+        s_touch_log_us = now;
+        ESP_LOGW(TAG, "touch: %lu failed or malformed reads in the last 10 s (driver warnings muted)", (unsigned long)s_touch_bad_burst);
+        s_touch_bad_burst = 0;
+    }
+}
+
+/* one panel read with the wedge recovery; ESP_OK = the driver holds a fresh report */
+static esp_err_t touch_read(void)
+{
+    int64_t now = esp_timer_get_time();
+    if (s_touch_bad >= TOUCH_BAD_MAX && now < s_touch_probe_us) return ESP_ERR_INVALID_STATE;   /* failing: next probe */
+    esp_err_t e = s_tp ? esp_lcd_touch_read_data(s_tp) : ESP_ERR_INVALID_STATE;
+    if (e == ESP_OK) touch_good(); else touch_failed(now);
+    return e;
+}
+
 static void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
 {
     (void)indev;
     esp_lcd_touch_point_data_t pt[1] = {0};
     uint8_t n = 0;
     data->state = LV_INDEV_STATE_RELEASED;
-    if (esp_lcd_touch_read_data(s_tp) != ESP_OK) {
+    if (touch_read() != ESP_OK) {
         s_touch_err++;
 #if CONFIG_OCM_SWIPE_INTENT
         si_touch(indev, false, 0, 0);                    /* LVGL sees a release: so does the learner */
@@ -2599,15 +2692,7 @@ static void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
 static void touch_init(void)
 {
     if (!mosaico_i2c_bus()) return;
-    esp_lcd_panel_io_handle_t io;
-    esp_lcd_panel_io_i2c_config_t io_cfg = ESP_LCD_TOUCH_IO_I2C_CST9220_CONFIG();
-    io_cfg.scl_speed_hz = 400000;
-    if (esp_lcd_new_panel_io_i2c(mosaico_i2c_bus(), &io_cfg, &io) != ESP_OK) { ESP_LOGE(TAG, "touch panel io"); return; }
-    const esp_lcd_touch_config_t cfg = {
-        .x_max = BOARD_LCD_H_RES, .y_max = BOARD_LCD_V_RES, .rst_gpio_num = BOARD_TOUCH_RST, .int_gpio_num = BOARD_TOUCH_INT,
-        .levels = { .reset = 0, .interrupt = 0 },
-    };
-    if (esp_lcd_touch_new_i2c_cst9220(io, &cfg, &s_tp) != ESP_OK) { ESP_LOGE(TAG, "CST9220 not found: no touch"); s_tp = NULL; return; }
+    if (!touch_open()) { ESP_LOGE(TAG, "CST9220 not found: no touch"); return; }
     lvgl_port_lock(0);
     lv_indev_t *in = lv_indev_create();
     lv_indev_set_type(in, LV_INDEV_TYPE_POINTER);
