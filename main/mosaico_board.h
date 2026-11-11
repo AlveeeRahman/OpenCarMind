@@ -25,7 +25,7 @@ typedef struct { bool ok; uint32_t total_kb, free_kb; } mosaico_storage_t;
 /* Work the UI hands to the board task (internal-RAM stack, lowest priority), so the LVGL task never touches FatFs, NVS,
    BLE or Wi-Fi itself. Never blocks: false when the queue (8 deep) is full. */
 typedef enum { MB_FILES_SCAN = 0, MB_FILES_DETAIL, MB_FILES_DELETE, MB_FILES_DELETE_ALL, MB_BLE_FORGET, MB_BLE_SEARCH,
-               MB_WIFI_NOW, MB_FORMAT, MB_BUZZ } mb_cmd_t;
+               MB_WIFI_NOW, MB_FORMAT, MB_BUZZ, MB_CLOCK_SET } mb_cmd_t;
 bool mosaico_board_request(mb_cmd_t cmd, uint32_t arg);
 
 void mosaico_board_init(void);                     /* after the console, before the display */

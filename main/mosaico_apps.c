@@ -28,6 +28,8 @@ extern const lv_image_dsc_t ocm_mark_rev_34, ocm_mark_rev_24, ocm_mark_rev_tile;
 #define LEARNED_STATE_AND "R.E.V"
 extern const lv_image_dsc_t ocm_icon_drive_52, ocm_icon_ai_52, ocm_icon_learn_52, ocm_icon_summary_52, ocm_icon_live_52, ocm_icon_fuel_52, ocm_icon_brakes_52, ocm_icon_trip_52, ocm_icon_engine_52, ocm_icon_faults_52, ocm_icon_board_52, ocm_icon_files_52, ocm_icon_settings_52;
 #include "elm327.h"
+#include "mosaico_clock.h"
+#include "remote_config.h"
 
 #define F48 (UI_THEME.f_hero)
 #define F32 (UI_THEME.f_big)
@@ -1732,17 +1734,211 @@ static void seg_cb(lv_event_t *e)
     lv_async_call(rebuild_async, NULL);
 }
 
-static lv_obj_t *g_bright_bar, *g_bright_val;
+/* brightness: a slider, 10..100 %. Dragging previews on the panel (at most one command per 50 ms UI tick); the release
+   applies the last value and saves it once. */
+static lv_obj_t *g_bright_sl, *g_bright_val;
 static void bright_cb(lv_event_t *e)
 {
-    int d = (int)(intptr_t)lv_event_get_user_data(e);
-    ui_settings_t s;
-    ui_settings_get(&s);
-    int v = s.brightness + d;
-    s.brightness = (uint8_t)(v < 10 ? 10 : v > 100 ? 100 : v);
-    ui_settings_set(&s);
-    if (g_bright_bar) bar_set(g_bright_bar, s.brightness);
-    if (g_bright_val) ui_set_fmt(g_bright_val, "%d %%", s.brightness);
+    lv_event_code_t code = lv_event_get_code(e);
+    int v = (int)lv_slider_get_value(lv_event_get_target_obj(e));
+    if (g_bright_val) ui_set_fmt(g_bright_val, "%d %%", v);
+    if (code == LV_EVENT_VALUE_CHANGED) ui_brightness_preview(v);
+    else ui_settings_set_brightness(v);                   /* RELEASED or PRESS_LOST */
+}
+
+/* ---------- Settings > Clock: the time picker, full screen on lv_layer_top ---------- */
+static lv_obj_t *g_clk_time, *g_clk_src;
+static lv_obj_t *ck_page, *ck_day, *ck_mon, *ck_year, *ck_hour, *ck_min, *ck_tz, *ck_msg;
+static lv_timer_t *ck_timer;
+static bool ck_sent;                                      /* a set is queued: ck_tick follows its result */
+EXT_RAM_BSS_ATTR static app_status_t ck_st;               /* status copies for the clock lines (too big for the stack) */
+static int ck_tz_extra;                                   /* 1: the zone in force is not in the list, row 0 keeps it */
+static char ck_tz_cur[48];
+static const char *const CK_MON = "Jan\nFeb\nMar\nApr\nMay\nJun\nJul\nAug\nSep\nOct\nNov\nDec";
+
+static const char *tz_now(void)
+{
+    const char *tz = remote_config_get()->timezone;
+    return tz[0] ? tz : CONFIG_SYNC_TIMEZONE;
+}
+
+static void ck_close(void *arg) { (void)arg; if (ck_page) lv_obj_delete(ck_page); }
+static void ck_deleted(lv_event_t *e)
+{
+    (void)e;
+    if (ck_timer) { lv_timer_delete(ck_timer); ck_timer = NULL; }
+    ck_page = ck_day = ck_mon = ck_year = ck_hour = ck_min = ck_tz = ck_msg = NULL;
+}
+
+static void ck_fill_days(void)
+{
+    static char buf[32 * 3];
+    int y = CLOCK_YEAR_MIN + (int)lv_roller_get_selected(ck_year), m = (int)lv_roller_get_selected(ck_mon) + 1;
+    int n = clock_days_in_month(y, m), sel = (int)lv_roller_get_selected(ck_day), k = 0;
+    for (int d = 1; d <= n; d++) k += snprintf(buf + k, sizeof buf - k, "%s%d", d > 1 ? "\n" : "", d);
+    if ((int)lv_roller_get_option_count(ck_day) == n) return;
+    lv_roller_set_options(ck_day, buf, LV_ROLLER_MODE_NORMAL);
+    lv_roller_set_selected(ck_day, (uint32_t)(sel < n ? sel : n - 1), LV_ANIM_OFF);
+}
+static void ck_ym_cb(lv_event_t *e) { (void)e; ck_fill_days(); }
+
+static lv_obj_t *ck_roller(lv_obj_t *p, const char *opts, int x, int w, int sel)
+{
+    lv_obj_t *r = lv_roller_create(p);
+    lv_roller_set_options(r, opts, LV_ROLLER_MODE_NORMAL);
+    lv_roller_set_visible_row_count(r, 3);
+    lv_obj_set_pos(r, x, 112);
+    lv_obj_set_width(r, w);
+    lv_obj_set_style_text_font(r, F20, 0);
+    lv_obj_set_style_text_color(r, lv_color_hex(UI_MUTED), 0);
+    lv_obj_set_style_bg_color(r, lv_color_hex(UI_THEME.track), 0);
+    lv_obj_set_style_bg_opa(r, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(r, 0, 0);
+    lv_obj_set_style_radius(r, UI_THEME.radius_row, 0);
+    lv_obj_set_style_bg_color(r, lv_color_hex(UI_ORANGE), LV_PART_SELECTED);
+    lv_obj_set_style_text_color(r, lv_color_hex(UI_BG), LV_PART_SELECTED);
+    lv_obj_remove_flag(r, LV_OBJ_FLAG_GESTURE_BUBBLE);
+    lv_roller_set_selected(r, (uint32_t)sel, LV_ANIM_OFF);
+    return r;
+}
+
+static void ck_show(mclk_result_t r)
+{
+    if (!ck_msg) return;
+    ui_set_text(ck_msg, mosaico_clock_result_text(r));
+    ui_set_color(ck_msg, r == MCLK_BUSY || r == MCLK_OK ? UI_MUTED : UI_RED);
+}
+
+static void ck_tick(lv_timer_t *t)
+{
+    (void)t;
+    if (!g_list) { lv_async_call(ck_close, NULL); return; }     /* Settings closed (Function key, a rebuild) */
+    if (!ck_sent) return;
+    mclk_result_t r = mosaico_clock_result();
+    ck_show(r);
+    if (r == MCLK_OK) lv_async_call(ck_close, NULL);
+    if (r != MCLK_BUSY) ck_sent = false;
+}
+
+static void ck_save(void)
+{
+    if (!ck_page) return;
+    char tz[48];
+    int z = (int)lv_dropdown_get_selected(ck_tz) - ck_tz_extra;
+    strlcpy(tz, z < 0 ? ck_tz_cur : clock_tz(z)->tz, sizeof tz);
+    ck_sent = mosaico_clock_request(CLOCK_YEAR_MIN + (int)lv_roller_get_selected(ck_year), (int)lv_roller_get_selected(ck_mon) + 1,
+                          (int)lv_roller_get_selected(ck_day) + 1, (int)lv_roller_get_selected(ck_hour),
+                          (int)lv_roller_get_selected(ck_min), tz);
+    ck_show(mosaico_clock_result());
+}
+static void ck_save_cb(lv_event_t *e) { (void)e; ck_save(); }
+static void ck_cancel_cb(lv_event_t *e) { (void)e; lv_async_call(ck_close, NULL); }
+
+static lv_obj_t *ck_button(lv_obj_t *p, const char *t, uint32_t bg, uint32_t fg, int x, lv_event_cb_t cb)
+{
+    lv_obj_t *b = lv_button_create(p);
+    lv_obj_set_pos(b, x, 400);
+    lv_obj_set_size(b, 196, 54);
+    lv_obj_set_style_bg_color(b, lv_color_hex(bg), 0);
+    lv_obj_set_style_radius(b, UI_THEME.radius_row, 0);
+    lv_obj_set_style_shadow_width(b, 0, 0);
+    lv_obj_add_event_cb(b, cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_center(ui_label(b, F16, fg, t));
+    return b;
+}
+
+static void style_dropdown(lv_obj_t *d);
+static void ck_open(void)
+{
+    if (ck_page) return;
+    ck_sent = false;
+    /* start from the time on the clock when there is one, else noon on the first day the picker allows */
+    struct tm tm = { .tm_year = CLOCK_YEAR_MIN - 1900, .tm_mon = 0, .tm_mday = 1, .tm_hour = 12 };
+    time_t now = time(NULL);
+    status_get(&ck_st);
+    if (mosaico_clock_known(&ck_st)) localtime_r(&now, &tm);
+    int y = tm.tm_year + 1900;
+    if (y < CLOCK_YEAR_MIN || y > CLOCK_YEAR_MAX) { y = CLOCK_YEAR_MIN; tm.tm_mon = 0; tm.tm_mday = 1; }
+
+    ck_page = lv_obj_create(lv_layer_top());
+    lv_obj_remove_style_all(ck_page);
+    lv_obj_set_size(ck_page, UI_W, UI_H);
+    lv_obj_set_style_bg_color(ck_page, lv_color_hex(UI_BG), 0);
+    lv_obj_set_style_bg_opa(ck_page, LV_OPA_COVER, 0);
+    lv_obj_add_flag(ck_page, LV_OBJ_FLAG_CLICKABLE);                  /* swallows taps behind it */
+    lv_obj_remove_flag(ck_page, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_event_cb(ck_page, ck_deleted, LV_EVENT_DELETE, NULL);
+    at(ui_label(ck_page, F28, UI_TEXT, "Set clock"), 24, 28);
+    at(ui_caption(ck_page, "DAY"), 24, 86);
+    at(ui_caption(ck_page, "MONTH"), 96, 86);
+    at(ui_caption(ck_page, "YEAR"), 186, 86);
+    at(ui_caption(ck_page, "HOUR"), 298, 86);
+    at(ui_caption(ck_page, "MIN"), 380, 86);
+
+    static char years[(CLOCK_YEAR_MAX - CLOCK_YEAR_MIN + 1) * 5 + 1], hours[24 * 3], mins[60 * 3];
+    int k = 0;
+    for (int i = CLOCK_YEAR_MIN; i <= CLOCK_YEAR_MAX; i++) k += snprintf(years + k, sizeof years - k, "%s%d", k ? "\n" : "", i);
+    k = 0;
+    for (int i = 0; i < 24; i++) k += snprintf(hours + k, sizeof hours - k, "%s%02d", i ? "\n" : "", i);
+    k = 0;
+    for (int i = 0; i < 60; i++) k += snprintf(mins + k, sizeof mins - k, "%s%02d", i ? "\n" : "", i);
+    ck_day  = ck_roller(ck_page, "1", 24, 64, 0);
+    ck_mon  = ck_roller(ck_page, CK_MON, 96, 82, tm.tm_mon);
+    ck_year = ck_roller(ck_page, years, 186, 100, y - CLOCK_YEAR_MIN);
+    ck_hour = ck_roller(ck_page, hours, 298, 70, tm.tm_hour);
+    ck_min  = ck_roller(ck_page, mins, 380, 76, tm.tm_min);
+    ck_fill_days();
+    lv_roller_set_selected(ck_day, (uint32_t)(tm.tm_mday - 1), LV_ANIM_OFF);
+    lv_obj_add_event_cb(ck_mon, ck_ym_cb, LV_EVENT_VALUE_CHANGED, NULL);
+    lv_obj_add_event_cb(ck_year, ck_ym_cb, LV_EVENT_VALUE_CHANGED, NULL);
+
+    at(ui_caption(ck_page, "TIME ZONE"), 24, 262);
+    static char zones[48 + 24 * 32];
+    strlcpy(ck_tz_cur, tz_now(), sizeof ck_tz_cur);
+    int cur = clock_tz_find(ck_tz_cur);
+    ck_tz_extra = cur < 0;
+    k = 0;
+    if (ck_tz_extra) k += snprintf(zones, sizeof zones, "Now: %.36s", ck_tz_cur);
+    for (int i = 0; i < clock_tz_count(); i++) k += snprintf(zones + k, sizeof zones - k, "%s%s", k ? "\n" : "", clock_tz(i)->label);
+    ck_tz = lv_dropdown_create(ck_page);
+    lv_obj_set_pos(ck_tz, 24, 284);
+    lv_obj_set_width(ck_tz, UI_W - 48);
+    lv_dropdown_set_options(ck_tz, zones);
+    lv_dropdown_set_selected(ck_tz, (uint32_t)(cur < 0 ? 0 : cur));
+    style_dropdown(ck_tz);
+    ck_msg = at(ui_label(ck_page, F14, UI_MUTED, "24-hour time, local to the zone. Wi-Fi time replaces it when it syncs."), 24, 340);
+    lv_obj_set_width(ck_msg, UI_W - 48);
+    lv_label_set_long_mode(ck_msg, LV_LABEL_LONG_WRAP);
+    ck_button(ck_page, "Cancel", UI_THEME.track, UI_TEXT, 24, ck_cancel_cb);
+    ck_button(ck_page, "Save", UI_ORANGE, UI_BG, UI_W - 24 - 196, ck_save_cb);
+    ck_timer = lv_timer_create(ck_tick, 250, NULL);
+}
+
+static void clock_cb(lv_event_t *e)
+{
+    (void)e;
+    if (elm_drive_active()) { ui_confirm("A drive is active. End the drive first, then set the clock.", "OK", NULL, NULL); return; }
+    ck_open();
+}
+
+static void clock_show(const app_status_t *st)
+{
+    if (!g_clk_time) return;
+    clock_src_t src = mosaico_clock_source(st);
+    if (src == CLOCK_SRC_NONE) ui_set_text(g_clk_time, "no clock yet");
+    else {
+        time_t t = time(NULL);
+        struct tm tm;
+        localtime_r(&t, &tm);
+        char b[40];
+        strftime(b, sizeof b, "%H:%M  %a %d %b %Y", &tm);
+        ui_set_text(g_clk_time, b);
+    }
+    ui_set_color(g_clk_time, src == CLOCK_SRC_ESTIMATED ? UI_THEME.estimate : UI_TEXT);
+    int z = clock_tz_find(tz_now());
+    static const char *const SRC[] = {"Not set", "Estimated from the last save", "Set by hand", "From Wi-Fi"};
+    ui_set_fmt(g_clk_src, "%s, zone %.40s", SRC[src], z >= 0 ? clock_tz(z)->label : tz_now());
+    ui_set_color(g_clk_src, src == CLOCK_SRC_ESTIMATED ? UI_THEME.estimate : UI_MUTED);
 }
 
 static lv_obj_t *g_store, *g_swipe;
@@ -1826,14 +2022,46 @@ static void settings_fill(void)
 {
     if (!g_list) return;
     lv_obj_clean(g_list);
-    g_bright_bar = g_bright_val = NULL;
+    g_bright_sl = g_bright_val = g_clk_time = g_clk_src = NULL;
     ui_settings_t s;
     ui_settings_get(&s);
     int y = 0;
+    at(ui_caption(g_list, "BRIGHTNESS"), 4, y);
+    g_bright_val = at(ui_label(g_list, F14, UI_MUTED, ""), 330, y);
+    ui_set_fmt(g_bright_val, "%d %%", s.brightness);
+    y += 34;
+    g_bright_sl = lv_slider_create(g_list);
+    lv_obj_set_pos(g_bright_sl, 14, y);
+    lv_obj_set_size(g_bright_sl, 360, 12);
+    lv_slider_set_range(g_bright_sl, 10, 100);
+    lv_slider_set_value(g_bright_sl, s.brightness, LV_ANIM_OFF);
+    lv_obj_set_style_bg_color(g_bright_sl, lv_color_hex(UI_THEME.track), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(g_bright_sl, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(g_bright_sl, lv_color_hex(UI_ORANGE), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_opa(g_bright_sl, LV_OPA_COVER, LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(g_bright_sl, lv_color_hex(UI_TEXT), LV_PART_KNOB);
+    lv_obj_set_style_bg_opa(g_bright_sl, LV_OPA_COVER, LV_PART_KNOB);
+    lv_obj_set_style_pad_all(g_bright_sl, 8, LV_PART_KNOB);           /* a 28 px knob on the 12 px track */
+    lv_obj_set_ext_click_area(g_bright_sl, 18);
+    lv_obj_remove_flag(g_bright_sl, LV_OBJ_FLAG_GESTURE_BUBBLE);      /* a fast drag is not the app-to-app swipe */
+    lv_obj_add_event_cb(g_bright_sl, bright_cb, LV_EVENT_VALUE_CHANGED, NULL);
+    lv_obj_add_event_cb(g_bright_sl, bright_cb, LV_EVENT_RELEASED, NULL);
+    lv_obj_add_event_cb(g_bright_sl, bright_cb, LV_EVENT_PRESS_LOST, NULL);
+    y += 40;
     static const char *const TH[] = {"Auto", "Light", "Dark"};
     at(ui_caption(g_list, "THEME (HOME AND APPS)"), 4, y); y += 22;
     segmented(g_list, y, TH, 3, s.theme, SEG_THEME); y += 54;
     at(ui_label(g_list, F14, UI_MUTED, "Auto: Light 06:00 to 17:00 once the clock is set, else Dark."), 4, y); y += 30;
+    at(ui_caption(g_list, "CLOCK"), 4, y); y += 22;
+    g_clk_time = at(ui_label(g_list, F20, UI_TEXT, "--"), 4, y); y += 30;
+    g_clk_src = at(ui_label(g_list, F14, UI_MUTED, ""), 4, y);
+    lv_obj_set_width(g_clk_src, 380);
+    lv_label_set_long_mode(g_clk_src, LV_LABEL_LONG_DOT);
+    y += 26;
+    text_btn(g_list, LV_SYMBOL_EDIT " Set clock", 4, y, 380, UI_ORANGE, clock_cb);
+    y += 60;
+    status_get(&ck_st);
+    clock_show(&ck_st);
     at(ui_caption(g_list, "HOME APPS (TAP TO SHOW / HIDE) AND ORDER"), 4, y); y += 24;
     for (int i = 0; i < s.n; i++) {
         int app = s.order[i];
@@ -1869,14 +2097,6 @@ static void settings_fill(void)
     static const char *const UN[] = {"km/L", "L/100 km"};
     at(ui_caption(g_list, "ECONOMY UNITS"), 4, y); y += 22;
     segmented(g_list, y, UN, 2, s.econ_l100 ? 1 : 0, SEG_UNITS); y += 58;
-    at(ui_caption(g_list, "BRIGHTNESS"), 4, y); y += 22;
-    small_btn(g_list, LV_SYMBOL_MINUS, 4, y, bright_cb, -10);
-    g_bright_bar = bar(g_list, 58, y + 15, 230, 10, UI_ORANGE, 100);
-    bar_set(g_bright_bar, s.brightness);
-    small_btn(g_list, LV_SYMBOL_PLUS, 296, y, bright_cb, 10);
-    g_bright_val = at(ui_label(g_list, F14, UI_MUTED, ""), 346, y + 10);
-    ui_set_fmt(g_bright_val, "%d %%", s.brightness);
-    y += 54;
     static const char *const OFF[] = {"Never", "10 s", "20 s", "60 s"};
     int sel = 0;
     for (int i = 0; i < 4; i++) if (OFF_S[i] == s.screen_off_s) sel = i;
@@ -1937,7 +2157,11 @@ static void settings_create(lv_obj_t *p)
     settings_fill();
 }
 
-static void settings_destroy(void) { g_list = g_ble = g_wifi = g_bright_bar = g_bright_val = g_store = g_swipe = NULL; }
+static void settings_destroy(void)
+{
+    g_list = g_ble = g_wifi = g_bright_sl = g_bright_val = g_store = g_swipe = g_clk_time = g_clk_src = NULL;
+    if (ck_page) lv_async_call(ck_close, NULL);
+}
 
 static void settings_update(const ui_snap_t *s)
 {
@@ -1957,8 +2181,9 @@ static void settings_update(const ui_snap_t *s)
     }
     if (g_wifi) {
         static const char *const W[] = {"off", "scanning", "connecting", "connected", "idle between clock syncs"};
-        ui_set_fmt(g_wifi, "%s%s", st->wifi <= WIFI_ST_IDLE ? W[st->wifi] : "?", st->time_synced ? ", clock set" : ", no clock");
+        ui_set_fmt(g_wifi, "%s%s", st->wifi <= WIFI_ST_IDLE ? W[st->wifi] : "?", st->time_synced ? ", clock synced" : ", clock not synced");
     }
+    clock_show(st);
 }
 
 /* ======================= registry ======================= */
@@ -1981,3 +2206,4 @@ static const ocm_app_t APPS[] = {          /* launcher order and tile colours as
 
 int ui_app_count(void) { return (int)(sizeof APPS / sizeof APPS[0]); }
 const ocm_app_t *ui_app(int i) { return &APPS[i]; }
+

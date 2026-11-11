@@ -8,6 +8,7 @@
 #include "esp_attr.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "mosaico_clock.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
@@ -66,7 +67,7 @@ static void rec_start(void)
     R.session = sdlog_session_id();
     R.t0_ms = esp_timer_get_time() / 1000;
     R.last_cls = -1;
-    if (s_st.time_synced || s_st.clock_estimated) R.epoch0_ms = (int64_t)time(NULL) * 1000;
+    if (mosaico_clock_known(&s_st)) R.epoch0_ms = (int64_t)time(NULL) * 1000;
     series_reset(&S_SPD); series_reset(&S_FUEL); series_reset(&S_CLS);
     ESP_LOGI(TAG, "recording drive s%06lu", (unsigned long)R.session);
 }

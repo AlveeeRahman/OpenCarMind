@@ -1061,3 +1061,17 @@ void sdlog_meta_set_faults(const char *insight, const char *ranked_codes, uint8_
     meta_flush_locked();
     xSemaphoreGive(s_lock);
 }
+
+#if BOARD_MOSAICO
+/* Settings > Clock: the session's clock is now the user's; started_epoch_ms follows it (time_sync stays network-only) */
+void sdlog_meta_set_clock_manual(int64_t epoch_ms, int64_t uptime_ms)
+{
+    if (!s_meta) return;
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    s_clock_source = "manual";
+    cJSON_ReplaceItemInObject(s_meta, "started_epoch_ms", cJSON_CreateNumber((double)(epoch_ms - uptime_ms)));
+    meta_flush_locked();
+    save_clock_locked();
+    xSemaphoreGive(s_lock);
+}
+#endif

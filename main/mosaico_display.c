@@ -36,6 +36,7 @@
 #include "display.h"
 #include "mosaico_ui.h"
 #include "mosaico_board.h"
+#include "mosaico_clock.h"
 #include "sched_mon.h"
 #include "remote_config.h"
 #include "elm327.h"
@@ -178,6 +179,7 @@ static int s_cur = -1;                         /* app index on screen, -1 = home
 static bool s_panel_on;
 static volatile bool s_req_home, s_req_off, s_req_wake;
 static volatile int s_req_bright = -1;
+static uint32_t s_bright_cmds;                         /* brightness commands sent to the panel (LVGL task) */
 static ui_settings_t s_set;
 static portMUX_TYPE s_set_mux = portMUX_INITIALIZER_UNLOCKED;
 
@@ -599,6 +601,27 @@ void ui_settings_set(const ui_settings_t *in)
     s_theme_check = true;                                /* a new theme choice applies on the next tick */
 }
 
+/* Settings brightness slider: the preview is applied by the next UI tick, so the panel gets at most one command per
+   50 ms however fast the finger moves; the value is saved (one NVS write) only by ui_settings_set_brightness on release */
+void ui_brightness_preview(int pct)
+{
+    s_req_bright = pct < 10 ? 10 : pct > 100 ? 100 : pct;
+}
+
+void ui_settings_set_brightness(int pct)
+{
+    ui_settings_t s;
+    portENTER_CRITICAL(&s_set_mux);
+    s_set.brightness = (uint8_t)(pct < 10 ? 10 : pct > 100 ? 100 : pct);
+    s = s_set;
+    portEXIT_CRITICAL(&s_set_mux);
+    mosaico_settings_save_request(&s, sizeof s);
+    s_req_bright = s.brightness;
+    static uint32_t cmds0;
+    ESP_LOGI(TAG, "brightness %u %% (saved; %lu panel commands since the last save)", s.brightness, (unsigned long)(s_bright_cmds - cmds0));
+    cmds0 = s_bright_cmds;
+}
+
 static void settings_defaults(ui_settings_t *s)
 {
     memset(s, 0, sizeof *s);
@@ -651,7 +674,8 @@ static void take_snapshot(void)
     s->now_ms = esp_timer_get_time() / 1000;
     s->obd_live = s_st.ble == BLE_ST_LOGGING && (OBD_HAS(&s_st.obd, F_rpm) || OBD_HAS(&s_st.obd, F_speed));
     s->drive_active = elm_drive_active();
-    if (s_st.time_synced || s_st.clock_estimated) {
+    mosaico_clock_poll();
+    if (mosaico_clock_known(&s_st)) {
         time_t t = time(NULL);
         struct tm tm;
         localtime_r(&t, &tm);
@@ -1224,7 +1248,7 @@ static void build_home_tile(lv_obj_t *t)
 
 static void refresh_clock(const ui_snap_t *s)
 {
-    bool have = s->st->time_synced || s->st->clock_estimated;
+    bool have = mosaico_clock_known(s->st);
     show(w_hand_h, have); show(w_hand_m, have); show(h_noclock, !have);
     if (!have) return;
     time_t t = time(NULL);
@@ -1937,7 +1961,7 @@ static bool light_wanted(const app_status_t *st, bool *is_auto)
     *is_auto = set.theme == 0;
     if (set.theme == 1) return true;
     if (set.theme == 2) return false;
-    if (!(st->time_synced || st->clock_estimated)) return false;
+    if (!mosaico_clock_known(st)) return false;
     const remote_config_t *rc = remote_config_get();
     time_t now = time(NULL);
     struct tm tm;
@@ -2037,7 +2061,10 @@ static void tick_cb(lv_timer_t *t)
         else go_home_tile();
     }
     if (s_req_off) { s_req_off = false; panel_power(false); }
-    if (s_req_bright >= 0) { if (s_panel_on) esp_lcd_panel_co5300_set_brightness(s_panel, (uint8_t)s_req_bright); s_req_bright = -1; }
+    if (s_req_bright >= 0) {                              /* at most one brightness command per tick (50 ms) */
+        if (s_panel_on) { esp_lcd_panel_co5300_set_brightness(s_panel, (uint8_t)s_req_bright); s_bright_cmds++; }
+        s_req_bright = -1;
+    }
 
     ui_settings_t set;
     ui_settings_get(&set);

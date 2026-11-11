@@ -13,6 +13,7 @@ tests/host/fat_tests
 tests/host/session_tests
 tests/host/reset_tests
 tests/host/swipe_tests
+tests/host/clock_tests
 # ESP-Mosaico (esp32s31) models: only CarMind R.E.V's S31 export is published (the same files as ml/onboard/rev)
 ml/onboard_s31/*
 !ml/onboard_s31/rev/

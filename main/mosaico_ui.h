@@ -121,6 +121,8 @@ typedef enum { W_FUEL_LPH = 0, W_L100, W_KPL, W_SPEED, W_RPM, W_TORQUE, W_COUNT 
 const char *ui_widget_name(int w);
 void ui_settings_get(ui_settings_t *out);
 void ui_settings_set(const ui_settings_t *in);   /* applies at once, saved within a few seconds */
+void ui_brightness_preview(int pct);             /* slider drag: panel only (<= 1 command per 50 ms UI tick), not saved */
+void ui_settings_set_brightness(int pct);        /* slider release: 10..100 %, applied and saved, nothing rebuilt */
 
 /* shell helpers for apps */
 lv_obj_t *ui_card(lv_obj_t *parent, int x, int y, int w, int h, uint32_t border);

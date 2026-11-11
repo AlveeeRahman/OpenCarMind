@@ -32,6 +32,8 @@ void sdlog_meta_set_vehicle(const char *vin, const char *protocol);
 void sdlog_meta_set_ml(const char *model_key, float fuel_cal);
 void sdlog_meta_set_supported(const char *pid_cmd, const char *bitmap_hex);
 void sdlog_meta_set_time_sync(int64_t epoch_ms, int64_t uptime_ms);
+/* ESP-Mosaico: the clock was set by hand (meta "clock":"manual", started_epoch_ms, clock.txt) */
+void sdlog_meta_set_clock_manual(int64_t epoch_ms, int64_t uptime_ms);
 void sdlog_meta_add_dtcs(int64_t uptime_ms, const char *dtcs);
 void sdlog_meta_set_faults(const char *insight, const char *ranked_codes, uint8_t max_severity);
 void sdlog_meta_set_custom(size_t idx, const char *cmd, const char *name, const char *unit, const char *formula, const char *header);

@@ -18,6 +18,7 @@
 #include "elm327.h"
 #include "wifi_sync.h"
 #include "freertos/queue.h"
+#include "mosaico_clock.h"
 
 static const char *TAG = "mosaico";
 
@@ -70,6 +71,7 @@ static void do_request(const mb_req_t *r)
         vTaskDelay(pdMS_TO_TICKS(80));
         gpio_set_level(BOARD_MOTOR, 0);
         break;
+    case MB_CLOCK_SET:        mosaico_clock_do_set(); break;
     case MB_WIFI_NOW:         ESP_LOGI(TAG, "Wi-Fi clock sync now: %s", wifi_sync_connect_now() ? "started" : "not available"); break;
     }
 }
@@ -311,6 +313,7 @@ void mosaico_board_init(void)
     gpio_set_level(BOARD_LCD_PWR, 0);
     gpio_set_level(BOARD_MOTOR, 0);
     if (rtc_gpio_is_valid_gpio(BOARD_BUTTON)) rtc_gpio_deinit(BOARD_BUTTON);
+    mosaico_clock_boot();                          /* app_main has just marked a time the RTC kept as synced */
 
     i2c_master_bus_config_t bc = { .i2c_port = BOARD_I2C_PORT, .sda_io_num = BOARD_I2C_SDA, .scl_io_num = BOARD_I2C_SCL,
                                    .clk_source = I2C_CLK_SRC_DEFAULT, .glitch_ignore_cnt = 7, .flags.enable_internal_pullup = true };

@@ -30,6 +30,13 @@ reset_tests: test_reset_class.c ../../main/reset_class.c ../../main/reset_class.
 swipe: swipe_tests
 	./swipe_tests
 
+# Settings > Clock on the ESP-Mosaico: date checks, the time-zone list, the clock-source rule (main/clock_set.c)
+clock: clock_tests
+	./clock_tests
+
+clock_tests: test_clock_set.c ../../main/clock_set.c ../../main/clock_set.h ../../main/harden.c
+	$(CC) $(CFLAGS) -o $@ test_clock_set.c ../../main/clock_set.c ../../main/harden.c -lm
+
 swipe_tests: test_swipe_intent.c ../../main/swipe_intent.c ../../main/swipe_intent.h
 	$(CC) $(CFLAGS) -O2 -o $@ test_swipe_intent.c -lm
 
@@ -49,5 +56,5 @@ rev_tests: $(REV_SRCS) ../../main/rev_learn.h ../../main/rev_cal.h ../../main/re
 	$(CC) $(CFLAGS) -o $@ $(REV_SRCS) -lm
 
 clean:
-	rm -f carmind_tests rev_tests tank_tests session_tests reset_tests swipe_tests
-.PHONY: run rev session reset swipe clean
+	rm -f carmind_tests rev_tests tank_tests session_tests reset_tests swipe_tests clock_tests
+.PHONY: run rev session reset swipe clock clean
