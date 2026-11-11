@@ -177,6 +177,7 @@ static lv_obj_t *d_header(lv_obj_t *p, const char *title)
     lv_obj_add_flag(b, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_remove_flag(b, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_event_cb(b, d_back_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_flag(b, UI_FLAG_BACK);
     lv_obj_center(ui_label(b, UI_THEME.f_body, UI_ORANGE, LV_SYMBOL_LEFT));
     lv_obj_t *t = ui_label(s_hr, UI_THEME.f_value, UI_TEXT, title);
     s_hr_sp = lv_obj_create(s_hr);
@@ -1037,6 +1038,7 @@ static void drive_create(lv_obj_t *p)
     lv_obj_set_ext_click_area(b, 6);
     lv_obj_add_flag(b, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(b, d_back_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_flag(b, UI_FLAG_BACK);
     lv_obj_center(ui_label(b, UI_THEME.f_body, 0x8CC8FF, LV_SYMBOL_LEFT));
     ui_label(hr, UI_THEME.f_value, UI_TEXT, "Drive");
     lv_obj_t *sp = fbox(hr, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, 0);

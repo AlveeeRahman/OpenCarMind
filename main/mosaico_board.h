@@ -46,3 +46,6 @@ bool mosaico_settings_load(void *blob, size_t n);
 void mosaico_si_save_request(const void *blob, size_t n);
 bool mosaico_si_load(void *blob, size_t *n);
 void mosaico_display_swipe_brief(char *out, size_t n);
+/* CONFIG_OCM_UI_METRICS: the Smart UI gate blob (ui_metrics.h), NVS "ocm_ui"/"um", written by the board task */
+void mosaico_um_save_request(const void *blob, size_t n);
+bool mosaico_um_load(void *blob, size_t *n);

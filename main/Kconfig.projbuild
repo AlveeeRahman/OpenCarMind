@@ -181,6 +181,17 @@ menu "OBD Logger Configuration"
                 50 swipes per arm, keeps itself only if lift-to-settled p95 dropped and the predicted page was
                 ready at lift on more than 80 % of swipes; otherwise it turns itself off. The verdict is saved in
                 NVS (about 840 B) and re-tested after a firmware update or a settings reset. Settings shows the state.
+        config OCM_UI_METRICS
+            bool "Smart UI: measure finger-lift to page-settled for every touch, and gate any prefetch per class"
+            depends on IDF_TARGET_ESP32S31
+            default y
+            help
+                main/ui_metrics.c times every launcher swipe, app-icon tap, Back, in-app control and list scroll from
+                the finger lift to the moment the page has settled (its last frame drawn and nothing left to draw for
+                two refresh periods), keeps per-class histograms, and runs the A/B gate that decides per class whether
+                a prefetcher may stay: p95 must drop, the prefetched page must be ready on more than 80 % of events and
+                a one-sided Mann-Whitney test (Holm-corrected across the classes) must pass, else it is turned off.
+                The verdicts are saved in NVS and re-tested after a firmware update. About 3 KB of PSRAM.
     endmenu
     menu "Diagnostics"
         config CARMIND_TASK_STATS_S

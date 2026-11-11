@@ -28,6 +28,7 @@ ml/onboard_s31/ev/*
 !ml/onboard_s31/ev/export.json
 !ml/onboard_s31/ev/norm.json
 !ml/onboard_s31/ev/targets.json
+tests/host/uimetrics_tests
 # editor / OS
 .vscode/
 .DS_Store

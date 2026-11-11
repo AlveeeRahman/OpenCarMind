@@ -66,6 +66,12 @@
 #include "src/indev/lv_indev_scroll.h"                /* lv_indev_scroll_throw_handler / _predict */
 #endif
 
+#if CONFIG_OCM_UI_METRICS
+#include "esp_app_desc.h"
+#include "esp_cpu.h"
+#include "esp_random.h"
+#endif
+
 static const char *TAG = "display";
 
 /* ---------- LVGL heap in PSRAM (CONFIG_LV_USE_CUSTOM_MALLOC): widgets, styles and labels never take internal RAM ---------- */
@@ -209,6 +215,29 @@ static void si_render_ready(void);
 #define SI_MUT() ((void)0)
 #define SI_HOME_PIC_CURRENT() false
 #endif
+#if CONFIG_OCM_UI_METRICS
+/* Smart UI metrics (ui_metrics.h, the block before build_grid). The settle detector's two flag writes in the display
+   event callbacks are the only per-frame work; everything else runs once per touch event. */
+#include "ui_metrics.h"
+static um_settle_t s_ums;
+static void um_touch(lv_indev_t *indev, bool pressed);
+static void um_frame(void);
+static void um_indev_cb(lv_event_t *e);
+static void um_boot(void);
+/* LVGL itself sends INVALIDATE_AREA while it renders (get_max_row probes the rounder with a dummy area), and a real
+   invalidation is not allowed then (lv_refr.c asserts it): only one outside a render means an area waits */
+static bool s_um_rendering;
+#define UM_INVALIDATED()  do { if (!s_um_rendering) s_ums.dirty = 1; } while (0)
+#define UM_RENDER_START() (s_ums.dirty = 0, s_um_rendering = true)
+#define UM_FRAME() do { s_um_rendering = false; if (s_ums.phase == UM_S_WAIT) um_frame(); } while (0)
+#define UM_MAX_ICONS (UI_MAX_APPS)
+static lv_obj_t *s_icon_cell[UM_MAX_ICONS];            /* the launcher's app cells, for "which app did the press hit" */
+static uint8_t s_icon_app[UM_MAX_ICONS], s_nicons;
+#else
+#define UM_INVALIDATED()  ((void)0)
+#define UM_RENDER_START() ((void)0)
+#define UM_FRAME() ((void)0)
+#endif
 /* the UI job's own soft-deadline figures */
 static sched_job_t s_job = -1;
 static uint32_t s_runs, s_misses, s_max_us, s_late_max_ms;
@@ -351,6 +380,7 @@ lv_obj_t *ui_header(lv_obj_t *parent, const char *title)
     lv_obj_add_flag(b, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_remove_flag(b, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_event_cb(b, back_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_flag(b, UI_FLAG_BACK);
     lv_obj_center(ui_label(b, UI_THEME.f_body, UI_ORANGE, LV_SYMBOL_LEFT));
     lv_obj_t *t = ui_label(parent, UI_THEME.f_title, UI_TEXT, title);
     lv_obj_set_pos(t, UI_MARGIN + 60, UI_TOP + 6);
@@ -1419,6 +1449,9 @@ static void build_apps_page(lv_obj_t *t, int page, const int *apps, int n)
         h_glass(cell, 28);
         lv_obj_add_flag(cell, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_add_event_cb(cell, icon_cb, LV_EVENT_CLICKED, (void *)(intptr_t)app);
+#if CONFIG_OCM_UI_METRICS
+        if (s_nicons < UM_MAX_ICONS) { s_icon_cell[s_nicons] = cell; s_icon_app[s_nicons++] = (uint8_t)app; }
+#endif
         /* Tabler icon (A8, recoloured): dark = bright tile with a dark glyph, light = deeper tile with a white glyph */
         if (ui_app(app)->tile) {                          /* the app's own mark is the tile (98 px square, centred in the 100 px slot) */
             lv_obj_t *box = flex_box(cell, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, 0);
@@ -1453,6 +1486,9 @@ static void build_launcher(void)
     lv_obj_set_style_bg_color(s_home, lv_color_hex(s_light ? 0xF3F1EC : 0x000000), 0);
     int shown[UI_MAX_APPS], n = home_order(shown);
     s_ntiles = 1 + N_APP_PAGES;
+#if CONFIG_OCM_UI_METRICS
+    s_nicons = 0;
+#endif
     s_tv = lv_tileview_create(s_home);
     lv_obj_set_size(s_tv, UI_W, UI_H);
     lv_obj_set_style_bg_opa(s_tv, LV_OPA_TRANSP, 0);
@@ -1537,6 +1573,7 @@ static void blit_frame(int32_t x)
     if (c > s_bl_comp_max) s_bl_comp_max = c;
     if (sd > s_bl_send_max) s_bl_send_max = sd;
     if ((uint32_t)(now - t0) > s_render_max_us) s_render_max_us = (uint32_t)(now - t0);
+    UM_FRAME();
 }
 #endif
 
@@ -1881,6 +1918,223 @@ void mosaico_display_swipe_brief(char *out, size_t n)
 #error "CONFIG_OCM_SWIPE_INTENT needs the snapshot slide (UI_SNAP_SLIDE and UI_BLIT_SLIDE)"
 #endif
 
+#if CONFIG_OCM_UI_METRICS
+/* ---------- Smart UI metrics: one event per touch interaction, lift -> settled (ui_metrics.h has the definitions) ----------
+   Press / lift come from touch_read_cb (the first read down / up, before LVGL processes it); the class comes from the
+   object LVGL's indev hands to LV_EVENT_PRESSED (an app cell, a UI_FLAG_BACK control, an in-app control) or, at the
+   lift, from the object the drag scrolled (the launcher's tileview = a swipe, anything else = a list). A tap on an app
+   or Back counts only if LVGL then sends CLICKED (a press that slid off opened nothing). The settle is polled by a
+   16 ms LVGL timer that runs only while an event waits for its settle. */
+#include "src/misc/lv_event_private.h"                /* lv_event_dsc_t.filter: which events a control listens to */
+#define UM_FAMILY 0u                                   /* no prefetch action: every event is A0 */
+#define UM_RING 512
+static um_t s_um;                                     /* 2.8 KB internal RAM: touched on every event */
+EXT_RAM_BSS_ATTR static uint8_t s_um_blob[UM_BLOB_MAX];
+static uint32_t s_um_since_save, s_um_tag;
+static uint32_t s_um_cyc_ev, s_um_cyc_ev_sum, s_um_cyc_n, s_um_cyc_gate, s_um_interrupted, s_um_cancelled;
+static lv_timer_t *s_um_timer;
+static lv_indev_t *s_um_indev;
+static bool s_um_on;
+static struct {
+    bool down, waiting, clicked, replay;
+    uint8_t cls, arm, page0, fresh;
+    int8_t si_dest;
+    uint16_t target;
+    uint32_t t_press, t_down, t_lift;
+    lv_obj_t *obj;
+} s_ue;
+
+static uint32_t um_now(void) { return (uint32_t)(esp_timer_get_time() / 1000); }
+
+/* a small id for a control: the app on screen and its index path, folded to a byte */
+static uint16_t um_obj_id(lv_obj_t *o)
+{
+    uint32_t h = 2166136261u;
+    for (int d = 0; o && d < 6 && o != s_body && o != lv_layer_top(); d++, o = lv_obj_get_parent(o)) {
+        h ^= (uint32_t)lv_obj_get_index(o) + 1u;
+        h *= 16777619u;
+    }
+    return (uint16_t)(((unsigned)(s_cur & 0xFF) << 8) | (h & 0xFFu));
+}
+
+/* a control the user operates: a known input widget, or anything with a click / value handler */
+static bool um_is_control(lv_obj_t *o)
+{
+    if (lv_obj_check_type(o, &lv_slider_class) || lv_obj_check_type(o, &lv_switch_class) || lv_obj_check_type(o, &lv_button_class) ||
+        lv_obj_check_type(o, &lv_dropdown_class) || lv_obj_check_type(o, &lv_roller_class) || lv_obj_check_type(o, &lv_checkbox_class))
+        return true;
+    uint32_t n = lv_obj_get_event_count(o);
+    for (uint32_t i = 0; i < n; i++) {
+        lv_event_dsc_t *d = lv_obj_get_event_dsc(o, i);
+        uint32_t f = d ? d->filter & ~(uint32_t)LV_EVENT_PREPROCESS : 0;
+        if (f == LV_EVENT_CLICKED || f == LV_EVENT_SHORT_CLICKED || f == LV_EVENT_VALUE_CHANGED || f == LV_EVENT_PRESSED ||
+            f == LV_EVENT_RELEASED || f == LV_EVENT_LONG_PRESSED || f == LV_EVENT_ALL) return true;
+    }
+    return false;
+}
+
+static void um_poll_cb(lv_timer_t *t);
+static void um_finish(uint32_t lat, uint8_t why);
+
+static void um_wait_start(void)
+{
+    um_settle_lift(&s_ums, s_ue.t_lift);
+    s_ue.waiting = true;
+    lv_timer_reset(s_um_timer);
+    lv_timer_resume(s_um_timer);
+}
+
+/* from touch_read_cb, every read (LVGL task) */
+static void um_touch(lv_indev_t *indev, bool pressed)
+{
+    if (!s_um_on) return;
+    uint32_t now = um_now();
+    if (pressed) {
+        if (!s_ue.down) {
+            if (s_ue.waiting) {                          /* touched again before the page settled: the touch ends it */
+                um_settle_abort(&s_ums);
+                s_um_interrupted++;
+                um_finish(now - s_ue.t_lift, UM_F_INTERRUPTED);
+            }
+            memset(&s_ue, 0, sizeof s_ue);
+            s_ue.down = true;
+            s_ue.t_press = now;
+            s_ue.cls = UM_NONE;
+            s_ue.si_dest = -1;
+        }
+        s_ue.t_down = now;
+        return;
+    }
+    if (!s_ue.down) return;
+    s_ue.down = false;
+    s_ue.t_lift = now < s_ue.t_down + UM_READ_MS ? now : s_ue.t_down + UM_READ_MS;   /* see ui_metrics.h, "lift" */
+    lv_obj_t *so = lv_indev_get_scroll_obj(indev);
+    if (so && so == s_tv) {
+        s_ue.cls = UM_SWIPE;
+        s_ue.page0 = (uint8_t)lv_obj_get_index(lv_tileview_get_tile_active(s_tv));
+        s_ue.arm = UM_A0;
+#if CONFIG_OCM_SWIPE_INTENT
+        s_ue.arm = s_si_act ? UM_A1 : UM_A0;             /* smart swipe's own A/B arm: it gates itself */
+        s_ue.si_dest = s_si_pred.dest;
+        s_ue.fresh = si_fresh_mask();
+#endif
+    } else if (so) {
+        s_ue.cls = UM_LIST;
+        s_ue.target = um_obj_id(so);
+        s_ue.arm = um_arm(&s_um, UM_LIST);
+    }
+    if (s_ue.cls == UM_NONE) return;
+    um_wait_start();
+}
+
+/* LV_EVENT_PRESSED / LV_EVENT_CLICKED from the touch indev: param = the object */
+static void um_indev_cb(lv_event_t *e)
+{
+    lv_obj_t *o = (lv_obj_t *)lv_event_get_param(e);
+    if (!s_um_on || !o) return;
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) { if (o == s_ue.obj) s_ue.clicked = true; return; }
+    if (!s_ue.down) return;
+    lv_obj_t *scr = lv_obj_get_screen(o);
+    s_ue.obj = o;
+    if (scr == s_home && s_cur < 0) {
+        for (lv_obj_t *p = o; p && p != s_home; p = lv_obj_get_parent(p))
+            for (int i = 0; i < s_nicons; i++)
+                if (s_icon_cell[i] == p) { s_ue.cls = UM_APP; s_ue.target = s_icon_app[i]; s_ue.obj = p; goto classed; }
+        return;                                          /* a card or the dots: only a swipe is measured */
+    }
+    if (scr != s_appscr && scr != lv_layer_top()) return;
+    for (lv_obj_t *p = o; p && p != scr; p = lv_obj_get_parent(p))
+        if (lv_obj_has_flag(p, UI_FLAG_BACK)) {
+            s_ue.cls = UM_BACK;
+            s_ue.target = (uint16_t)(((unsigned)(s_cur & 0xFF) << 8) | (unsigned)(s_return_tile & 0xFF));
+            s_ue.obj = p;
+            goto classed;
+        }
+    for (lv_obj_t *p = o; p && p != scr && p != s_body; p = lv_obj_get_parent(p))
+        if (um_is_control(p)) { s_ue.cls = UM_CONTROL; s_ue.target = um_obj_id(p); s_ue.obj = p; goto classed; }
+    return;
+classed:
+    s_ue.arm = um_arm(&s_um, s_ue.cls);
+}
+
+static void um_frame(void)
+{
+    um_settle_frame(&s_ums, um_now());
+}
+
+static void um_save_now(void)
+{
+    size_t n = um_save(&s_um, s_um_blob, sizeof s_um_blob);
+    if (n) mosaico_um_save_request(s_um_blob, n);
+    s_um_since_save = 0;
+}
+
+static void um_finish(uint32_t lat, uint8_t why)
+{
+    s_ue.waiting = false;
+    uint8_t c = s_ue.cls;
+    bool ready = false;
+    if ((c == UM_APP || c == UM_BACK) && !s_ue.clicked) { s_um_cancelled++; um_dropped(&s_um, c); return; }
+    if (c == UM_SWIPE && s_tv) {
+        int fin = (int)(lv_obj_get_scroll_x(s_tv) / UI_W);
+        s_ue.target = (uint16_t)((s_ue.page0 << 8) | (fin & 0xFF));
+        ready = s_ue.si_dest >= 0 && s_ue.si_dest == fin && ((s_ue.fresh >> fin) & 1u);
+    }
+    uint32_t cr = esp_cpu_get_cycle_count();
+    um_record(&s_um, c, s_ue.arm, lat, ready, why);      /* the module's per-event work */
+    uint32_t c1 = esp_cpu_get_cycle_count(), ce = c1 - cr;
+    if (ce > s_um_cyc_ev) s_um_cyc_ev = ce;
+    s_um_cyc_ev_sum += ce;
+    s_um_cyc_n++;
+    if ((UM_FAMILY >> c) & 1u) {
+        bool changed = false;
+        if ((s_um.k[c].n[0] + s_um.k[c].n[1]) % 10u == 0) {   /* the gate looks every 10 samples of a gated class */
+            changed = um_gate_step(&s_um);
+            uint32_t cg = esp_cpu_get_cycle_count() - c1;
+            if (cg > s_um_cyc_gate) s_um_cyc_gate = cg;
+        }
+        if (changed) {
+            const um_verdict_t *v = &s_um.k[c].v;
+            ESP_LOGW(TAG, "smart UI decision: %s %s (p95 %u -> %u ms, ready %u %%, z %.2f, n %u/%u)", um_class_name(c),
+                     um_state_name(v->state), v->p95_0, v->p95_1, v->ready_pm / 10u, v->z100 / 100.0, v->n0, v->n1);
+        }
+        if (changed || ++s_um_since_save >= 32) um_save_now();
+    }
+}
+
+static void um_poll_cb(lv_timer_t *t)
+{
+    if (!s_ue.waiting) { lv_timer_pause(t); return; }
+    bool busy = s_ue.down || (s_um_indev && lv_indev_get_scroll_obj(s_um_indev)) || (s_tv && lv_anim_get(s_tv, NULL));
+#if UI_BLIT_SLIDE
+    busy = busy || s_blit_on;
+#endif
+    uint32_t lat = 0;
+    int r = um_settle_poll(&s_ums, um_now(), busy, &lat);
+    if (r == UM_S_WAIT) return;
+    lv_timer_pause(t);
+    if (r == UM_S_SETTLED || r == UM_S_TIMEOUT) um_finish(lat, r == UM_S_TIMEOUT ? UM_F_TIMEOUT : 0);
+    else s_ue.waiting = false;
+}
+
+/* display_init: the gate's verdicts from NVS; a new firmware image (ELF SHA) re-tests every class */
+static void um_boot(void)
+{
+    const esp_app_desc_t *d = esp_app_get_description();
+    size_t n = sizeof s_um_blob;
+    memcpy(&s_um_tag, d->app_elf_sha256, sizeof s_um_tag);
+    um_init(&s_um, (uint32_t)esp_random() | 1u, UM_FAMILY, s_um_tag);
+    bool loaded = mosaico_um_load(s_um_blob, &n) && um_load(&s_um, s_um_blob, n);
+    s_um_indev = lv_indev_get_next(NULL);
+    s_um_timer = lv_timer_create(um_poll_cb, UM_REFR_MS, NULL);
+    lv_timer_pause(s_um_timer);
+    s_um_on = true;
+    ESP_LOGI(TAG, "smart UI metrics: %s, gated classes 0x%02x", loaded ? "gate state loaded" : "new gate state", (unsigned)UM_FAMILY);
+}
+
+#endif
+
+
 static void build_grid(void) { build_launcher(); }
 static void build_home_row(void) {}
 
@@ -2162,6 +2416,9 @@ static void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
 #if CONFIG_OCM_SWIPE_INTENT
         si_touch(indev, false, 0, 0);                    /* LVGL sees a release: so does the learner */
 #endif
+#if CONFIG_OCM_UI_METRICS
+        um_touch(indev, false);
+#endif
         return;
     }
     if (esp_lcd_touch_get_data(s_tp, pt, &n, 1) == ESP_OK && n > 0) {
@@ -2171,6 +2428,9 @@ static void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
     }
 #if CONFIG_OCM_SWIPE_INTENT
     si_touch(indev, data->state == LV_INDEV_STATE_PRESSED, data->point.x, data->point.y);
+#endif
+#if CONFIG_OCM_UI_METRICS
+    um_touch(indev, data->state == LV_INDEV_STATE_PRESSED);
 #endif
 }
 
@@ -2191,6 +2451,10 @@ static void touch_init(void)
     lv_indev_set_type(in, LV_INDEV_TYPE_POINTER);
     lv_indev_set_display(in, s_disp);
     lv_indev_set_read_cb(in, touch_read_cb);
+#if CONFIG_OCM_UI_METRICS
+    lv_indev_add_event_cb(in, um_indev_cb, LV_EVENT_PRESSED, NULL);
+    lv_indev_add_event_cb(in, um_indev_cb, LV_EVENT_CLICKED, NULL);
+#endif
     lvgl_port_unlock();
     ESP_LOGI(TAG, "touch ready (CST9220)");
 }
@@ -2200,6 +2464,7 @@ static void touch_init(void)
 static void rounder_cb(lv_event_t *e)
 {
     lv_area_t *a = (lv_area_t *)lv_event_get_param(e);
+    UM_INVALIDATED();
     a->x1 &= ~1; a->y1 &= ~1;
     a->x2 |= 1;  a->y2 |= 1;
 }
@@ -2222,8 +2487,9 @@ static void rebuild_all(void)
 
 static void render_cb(lv_event_t *e)
 {
-    if (lv_event_get_code(e) == LV_EVENT_RENDER_START) s_rs_us = esp_timer_get_time();
+    if (lv_event_get_code(e) == LV_EVENT_RENDER_START) { s_rs_us = esp_timer_get_time(); UM_RENDER_START(); }
     else if (s_rs_us) {
+        UM_FRAME();
         int64_t now = esp_timer_get_time();
         uint32_t d = (uint32_t)(now - s_rs_us);
         if (d > s_render_max_us) s_render_max_us = d;
@@ -2298,6 +2564,9 @@ esp_err_t display_init(void)
     rebuild_all();
 #if CONFIG_OCM_SWIPE_INTENT
     si_boot();
+#endif
+#if CONFIG_OCM_UI_METRICS
+    um_boot();
 #endif
     s_splash = make_screen();
     lv_obj_set_style_bg_color(s_splash, lv_color_hex(0x000000), 0);

@@ -37,8 +37,15 @@ clock: clock_tests
 clock_tests: test_clock_set.c ../../main/clock_set.c ../../main/clock_set.h ../../main/harden.c
 	$(CC) $(CFLAGS) -o $@ test_clock_set.c ../../main/clock_set.c ../../main/harden.c -lm
 
-swipe_tests: test_swipe_intent.c ../../main/swipe_intent.c ../../main/swipe_intent.h
-	$(CC) $(CFLAGS) -O2 -o $@ test_swipe_intent.c -lm
+# Smart UI metrics: lift -> settle histograms, the rank test, Holm, the settle detector, the A/B gate (main/ui_metrics.c)
+uimetrics: uimetrics_tests
+	./uimetrics_tests
+
+uimetrics_tests: test_ui_metrics.c ../../main/ui_metrics.c ../../main/ui_metrics.h
+	$(CC) $(CFLAGS) -O2 -o $@ test_ui_metrics.c ../../main/ui_metrics.c -lm
+
+swipe_tests: test_swipe_intent.c ../../main/swipe_intent.c ../../main/swipe_intent.h ../../main/ui_metrics.c ../../main/ui_metrics.h
+	$(CC) $(CFLAGS) -O2 -o $@ test_swipe_intent.c ../../main/ui_metrics.c -lm
 
 carmind_tests: $(SRCS) ../../main/custom_pids.h ../../main/fault_engine.h
 	$(CC) $(CFLAGS) -o $@ $(SRCS) -lm
@@ -56,5 +63,5 @@ rev_tests: $(REV_SRCS) ../../main/rev_learn.h ../../main/rev_cal.h ../../main/re
 	$(CC) $(CFLAGS) -o $@ $(REV_SRCS) -lm
 
 clean:
-	rm -f carmind_tests rev_tests tank_tests session_tests reset_tests swipe_tests clock_tests
-.PHONY: run rev session reset swipe clock clean
+	rm -f carmind_tests rev_tests tank_tests session_tests reset_tests swipe_tests clock_tests uimetrics_tests
+.PHONY: run rev session reset swipe clock uimetrics clean

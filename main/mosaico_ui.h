@@ -64,6 +64,7 @@ uint32_t ui_accent(void);                        /* accent of the app on screen 
 #define UI_H         480
 #define UI_TOP       84          /* below the two-row status bar (lv_layer_top) */
 #define UI_SB_H      80
+#define UI_FLAG_BACK LV_OBJ_FLAG_USER_2   /* marks a Back control (the Smart UI metrics class it as Back) */
 
 typedef struct {
     app_status_t       *st;      /* status_get copy */

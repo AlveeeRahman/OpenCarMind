@@ -48,6 +48,7 @@
  *    test is conservative). z = (U - E) / sqrt(Var) > 1.645 is one-sided 5 %: A tends to settle sooner than B. The
  *    gate also needs p95_A < p95_B and ready_A > 80 %. */
 #include "swipe_intent.h"
+#include "ui_metrics.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -217,17 +218,10 @@ static si_pred_t predict(struct si_impl *s, uint32_t t)
     return p;
 }
 
-/* ---------- histograms ---------- */
-static uint32_t hist_n(const uint16_t *hb) { uint32_t n = 0; for (int b = 0; b < BINS; b++) n += hb[b]; return n; }
+/* ---------- histograms (the binned histogram and the rank test live in ui_metrics.c, shared with the Smart UI gate) ---------- */
+static uint32_t hist_n(const uint16_t *hb) { return um_hist_n(hb, BINS); }
 
-static uint16_t hist_p95(const uint16_t *hb)
-{
-    uint32_t n = hist_n(hb), c = 0, rank = (95 * n + 99) / 100;   /* nearest rank: ceil(0.95 n) */
-    int b = 0;
-    if (!n) return 0;
-    while (b < BINS - 1 && (c += hb[b]) < rank) b++;
-    return (uint16_t)(b * BIN_MS + BIN_MS / 2);                  /* the bin centre: within 2.5 ms of the exact value */
-}
+static uint16_t hist_p95(const uint16_t *hb) { return um_hist_pct(hb, BINS, BIN_MS, 95); }   /* bin centre, +-2.5 ms */
 
 static void hist_add(struct si_impl *s, int arm, uint32_t ms)
 {
@@ -242,16 +236,7 @@ static void hist_add(struct si_impl *s, int arm, uint32_t ms)
 }
 
 /* Mann-Whitney z x 100 (section 5), > 0 when arm A tends to settle sooner */
-static int16_t mw_z100(const uint16_t *a, const uint16_t *b)
-{
-    float na = (float)hist_n(a), nb = (float)hist_n(b), u = 0, above = nb;
-    if (na < 1 || nb < 1) return 0;
-    for (int i = 0; i < BINS; i++) { above -= b[i]; u += (float)a[i] * (above + 0.5f * (float)b[i]); }
-    float m = u - 0.5f * na * nb, z2 = m * m / (na * nb * (na + nb + 1) * (1.0f / 12.0f)), g = z2 + 1;
-    for (int k = 0; k < 20; k++) g = 0.5f * (g + z2 / g);      /* sqrt by Newton, no libm */
-    g = g > 320 ? 320 : g;
-    return (int16_t)(m < 0 ? -g * 100 : g * 100);
-}
+static int16_t mw_z100(const uint16_t *a, const uint16_t *b) { return um_mw_z100(a, b, BINS); }
 
 /* ---------- gate ---------- */
 uint8_t si_metrics_decide(const si_metrics_t *m, uint8_t *reason)

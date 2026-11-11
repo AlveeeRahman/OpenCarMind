@@ -193,6 +193,51 @@ static void si_flush(void)
 }
 #endif
 
+#if CONFIG_OCM_UI_METRICS
+/* Smart UI gate blob (ui_metrics.h): the same one-slot hand-off as smart swipe's, NVS "ocm_ui"/"um". PSRAM: the flash
+   driver copies a source it cannot read with the cache off through its own internal buffer. */
+#include "esp_attr.h"
+#include "ui_metrics.h"
+EXT_RAM_BSS_ATTR static uint8_t s_um_buf[UM_BLOB_MAX];
+static size_t s_um_len;
+static volatile bool s_um_dirty;
+
+void mosaico_um_save_request(const void *blob, size_t n)
+{
+    if (n > sizeof s_um_buf || s_um_dirty) return;
+    memcpy(s_um_buf, blob, n);
+    s_um_len = n;
+    portENTER_CRITICAL(&s_mux);
+    s_um_dirty = true;
+    portEXIT_CRITICAL(&s_mux);
+}
+
+bool mosaico_um_load(void *blob, size_t *n)
+{
+    nvs_handle_t h;
+    if (nvs_open("ocm_ui", NVS_READONLY, &h) != ESP_OK) return false;
+    bool ok = nvs_get_blob(h, "um", blob, n) == ESP_OK;
+    nvs_close(h);
+    return ok;
+}
+
+static void um_flush(void)
+{
+    if (!s_um_dirty) return;
+    nvs_handle_t h;
+    esp_err_t e = nvs_open("ocm_ui", NVS_READWRITE, &h);
+    if (e == ESP_OK) {
+        e = nvs_set_blob(h, "um", s_um_buf, s_um_len);
+        if (e == ESP_OK) e = nvs_commit(h);
+        nvs_close(h);
+    }
+    portENTER_CRITICAL(&s_mux);
+    s_um_dirty = false;
+    portEXIT_CRITICAL(&s_mux);
+    ESP_LOGI(TAG, "smart UI gate saved (%u B): %s", (unsigned)s_um_len, esp_err_to_name(e));
+}
+#endif
+
 i2c_master_bus_handle_t mosaico_i2c_bus(void) { return s_bus; }
 
 static int read16(uint8_t cmd, bool sign, bool *ok)
@@ -281,6 +326,9 @@ static void board_task(void *arg)
         settings_flush();
 #if CONFIG_OCM_SWIPE_INTENT
         si_flush();
+#endif
+#if CONFIG_OCM_UI_METRICS
+        um_flush();
 #endif
         if (tick == 8) storage_report();
         if (tick % 5 == 0 && sdlog_ok()) {
