@@ -360,8 +360,15 @@ static void handle(char *line, char *buf, char *b64)
     } else if (!strcmp(cmd, "WIFI-ADD")) {
         char ssid[40], pw[72];
         if (!a1 || !unb64(a1, ssid, sizeof ssid) || (a2 && !unb64(a2, pw, sizeof pw))) { reply("ERR usage: WIFI-ADD <ssid b64> [password b64]"); return; }
+#if BOARD_MOSAICO
+        int ar = wifi_sync_add(ssid, a2 ? pw : "");     /* under the round lock, like WIFI-FORGET */
+        if (ar > 0) reply("OK WIFI-ADD");
+        else if (ar == -1) reply("ERR busy: Wi-Fi is using the network list, try again in a minute");
+        else reply("ERR rejected: SSID 1-32 bytes, password empty or 8-64 bytes, list holds 8");
+#else
         if (wifi_creds_add(ssid, a2 ? pw : "")) reply("OK WIFI-ADD");
         else reply("ERR rejected: SSID 1-32 bytes, password empty or 8-64 bytes, list holds 8");
+#endif
     } else if (!strcmp(cmd, "WIFI-FORGET")) {
         char ssid[40];
         if (!a1 || !unb64(a1, ssid, sizeof ssid)) { reply("ERR usage: WIFI-FORGET <ssid b64>"); return; }

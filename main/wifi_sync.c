@@ -465,6 +465,16 @@ int wifi_sync_forget(const char *ssid)
     return r;
 }
 
+/* The USB door's WIFI-ADD, under the same round lock: an add or a password change never lands while a round reads the
+   list (it holds a pointer into it). 1 added or updated, 0 rejected (wifi_creds_add's rules or the list is full), -1 busy. */
+int wifi_sync_add(const char *ssid, const char *password)
+{
+    if (s_hold && xSemaphoreTake(s_hold, pdMS_TO_TICKS(200)) != pdTRUE) return -1;
+    int r = wifi_creds_add(ssid, password) ? 1 : 0;
+    if (s_hold) xSemaphoreGive(s_hold);
+    return r;
+}
+
 /* The chosen network, connected once: 20 s for an address, the reason of a failure mapped by wj_classify(). */
 static wj_result_t join_connect(wifi_cred_t *c)
 {

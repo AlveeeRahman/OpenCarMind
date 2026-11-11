@@ -33,4 +33,5 @@ bool      wifi_sync_join(const char *ssid, const char *password, void (*done)(in
 /* Forget a saved network unless the Wi-Fi task holds a pointer into the list (a round running): 1 forgotten,
    0 not saved, -1 busy. The screen's Forget and the USB door's WIFI-FORGET both go through here. */
 int       wifi_sync_forget(const char *ssid);
+int       wifi_sync_add(const char *ssid, const char *password);   /* the door's WIFI-ADD under the round lock: 1 ok, 0 rejected, -1 busy */
 #endif
