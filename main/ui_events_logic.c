@@ -155,3 +155,26 @@ uint32_t uev_sig(const sys_event_t ring[EVENT_MAX], uint8_t head, uint8_t count,
 #undef MIX
     return h;
 }
+
+size_t uev_redact(const char *text, const char *name, const char *placeholder, char *out, size_t n)
+{
+    if (!out || !n) return 0;
+    size_t w = 0, nl = name ? strlen(name) : 0, pl = strlen(placeholder);
+    out[0] = 0;
+    if (!text) return 0;
+    for (const char *p = text; *p;) {
+        size_t rest = strlen(p);
+        bool whole = nl && rest >= nl && !memcmp(p, name, nl);
+        bool tail = nl && !whole && rest < nl && rest >= 3 && !memcmp(p, name, rest);   /* the name cut by the text's size */
+        if (whole || tail) {
+            for (size_t i = 0; i < pl && w + 1 < n; i++) out[w++] = placeholder[i];
+            p += whole ? nl : rest;
+        } else {
+            if (w + 1 < n) out[w++] = *p;
+            p++;
+        }
+    }
+    out[w] = 0;
+    return w;
+}
+

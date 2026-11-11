@@ -50,6 +50,10 @@ bool        uev_match(const sys_event_t *e, uev_filter_t f, const uev_ctx_t *c);
 int         uev_rows(const sys_event_t ring[EVENT_MAX], uint8_t head, uint8_t count, uev_filter_t f, const uev_ctx_t *c,
                      uev_row_t *out, int max);
 uint32_t    uev_session(const char *text);           /* "Drive s000123 saved (..)" / "Drive log s000123 deleted" -> 123, else 0 */
+/* text with every whole copy of name replaced by placeholder, for the serial log (events.c sys_event_net). A name cut short
+   by the event's 56-byte text leaves its start at the end of text: that tail is replaced too. An empty name: text as is.
+   Returns the length written (out is always terminated, cut at n - 1). */
+size_t      uev_redact(const char *text, const char *name, const char *placeholder, char *out, size_t n);
 const char *uev_level_name(event_level_t l);         /* "Information", "Warning", "Error" */
 const char *uev_filter_name(uev_filter_t f);         /* the chip labels */
 /* the S3 footer: "pattern 7  novelty 0.8  (9/412)", or "pattern: first window pending" before the first window */

@@ -206,7 +206,7 @@ static bool sync_once(void)
     if (!(b & GOT_IP_BIT)) {
         net->fail_count++;
         net->retry_after_ms = esp_timer_get_time() / 1000 + (net->fail_count >= 3 ? 300000 : 60000);   /* back off: 1 min, then 5 min */
-        sys_event(EV_WARN, "Wi-Fi '%s' connect failed (%u)", net->ssid, net->fail_count);
+        SYS_EVENT_NET(EV_WARN, "Wi-Fi '%s' connect failed (%u)", net->ssid, net->fail_count);
         esp_wifi_disconnect();
         set_wifi_state(WIFI_ST_IDLE);
         return false;
@@ -215,7 +215,7 @@ static bool sync_once(void)
     wifi_creds_dedupe(net->ssid);
 
     set_wifi_state(WIFI_ST_CONNECTED);
-    sys_event(EV_INFO, "Wi-Fi connected: %s", net->ssid);
+    SYS_EVENT_NET(EV_INFO, "Wi-Fi connected: %s", net->ssid);
     {
         /* first connect decides the display units from the country the access point broadcasts (802.11d) */
         wifi_ap_record_t ap = {0};

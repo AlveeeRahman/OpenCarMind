@@ -201,6 +201,44 @@ int main(void)
     ev(6000, EV_INFO, "b");
     CHECK(s2 != uev_sig(ring, head, count, POWER_SAFE, 0));
 
+    /* network names stay out of the serial log (events.c sys_event_net -> uev_redact) */
+    {
+        char o[96], t[EVENT_TEXT];
+        CHECK(uev_redact("Wi-Fi connected: Home", "Home", "<network>", o, sizeof o) == strlen("Wi-Fi connected: <network>"));
+        CHECK(!strcmp(o, "Wi-Fi connected: <network>"));
+        uev_redact("Wi-Fi 'Home' connect failed (2)", "Home", "<network>", o, sizeof o);
+        CHECK(!strcmp(o, "Wi-Fi '<network>' connect failed (2)"));
+        uev_redact("Wi-Fi connected: Homework", "Home", "<network>", o, sizeof o);   /* a name inside a longer name: hidden too */
+        CHECK(!strstr(o, "Home"));
+        uev_redact("Wi-Fi connected: a", "a", "<network>", o, sizeof o);              /* one-letter name (every copy of it goes: safe side) */
+        CHECK(!strcmp(o, "Wi-Fi connected: <network>"));
+        /* a 32-byte name cut by the 56-byte event text: its start at the end is hidden as well */
+        const char *longn = "ABCDEFGHIJKLMNOPQRSTUVWXYZ012345";
+        snprintf(t, sizeof t, "Wi-Fi '%s' connect failed (3)", longn);
+        uev_redact(t, longn, "<network>", o, sizeof o);
+        CHECK(!strstr(o, "ABC") && strstr(o, "<network>"));
+        snprintf(t, sizeof t, "Wi-Fi connected: %s", "LongNetworkNameThatIsCutByTheTextSz");   /* 35 + 17 = 52: fits */
+        uev_redact(t, "LongNetworkNameThatIsCutByTheTextSz", "<network>", o, sizeof o);
+        CHECK(!strcmp(o, "Wi-Fi connected: <network>"));
+        uev_redact("Wi-Fi connected: Cafe", "", "<network>", o, sizeof o);            /* no name: unchanged */
+        CHECK(!strcmp(o, "Wi-Fi connected: Cafe"));
+        uev_redact("Clock synced over Wi-Fi", "Shop", "<network>", o, sizeof o);       /* no name in it: unchanged */
+        CHECK(!strcmp(o, "Clock synced over Wi-Fi"));
+        CHECK(uev_redact("Wi-Fi connected: Home", "Home", "<network>", o, 8) == 7 && strlen(o) == 7);   /* cut, terminated */
+        /* every name the S2 search tests use, in both event texts */
+        static const char *const N[] = { "Home", "Cafe", "Shop", "Guest", "home ", "H O M E" };
+        int ok = 1;
+        for (size_t i = 0; i < sizeof N / sizeof N[0]; i++) {
+            snprintf(t, sizeof t, "Wi-Fi connected: %s", N[i]);
+            uev_redact(t, N[i], "<network>", o, sizeof o);
+            if (strstr(o, N[i])) ok = 0;
+            snprintf(t, sizeof t, "Wi-Fi '%s' connect failed (%u)", N[i], 1u);
+            uev_redact(t, N[i], "<network>", o, sizeof o);
+            if (strstr(o, N[i])) ok = 0;
+        }
+        CHECK(ok);
+    }
+
     printf("ui_events: %d checks, %d failures\n", runs, fails);
     return fails ? 1 : 0;
 }

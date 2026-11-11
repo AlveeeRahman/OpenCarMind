@@ -6,6 +6,9 @@
 #include "status.h"
 #include "events.h"
 
+#if CONFIG_IDF_TARGET_ESP32S31
+#include "ui_events_logic.h"
+static void sys_event_text(event_level_t level, const char *text, const char *log_text);
 void sys_event(event_level_t level, const char *fmt, ...)
 {
     char text[EVENT_TEXT];
@@ -13,6 +16,36 @@ void sys_event(event_level_t level, const char *fmt, ...)
     va_start(ap, fmt);
     vsnprintf(text, sizeof text, fmt, ap);
     va_end(ap);
+    sys_event_text(level, text, text);
+}
+
+void sys_event_net(event_level_t level, const char *name, const char *fmt, ...)
+{
+    char text[EVENT_TEXT], log_text[EVENT_TEXT + 16];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(text, sizeof text, fmt, ap);
+    va_end(ap);
+    uev_redact(text, name, "<network>", log_text, sizeof log_text);
+    sys_event_text(level, text, log_text);
+}
+
+static void sys_event_text(event_level_t level, const char *text, const char *log_text)
+{
+#else
+void sys_event(event_level_t level, const char *fmt, ...)
+{
+    char text[EVENT_TEXT];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(text, sizeof text, fmt, ap);
+    va_end(ap);
+#endif
+#if CONFIG_IDF_TARGET_ESP32S31
+#define LOG_TEXT log_text
+#else
+#define LOG_TEXT text
+#endif
     int64_t now_ms = esp_timer_get_time() / 1000;
 
     STATUS_LOCK();
@@ -34,7 +67,7 @@ void sys_event(event_level_t level, const char *fmt, ...)
         g_status.sys_popup_error = (level == EV_ERROR);
     }
     STATUS_UNLOCK();
-    if (level == EV_ERROR) ESP_LOGE("event", "%s", text);
-    else if (level == EV_WARN) ESP_LOGW("event", "%s", text);
-    else ESP_LOGI("event", "%s", text);
+    if (level == EV_ERROR) ESP_LOGE("event", "%s", LOG_TEXT);
+    else if (level == EV_WARN) ESP_LOGW("event", "%s", LOG_TEXT);
+    else ESP_LOGI("event", "%s", LOG_TEXT);
 }
