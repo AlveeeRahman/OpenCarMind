@@ -1,0 +1,33 @@
+/* host sdkconfig.h for the screen renderer: the ESP-Mosaico build's CONFIG_OCM_* and CONFIG_CARMIND_* values; the speed
+   features that do not change a layout (smart swipe, UI metrics, prefetch, PPA) are off on the host */
+#pragma once
+#include "lv_host_kconfig.h"
+#define CONFIG_IDF_TARGET_ARCH_RISCV 1
+#define CONFIG_IDF_TARGET_ARCH "riscv"
+#define CONFIG_IDF_TARGET "esp32s31"
+#define CONFIG_IDF_TARGET_ESP32S31 1
+#define CONFIG_OCM_BATSAFE 1
+#define CONFIG_OCM_BATSAFE_WARN_C 45
+#define CONFIG_OCM_BATSAFE_CRIT_C 60
+#define CONFIG_OCM_BATSAFE_HYST_C 3
+#define CONFIG_OCM_BATSAFE_OV_MV 4250
+#define CONFIG_OCM_NAND_LOGS 1
+#define CONFIG_OCM_NAND_MOUNT_POINT "/nand"
+#define CONFIG_OCM_NAND_SPI_MHZ 20
+#define CONFIG_OCM_WIFI_CLOCK_SYNC 1
+#define CONFIG_OCM_TIME_HTTPS_HOST "www.google.com"
+#define CONFIG_CARMIND_TASK_STATS_S 0
+#define CONFIG_CARMIND_ML_ENABLE 1
+#define CONFIG_CARMIND_ML_SELFTEST 1
+#define CONFIG_CARMIND_ML_STRIDE_S 1
+#define CONFIG_CARMIND_ML_HOLD_S 3
+#define CONFIG_CARMIND_REV_ENABLE 1
+#define CONFIG_CARMIND_REV_PHYS 1
+#define CONFIG_CARMIND_REV_CAL 1
+#define CONFIG_CARMIND_REV_SAVE_MIN 5
+#define CONFIG_FREERTOS_HZ 100
+#define CONFIG_SYNC_TIMEZONE "UTC0"
+#define CONFIG_BT_NIMBLE_ENABLED 1
+#define CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_320 1
+#define CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ 320
+#define CONFIG_NIMBLE_ENABLED CONFIG_BT_NIMBLE_ENABLED

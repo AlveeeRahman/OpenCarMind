@@ -91,3 +91,8 @@ tmp/
 *.orig
 *.swp
 .idea/
+# host screen renderer (tests/host/uishot): binary, LVGL objects, PNG output
+tests/host/uishot_bin
+tests/host/uishot_bin.dSYM/
+tests/host/uishot/build/
+tests/host/uishot/out/
