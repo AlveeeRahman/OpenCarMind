@@ -189,7 +189,7 @@ A full 480 x 480 frame takes 23.6 ms on the panel link (measured), so a full-scr
 
 ## Coming next
 
-mossREV 1.2.1 will use the S31's pixel-processing accelerator and 2D-DMA for the screen.
+mossREV 2.0.0 will use the S31's pixel-processing accelerator and 2D-DMA for the screen, together with the internal-RAM work.
 
 ## Licences
 
