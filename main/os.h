@@ -37,6 +37,10 @@ void          os_power_sample(bool ok, int ma, int mv);
 /* Requests to the LVGL task, read once per UI tick (50 ms): OS_UI_DIM (the UPS state), OS_UI_SLOW (the ladder) */
 enum { OS_UI_DIM = 1, OS_UI_SLOW = 2 };
 uint8_t       os_ui_request(void);
+/* Battery safety (CONFIG_OCM_BATSAFE, os_core.h section 8): the board task's gauge sample every 2 s (temperature in
+   0.1 C). os_battery_state: OS_BAT_* for the Board page. */
+void          os_battery_sample(bool ok, int temp_dc, int mv, bool on_usb);
+uint8_t       os_battery_state(void);
 /* The degradation ladder's last rung (os_core.h section 7): the ml task skips its windows while this is true */
 bool          os_ml_paused(void);
 

@@ -1125,9 +1125,13 @@ static void board_update(const ui_snap_t *s)
     ui_set_fmt(o_psram, "PSRAM %.1f MB", heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1048576.0);
     if (s->gauge.ok) {
         ui_set_fmt(o_bat_v, "%.2f V", s->gauge.mv / 1000.0);
-        ui_set_fmt(o_bat_note, "%d mA, %s", s->gauge.ma, s->gauge.ma > -5 ? "on USB" : "on battery");
-        if (mosaico_gauge_uncalibrated(&s->gauge)) { ui_set_text(o_cal, "% not calibrated"); ui_set_color(o_cal, UI_WARN); }
-        else { ui_set_fmt(o_cal, "%d %%", s->gauge.soc); ui_set_color(o_cal, UI_MUTED); }
+        /* widest texts (Montserrat 12): "-999 mA, on battery, -10.0 C" 167 px, "100 %, SOH 100 %, 9999 cyc" 163 px, in the
+           card's 190 px */
+        ui_set_fmt(o_bat_note, "%d mA, %s, %.1f C", s->gauge.ma, s->gauge.ma > -5 ? "on USB" : "on battery", s->gauge.temp_dc / 10.0);
+        uint8_t bs = os_battery_state();                   /* battery safety (os_core.h section 8) first */
+        if (bs != OS_BAT_OK) { ui_set_text(o_cal, os_bat_name(bs)); ui_set_color(o_cal, bs == OS_BAT_HOT ? UI_WARN : UI_RED); }
+        else if (mosaico_gauge_uncalibrated(&s->gauge)) { ui_set_fmt(o_cal, "uncalibrated, %d cycles", s->gauge.cycles); ui_set_color(o_cal, UI_WARN); }
+        else { ui_set_fmt(o_cal, "%d %%, SOH %d %%, %d cyc", s->gauge.soc, s->gauge.soh, s->gauge.cycles); ui_set_color(o_cal, UI_MUTED); }
     } else { ui_set_text(o_bat_v, "--"); ui_set_text(o_bat_note, "gauge not read"); ui_set_text(o_cal, ""); }
     if (s->fat.ok && s->fat.total_kb) {
 #if CONFIG_OCM_NAND_LOGS

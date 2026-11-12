@@ -192,7 +192,7 @@ mossREV 2.0.0 treats the firmware as a small operating system. The parts that al
 +-----------------------+----------------------+-----------------------+
 | OS LAYER    runlevels, one reset path, boot health, model admission,  |
 |             service contracts, degradation ladder, feature gate,      |
-|             UPS power state, A/B rollback (prepared)                  |
+|             UPS power state, battery safety, A/B rollback (prepared)  |
 +----------------------------------------------------------------------+
 | KERNEL      scheduler monitor (deadlines, response times, stalls,     |
 |             CPU reservations), safe mode, event ring, clock, storage  |
@@ -262,6 +262,28 @@ Smart swipe and the Smart UI prefetch are features that must prove themselves on
 ### Battery as a UPS (off by default)
 
 The board can run on its small battery when the car's USB goes away. With the UPS option on, two gauge readings in a row that show the battery discharging start a grace period: the logs are flushed, the screen dims and the board refuses changes. Cranking the engine drops USB for a few seconds, so if USB comes back within 15 s everything returns to normal. If not, storage is closed and the board turns itself off through the power switch line (GPIO57). At 3.4 V on battery it turns off at once, before a brown-out can hurt a write. This stays off until the board's real draw and the gauge's current sign are measured.
+
+### Battery safety
+
+The Mosaico has a small 3.7 V, 65 mAh cell. It is charged by a TP4057 at about 65 mA (set by a 15 kOhm resistor) and watched by a BQ27220 fuel gauge.
+
+What the firmware cannot do: stop or limit charging. The TP4057 has no enable pin and no temperature input, its two status pins only drive the charge LED, and its supply comes straight from USB through diodes, with no switch the firmware could open. So whenever USB is plugged in, the cell is charged to full and held there.
+
+What the firmware does, every 2 seconds:
+
+- **It reads the gauge**: voltage, current, temperature, state of health, cycle count and the gauge's status flags. The Board page shows the current, whether the board runs on USB or battery, and the temperature. The temperature comes from the gauge's own sensor, because the board has no sensor on the cell itself. It is close to the cell, but it is not the cell.
+- **Hot on USB (45 C)**: the board lowers its own heat. Wi-Fi and the R.E.V learner stop, the screen dims and a warning appears. It goes back to normal at 42 C.
+- **Too hot (60 C)**: the board stops safely. The logs are flushed, storage is closed so no write can be torn, and the screen stays dimmed. Once it has been at or below 57 C for 30 seconds it restarts by itself.
+- **Over-voltage (4.25 V)**: the cell should never go above the charger's 4.2 V plus its tolerance. If it does, the charger is faulty. The board stops safely the same way, logs a charger fault and stays stopped until it is restarted.
+- Each step needs two readings in a row, and a reading that makes no sense (for example 300 C) is ignored, so one bad reading never stops the board.
+
+These thresholds are placeholders until the cell's own datasheet is known. They can be changed in the build settings. Turning the board off through its power switch line (GPIO57) is prepared, but stays off until it is tested on the board.
+
+**The gauge is not set up for this cell yet.** It still assumes TI's default 3000 mAh, so its charge percentage and health figures mean little. A debug build has a command that sets the gauge to 65 mAh. It is never run by itself, and it writes nothing unless the gauge's stored values match what the code expects.
+
+**Real charge limiting needs a hardware change**, for example a switch on the charger's supply that a GPIO controls, or a charger with an enable pin or I2C. With that, the firmware could hold the cell at about 80 % like a phone's optimised charging.
+
+**Aging.** A lithium cell kept at 100 % all the time ages faster, and heat makes it much worse. A board that stays on car USB and sits in a hot car in summer will lose battery capacity over months. If the board lives in the car, keep it out of direct sun.
 
 ### A/B slots and rollback (prepared, not in use)
 

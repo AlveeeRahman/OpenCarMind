@@ -18,6 +18,9 @@
 #endif
 #if BOARD_MOSAICO
 #include "mosaico_console.h"        /* the Type-C port is USB OTG: the door runs on the TinyUSB CDC console */
+#if CONFIG_OCM_GAUGE_CAL
+#include "mosaico_board.h"          /* GAUGE-CAL hands the work to the board task */
+#endif
 #else
 #include "driver/usb_serial_jtag.h"
 #endif
@@ -452,6 +455,13 @@ static void handle(char *line, char *buf, char *b64)
         if (!a1) { reply("ERR usage: REV-TANK-ACK <seq>"); return; }
         rev_tank_suggestions_ack((uint32_t)strtoul(a1, NULL, 10));
         reply("OK REV-TANK-ACK");
+#if BOARD_MOSAICO && CONFIG_OCM_GAUGE_CAL
+    } else if (!strcmp(cmd, "GAUGE-CAL")) {             /* debug build only: the owner decides before it runs */
+        unsigned mah = a1 ? (unsigned)atoi(a1) : 0;
+        if (mah < 20 || mah > 5000) { reply("ERR usage: GAUGE-CAL <design mAh 20..5000>"); return; }
+        if (mosaico_board_request(MB_GAUGE_CAL, mah)) reply("OK GAUGE-CAL queued, the result is in the log");
+        else reply("ERR busy");
+#endif
     } else if (!strcmp(cmd, "REBOOT")) {
         reply("OK REBOOT");
         vTaskDelay(pdMS_TO_TICKS(300));

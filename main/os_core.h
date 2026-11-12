@@ -68,6 +68,22 @@
  *    The ladder never changes which model is loaded: no model switch while driving is the owner's rule, and a switch
  *    while parked stays the owner's own action. Rung 3 is left only when parked, so the model does not go on and off
  *    during one drive.
+ *
+ * 8. Battery safety. The charger (TP4057) has no enable pin and no thermistor input, and its supply (VCHG) comes from
+ *    VBUS and the module 5 V through diodes (core schematic V1.2.1, Power page), so the firmware cannot stop or limit
+ *    charging. It can only watch the gauge (BQ27220: no thermistor ball on this board, so Temperature() is the gauge's
+ *    own sensor next to the cell, not the cell itself) and lower the board's own heat, and stop cleanly. Every 2 s:
+ *      HOT      at or above warn_dc while on USB for `confirm` samples: shed load (the Saving runlevel stops Wi-Fi
+ *               and the learner and refuses changes, the screen dims, the CPU clock drops if power management is
+ *               built in), a warning. Back to OK at or below clear_dc (warn minus the hysteresis) for `confirm`
+ *               samples.
+ *      CRIT     at or above crit_dc, on USB or not, for `confirm` samples: a safe stop (logs flushed and storage
+ *               quiesced, the Saving runlevel held, the screen off; power off through sys_reset when the GPIO57
+ *               power-off is enabled). Ends with a restart once it is back at or below crit_dc minus the hysteresis
+ *               for `cool_n` samples.
+ *      OVERVOLT the cell at or above ov_mv (the charger's 4.2 V plus tolerance) for `confirm` samples: the same safe
+ *               stop, logged as a charger fault. It ends only with a restart by the owner.
+ *    A reading outside -40..100 C, or 0 mV, is a glitch: it neither counts toward nor resets a confirmation.
  */
 #ifndef OS_CORE_H
 #define OS_CORE_H
@@ -237,6 +253,24 @@ typedef struct { uint8_t level, clean; uint32_t last_misses; bool primed; } os_l
 /* one 10 s window: ml_misses = the ml job's miss counter so far. Returns the level now. */
 uint8_t os_ladder_step(os_ladder_t *l, uint32_t ml_misses, bool driving);
 const char *os_ladder_name(uint8_t level);
+
+/* ---------- 8. battery safety ---------- */
+enum { OS_BAT_OK = 0, OS_BAT_HOT, OS_BAT_CRIT, OS_BAT_OVERVOLT };
+enum { OS_BAT_A_NONE = 0, OS_BAT_A_SHED = 1, OS_BAT_A_UNSHED = 2, OS_BAT_A_STOP = 4, OS_BAT_A_RESUME = 8 };
+typedef struct { int16_t warn_dc, hyst_dc, crit_dc; uint16_t ov_mv; uint8_t confirm, cool_n; } os_bat_cfg_t;  /* dc = 0.1 C */
+typedef struct { uint8_t state, n_hot, n_cool, n_crit, n_ov; } os_bat_t;
+/* one gauge sample: temp in 0.1 C, the cell voltage, whether USB powers the board. Returns OS_BAT_A_* to do now. */
+uint8_t os_bat_step(os_bat_t *b, const os_bat_cfg_t *c, bool ok, int16_t temp_dc, uint16_t mv, bool on_usb);
+const char *os_bat_name(uint8_t state);
+
+/* ---------- 9. BQ27220 calibration helpers (CONFIG_OCM_GAUGE_CAL) ---------- */
+/* the data-memory block checksum: 0xFF minus the 8-bit sum of the two address bytes and the data bytes */
+uint8_t  os_bq_checksum(uint16_t addr, const uint8_t *data, int n);
+uint16_t os_bq_design_energy(uint16_t mah, uint16_t nominal_mv);       /* mWh = mAh x V */
+/* the pre-write checks: the data-memory Design Capacity read must equal the standard command's DesignCapacity(), and
+   the stored Design Energy must be 3.4 to 4.0 times it (a 3.6-3.85 V cell), else the addresses are not the ones the
+   code assumes and nothing is written. target 20..5000 mAh. */
+bool     os_bq_cal_ok(uint16_t dm_cap, uint16_t std_cap, uint16_t dm_energy, uint16_t target_mah);
 
 #ifdef __cplusplus
 }

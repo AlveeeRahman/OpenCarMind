@@ -362,6 +362,60 @@ static void test_ladder(void)
     CHECK(!strcmp(os_ladder_name(OS_DL_MODEL_OFF), "model paused"), "name");
 }
 
+/* ---------- 8. battery safety ---------- */
+static void test_battery(void)
+{
+    const os_bat_cfg_t c = { 450, 30, 600, 4250, 2, 15 };
+    os_bat_t b = { 0 };
+    uint8_t a;
+    CHECK(os_bat_step(&b, &c, true, 300, 4100, true) == 0 && b.state == OS_BAT_OK, "30 C on USB: ok");
+    CHECK(os_bat_step(&b, &c, true, 455, 4100, true) == 0 && b.state == OS_BAT_OK, "one hot sample is not enough");
+    CHECK(os_bat_step(&b, &c, true, 456, 4100, true) == OS_BAT_A_SHED && b.state == OS_BAT_HOT, "two at 45 C on USB: shed");
+    CHECK(os_bat_step(&b, &c, true, 430, 4100, true) == 0 && b.state == OS_BAT_HOT, "43 C: inside the hysteresis, still hot");
+    os_bat_step(&b, &c, true, 420, 4100, true);
+    CHECK(os_bat_step(&b, &c, true, 419, 4100, true) == OS_BAT_A_UNSHED && b.state == OS_BAT_OK, "two at or below 42 C: back to ok");
+    os_bat_t nb = { 0 };
+    os_bat_step(&nb, &c, true, 500, 3900, false);
+    CHECK(os_bat_step(&nb, &c, true, 500, 3900, false) == 0 && nb.state == OS_BAT_OK, "50 C on battery: no shed (the rule is for USB)");
+    os_bat_t g = { 0 };
+    os_bat_step(&g, &c, true, 456, 4100, true);
+    CHECK(os_bat_step(&g, &c, true, 3000, 4100, true) == 0 && g.n_hot == 1, "a 300 C glitch neither counts nor resets");
+    CHECK(os_bat_step(&g, &c, false, 456, 4100, true) == 0 && os_bat_step(&g, &c, true, 456, 0, true) == 0 && g.n_hot == 1,
+          "no reading or 0 mV: ignored");
+    CHECK(os_bat_step(&g, &c, true, 456, 4100, true) == OS_BAT_A_SHED, "the next real sample confirms");
+    /* critical: from hot or ok, on USB or battery; resume only after the cool-down */
+    os_bat_step(&g, &c, true, 600, 4100, false);
+    CHECK((a = os_bat_step(&g, &c, true, 610, 4100, false)) == OS_BAT_A_STOP && g.state == OS_BAT_CRIT, "two at 60 C: stop");
+    int resume_at = -1;
+    for (int i = 0; i < 40; i++) {
+        a = os_bat_step(&g, &c, true, i < 5 ? 580 : 560, 4100, false);   /* 58 C is inside the hysteresis */
+        if (a == OS_BAT_A_RESUME) { resume_at = i; break; }
+    }
+    CHECK(resume_at == 5 + 14 && g.state == OS_BAT_OK, "resume after 15 samples at or below 57 C (at %d)", resume_at);
+    /* over-voltage: final until a restart */
+    os_bat_t v = { 0 };
+    os_bat_step(&v, &c, true, 300, 4250, true);
+    CHECK(os_bat_step(&v, &c, true, 300, 4260, true) == OS_BAT_A_STOP && v.state == OS_BAT_OVERVOLT, "two at 4.25 V: stop");
+    for (int i = 0; i < 50; i++) a = os_bat_step(&v, &c, true, 250, 3900, true);
+    CHECK(a == 0 && v.state == OS_BAT_OVERVOLT, "over-voltage never resumes by itself");
+    os_bat_t w = { 0 };
+    os_bat_step(&w, &c, true, 300, 4249, true);
+    CHECK(os_bat_step(&w, &c, true, 300, 4249, true) == 0 && w.state == OS_BAT_OK, "4.249 V: below the fault");
+    CHECK(!strcmp(os_bat_name(OS_BAT_HOT), "hot: load shed"), "name");
+    /* the shed is the Saving runlevel: Wi-Fi radio and the learner stop, the model runs */
+    os_rl_in_t sv = { .saving = 1 };
+    CHECK(!os_rl_allows(os_rl_active(&sv), OS_SVC_WIFI_RADIO) && !os_rl_allows(os_rl_active(&sv), OS_SVC_LEARNER) &&
+          os_rl_allows(os_rl_active(&sv), OS_SVC_ML), "Saving: no Wi-Fi radio, no learner, the model stays");
+    /* 9. the BQ27220 helpers */
+    uint8_t d[2] = { 0x00, 0x41 };                          /* 65 mAh, big endian */
+    CHECK(os_bq_checksum(0x929F, d, 2) == (uint8_t)(0xFF - (0x9F + 0x92 + 0x00 + 0x41)), "block checksum");
+    CHECK(os_bq_design_energy(65, 3700) == 241 && os_bq_design_energy(3000, 3700) == 11100, "design energy mAh x 3.7 V");
+    CHECK(os_bq_cal_ok(3000, 3000, 11100, 65), "factory values pass the pre-write check");
+    CHECK(!os_bq_cal_ok(2999, 3000, 11100, 65) && !os_bq_cal_ok(3000, 3000, 2000, 65) && !os_bq_cal_ok(3000, 3000, 13000, 65),
+          "a wrong address (other capacity or energy) is refused");
+    CHECK(!os_bq_cal_ok(3000, 3000, 11100, 10) && !os_bq_cal_ok(3000, 3000, 11100, 6000) && !os_bq_cal_ok(0, 0, 0, 65), "target range");
+}
+
 int main(void)
 {
     test_reset_plans();
@@ -371,6 +425,7 @@ int main(void)
     test_contract();
     test_ups();
     test_ladder();
+    test_battery();
     printf("os: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail != 0;
 }

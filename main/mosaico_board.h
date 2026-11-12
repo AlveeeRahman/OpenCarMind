@@ -18,6 +18,10 @@ typedef struct {
     int  rem_mah, full_mah;
     int  design_mah;  /* DesignCapacity() 0x3C: 3000 = TI default, the gauge was never configured for the 65 mAh cell */
     int  tte_min;     /* TimeToEmpty() 0x16, minutes; 65535 = not available (standard TI command; UNVERIFIED on this chip) */
+    int  temp_dc;     /* Temperature() 0x06 in 0.1 K, here 0.1 C: the gauge's own sensor (no thermistor on this board) */
+    int  soh;         /* StateOfHealth() 0x2E, % (meaningful only once the gauge knows the cell) */
+    int  cycles;      /* CycleCount() 0x2A */
+    int  bstat;       /* BatteryStatus() 0x0A, the gauge's status and safety flags (raw) */
 } mosaico_gauge_t;
 
 /* total/free = the drive store (the NAND when nand is true, else the flash FAT); flash_* = the flash FAT with the state files */
@@ -27,7 +31,7 @@ typedef struct { bool ok; uint32_t total_kb, free_kb; bool nand; uint32_t flash_
    BLE or Wi-Fi itself. Never blocks: false when the queue (8 deep) is full. */
 typedef enum { MB_FILES_SCAN = 0, MB_FILES_DETAIL, MB_FILES_DELETE, MB_FILES_DELETE_ALL, MB_BLE_FORGET, MB_BLE_SEARCH,
                MB_WIFI_NOW, MB_FORMAT, MB_BUZZ, MB_CLOCK_SET, MB_MODEL_SET, MB_SETTINGS_KICK, MB_WIFI_LIST,
-               MB_WIFI_FORGET, MB_WIFI_SCAN, MB_WIFI_JOIN } mb_cmd_t;
+               MB_WIFI_FORGET, MB_WIFI_SCAN, MB_WIFI_JOIN, MB_GAUGE_CAL } mb_cmd_t;
 bool mosaico_board_request(mb_cmd_t cmd, uint32_t arg);
 /* Settings > Model (MB_MODEL_SET, arg = ml_model_id_t): the board task switches with ml_select_model, the path the USB door's
    MODEL SET takes, after the same "drive running" check. gen counts finished requests; why is the refusal when ok is false. */

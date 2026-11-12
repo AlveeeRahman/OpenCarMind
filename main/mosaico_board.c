@@ -41,6 +41,10 @@ static const char *TAG = "mosaico";
 #define G_FULL    0x12
 #define G_SOC     0x2C
 #define G_DESIGN  0x3C
+#define G_TEMP    0x06            /* Temperature(), 0.1 K */
+#define G_BSTAT   0x0A            /* BatteryStatus() */
+#define G_CYCLES  0x2A            /* CycleCount() */
+#define G_SOH     0x2E            /* StateOfHealth(), % */
 
 static i2c_master_bus_handle_t s_bus;
 static i2c_master_dev_handle_t s_gauge;
@@ -274,6 +278,83 @@ static void wifi_join(void)
     if (r != WJ_WAIT) join_publish(r, NULL, true);
 }
 
+#if CONFIG_OCM_GAUGE_CAL
+/* ---------- BQ27220 calibration for the 65 mAh cell (debug command GAUGE-CAL, never run by itself) ----------
+   The gauge left the factory with TI's defaults (DesignCapacity() 3000 mAh), so its state of charge and health mean
+   little for the board's 65 mAh cell. This sets Design Capacity and the matching Design Energy (mAh x 3.7 V) in data
+   memory: unseal with TI's default keys, full access, CONFIG UPDATE mode, write each value with the block checksum,
+   leave CONFIG UPDATE with a re-init, seal. UNVERIFIED in this session (no web access): the keys 0x0414/0x3672, the
+   subcommands and the data-memory addresses 0x929F / 0x92A1 are TI's documented values as recalled. So nothing is
+   written unless the data-memory Design Capacity read back equals DesignCapacity() and the stored Design Energy is
+   3.4 to 4.0 times it (os_bq_cal_ok): a wrong address cannot pass both. Other cell parameters (taper current, terminate
+   voltage, chemistry) are not touched. */
+static int read16(uint8_t cmd, bool sign, bool *ok);
+#define BQ_CTRL      0x00
+#define BQ_MAC_ADDR  0x3E
+#define BQ_MAC_DATA  0x40
+#define BQ_MAC_SUM   0x60
+#define BQ_DM_DESIGN_CAP    0x929F
+#define BQ_DM_DESIGN_ENERGY 0x92A1
+
+static bool bq_ctrl(uint16_t sub)
+{
+    uint8_t b[3] = { BQ_CTRL, (uint8_t)sub, (uint8_t)(sub >> 8) };
+    bool ok = s_gauge && i2c_master_transmit(s_gauge, b, 3, 50) == ESP_OK;
+    vTaskDelay(pdMS_TO_TICKS(10));
+    return ok;
+}
+
+static bool bq_dm_read16(uint16_t addr, uint16_t *v)
+{
+    uint8_t a[3] = { BQ_MAC_ADDR, (uint8_t)addr, (uint8_t)(addr >> 8) }, r = BQ_MAC_DATA, d[2];
+    if (!s_gauge || i2c_master_transmit(s_gauge, a, 3, 50) != ESP_OK) return false;
+    vTaskDelay(pdMS_TO_TICKS(10));
+    if (i2c_master_transmit_receive(s_gauge, &r, 1, d, 2, 50) != ESP_OK) return false;
+    *v = (uint16_t)(d[0] << 8 | d[1]);                     /* data memory is big endian */
+    return true;
+}
+
+static bool bq_dm_write16(uint16_t addr, uint16_t v)
+{
+    uint8_t d[2] = { (uint8_t)(v >> 8), (uint8_t)v };
+    uint8_t w[5] = { BQ_MAC_ADDR, (uint8_t)addr, (uint8_t)(addr >> 8), d[0], d[1] };
+    uint8_t s[3] = { BQ_MAC_SUM, os_bq_checksum(addr, d, 2), 2 + 4 };   /* MACDataSum, then MACDataLen (data + 4) */
+    if (!s_gauge || i2c_master_transmit(s_gauge, w, 5, 50) != ESP_OK) return false;
+    vTaskDelay(pdMS_TO_TICKS(10));
+    bool ok = i2c_master_transmit(s_gauge, s, 3, 50) == ESP_OK;
+    vTaskDelay(pdMS_TO_TICKS(20));
+    return ok;
+}
+
+static void gauge_calibrate(uint32_t mah)
+{
+    bool ok = true;
+    uint16_t cap = 0, energy = 0, want_e = os_bq_design_energy((uint16_t)mah, 3700);
+    int std_cap = read16(G_DESIGN, false, &ok);
+    const char *no = os_refusal(OS_SVC_FORMAT);            /* a maintenance action: parked (or safe mode) only */
+    if (no || !ok) { ESP_LOGW(TAG, "gauge calibration refused: %s", no ? no : "gauge not read"); return; }
+    ESP_LOGW(TAG, "gauge calibration: DesignCapacity() %d mAh -> %lu mAh, Design Energy -> %u mWh", std_cap, (unsigned long)mah, want_e);
+    ok = bq_ctrl(0x0414) && bq_ctrl(0x3672) && bq_ctrl(0xFFFF) && bq_ctrl(0xFFFF) && bq_ctrl(0x0090);   /* unseal, full access, CFG UPDATE */
+    vTaskDelay(pdMS_TO_TICKS(1100));
+    ok = ok && bq_dm_read16(BQ_DM_DESIGN_CAP, &cap) && bq_dm_read16(BQ_DM_DESIGN_ENERGY, &energy);
+    if (!ok || !os_bq_cal_ok(cap, (uint16_t)std_cap, energy, (uint16_t)mah)) {
+        ESP_LOGE(TAG, "gauge calibration NOT written: data memory read %u mAh / %u mWh against DesignCapacity() %d (i2c %s)",
+                 cap, energy, std_cap, ok ? "ok" : "failed");
+        bq_ctrl(0x0092);                                    /* leave CFG UPDATE without a re-init */
+        bq_ctrl(0x0030);                                    /* seal */
+        return;
+    }
+    ok = bq_dm_write16(BQ_DM_DESIGN_CAP, (uint16_t)mah) && bq_dm_write16(BQ_DM_DESIGN_ENERGY, want_e);
+    bq_ctrl(0x0091);                                        /* leave CFG UPDATE with a re-init */
+    vTaskDelay(pdMS_TO_TICKS(1000));
+    bq_ctrl(0x0030);
+    bool rd = true;
+    int now = read16(G_DESIGN, false, &rd);
+    ESP_LOGW(TAG, "gauge calibration %s: DesignCapacity() now %d mAh", ok && rd && now == (int)mah ? "done" : "FAILED", now);
+    sys_event(ok && rd && now == (int)mah ? EV_INFO : EV_ERROR, "Gauge set to %d mAh: %s", now, ok && rd && now == (int)mah ? "done" : "check the log");
+}
+#endif
+
 static void do_request(const mb_req_t *r)
 {
     switch ((mb_cmd_t)r->cmd) {
@@ -302,6 +383,11 @@ static void do_request(const mb_req_t *r)
         mosaico_files_scan();
         break;
     }
+    case MB_GAUGE_CAL:
+#if CONFIG_OCM_GAUGE_CAL
+        gauge_calibrate(r->arg);                           /* debug builds only (Kconfig OCM_GAUGE_CAL) */
+#endif
+        break;
     case MB_BUZZ:
         gpio_set_level(BOARD_MOTOR, 1);
         vTaskDelay(pdMS_TO_TICKS(80));
@@ -489,6 +575,10 @@ static void gauge_poll(mosaico_gauge_t *g)
     g->full_mah = read16(G_FULL, false, &ok);
     g->design_mah = read16(G_DESIGN, false, &ok);
     g->tte_min = read16(0x16, false, &ok);
+    g->temp_dc = read16(G_TEMP, false, &ok) - 2732;  /* 0.1 K -> 0.1 C */
+    g->bstat = read16(G_BSTAT, false, &ok);
+    g->cycles = read16(G_CYCLES, false, &ok);
+    g->soh = read16(G_SOH, false, &ok) & 0xFF;     /* the low byte is the % */
     g->ok = ok;
 }
 
@@ -609,11 +699,15 @@ static void board_task(void *arg)
 #endif
         }
         if (tick % 30 == 0 && g.ok)
-            ESP_LOGI(TAG, "PWR soc=%d%% mv=%d ma=%d rem=%d/%d mAh design=%d%s", g.soc, g.mv, g.ma, g.rem_mah, g.full_mah,
-                     g.design_mah, mosaico_gauge_uncalibrated(&g) ? " (gauge not configured for the 65 mAh cell)" : "");
+            ESP_LOGI(TAG, "PWR soc=%d%% mv=%d ma=%d rem=%d/%d mAh design=%d temp=%.1fC soh=%d%% cycles=%d status=0x%04x%s", g.soc,
+                     g.mv, g.ma, g.rem_mah, g.full_mah, g.design_mah, g.temp_dc / 10.0, g.soh, g.cycles, (unsigned)g.bstat,
+                     mosaico_gauge_uncalibrated(&g) ? " (gauge not configured for the 65 mAh cell)" : "");
         os_tick();                                 /* mossREV OS: runlevel changes in the log */
 #if CONFIG_OCM_UPS
         os_power_sample(g.ok, g.ma, g.mv);         /* the UPS state (os_core.h section 6) */
+#endif
+#if CONFIG_OCM_BATSAFE
+        os_battery_sample(g.ok, g.temp_dc, g.mv, g.ma > -5);   /* battery safety (os_core.h section 8) */
 #endif
         /* sleep until the next 2 s release, serving UI requests and writing the settings when their debounce is due */
         for (;;) {

@@ -29,7 +29,7 @@
 
 static const char *TAG = "os";
 
-static volatile bool s_boot = true, s_resetting, s_saving;
+static volatile bool s_boot = true, s_resetting, s_saving, s_bat_saving;
 static volatile uint8_t s_ui_req;
 static volatile bool s_ml_paused;
 static int s_ai_job[OS_AI_N] = { -1, -1, -1 };          /* the jobs os_ai_register made, for the ladder */
@@ -111,7 +111,7 @@ static void rl_inputs(os_rl_in_t *in)
     in->safe = sched_safe_mode();
     in->drive = elm_drive_active();
     in->link = sys_mode_get() == MODE_DRIVE;
-    in->saving = s_saving;
+    in->saving = s_saving || s_bat_saving;
     in->update = s_resetting || s_updates;
 }
 
@@ -314,5 +314,49 @@ void os_power_sample(bool ok, int ma, int mv)
     }
 #else
     (void)ok; (void)ma; (void)mv;
+#endif
+}
+
+/* ---------- battery safety ---------- */
+static volatile uint8_t s_bat_state;
+uint8_t os_battery_state(void) { return s_bat_state; }
+
+void os_battery_sample(bool ok, int temp_dc, int mv, bool on_usb)
+{
+#if CONFIG_OCM_BATSAFE
+    static os_bat_t b;
+    static const os_bat_cfg_t cfg = { CONFIG_OCM_BATSAFE_WARN_C * 10, CONFIG_OCM_BATSAFE_HYST_C * 10, CONFIG_OCM_BATSAFE_CRIT_C * 10,
+                                      CONFIG_OCM_BATSAFE_OV_MV, 2, 15 };    /* 2 samples = 4 s to act, 30 s cool before a restart */
+    uint8_t a = os_bat_step(&b, &cfg, ok, (int16_t)temp_dc, (uint16_t)(mv > 0 ? mv : 0), on_usb);
+    s_bat_state = b.state;
+    if (a & OS_BAT_A_SHED) {
+        s_bat_saving = true;                                /* the Saving runlevel: Wi-Fi and the learner stop */
+        s_ui_req |= OS_UI_DIM;
+        sys_event(EV_WARN, "Battery hot (%.1f C on USB): load shed", temp_dc / 10.0);
+        /* the CPU clock stays: esp_pm (CONFIG_PM_ENABLE) is not part of this build */
+        ESP_LOGW(TAG, "battery %.1f C on USB: load shed (Wi-Fi off, learner paused, screen dimmed)", temp_dc / 10.0);
+    }
+    if (a & OS_BAT_A_UNSHED) {
+        s_bat_saving = false;
+        if (!s_saving) s_ui_req &= (uint8_t)~OS_UI_DIM;
+        sys_event(EV_INFO, "Battery cooled (%.1f C)", temp_dc / 10.0);
+    }
+    if (a & OS_BAT_A_STOP) {
+        s_bat_saving = true;
+        s_ui_req |= OS_UI_DIM;
+        bool ov = b.state == OS_BAT_OVERVOLT;
+        if (ov) sys_event(EV_ERROR, "Battery over-voltage (%d mV): charger fault, stopped", mv);
+        else sys_event(EV_ERROR, "Battery too hot (%d C): stopped", temp_dc / 10);
+        ESP_LOGE(TAG, "battery safety stop: %s, %d mV, %.1f C; logs flushed, storage stopped", os_bat_name(b.state), mv, temp_dc / 10.0);
+        sdlog_sync_now();
+#if CONFIG_OCM_BATSAFE_POWER_OFF
+        sys_reset(SYS_RESET_POWER_OFF, ov ? "over-voltage" : "too hot");
+#else
+        sdlog_quiesce_for_reset();                          /* no write can be torn from here on; a restart resumes */
+#endif
+    }
+    if (a & OS_BAT_A_RESUME) sys_reset(SYS_RESET_REBOOT, "battery cooled");
+#else
+    (void)ok; (void)temp_dc; (void)mv; (void)on_usb;
 #endif
 }

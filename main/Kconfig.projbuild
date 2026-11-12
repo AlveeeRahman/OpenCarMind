@@ -121,6 +121,49 @@ menu "OBD Logger Configuration"
             depends on OCM_UPS
             range 3000 3800
             default 3400
+        config OCM_BATSAFE
+            bool "mossREV OS: battery safety (gauge monitor, thermal and over-voltage policy)"
+            depends on IDF_TARGET_ESP32S31
+            default y
+            help
+                Every 2 s the board task reads the BQ27220's voltage, current, temperature (its own sensor: there is no
+                thermistor on this board), state of health, cycle count and status flags. On USB at or above
+                OCM_BATSAFE_WARN_C it sheds load (the Saving runlevel stops Wi-Fi and the learner, the screen dims). At
+                OCM_BATSAFE_CRIT_C, or with the cell at or above OCM_BATSAFE_OV_MV, it stops safely (logs flushed,
+                storage quiesced). The charger (TP4057) has no enable pin, so the firmware cannot stop charging.
+                The thresholds are placeholders until the cell's datasheet is known (os_core.h section 8).
+        config OCM_BATSAFE_WARN_C
+            int "Shed load on USB at this gauge temperature (C)"
+            depends on OCM_BATSAFE
+            range 30 70
+            default 45
+        config OCM_BATSAFE_CRIT_C
+            int "Stop safely at this gauge temperature (C)"
+            depends on OCM_BATSAFE
+            range 40 85
+            default 60
+        config OCM_BATSAFE_HYST_C
+            int "Hysteresis (C): back to normal this far below a threshold"
+            depends on OCM_BATSAFE
+            range 1 15
+            default 3
+        config OCM_BATSAFE_OV_MV
+            int "Stop safely when the cell reaches this voltage (mV)"
+            depends on OCM_BATSAFE
+            range 4150 4400
+            default 4250
+        config OCM_BATSAFE_POWER_OFF
+            bool "The safe stop powers the board off (GPIO57), not verified on the board yet"
+            depends on OCM_BATSAFE && OCM_UPS
+            default n
+        config OCM_GAUGE_CAL
+            bool "Debug: the GAUGE-CAL door command (sets the gauge's design capacity), never in a release"
+            depends on IDF_TARGET_ESP32S31
+            default n
+            help
+                Adds "GAUGE-CAL <mAh>" to the USB door (after pairing). It unseals the BQ27220 with TI's default keys,
+                writes Design Capacity and Design Energy (mAh x 3.7 V) and seals it again, only if the data-memory
+                values read first match the gauge's own DesignCapacity(). Nothing runs it automatically.
         config OCM_APP_ROLLBACK
             bool "mossREV OS: confirm a new app slot after the boot health verdict (A/B rollback, prepared, not in use)"
             depends on IDF_TARGET_ESP32S31 && BOOTLOADER_APP_ROLLBACK_ENABLE

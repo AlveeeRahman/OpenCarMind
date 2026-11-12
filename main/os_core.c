@@ -304,3 +304,54 @@ const char *os_ladder_name(uint8_t level)
     static const char *const N[4] = { "normal", "UI slowed", "learner paused", "model paused" };
     return level < 4 ? N[level] : "?";
 }
+
+/* ---------- 8. battery safety ---------- */
+uint8_t os_bat_step(os_bat_t *b, const os_bat_cfg_t *c, bool ok, int16_t t, uint16_t mv, bool on_usb)
+{
+    if (!ok || t < -400 || t > 1000 || !mv) return OS_BAT_A_NONE;      /* no reading or a glitch */
+    if (b->state == OS_BAT_OVERVOLT) return OS_BAT_A_NONE;              /* ends with a restart by the owner */
+    b->n_ov = mv >= c->ov_mv ? (uint8_t)(b->n_ov + 1) : 0;
+    if (b->n_ov >= c->confirm) { b->state = OS_BAT_OVERVOLT; return OS_BAT_A_STOP; }
+    if (b->state == OS_BAT_CRIT) {
+        b->n_cool = t <= c->crit_dc - c->hyst_dc ? (uint8_t)(b->n_cool + 1) : 0;
+        if (b->n_cool >= c->cool_n) { b->state = OS_BAT_OK; b->n_cool = b->n_crit = b->n_hot = 0; return OS_BAT_A_RESUME; }
+        return OS_BAT_A_NONE;
+    }
+    b->n_crit = t >= c->crit_dc ? (uint8_t)(b->n_crit + 1) : 0;
+    if (b->n_crit >= c->confirm) { b->state = OS_BAT_CRIT; b->n_cool = 0; return OS_BAT_A_STOP; }
+    if (b->state == OS_BAT_OK) {
+        b->n_hot = on_usb && t >= c->warn_dc ? (uint8_t)(b->n_hot + 1) : 0;
+        if (b->n_hot >= c->confirm) { b->state = OS_BAT_HOT; b->n_cool = 0; return OS_BAT_A_SHED; }
+    } else {                                                             /* HOT */
+        b->n_cool = t <= c->warn_dc - c->hyst_dc ? (uint8_t)(b->n_cool + 1) : 0;
+        if (b->n_cool >= c->confirm) { b->state = OS_BAT_OK; b->n_hot = b->n_cool = 0; return OS_BAT_A_UNSHED; }
+    }
+    return OS_BAT_A_NONE;
+}
+
+const char *os_bat_name(uint8_t s)
+{
+    static const char *const N[4] = { "ok", "hot: load shed", "too hot: stopped", "over-voltage: stopped" };
+    return s < 4 ? N[s] : "?";
+}
+
+/* ---------- 9. BQ27220 calibration helpers ---------- */
+uint8_t os_bq_checksum(uint16_t addr, const uint8_t *data, int n)
+{
+    uint8_t sum = (uint8_t)(addr & 0xFF) + (uint8_t)(addr >> 8);
+    for (int i = 0; i < n; i++) sum = (uint8_t)(sum + data[i]);
+    return (uint8_t)(0xFF - sum);
+}
+
+uint16_t os_bq_design_energy(uint16_t mah, uint16_t nominal_mv)
+{
+    uint32_t e = ((uint32_t)mah * nominal_mv + 500u) / 1000u;
+    return e > 0xFFFF ? 0xFFFF : (uint16_t)e;
+}
+
+bool os_bq_cal_ok(uint16_t dm_cap, uint16_t std_cap, uint16_t dm_energy, uint16_t target_mah)
+{
+    if (target_mah < 20 || target_mah > 5000 || !std_cap || dm_cap != std_cap) return false;
+    uint32_t lo = (uint32_t)dm_cap * 34u / 10u, hi = (uint32_t)dm_cap * 40u / 10u;
+    return dm_energy >= lo && dm_energy <= hi;
+}
