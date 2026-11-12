@@ -97,6 +97,11 @@ static void pill_set(lv_obj_t *p, const char *t, uint32_t c)
 
 static bool rev_in_use(const ui_snap_t *s) { return s->model == ML_MODEL_REV; }
 static const char *model_tag(const ui_snap_t *s) { return rev_in_use(s) ? "R.E.V" : "E.V"; }
+/* The name shown on screen for each model file (owner, 2026-11-11). The sha256 prefix stays in the logs, the session
+   files and the USB door, where tools match on it. */
+static const char *model_file_name(int id) {
+    return id == ML_MODEL_REV ? "active-estimator" : id == ML_MODEL_EV ? "ev-frozen" : "";
+}
 static const lv_image_dsc_t *model_mark_34(const ui_snap_t *s) { return rev_in_use(s) ? &ocm_mark_rev_34 : &ocm_mark_ev_34; }
 static void mark_set(lv_obj_t *img, const lv_image_dsc_t *mk) { if (lv_image_get_src(img) != (const void *)mk) lv_image_set_src(img, mk); }
 static bool have_f(const ui_snap_t *s, int f) { return s->obd_live && OBD_HAS(&s->st->obd, f); }
@@ -395,7 +400,7 @@ static void learn_update(const ui_snap_t *s)
     ui_set_fmt(l_tnote, "Gauge span seen: %.0f %%. More fill-ups sharpen it.", (double)r->tank.span_pct);
     const ml_stats_t *m = &s->ml;
     mark_set(l_mark, rev_in_use(s) ? &ocm_mark_rev_24 : &ocm_mark_ev_24);
-    if (m->ready) ui_set_fmt(l_state, "%s %s", model_tag(s), ml_model_version(s->model)); else ui_set_fmt(l_state, "%s not loaded", model_tag(s));
+    if (m->ready) ui_set_fmt(l_state, "%s %s", model_tag(s), model_file_name(s->model)); else ui_set_fmt(l_state, "%s not loaded", model_tag(s));
     ui_set_text(l_note, rev_in_use(s) ? "The classifier stays as shipped, the fuel read-out learns in this car."
                                       : "Learning is off while E.V runs. R.E.V keeps what it learned. Use R.E.V turns it on again.");
     ui_set_color(l_note, off ? UI_WARN : UI_MUTED);
@@ -575,7 +580,7 @@ static bool mp_update(const ui_snap_t *s, int id)
             lv_obj_set_style_border_color(v->card[k], lv_color_hex(edge[k]), 0);
     ui_set_text(v->big[0], ready ? ml_model_name(id) : on ? "--" : "Not active");
     ui_set_color(v->big[0], on ? UI_TEXT : UI_WARN);
-    ui_set_fmt(v->l1[0], "model %s", ml_model_version(id));
+    ui_set_text(v->l1[0], model_file_name(id));
     if (on) ui_set_fmt(v->l2[0], "%s, %s", ml_model_target(id), m->ready ? "loaded" : "not loaded");
     else ui_set_fmt(v->l2[0], "%s runs now", other);
     ui_set_text(v->big[1], ready ? selftest_word() : "--");
@@ -2507,7 +2512,7 @@ static void model_show(int active, bool ready)
     if (g_model_req >= 0) ui_set_fmt(g_model, "Loading CarMind %s ...", g_model_req == ML_MODEL_REV ? "R.E.V" : "E.V");
     else if (g_model_err[0]) ui_set_fmt(g_model, "Not switched: %s", g_model_err);
     else if (!ready) ui_set_fmt(g_model, "CarMind %s is not loaded.", rev ? "R.E.V" : "E.V");
-    else ui_set_fmt(g_model, "CarMind %s %s, self-test %s. %s", rev ? "R.E.V" : "E.V", ml_model_version(active),
+    else ui_set_fmt(g_model, "CarMind %s %s, self-test %s. %s", rev ? "R.E.V" : "E.V", model_file_name(active),
                     t > 0 ? "exact" : t == 0 ? "differs" : "not run", rev ? "Learns fuel use in this car." : "Runs as shipped.");
     ui_set_color(g_model, g_model_err[0] ? UI_WARN : UI_MUTED);
 }
