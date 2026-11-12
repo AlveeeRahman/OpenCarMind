@@ -328,7 +328,7 @@ static void handle(char *line, char *buf, char *b64)
         if (ok) {
             s_authed = true; s_pair_only = false; s_last_ms = t;
 #if BOARD_MOSAICO
-            /* the release name has a space ("mossREV 1.2.0") and a key=value field cannot: fw=mossREV-1.2.0 */
+            /* the release name has a space ("EdgeOS 2.0.0") and a key=value field cannot: fw=EdgeOS-2.0.0 */
             char fw[32];
             snprintf(fw, sizeof fw, "%s", CARMIND_VERSION);
             for (char *c = fw; *c; c++) if (*c == ' ') *c = '-';
