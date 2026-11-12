@@ -18,19 +18,41 @@ static void order_insert(ui_settings_t *m, int ins, int anchor, bool before)
     for (int i = 0; i < k && m->n < UI_MAX_APPS; i++) m->order[m->n++] = ord[i];
 }
 
-int ocm_settings_migrate(const ui_settings_t *saved, ui_settings_t *out, int napps, int wifi, int ev)
+void ocm_settings_from_v7(const ui_settings_v7_t *in, ui_settings_t *out)
+{
+    memset(out, 0, sizeof *out);
+    out->ver = in->ver;
+    out->n = in->n;
+    memcpy(out->order, in->order, sizeof in->order);
+    out->hidden_v5 = in->hidden_v5;
+    out->widget = in->widget;
+    out->brightness = in->brightness;
+    out->screen_off_s = in->screen_off_s;
+    out->econ_l100 = in->econ_l100;
+    out->theme = in->theme;
+}
+
+int ocm_settings_migrate(const ui_settings_t *saved, ui_settings_t *out, int napps, int wifi, int ev, int health)
 {
     if (napps < 1 || napps > UI_MAX_APPS || saved->n > UI_MAX_APPS) return OCM_SET_REJECT;
-    if (saved->ver != 5 && saved->ver != 6 && saved->ver != UI_SETTINGS_VER) return OCM_SET_REJECT;
-    if (ev >= napps || wifi >= napps || (ev >= 0 && ev == wifi)) return OCM_SET_REJECT;
+    if (saved->ver < 5 || saved->ver > UI_SETTINGS_VER) return OCM_SET_REJECT;
+    if (ev >= napps || wifi >= napps || health >= napps || (ev >= 0 && ev == wifi) ||
+        (health >= 0 && (health == ev || health == wifi))) return OCM_SET_REJECT;
+    if (saved->ver < 8 && saved->n > UI_MAX_APPS_V7) return OCM_SET_REJECT;
     ui_settings_t m = *saved;
-    if (saved->ver == 5 && wifi >= 0) {
-        /* the version-6 registry is this one without E.V: Wi-Fi's index and Settings' index there */
-        int napps6 = napps - (ev >= 0), wifi6 = wifi - (ev >= 0 && ev < wifi);
+    /* the version-7 registry is this one without Health: Wi-Fi's and E.V's indices there */
+    int hv = health >= 0;
+    int napps7 = napps - hv;
+    int wifi7 = wifi >= 0 ? wifi - (hv && health < wifi) : -1, ev7 = ev >= 0 ? ev - (hv && health < ev) : -1;
+    if (saved->ver == 5 && wifi7 >= 0) {
+        /* the version-6 registry is the version-7 one without E.V: Wi-Fi's index and Settings' index there */
+        int napps6 = napps7 - (ev7 >= 0), wifi6 = wifi7 - (ev7 >= 0 && ev7 < wifi7);
         order_insert(&m, wifi6, napps6 - 1, true);
     }
-    if (saved->ver != UI_SETTINGS_VER && ev >= 1) order_insert(&m, ev, ev - 1, false);
-    else if (saved->ver != UI_SETTINGS_VER && ev == 0) order_insert(&m, ev, -1, false);   /* no app before it: appended below */
+    if (saved->ver <= 6 && ev7 >= 1) order_insert(&m, ev7, ev7 - 1, false);
+    else if (saved->ver <= 6 && ev7 == 0) order_insert(&m, ev7, -1, false);   /* no app before it: appended below */
+    if (saved->ver <= 7 && health >= 1) order_insert(&m, health, health - 1, false);
+    else if (saved->ver <= 7 && health == 0) order_insert(&m, health, -1, false);
     m.ver = UI_SETTINGS_VER;
     m.hidden_v5 = 0;                                       /* every app a user had hidden is on Home again */
     /* keep valid, first-seen indices; apps missing from the order are appended in registry order */

@@ -20,6 +20,8 @@ typedef struct { char ssid[33]; int8_t rssi; uint8_t channel; bool secure; } wif
 /* app_main on the S31, in place of wifi_sync_start() (os_hooks.h OCM_WIFI_BOOT_START): loads the saved networks and
    starts nothing else, no netif, no driver, no Wi-Fi task (the mossREV 2.0.0 boot hold) */
 esp_err_t wifi_sync_start_held(void);
+/* R6 refusals of a clock jump so far this boot (the Health app's guard counts) */
+uint32_t  wifi_sync_clock_refusals(void);
 /* app_main, right after the start: from now on the functions below may start the radio themselves */
 void      wifi_sync_started(void);
 /* The owner's start from the screen (Sync clock now, the Wi-Fi app's search and join): bring the station up and start

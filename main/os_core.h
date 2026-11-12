@@ -65,14 +65,18 @@
  *    A hard floor: at or below floor_mv on battery the board goes to OFF at once, from any state, before a brownout
  *    can tear a write. GRACE is the Saving runlevel.
  *
- * 7. Degradation ladder (mixed-criticality style). Every 10 s the OS reads the ml job's deadline misses. A window with
- *    a new miss climbs one rung, six clean windows in a row (a minute) step one rung down:
+ * 7. Degradation ladder (mixed-criticality style). Every 10 s the OS reads the ml job's deadline misses, and the misses
+ *    of the jobs that only the AI services' rung answers (the UI, the AI worker and its services: ai_svc.c). A window
+ *    with a new ml miss climbs one rung; a window with only AI-side misses climbs to rung 1 at most. Six clean windows
+ *    in a row (a minute) step one rung down, so the rungs come back in reverse order:
  *      0 normal,
- *      1 the UI refresh period goes from 16 to 33 ms (half the frames, LVGL's own timer),
- *      2 the R.E.V learner's CPU reservation drops to 1 per mille (it pauses, its learned values stay),
- *      3 the model's inference pauses (windows are skipped, the same model stays loaded).
+ *      1 the AI services slowed: every ai_svc service runs at period x10 and their learned heads are off (the battery
+ *        estimator's ridge correction); built, not yet checked on the board,
+ *      2 the UI refresh period goes from 16 to 33 ms (half the frames, LVGL's own timer); the AI services pause,
+ *      3 the R.E.V learner's CPU reservation drops to 1 per mille (it pauses, its learned values stay),
+ *      4 the model's inference pauses (windows are skipped, the same model stays loaded).
  *    The ladder never changes which model is loaded: no model switch while driving is the owner's rule, and a switch
- *    while parked stays the owner's own action. Rung 3 is left only when parked, so the model does not go on and off
+ *    while parked stays the owner's own action. Rung 4 is left only when parked, so the model does not go on and off
  *    during one drive.
  *
  * 8. Battery safety. The charger (TP4057) has no enable pin and no thermistor input, and its supply (VCHG) comes from
@@ -260,12 +264,13 @@ uint8_t os_ups_step(os_ups_t *u, const os_ups_cfg_t *c, bool ok, int16_t ma, uin
 const char *os_ups_name(uint8_t state);
 
 /* ---------- 7. degradation ladder ---------- */
-enum { OS_DL_NORMAL = 0, OS_DL_UI_SLOW, OS_DL_NO_LEARNER, OS_DL_MODEL_OFF };
+enum { OS_DL_NORMAL = 0, OS_DL_AI_SLOW, OS_DL_UI_SLOW, OS_DL_NO_LEARNER, OS_DL_MODEL_OFF };
 #define OS_DL_WINDOW_MS 10000
 #define OS_DL_CLEAN     6
-typedef struct { uint8_t level, clean; uint32_t last_misses; bool primed; } os_ladder_t;
-/* one 10 s window: ml_misses = the ml job's miss counter so far. Returns the level now. */
-uint8_t os_ladder_step(os_ladder_t *l, uint32_t ml_misses, bool driving);
+typedef struct { uint8_t level, clean; uint32_t last_misses, last_ai_misses; bool primed; } os_ladder_t;
+/* one 10 s window: ml_misses = the ml job's miss counter so far, ai_misses = the AI-side counter so far (0 without AI
+   services). Returns the level now. */
+uint8_t os_ladder_step(os_ladder_t *l, uint32_t ml_misses, uint32_t ai_misses, bool driving);
 const char *os_ladder_name(uint8_t level);
 
 /* ---------- 8. battery safety ---------- */

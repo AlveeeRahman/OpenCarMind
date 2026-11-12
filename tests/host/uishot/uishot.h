@@ -17,7 +17,12 @@ typedef struct {
     const char *obd_pair;      /* the OBD adapter pairing sheet: the adapter's name, NULL = no question */
     int model;                 /* ml_model_id_t in use */
     uint8_t health, runlevel, bat_state;
+    int hstate;                /* the Health app's state (HSX_*): 0 = the worst-case texts */
+    const char *hbanner;       /* a Health monitor banner: its headline (the page and severity follow hstate) */
 } uishot_case_t;
+/* the Health states rendered for the owner's check (uishot.c health_states) */
+enum { HSX_WORST = 0, HSX_GOOD, HSX_LEARN, HSX_WORN, HSX_HEAT, HSX_LEAK, HSX_GLITCH, HSX_SHADOW, HSX_WATCH, HSX_BLOCK,
+       HSX_MISMATCH, HSX_AI_OK, HSX_AI_SLOW, HSX_N };
 extern uishot_case_t uishot_case;
 /* the screens' time(NULL): 17:31 local in the demo case, the Mac's clock otherwise */
 time_t uishot_time(time_t *t);

@@ -148,6 +148,13 @@ pair_gate_tests: test_pair_gate.c ../../main/obd_ble.c ../../main/obd_pair.c ../
 	$(CC) $(CFLAGS) -I. -o $@ test_pair_gate.c ../../main/obd_pair.c ../../main/adapter_match.c
 	rm -f pair_gate_off.inc pair_gate_on.inc
 
+# pairing safety on the ESP-Mosaico: the adapter fingerprint (R1), the re-pair table (R2), the guard question
+# (main/adapter_guard.c), plus a source audit of the firmware glue (guard_audit.sh)
+guard: guard_tests
+	./guard_tests
+	./guard_audit.sh
+guard_tests: test_adapter_guard.c ../../main/adapter_guard.c ../../main/adapter_guard.h
+	$(CC) $(CFLAGS) -o $@ test_adapter_guard.c ../../main/adapter_guard.c
 carmind_tests: $(SRCS) ../../main/custom_pids.h ../../main/fault_engine.h
 	$(CC) $(CFLAGS) -o $@ $(SRCS) -lm
 
@@ -163,10 +170,69 @@ tank_tests: test_rev_tank.c ../../main/rev_tank.c ../../main/rev_tank.h
 rev_tests: $(REV_SRCS) ../../main/rev_learn.h ../../main/rev_cal.h ../../main/rev_state.h ../../main/econ.h ../../main/ml_params_rev.h
 	$(CC) $(CFLAGS) -o $@ $(REV_SRCS) -lm
 
+# EdgeOS AI services: the release table under overload, the degrade order against the OS ladder, the seqlock and ring
+# (main/ai_svc_core.c, main/ai_snap.h)
+ai: ai_tests
+	./ai_tests
+
+ai_tests: test_ai_svc.c ../../main/ai_svc_core.c ../../main/ai_svc_core.h ../../main/ai_snap.h ../../main/os_core.c ../../main/os_core.h
+	$(CC) $(CFLAGS) -o $@ test_ai_svc.c ../../main/ai_svc_core.c ../../main/os_core.c -lm
+
+# Battery SoC/SoH estimator (main/bat_est_core.c with main/bat_model.h). After the research agent's bat_model.h lands in
+# main/, rerun: make -C tests/host bat. The C port is checked against its test_vectors.csv to 1e-4 (BAT_VECTORS).
+# A header not yet in main/: make -C tests/host bat BAT_MODEL=/path/to/bat_model.h
+BAT_DIR ?= $(HOME)/Desktop/dev/carmind-ml/experiments/battery_soc
+BAT_VECTORS ?= $(BAT_DIR)/test_vectors.csv
+BAT_MODEL ?=
+BAT_MODEL_DEF = $(if $(BAT_MODEL),-DBAT_MODEL_FILE='"$(BAT_MODEL)"',)
+bat: bat_tests
+	BAT_VECTORS="$(BAT_VECTORS)" ./bat_tests
+
+bat_tests: test_bat_est.c ../../main/bat_est_core.c ../../main/bat_est_core.h ../../main/bat_model.h $(BAT_MODEL) FORCE
+	$(CC) $(CFLAGS) -O2 $(BAT_MODEL_DEF) -o $@ test_bat_est.c ../../main/bat_est_core.c -lm
+
+# OpenCarMind EdgeOS 2.1.0 AI services. The research vectors live in carmind-ml (never in this tree):
+#   soh   the SoH ridge (main/bat_soh_model.h) against soh_vectors.csv, the Q(V) features against p3_soh.py (vec/), the cycle logic
+#   anom  the battery anomaly detector (main/bat_anom_core.c) against anom_vectors.csv, plus the 2 s sample period
+#   ids   the network guard: the rotation detector bit-exact against ids_vectors.csv, the guard's policy, the hook bitmaps
+#   idsaudit  the radio hooks only count and set bits; the guard never transmits, pairs or sets the clock (ids_audit.sh)
+SOH_VECTORS ?= $(BAT_DIR)/soh_vectors.csv
+ANOM_VECTORS ?= $(BAT_DIR)/anom_vectors.csv
+IDS_VECTORS ?= $(HOME)/Desktop/dev/carmind-ml/experiments/net_ids/tests/ids_vectors.csv
+soh: soh_tests
+	SOH_VECTORS="$(SOH_VECTORS)" ./soh_tests
+
+soh_tests: test_bat_soh.c ../../main/bat_soh.c ../../main/bat_soh.h ../../main/bat_soh_model.h ../../main/bat_est_core.h
+	$(CC) $(CFLAGS) -O2 -o $@ test_bat_soh.c ../../main/bat_soh.c -lm
+
+anom: anom_tests
+	ANOM_VECTORS="$(ANOM_VECTORS)" ./anom_tests
+
+anom_tests: test_bat_anom.c ../../main/bat_anom_core.c ../../main/bat_anom_core.h ../../main/bat_anom_model.h
+	$(CC) $(CFLAGS) -O2 -o $@ test_bat_anom.c ../../main/bat_anom_core.c -lm
+
+ids: ids_tests idsaudit
+	IDS_VECTORS="$(IDS_VECTORS)" ./ids_tests
+
+ids_tests: test_ids.c ../../main/ids_core.c ../../main/ids_core.h ../../main/ids_hooks.h ../../main/ids_model.h
+	$(CC) $(CFLAGS) -O2 -o $@ test_ids.c ../../main/ids_core.c
+
+idsaudit:
+	./ids_audit.sh
+
+# the Health app's plain words: each state's card, the issue count, the anomaly reason, the Wi-Fi first-scan skip
+health: health_tests
+	./health_tests
+
+health_tests: test_health_text.c ../../main/health_text.c ../../main/health_text.h ../../main/health_view.h ../../main/ids_core.c ../../main/ids_core.h ../../main/ids_model.h
+	$(CC) $(CFLAGS) -o $@ test_health_text.c ../../main/health_text.c ../../main/ids_core.c
+
+FORCE:
+
 clean:
-	rm -f carmind_tests rev_tests tank_tests session_tests reset_tests swipe_tests clock_tests uimetrics_tests prefetch_tests logstore_tests nandfat_tests settings_tests wifi_tests events_tests theme_tests wificreds_tests rows_tests ppa_tests os_tests pair_tests pair_gate_tests pair_gate_off.inc pair_gate_on.inc uishot_bin
+	rm -f carmind_tests rev_tests tank_tests session_tests reset_tests swipe_tests clock_tests uimetrics_tests prefetch_tests logstore_tests nandfat_tests settings_tests wifi_tests events_tests theme_tests wificreds_tests rows_tests ppa_tests os_tests pair_tests pair_gate_tests pair_gate_off.inc pair_gate_on.inc uishot_bin ai_tests bat_tests guard_tests soh_tests anom_tests ids_tests health_tests
 	rm -rf uishot_bin.dSYM
-.PHONY: run rev session reset swipe clock uimetrics prefetch logstore clean settings wifi events theme wificreds rows eventtext ppa os pair textfit uishot uishot_lvgl
+.PHONY: run rev session reset swipe clock uimetrics prefetch logstore clean settings wifi events theme wificreds rows eventtext ppa os pair textfit uishot uishot_lvgl ai bat guard soh anom ids idsaudit health FORCE
 
 # ESP-Mosaico screens rendered on the Mac: text fit, corners, the 16 px floor (uishot/uishot.mk)
 include uishot/uishot.mk

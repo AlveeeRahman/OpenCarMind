@@ -463,6 +463,57 @@ void uishot_clock_picker(void);
 void uishot_wifi_password(void);
 void uishot_model_refused(void);
 void uishot_close_overlays(void);
+void uishot_health_page(int k);
+void uishot_settings_guard(void);
+static int app_index(const char *id);
+
+/* the Health states the owner checks by eye: each page's status card, recent issues and details (scrolled to the end),
+   the Health icon's dot on its launcher page, and the "Open Health" banner for an amber and a red issue */
+static void health_states(void)
+{
+    static const struct { int st, page; const char *name; } HS[] = {
+        { HSX_GOOD, 0, "hs_bat_good" }, { HSX_LEARN, 0, "hs_bat_learning" }, { HSX_WORN, 0, "hs_bat_worn" },
+        { HSX_HEAT, 0, "hs_bat_anom_heat" }, { HSX_LEAK, 0, "hs_bat_anom_current" }, { HSX_GLITCH, 0, "hs_bat_anom_glitch" },
+        { HSX_SHADOW, 1, "hs_guard_shadow" }, { HSX_WATCH, 1, "hs_guard_watching" }, { HSX_BLOCK, 1, "hs_guard_blocking" },
+        { HSX_MISMATCH, 1, "hs_guard_mismatch" }, { HSX_AI_OK, 2, "hs_ai_ok" }, { HSX_AI_SLOW, 2, "hs_ai_slowed" } };
+    int hi = app_index("health");
+    for (size_t i = 0; i < sizeof HS / sizeof HS[0]; i++) {
+        uishot_case.hstate = HS[i].st;
+        uishot_fill();
+        ui_health_set_page(HS[i].page);
+        open_app(hi);
+        shoot(HS[i].name);
+        shoot_scrolled(HS[i].name);
+    }
+    /* the dot (amber: worn; red: heat) on the launcher page that holds Health */
+    for (int k = 0; k < 2; k++) {
+        uishot_case.hstate = k ? HSX_HEAT : HSX_WORN;
+        uishot_fill();
+        ui_go_home();
+        health_dot_tick();
+        lv_tileview_set_tile_by_index(s_tv, (uint32_t)(s_hdot_tile > 0 ? s_hdot_tile : 0), 0, LV_ANIM_OFF);
+        shoot(k ? "hs_home_dot_red" : "hs_home_dot_amber");
+    }
+    /* the banner over Drive: amber (worn) and red (heat) */
+    static const struct { int st; const char *head, *name; } BN[] = {
+        { HSX_WORN, "Battery is wearing out", "hs_banner_amber" }, { HSX_HEAT, "Battery warms up more than usual", "hs_banner_red" },
+        { HSX_MISMATCH, "An adapter that looks like yours behaved differently", "hs_banner_long" } };
+    for (size_t i = 0; i < sizeof BN / sizeof BN[0]; i++) {
+        uishot_case.hstate = BN[i].st;
+        uishot_case.hbanner = BN[i].head;
+        uishot_fill();
+        open_app(0);
+        take_snapshot();
+        refresh_status_bar(&s_snap);
+        shoot(BN[i].name);
+    }
+    uishot_case.hbanner = NULL;
+    uishot_case.hstate = HSX_WORST;
+    uishot_fill();
+    ui_health_set_page(0);
+    ui_go_home();
+    health_dot_tick();
+}
 
 static int app_index(const char *id)
 {
@@ -541,6 +592,21 @@ static void all_screens(const char *suf)
         snprintf(n, sizeof n, "%s%s", ui_app(i)->id, suf);
         shoot(n);
         shoot_scrolled(n);
+        if (!strcmp(ui_app(i)->id, "health")) {              /* its three pages, each built when its tab is tapped */
+            static const char *const HP[3] = { "health_battery", "health_guard", "health_ai" };
+            for (int k = 0; k < 3; k++) {
+                uishot_health_page(k);
+                snprintf(n, sizeof n, "%s%s", HP[k], suf);
+                shoot(n);
+                shoot_scrolled(n);
+            }
+            uishot_health_page(0);
+        }
+        if (!strcmp(ui_app(i)->id, "settings")) {           /* the Network guard row, below the sixth page */
+            uishot_settings_guard();
+            snprintf(n, sizeof n, "settings_guard%s", suf);
+            shoot(n);
+        }
     }
     ui_go_home();
 }
@@ -667,6 +733,7 @@ int main(int argc, char **argv)
         ui_go_home();
         uishot_case = worst;
         uishot_fill();
+        health_states();
     }
     printf("textfit: %d problem(s); listed only: %d name(s) cut with dots by design or rows crossing a corner mid-scroll%s\n", s_fails, s_warns, s_fails ? "" : "; every other text fits");
     return s_fails ? 1 : 0;

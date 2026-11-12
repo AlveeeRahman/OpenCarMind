@@ -374,32 +374,43 @@ static void test_ups(void)
 static void test_ladder(void)
 {
     os_ladder_t l = { 0 };
-    uint32_t m = 7;                                       /* misses from before the ladder ran do not count */
-    CHECK(os_ladder_step(&l, m, false) == OS_DL_NORMAL, "priming window");
-    CHECK(os_ladder_step(&l, m, false) == OS_DL_NORMAL, "no new miss: normal");
-    CHECK(os_ladder_step(&l, ++m, true) == OS_DL_UI_SLOW, "first miss: UI slowed first");
-    CHECK(os_ladder_step(&l, m += 3, true) == OS_DL_NO_LEARNER, "more misses: the learner's reservation goes next");
-    CHECK(os_ladder_step(&l, ++m, true) == OS_DL_MODEL_OFF, "still missing: the model pauses last");
-    CHECK(os_ladder_step(&l, ++m, true) == OS_DL_MODEL_OFF, "the top rung holds");
-    int lvl = 0;
-    for (int i = 0; i < 30; i++) lvl = os_ladder_step(&l, m, true);
+    uint32_t m = 7, ai = 0;                               /* misses from before the ladder ran do not count */
+    CHECK(os_ladder_step(&l, m, ai, false) == OS_DL_NORMAL, "priming window");
+    CHECK(os_ladder_step(&l, m, ai, false) == OS_DL_NORMAL, "no new miss: normal");
+    CHECK(os_ladder_step(&l, ++m, ai, true) == OS_DL_AI_SLOW, "first miss: the AI services slow down first");
+    CHECK(os_ladder_step(&l, ++m, ai, true) == OS_DL_UI_SLOW, "second: UI slowed");
+    CHECK(os_ladder_step(&l, m += 3, ai, true) == OS_DL_NO_LEARNER, "more misses: the learner's reservation goes next");
+    CHECK(os_ladder_step(&l, ++m, ai, true) == OS_DL_MODEL_OFF, "still missing: the model pauses last");
+    CHECK(os_ladder_step(&l, ++m, ai, true) == OS_DL_MODEL_OFF, "the top rung holds");
+    uint8_t lvl = 0;
+    for (int i = 0; i < 30; i++) lvl = os_ladder_step(&l, m, ai, true);
     CHECK(lvl == OS_DL_MODEL_OFF, "while driving the model stays paused (no on/off within one drive)");
-    CHECK(os_ladder_step(&l, m, false) == OS_DL_NO_LEARNER, "parked after a clean minute of driving: one rung down at once");
+    CHECK(os_ladder_step(&l, m, ai, false) == OS_DL_NO_LEARNER, "parked after a clean minute of driving: one rung down at once");
     os_ladder_t p2 = { .level = OS_DL_MODEL_OFF, .primed = true, .last_misses = 5 };
-    for (int i = 0; i < OS_DL_CLEAN - 1; i++) lvl = os_ladder_step(&p2, 5, false);
+    for (int i = 0; i < OS_DL_CLEAN - 1; i++) lvl = os_ladder_step(&p2, 5, 0, false);
     CHECK(lvl == OS_DL_MODEL_OFF, "parked, 5 clean windows: still paused");
-    CHECK(os_ladder_step(&p2, 5, false) == OS_DL_NO_LEARNER, "parked, the sixth clean window: one rung down");
-    for (int i = 0; i < OS_DL_CLEAN; i++) lvl = os_ladder_step(&l, m, true);
+    CHECK(os_ladder_step(&p2, 5, 0, false) == OS_DL_NO_LEARNER, "parked, the sixth clean window: one rung down");
+    for (int i = 0; i < OS_DL_CLEAN; i++) lvl = os_ladder_step(&l, m, ai, true);
     CHECK(lvl == OS_DL_UI_SLOW, "lower rungs step down while driving too");
-    CHECK(os_ladder_step(&l, ++m, true) == OS_DL_NO_LEARNER, "a miss climbs again and clears the clean count");
-    for (int i = 0; i < OS_DL_CLEAN - 1; i++) lvl = os_ladder_step(&l, m, true);
+    CHECK(os_ladder_step(&l, ++m, ai, true) == OS_DL_NO_LEARNER, "a miss climbs again and clears the clean count");
+    for (int i = 0; i < OS_DL_CLEAN - 1; i++) lvl = os_ladder_step(&l, m, ai, true);
     CHECK(lvl == OS_DL_NO_LEARNER, "the clean count restarted at the miss");
-    for (int i = 0; i < 3 * OS_DL_CLEAN; i++) lvl = os_ladder_step(&l, m, true);
+    for (int i = 0; i < 2 * OS_DL_CLEAN; i++) lvl = os_ladder_step(&l, m, ai, true);
+    CHECK(lvl == OS_DL_AI_SLOW, "reverse order: the AI services are the last rung back");
+    for (int i = 0; i < OS_DL_CLEAN; i++) lvl = os_ladder_step(&l, m, ai, true);
     CHECK(lvl == OS_DL_NORMAL, "back to normal after enough clean windows");
+    /* AI-side misses (UI, the AI worker, its services) climb to the AI rung only */
+    for (int i = 0; i < 5; i++) lvl = os_ladder_step(&l, m, ai += 2, false);
+    CHECK(lvl == OS_DL_AI_SLOW, "AI-side misses: AI services slowed, never more (%u)", lvl);
+    for (int i = 0; i < OS_DL_CLEAN - 1; i++) lvl = os_ladder_step(&l, m, ai, false);
+    CHECK(lvl == OS_DL_AI_SLOW, "AI rung holds for 5 clean windows");
+    CHECK(os_ladder_step(&l, m, ai, false) == OS_DL_NORMAL, "and steps down at the sixth");
+    os_ladder_t q = { .level = OS_DL_UI_SLOW, .primed = true };
+    CHECK(os_ladder_step(&q, 0, 9, false) == OS_DL_UI_SLOW, "AI-side misses do not climb past the AI rung");
     os_ladder_t w = { 0 };
-    os_ladder_step(&w, 0xFFFFFFFFu, false);
-    CHECK(os_ladder_step(&w, 0, false) == OS_DL_UI_SLOW, "counter wrap counts as a new miss, never as none");
-    CHECK(!strcmp(os_ladder_name(OS_DL_MODEL_OFF), "model paused"), "name");
+    os_ladder_step(&w, 0xFFFFFFFFu, 0, false);
+    CHECK(os_ladder_step(&w, 0, 0, false) == OS_DL_AI_SLOW, "counter wrap counts as a new miss, never as none");
+    CHECK(!strcmp(os_ladder_name(OS_DL_MODEL_OFF), "model paused") && !strcmp(os_ladder_name(OS_DL_AI_SLOW), "AI services slowed"), "names");
 }
 
 /* ---------- 8. battery safety ---------- */

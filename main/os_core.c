@@ -290,13 +290,19 @@ const char *os_ups_name(uint8_t s)
 }
 
 /* ---------- 7. degradation ladder ---------- */
-uint8_t os_ladder_step(os_ladder_t *l, uint32_t ml_misses, bool driving)
+uint8_t os_ladder_step(os_ladder_t *l, uint32_t ml_misses, uint32_t ai_misses, bool driving)
 {
-    if (!l->primed) { l->primed = true; l->last_misses = ml_misses; return l->level; }   /* misses before the ladder ran */
-    uint32_t d = ml_misses - l->last_misses;
+    if (!l->primed) { l->primed = true; l->last_misses = ml_misses; l->last_ai_misses = ai_misses; return l->level; }
+    uint32_t d = ml_misses - l->last_misses, da = ai_misses - l->last_ai_misses;   /* misses before the ladder ran do not count */
     l->last_misses = ml_misses;
+    l->last_ai_misses = ai_misses;
     if (d) {
         if (l->level < OS_DL_MODEL_OFF) l->level++;
+        l->clean = 0;
+        return l->level;
+    }
+    if (da && l->level <= OS_DL_AI_SLOW) {               /* AI-side misses: the AI rung only, and it holds */
+        l->level = OS_DL_AI_SLOW;
         l->clean = 0;
         return l->level;
     }
@@ -308,8 +314,8 @@ uint8_t os_ladder_step(os_ladder_t *l, uint32_t ml_misses, bool driving)
 
 const char *os_ladder_name(uint8_t level)
 {
-    static const char *const N[4] = { "normal", "UI slowed", "learner paused", "model paused" };
-    return level < 4 ? N[level] : "?";
+    static const char *const N[5] = { "normal", "AI services slowed", "UI slowed", "learner paused", "model paused" };
+    return level < 5 ? N[level] : "?";
 }
 
 /* ---------- 8. battery safety ---------- */

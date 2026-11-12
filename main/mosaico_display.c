@@ -46,6 +46,10 @@
 #include "sdlog.h"
 #include "fault_engine.h"
 #include "econ.h"
+#if CONFIG_OCM_AI_SVC
+#include "health_view.h"
+#include "health_text.h"
+#endif
 #include "esp_attr.h"
 #include "esp_heap_caps.h"
 #include "esp_lcd_co5300.h"
@@ -525,6 +529,10 @@ void ui_confirm(const char *text, const char *yes, void (*cb)(void *arg), void *
    at once when a new question wakes the screen (ui_tick). Same geometry as ui_confirm. ---------- */
 static lv_obj_t *s_pair_sheet, *s_pair_left;
 static uint32_t s_pair_shown, s_pair_done;               /* the question shown, and the one answered on this screen */
+/* the adapter guard questions (obd_ble_guard_offer, adapter_guard.h: "This adapter looks different. Use it?" and "The
+   adapter asks to pair again. Allow?") use the same sheet; MB_BLE_GUARD carries the answer with its seq */
+static uint32_t s_guard_shown, s_guard_done;
+static bool     s_sheet_guard;                           /* the open sheet is a guard question */
 
 static void pair_close(void) { if (s_pair_sheet) { lv_obj_delete_async(s_pair_sheet); s_pair_sheet = NULL; } }
 static void pair_reply(bool yes)
@@ -535,9 +543,50 @@ static void pair_reply(bool yes)
 }
 static void pair_yes_cb(lv_event_t *e) { (void)e; pair_reply(true); }
 static void pair_no_cb(lv_event_t *e) { (void)e; pair_reply(false); }
+static void guard_reply(bool yes)
+{
+    if (!mosaico_board_request(MB_BLE_GUARD, (s_guard_shown << 1) | (yes ? 1u : 0u))) return;
+    s_guard_done = s_guard_shown;
+    pair_close();
+}
+static void guard_yes_cb(lv_event_t *e) { (void)e; guard_reply(true); }
+static void guard_no_cb(lv_event_t *e) { (void)e; guard_reply(false); }
+
+static void pair_sheet_build(const char *q, const char *no, const char *yes, lv_event_cb_t no_cb, lv_event_cb_t yes_cb)
+{
+    s_pair_sheet = lv_obj_create(lv_layer_top());
+    lv_obj_remove_style_all(s_pair_sheet);
+    lv_obj_set_size(s_pair_sheet, UI_W, UI_H);
+    lv_obj_set_style_bg_color(s_pair_sheet, lv_color_hex(UI_THEME.scrim), 0);
+    lv_obj_set_style_bg_opa(s_pair_sheet, LV_OPA_60, 0);
+    lv_obj_add_flag(s_pair_sheet, LV_OBJ_FLAG_CLICKABLE);         /* swallows taps behind it */
+    lv_obj_t *c = ui_card(s_pair_sheet, UI_MARGIN, UI_H - 220 - UI_MARGIN, UI_W - 2 * UI_MARGIN, 220, UI_BORDER);
+    lv_obj_t *t = ui_label(c, UI_THEME.f_value, UI_TEXT, q);
+    lv_obj_set_width(t, UI_W - 2 * UI_MARGIN - 2 * UI_THEME.pad_card - 4);
+    lv_label_set_long_mode(t, LV_LABEL_LONG_WRAP);
+    lv_obj_set_pos(t, 2, 2);
+    s_pair_left = ui_label(c, UI_THEME.f_label, UI_MUTED, "");
+    lv_obj_align(s_pair_left, LV_ALIGN_BOTTOM_LEFT, 2, -64);
+    modal_button(c, no, UI_THEME.track, UI_TEXT, no_cb, LV_ALIGN_BOTTOM_LEFT);
+    modal_button(c, yes, UI_THEME.section[SEC_GREEN], UI_BG, yes_cb, LV_ALIGN_BOTTOM_RIGHT);
+}
 
 static void pair_sheet_refresh(void)
 {
+    const char *gq, *gy, *gn, *gnote;
+    int gleft;
+    uint32_t gseq;
+    if (obd_ble_guard_offer(&gq, &gy, &gn, &gnote, &gleft, &gseq) && gseq != s_guard_done) {
+        if (s_pair_sheet && (!s_sheet_guard || gseq != s_guard_shown)) pair_close();
+        if (!s_pair_sheet) {
+            s_guard_shown = gseq;
+            s_sheet_guard = true;
+            pair_sheet_build(gq, gn, gy, guard_no_cb, guard_yes_cb);
+        }
+        ui_set_fmt(s_pair_left, "%s %d s", gnote, gleft);
+        return;
+    }
+    if (s_sheet_guard) { pair_close(); s_sheet_guard = false; }
     char name[OBD_PAIR_NAME_LEN];
     const char *strength;
     int left;
@@ -546,23 +595,9 @@ static void pair_sheet_refresh(void)
     if (s_pair_sheet && seq != s_pair_shown) pair_close();
     if (!s_pair_sheet) {
         s_pair_shown = seq;
-        s_pair_sheet = lv_obj_create(lv_layer_top());
-        lv_obj_remove_style_all(s_pair_sheet);
-        lv_obj_set_size(s_pair_sheet, UI_W, UI_H);
-        lv_obj_set_style_bg_color(s_pair_sheet, lv_color_hex(UI_THEME.scrim), 0);
-        lv_obj_set_style_bg_opa(s_pair_sheet, LV_OPA_60, 0);
-        lv_obj_add_flag(s_pair_sheet, LV_OBJ_FLAG_CLICKABLE);         /* swallows taps behind it */
-        lv_obj_t *c = ui_card(s_pair_sheet, UI_MARGIN, UI_H - 220 - UI_MARGIN, UI_W - 2 * UI_MARGIN, 220, UI_BORDER);
         char q[96];
         snprintf(q, sizeof q, "OBD adapter found: %s, signal %s. Use this adapter?", name, strength);
-        lv_obj_t *t = ui_label(c, UI_THEME.f_value, UI_TEXT, q);
-        lv_obj_set_width(t, UI_W - 2 * UI_MARGIN - 2 * UI_THEME.pad_card - 4);
-        lv_label_set_long_mode(t, LV_LABEL_LONG_WRAP);
-        lv_obj_set_pos(t, 2, 2);
-        s_pair_left = ui_label(c, UI_THEME.f_label, UI_MUTED, "");
-        lv_obj_align(s_pair_left, LV_ALIGN_BOTTOM_LEFT, 2, -64);
-        modal_button(c, "Not this one", UI_THEME.track, UI_TEXT, pair_no_cb, LV_ALIGN_BOTTOM_LEFT);
-        modal_button(c, "Use this adapter", UI_THEME.section[SEC_GREEN], UI_BG, pair_yes_cb, LV_ALIGN_BOTTOM_RIGHT);
+        pair_sheet_build(q, "Not this one", "Use this adapter", pair_no_cb, pair_yes_cb);
     }
     ui_set_fmt(s_pair_left, "Nothing is saved unless you choose. %d s", left);
 }
@@ -781,15 +816,21 @@ static void settings_load(void)
 {
     ui_settings_t s, m;
     settings_defaults(&s_set);
-    if (!mosaico_settings_load(&s, sizeof s)) return;
-    int wifi = -1, ev = -1;
+    if (!mosaico_settings_load(&s, sizeof s)) {
+        ui_settings_v7_t s7;                             /* versions 5-7: the 16-app layout (ui_settings_logic.h) */
+        if (!mosaico_settings_load(&s7, sizeof s7)) return;
+        ocm_settings_from_v7(&s7, &s);
+    }
+    int wifi = -1, ev = -1, health = -1;
     for (int i = 0; i < ui_app_count(); i++) {
         if (!strcmp(ui_app(i)->id, "wifi")) wifi = i;
         if (!strcmp(ui_app(i)->id, "ev")) ev = i;
+        if (!strcmp(ui_app(i)->id, "health")) health = i;
     }
     /* version 5 -> 6: the Wi-Fi app goes in before Settings and every hidden app shows again; 6 -> 7: the E.V app goes
-       in after R.E.V (read once, then saved); invalid indices are dropped and apps added in a newer firmware are appended */
-    int r = ocm_settings_migrate(&s, &m, ui_app_count(), wifi, ev);
+       in after R.E.V; 7 -> 8: the Health app goes in after Board (read once, then saved); invalid indices are dropped
+       and apps added in a newer firmware are appended */
+    int r = ocm_settings_migrate(&s, &m, ui_app_count(), wifi, ev, health);
     if (r == OCM_SET_REJECT) return;
     if (m.widget >= W_COUNT) m.widget = W_KPL;
     if (m.theme > 2) m.theme = 0;
@@ -884,11 +925,13 @@ static lv_obj_t *grow(lv_obj_t *p) { lv_obj_t *g = flex_box(p, LV_FLEX_FLOW_ROW,
    on Drive, where the SYSTEM card and row 1 show the same numbers). Nothing is placed by pixel offsets next to text. ---------- */
 extern const lv_image_dsc_t ocm_logo_28, ocm_logo_160;
 static lv_obj_t *s_sb, *sb_row1, *sb_time, *sb_dcpu, *sb_dpwr, *sb_bt, *sb_wifi, *sb_batt_i, *sb_batt, *sb_pill, *sb_grp[4], *sb_val[4],
-                *s_banner, *s_banner_head, *s_banner_txt;
+                *s_banner, *s_banner_head, *s_banner_txt, *s_banner_open;
 enum { SB_HOME = 0, SB_DRIVE, SB_APP };
 static int s_sb_mode = -1;
 
 static bool s_banner_alarm;                            /* the banner shows a critical alarm */
+static int s_banner_page = -1;                         /* EdgeOS 2.1.0: the alarm is the Health monitor's: its page */
+static void open_app(int idx);
 static char s_banner_gone[64];                         /* the alarm cleared on the screen, until a snapshot shows it gone */
 static void banner_cb(lv_event_t *e)
 {
@@ -906,6 +949,11 @@ static void banner_cb(lv_event_t *e)
     STATUS_UNLOCK();
     s_banner_alarm = false;
     lv_obj_add_flag(s_banner, LV_OBJ_FLAG_HIDDEN);
+    int page = s_banner_page;
+    s_banner_page = -1;
+    if (page >= 0 && lv_event_get_code(e) == LV_EVENT_CLICKED)   /* a tap on a Health banner opens that page; a swipe only clears */
+        for (int i = 0; i < ui_app_count(); i++)
+            if (!strcmp(ui_app(i)->id, "health")) { ui_health_set_page(page); open_app(i); break; }
 }
 
 static void build_status_bar(void)
@@ -977,6 +1025,8 @@ static void build_status_bar(void)
     lv_obj_set_width(s_banner_txt, 372);
     lv_label_set_long_mode(s_banner_txt, LV_LABEL_LONG_WRAP);
     lv_obj_set_style_text_align(s_banner_txt, LV_TEXT_ALIGN_CENTER, 0);
+    s_banner_open = ui_pill(s_banner, "Open Health", UI_TEXT);   /* a Health alarm: the whole banner is the tap target */
+    lv_obj_add_flag(s_banner_open, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(s_banner, LV_OBJ_FLAG_HIDDEN);
     s_sb_mode = -1;
 }
@@ -1067,12 +1117,24 @@ static void refresh_status_bar(const ui_snap_t *s)
     uint32_t col = UI_WARN;
     /* floating banner: critical alarms, and the desktop pairing code (it must be read off the screen); prompts such as
        "No engine data yet" go into the Home smart card instead */
-    if (st->alarm_text[0] && st->alarm_critical && strcmp(st->alarm_text, s_banner_gone)) { txt = st->alarm_text; col = UI_RED; }
+    if (st->alarm_text[0] && st->alarm_critical && s->now_ms < st->alarm_until_ms && strcmp(st->alarm_text, s_banner_gone)) { txt = st->alarm_text; col = UI_RED; }
     else if (st->sys_popup[0] && s->now_ms < st->sys_popup_until_ms && !strncmp(st->sys_popup, "Desktop pairing code", 20)) { txt = st->sys_popup; col = UI_GREEN; }
     if (txt) {
         char head[EVENT_TEXT + 8];                         /* a popup text can be the whole headline */
         const char *detail;
         banner_split(txt, txt == st->alarm_text, head, sizeof head, &detail);
+        int hp = -1;
+#if CONFIG_OCM_AI_SVC
+        uint8_t sev = HS_CHECK;
+        if (txt == st->alarm_text) hp = health_mon_banner(txt, &sev);
+        if (hp >= 0) {                                     /* the plain headline under the severity in words */
+            snprintf(head, sizeof head, LV_SYMBOL_WARNING " %s", hs_sev_word(sev));
+            detail = txt;
+            col = sev >= HS_ACT ? UI_RED : UI_WARN;
+        }
+#endif
+        s_banner_page = hp;
+        show(s_banner_open, hp >= 0);
         ui_set_text(s_banner_head, head);
         ui_set_color(s_banner_head, col);
         ui_set_text(s_banner_txt, detail);
@@ -1081,6 +1143,7 @@ static void refresh_status_bar(const ui_snap_t *s)
             lv_obj_set_style_border_color(s_banner, lv_color_hex(col), 0);
     }
     show(s_banner, txt != NULL);
+    if (!txt) s_banner_page = -1;
     s_banner_alarm = txt == st->alarm_text;
     if (!st->alarm_text[0]) s_banner_gone[0] = 0;          /* the snapshot caught up with the clear */
 }
@@ -1146,9 +1209,9 @@ static void wall_task(void *arg)
 
 /* ---------- launcher (H): one tileview. Tile 0 = Home (smart card, dark clock tile, SYSTEM card, All apps, dots, End
    drive pill). Tiles 1..4 = the apps, four a page in a 2 x 2 grid of lifted cards ---------- */
-#define N_APP_PAGES 4
+#define N_APP_PAGES 5                    /* at most: 4 apps a page; EdgeOS 2.1.0 has 17 apps (Health), so 5 pages */
 static lv_obj_t *s_tv, *s_tiles[1 + N_APP_PAGES];
-static int s_ntiles, s_return_tile;
+static int s_ntiles, s_return_tile, s_npages = N_APP_PAGES;   /* s_npages: grid pages in use, (apps + 3) / 4 */
 static lv_obj_t *h_ctl, *h_lab, *h_tag, *h_val, *h_unit, *h_dot, *h_line, *h_ind[3], *h_noclock, *w_hand_h, *w_hand_m;
 static lv_obj_t *h_sub[4], *h_bar[3], *h_rv[4], *h_pw_note, *h_search, *h_pw_chart, *h_pw_area, *h_pw_dot, *h_card;
 static lv_chart_series_t *h_pw_ser, *h_pw_sera;
@@ -1260,7 +1323,8 @@ static void power_sheet_cb(lv_event_t *e)
     if (s_pw_n) snprintf(b, sizeof b, "last %d s: min %.2f  avg %.2f  max %.2f W", s_pw_n, (double)mn, (double)(sum / s_pw_n), (double)mxx);
     else snprintf(b, sizeof b, "no discharge measured in the last 60 s");
     ui_label(c, UI_THEME.f_label, UI_MUTED, b);
-    if (g->ok && g->tte_min > 0 && g->tte_min < 65535)
+    if (meas && g->ma >= 5) snprintf(b, sizeof b, "charging: the power into the cell");   /* not the board's draw */
+    else if (g->ok && g->tte_min > 0 && g->tte_min < 65535)
         snprintf(b, sizeof b, "gauge time to empty %d min%s", g->tte_min, mosaico_gauge_uncalibrated(g) ? " (gauge not configured for the cell)" : "");
     else snprintf(b, sizeof b, "gauge time to empty: not reported");
     lv_obj_t *tte = ui_label(c, UI_THEME.f_small, UI_MUTED, b);
@@ -1594,7 +1658,11 @@ static void refresh_home(const ui_snap_t *s)
     if (!s->gauge.ok) { ui_set_text(h_sub[3], ""); ui_set_text(h_pw_note, "gauge not read"); }
     else if (!meas) { ui_set_text(h_sub[3], "ON USB"); ui_set_text(h_pw_note, "not measured"); }
     else {
-        ui_set_fmt(h_sub[3], "%.2f V x %d mA", s->gauge.mv / 1000.0, abs(s->gauge.ma));   /* on the battery: volts and amps */
+        /* charging (USB): the gauge measures the current into the cell, so V x I is the charging power, not the board's
+           draw; "CHARGE 99 mA" fits the 150 px column at 16 px with its letter spacing ("CHARGING 12 mA" ran 6 px past it,
+           host textfit), "CHARGE 999 mA" is 1 px over (the 65 mAh cell's charger gives far less) */
+        if (s->gauge.ma >= 5) ui_set_fmt(h_sub[3], "CHARGE %d mA", s->gauge.ma);
+        else ui_set_fmt(h_sub[3], "%.2f V x %d mA", s->gauge.mv / 1000.0, abs(s->gauge.ma));   /* on the battery: volts and amps */
         pw_fill(h_pw_chart, h_pw_ser, h_pw_area, h_pw_sera, NULL);
         SI_MUT();
         if (s_pw_n) {                                      /* the dot on the newest point */
@@ -1612,18 +1680,42 @@ static void refresh_home(const ui_snap_t *s)
 }
 
 /* one apps page: title row, 2 x 2 lifted cards with a 100 px flat icon (radius 26, dark glyph) and an 18 px label */
+#if CONFIG_OCM_AI_SVC
+/* EdgeOS 2.1.0: a dot on the Health icon while an issue is active (amber check soon, red act now), hidden otherwise.
+   It follows health_mon_worst() once a second (health_dot_tick); a change marks that launcher page's picture stale. */
+static lv_obj_t *s_hdot;
+static int s_hdot_tile = -1, s_hdot_sev = -1;
+static void health_dot_make(lv_obj_t *icon, int tile)
+{
+    lv_obj_add_flag(icon, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
+    s_hdot = lv_obj_create(icon);
+    lv_obj_remove_style_all(s_hdot);
+    lv_obj_add_flag(s_hdot, LV_OBJ_FLAG_IGNORE_LAYOUT | LV_OBJ_FLAG_HIDDEN);
+    lv_obj_remove_flag(s_hdot, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_size(s_hdot, 26, 26);
+    lv_obj_set_style_radius(s_hdot, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_opa(s_hdot, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(s_hdot, 3, 0);
+    lv_obj_set_style_border_color(s_hdot, lv_color_hex(s_light ? 0xFFFFFF : 0x000000), 0);
+    lv_obj_align(s_hdot, LV_ALIGN_TOP_RIGHT, 0, 0);       /* on the icon's rounded corner, inside its cell */
+    s_hdot_tile = tile;
+    s_hdot_sev = -1;
+}
+static void health_dot_tick(void);
+#endif
+
 static void build_apps_page(lv_obj_t *t, int page, const int *apps, int n)
 {
     /* the default order (registry order, four a page): Drive AI Learning R.E.V | E.V Summary Live Fuel |
-       Brakes Trip Engine Faults | Board Files Wi-Fi Settings */
-    static const char *const TITLE[N_APP_PAGES] = {"DRIVE AND AI", "E.V AND CAR DATA", "TRIP AND FAULTS", "BOARD AND SETTINGS"};
+       Brakes Trip Engine Faults | Board Health Files Wi-Fi | Settings */
+    static const char *const TITLE[N_APP_PAGES] = {"DRIVE AND AI", "E.V AND CAR DATA", "TRIP AND FAULTS", "BOARD AND HEALTH", "SETTINGS"};
     lv_obj_t *col = page_col(t, 56, 10);
     lv_obj_t *r = flex_box(col, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, 0);
     lv_obj_set_size(r, LV_PCT(100), LV_SIZE_CONTENT);
     lv_obj_set_style_pad_hor(r, 8, 0);
     card_label(r, TITLE[page < N_APP_PAGES ? page : N_APP_PAGES - 1], HM);
     lv_obj_t *pl = ui_label(r, UI_THEME.f_small, HM, "");
-    ui_set_fmt(pl, "%d of %d", page + 1, N_APP_PAGES);
+    ui_set_fmt(pl, "%d of %d", page + 1, s_npages);
     lv_obj_t *grid = lv_obj_create(col);
     lv_obj_remove_style_all(grid);
     lv_obj_set_width(grid, LV_PCT(100));
@@ -1648,30 +1740,37 @@ static void build_apps_page(lv_obj_t *t, int page, const int *apps, int n)
         lv_obj_add_event_cb(cell, pf_cell_pressing_cb, LV_EVENT_PRESSING, NULL);
 #endif
         /* Tabler icon (A8, recoloured): dark = bright tile with a dark glyph, light = deeper tile with a white glyph */
+        lv_obj_t *ic;
         if (ui_app(app)->tile) {                          /* the app's own mark is the tile (98 px square, centred in the 100 px slot) */
-            lv_obj_t *box = flex_box(cell, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, 0);
+            lv_obj_t *box = ic = flex_box(cell, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, 0);
             lv_obj_set_size(box, 100, 100);
             lv_obj_t *mk = lv_image_create(box);
             lv_image_set_src(mk, ui_app(app)->tile);
         } else {
-            lv_obj_t *ic = ui_rect(cell, 0, 0, 100, 100, s_light ? ui_app(app)->icon_g1 : ui_app(app)->icon_bg, 26);
+            ic = ui_rect(cell, 0, 0, 100, 100, s_light ? ui_app(app)->icon_g1 : ui_app(app)->icon_bg, 26);
             lv_obj_t *gl = lv_image_create(ic);
             lv_image_set_src(gl, ui_app(app)->icon52);
             lv_obj_set_style_image_recolor(gl, lv_color_hex(s_light ? 0xFFFFFF : 0x0B0B0D), 0);
             lv_obj_set_style_image_recolor_opa(gl, LV_OPA_COVER, 0);
             lv_obj_center(gl);
         }
+#if CONFIG_OCM_AI_SVC
+        if (!strcmp(ui_app(app)->id, "health")) health_dot_make(ic, 1 + page);
+#endif
         ui_label(cell, UI_THEME.f_status, HT, ui_app(app)->name);
     }
     lv_obj_t *dr = flex_box(col, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, 0);
     lv_obj_set_size(dr, LV_PCT(100), 10);
-    page_dots(dr, 1 + page, 1 + N_APP_PAGES);
+    page_dots(dr, 1 + page, 1 + s_npages);
 }
 
 static void slide_attach(void);
 static void build_launcher(void)
 {
     lv_obj_clean(s_home);
+#if CONFIG_OCM_AI_SVC
+    s_hdot = NULL;                                     /* build_apps_page makes it again */
+#endif
     lv_obj_set_style_bg_color(s_home, lv_color_hex(0x000000), 0);
     lv_obj_set_style_bg_grad_dir(s_home, LV_GRAD_DIR_NONE, 0);
     s_wall_img = lv_image_create(s_home);              /* behind everything; the source is set when the wallpaper is ready */
@@ -1680,7 +1779,10 @@ static void build_launcher(void)
     if (s_wall_ready) lv_image_set_src(s_wall_img, &s_wall_dsc2[s_light]);
     lv_obj_set_style_bg_color(s_home, lv_color_hex(s_light ? 0xF3F1EC : 0x000000), 0);
     int shown[UI_MAX_APPS], n = home_order(shown);
-    s_ntiles = 1 + N_APP_PAGES;
+    s_npages = (n + 3) / 4;
+    if (s_npages < 1) s_npages = 1;
+    if (s_npages > N_APP_PAGES) s_npages = N_APP_PAGES;
+    s_ntiles = 1 + s_npages;
 #if CONFIG_OCM_UI_METRICS
     s_nicons = 0;
 #endif
@@ -1693,7 +1795,7 @@ static void build_launcher(void)
         lv_obj_remove_flag(s_tiles[t], LV_OBJ_FLAG_SCROLLABLE);
     }
     build_home_tile(s_tiles[0]);
-    for (int p = 0; p < N_APP_PAGES; p++) build_apps_page(s_tiles[1 + p], p, shown + p * 4, n - p * 4 > 0 ? n - p * 4 : 0);
+    for (int p = 0; p < s_npages; p++) build_apps_page(s_tiles[1 + p], p, shown + p * 4, n - p * 4 > 0 ? n - p * 4 : 0);
     if (s_return_tile >= s_ntiles) s_return_tile = 0;
     lv_tileview_set_tile_by_index(s_tv, (uint32_t)s_return_tile, 0, LV_ANIM_OFF);
     slide_attach();
@@ -2689,6 +2791,22 @@ static void stall_cb(void *arg)
         sys_reset(SYS_RESET_UI_STALL, "ui tick stalled");   /* quiesce, then abort for the core dump (os_core.h) */
     }
 }
+#if CONFIG_OCM_AI_SVC
+static void health_dot_tick(void)
+{
+    if (!s_hdot) return;
+    uint8_t w = health_mon_worst();
+    int sev = w >= HS_CHECK ? w : 0;
+    if (sev == s_hdot_sev) return;
+    s_hdot_sev = sev;
+    if (sev) {
+        lv_obj_set_style_bg_color(s_hdot, lv_color_hex(sev >= HS_ACT ? UI_THEME.bad : UI_THEME.warn), 0);
+        lv_obj_remove_flag(s_hdot, LV_OBJ_FLAG_HIDDEN);
+    } else lv_obj_add_flag(s_hdot, LV_OBJ_FLAG_HIDDEN);
+    if (s_hdot_tile > 0 && s_hdot_tile < 1 + N_APP_PAGES) s_tsnap_ok[s_hdot_tile] = false;   /* retaken on the next launcher visit */
+}
+#endif
+
 static void tick_cb(lv_timer_t *t)
 {
     (void)t;
@@ -2826,6 +2944,9 @@ static void tick_cb(lv_timer_t *t)
         }
 #if CONFIG_OCM_SWIPE_INTENT
         si_warm_tick();
+#endif
+#if CONFIG_OCM_AI_SVC
+        health_dot_tick();
 #endif
     }
     /* Home order moved in Settings: one launcher rebuild once the moves stopped, outside the job, finger up (the

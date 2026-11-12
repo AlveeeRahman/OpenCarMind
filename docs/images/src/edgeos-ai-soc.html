@@ -1,0 +1,150 @@
+<!doctype html>
+<!-- OpenCarMind EdgeOS figure: the battery charge (SoC) estimator, hand-drawn like edgeos-runlevels.html.
+     Render with docs/images/render.sh. Equations from main/bat_est_core.c (filter_step), sizes from main/bat_model.h
+     (41-point OCV table, placeholder parameters). Results from the battery study on the Mac: phase 1 and 2 gates
+     (EKF RMSE, wrong start, NASA cross-cell), phase 2 candidates (residual MLP 375 MAC-eq, 984 B) and phase 3
+     (residual MLP with simulated cells, 3-state EKF with a current-offset state). -->
+<html lang="en"><head><meta charset="utf-8"><title>Battery charge estimator</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Kalam:wght@400;700&family=Patrick+Hand&display=swap">
+<style>
+html, body { margin: 0; background: #FBF4E4; }
+svg { display: block; }
+</style></head><body>
+<svg id="fig" width="1200" height="1560" viewBox="0 0 1200 1560" xmlns="http://www.w3.org/2000/svg"></svg>
+<script src="edgeos-ai-draw.js"></script>
+<script>
+const W = 1200, H = 1560;
+seed = 20261114;
+const EQ = { size: 21 };
+
+function resistor(x0, y0, len, color) {            // a zigzag between (x0, y0) and (x0 + len, y0)
+  const p = [[x0, y0]], n = 6, a = 9, lead = len * 0.2, step = (len - 2 * lead) / n;
+  p.push([x0 + lead, y0]);
+  for (let i = 0; i < n; i++) p.push([x0 + lead + step * (i + 0.5), y0 + (i % 2 ? a : -a)]);
+  p.push([x0 + len - lead, y0], [x0 + len, y0]);
+  el('path', { d: 'M' + p.map(q => q.map(v => (v + jit(0.5)).toFixed(1)).join(',')).join(' L'), fill: 'none',
+    stroke: color, 'stroke-width': 2.4, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' });
+}
+
+function circuit(x, y) {                           // OCV(z) source, R0, then R1 parallel with C1
+  const top = y, bot = y + 150, col = C.ink;
+  el('circle', { cx: x + 30, cy: y + 75, r: 26, fill: C.card });
+  roughRect(x + 4, y + 49, 52, 52, 26, C.orange, { sw: 2.4, amp: 0.6 });
+  text(x + 30, y + 70, '+', { size: 20, color: C.orange, anchor: 'middle' });
+  text(x + 30, y + 92, '−', { size: 20, color: C.orange, anchor: 'middle' });
+  text(x + 64, y + 82, 'OCV(z)', { size: 19, color: C.orange });
+  roughLine([[x + 30, y + 49], [x + 30, top], [x + 80, top]], col, { arrow: false, sw: 2.2, bow: 0.002 });
+  resistor(x + 80, top, 90, C.blue);
+  text(x + 125, top - 16, 'R₀', { size: 21, color: C.blue, anchor: 'middle' });
+  roughLine([[x + 170, top], [x + 200, top]], col, { arrow: false, sw: 2.2, bow: 0 });
+  // parallel R1 and C1
+  roughLine([[x + 200, top - 34], [x + 200, top + 34]], col, { arrow: false, sw: 2.2, bow: 0 });
+  roughLine([[x + 200, top - 34], [x + 220, top - 34]], col, { arrow: false, sw: 2.2, bow: 0 });
+  resistor(x + 220, top - 34, 90, C.purple);
+  roughLine([[x + 310, top - 34], [x + 330, top - 34]], col, { arrow: false, sw: 2.2, bow: 0 });
+  text(x + 265, top - 52, 'R₁', { size: 21, color: C.purple, anchor: 'middle' });
+  roughLine([[x + 200, top + 34], [x + 258, top + 34]], col, { arrow: false, sw: 2.2, bow: 0 });
+  roughLine([[x + 258, top + 18], [x + 258, top + 50]], C.purple, { arrow: false, sw: 3, bow: 0 });
+  roughLine([[x + 272, top + 18], [x + 272, top + 50]], C.purple, { arrow: false, sw: 3, bow: 0 });
+  roughLine([[x + 272, top + 34], [x + 330, top + 34]], col, { arrow: false, sw: 2.2, bow: 0 });
+  text(x + 265, top + 74, 'C₁', { size: 21, color: C.purple, anchor: 'middle' });
+  roughLine([[x + 330, top - 34], [x + 330, top + 34]], col, { arrow: false, sw: 2.2, bow: 0 });
+  roughLine([[x + 330, top], [x + 380, top]], col, { arrow: false, sw: 2.2, bow: 0 });
+  el('circle', { cx: x + 384, cy: top, r: 5, fill: C.ink });
+  roughLine([[x + 30, y + 101], [x + 30, bot], [x + 380, bot]], col, { arrow: false, sw: 2.2, bow: 0.002 });
+  el('circle', { cx: x + 384, cy: bot, r: 5, fill: C.ink });
+  text(x + 398, top + 7, '+', { size: 22 });
+  text(x + 398, bot + 7, '−', { size: 22 });
+  text(x + 392, (top + bot) / 2 + 8, 'V', { font: TITLE, weight: 700, size: 24 });
+  text(x + 265, top + 104, 'v₁: the voltage on this pair', { size: 17, color: C.purple, anchor: 'middle' });
+}
+
+function draw() {
+  heading(W, 'How the battery charge estimator works',
+    'A two-state extended Kalman filter (EKF) on a one-RC model of the cell. Once a second it counts the charge, ' +
+    'predicts the voltage, and corrects its estimate by the gap between the predicted and the measured voltage.');
+  chip(60, 200, 'board', { label: 'on the board, with placeholder parameters' });
+  chip(470, 200, 'notship', { label: 'residual MLP and 3-state EKF: tested, not shipped' });
+
+  // ---- 1 gauge, 2 model ----
+  const r1 = 268, h1 = 300;
+  let y = card(1, 40, r1, 300, h1, C.orange, 'The gauge', 'Inputs');
+  y = bullet(66, y + 32, 'voltage V, current I and temperature T', 250, C.orange);
+  y = bullet(66, y + 28, 'the sample the board task already reads, so no new I2C traffic', 250, C.orange);
+  bullet(66, y + 28, 'read-only: the gauge is never written', 250, C.orange);
+  roughLine([[342, r1 + 150], [396, r1 + 150]], C.ink);
+
+  card(2, 400, r1, 760, h1, C.blue, 'The cell model: one RC pair', 'Physics');
+  circuit(440, r1 + 130);
+  let ey = r1 + 128;
+  eq(900, ey, 'V = OCV(z) + v_{1} + R_{0}·I');
+  ey = wrap(900, ey + 34, 'OCV(z): open-circuit voltage, a 41-point table over the charge z from 0 to 1', 236, 22, { size: 17.5 });
+  wrap(900, ey + 28, 'R₀: the instant drop. R₁ and C₁: the slow part, with time constant τ = R₁·C₁', 236, 22, { size: 17.5 });
+
+  // ---- 3 the filter ----
+  const r2 = 610, h2 = 440;
+  y = card(3, 40, r2, 1120, h2, C.purple, 'The filter, one step per second', 'Estimator: state x = [z, v₁], covariance P');
+  const L = 76, R = 640;
+  const step = (n, name, yy, color) => {
+    text(L, yy, `${n}`, { font: TITLE, weight: 700, size: 22, color });
+    text(L + 24, yy, name, { font: TITLE, weight: 700, size: 22, color });
+  };
+  let fy = y + 46;
+  step(1, 'Predict', fy, C.blue);
+  eq(L + 24, fy + 34, 'z^{−} = z + η·I·Δt / (3600·Q·SoH)');
+  eq(L + 24, fy + 66, 'v_{1}^{−} = a·v_{1} + (1 − a)·R_{1}·I,    a = exp(−Δt / τ)');
+  eq(L + 24, fy + 98, 'P^{−} = F·P·F^{T} + W,    F = diag(1, a)');
+  fy += 140;
+  step(2, 'Expect', fy, C.orange);
+  eq(L + 24, fy + 34, 'V̂ = OCV(z^{−}) + v_{1}^{−} + R_{0}·I,    H = [ dOCV/dz,  1 ]');
+  fy += 76;
+  step(3, 'Correct', fy, C.green);
+  eq(L + 24, fy + 34, 'K = P^{−}·H^{T} / (H·P^{−}·H^{T} + R)');
+  eq(L + 24, fy + 66, 'x = x^{−} + K·(V − V̂),    P = P^{−} − K·H·P^{−}');
+
+  roughLine([[R - 20, y + 24], [R - 20, r2 + h2 - 24]], C.rule, { arrow: false, sw: 1.6, bow: 0.002, dash: '3 8' });
+  let ky = y + 46;
+  text(R, ky, 'What the symbols are', { font: TITLE, weight: 700, size: 20, color: C.purple });
+  for (const s of ['z: state of charge, 0 to 1. v₁: the RC voltage',
+                   'I: current, positive while charging. Δt: seconds since the last step',
+                   'Q: capacity in Ah. η: charge efficiency. SoH scales Q as the cell ages',
+                   'W and R: how much the model and the voltage reading are trusted, tuned on data',
+                   'V − V̂: the innovation. K turns it into a correction of z and v₁']) {
+    ky = bullet(R, ky + 30, s, 480, C.purple, { size: 18, lh: 23 });
+  }
+  wrap(R, ky + 38, 'Anchors: after 300 s at rest, z = OCV⁻¹(V). At the end of a CV charge, z = 1. ' +
+    'Until the first anchor the Board page says "learning".', 480, 23, { size: 18, color: C.soft });
+
+  // ---- 4 branch tested, not shipped ----
+  const r3 = 1090, h3 = 230;
+  y = card(4, 40, r3, 1120, h3, C.soft, 'Tried on top of it, not shipped', 'Learned corrections', { dash: '10 7', fill: '#F7F1E4' });
+  chip(1140, r3 + 18, 'notship', { anchor: 'end', size: 16 });
+  let ly = y + 34;
+  wrap(66, ly, 'Residual MLP: 11 inputs (V, C-rate, T, the EKF\'s z, innovation and v₁, and slow averages), ' +
+    '12 tanh units, 1 output Δz added to z and clamped. In phase 2 it helped only in middle and late life. ' +
+    'In phase 3, trained with 120 simulated cells of random OCV shape, capacity, resistance and offset, ' +
+    'its confidence gate switched it off or it raised the worst error.', 520, 23, { size: 18 });
+  let by = y + 34;
+  wrap(620, by, 'EKF with a third state, the current offset: under a +0.01C offset the RMSE falls from 5.3 % to ' +
+    '0.27 to 0.79 %. On clean data the early-life worst case rises from 4.0 % to 7.5 %. It is kept for boards ' +
+    'whose measured offset is above about 0.003C (0.2 mA on 65 mAh), not as the default.', 520, 23, { size: 18 });
+
+  // ---- results ----
+  const r4 = 1360;
+  roughLine([[40, r4 - 16], [W - 40, r4 - 16]], C.rule, { arrow: false, sw: 1.6, bow: 0.002, dash: '3 8' });
+  text(60, r4 + 18, 'The shipped EKF on the Mac, against held-out data', { font: TITLE, weight: 700, size: 22 });
+  const rows = [
+    ['18650 NMC cycling set, held-out', 'RMSE 0.33 to 0.53 %, worst 2.4 to 4.0 %'],
+    ['Start 20 % wrong', 'EKF 0.75 to 2.0 %, coulomb counting 8.6 to 10.5 %'],
+    ['NASA cells, with the 18650 OCV curve', '7.9 to 21 %: the OCV curve is per cell, so it is fitted from this board\'s logs'],
+    ['Cost per step', '111 flops and 1 exp, 324 B of parameters'],
+  ];
+  rows.forEach(([a, b], i) => {
+    const yy = r4 + 54 + i * 32;
+    text(60, yy, a, { size: 19, color: C.purple });
+    text(420, yy, b, { size: 19 });
+  });
+}
+start(draw, W, H);
+</script>
+</body></html>

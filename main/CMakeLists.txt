@@ -4,6 +4,12 @@ if(ocm_target STREQUAL "esp32s31")
     set(ocm_board_srcs "mosaico_console.c" "mosaico_board.c" "mosaico_display.c" "mosaico_apps.c" "mosaico_files.c" "mosaico_drive.c" "mosaico_logos.c" "mosaico_icons.c")
     list(APPEND ocm_board_srcs "board_pins_safe.c")                # every unused GPIO in a safe state at boot (M1)
     list(APPEND ocm_board_srcs "os.c" "os_core.c")                 # the mossREV OS layer: sys_reset, runlevels, health (2.0.0)
+    list(APPEND ocm_board_srcs "ai_svc.c" "ai_svc_core.c")         # EdgeOS AI services: one worker, RTA admission (CONFIG_OCM_AI_SVC)
+    list(APPEND ocm_board_srcs "bat_est.c" "bat_est_core.c")       # AI service: battery SoC/SoH estimator (CONFIG_OCM_BAT_EST)
+    list(APPEND ocm_board_srcs "bat_soh.c")                        # its SoH regressor's charge features (2.1.0)
+    list(APPEND ocm_board_srcs "bat_anom.c" "bat_anom_core.c")     # AI service: battery anomaly detector (CONFIG_OCM_BAT_ANOM)
+    list(APPEND ocm_board_srcs "ids_svc.c" "ids_core.c")           # AI service: the network guard (CONFIG_OCM_IDS)
+    list(APPEND ocm_board_srcs "health_view.c" "health_text.c")    # the Health app's data and its plain words (2.1.0)
     set(ocm_board_reqs esp_driver_i2c wear_levelling esp_pm esp_psram spi_flash esp_mm)
     list(APPEND ocm_board_reqs app_update)                        # esp_ota_ops.h for the prepared A/B rollback (OCM_APP_ROLLBACK);
                                                                    # a CONFIG test cannot pick REQUIRES (IDF reads them first)
@@ -30,6 +36,9 @@ endif()
 set(ocm_pair_srcs "")
 if(CONFIG_OBD_BLE_PAIR_CONFIRM)                                     # "ask + strong signal" pairing (Kconfig)
     set(ocm_pair_srcs "obd_pair.c")
+    if(ocm_target STREQUAL "esp32s31")
+        list(APPEND ocm_pair_srcs "adapter_guard.c")               # pairing safety: fingerprint, no silent re-pair
+    endif()
 endif()
 
 idf_component_register(
@@ -73,6 +82,7 @@ idf_component_register(
 
 target_compile_definitions(${COMPONENT_LIB} PRIVATE CARMIND_VERSION="${PROJECT_VER}")
 if(ocm_target STREQUAL "esp32s31")
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE CARMIND_VERSION_HAS_NAME=1)   # "OpenCarMind EdgeOS 2.1.0" (version.h)
     # the RISC-V GCC flags snprintf("%s") copies whose length the code checks just before (custom_pids.c): warn, not fail
     target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-error=format-truncation)
     # swipe step e: a short page snap (LVGL clamps the scroll animation to 200..400 ms; lv_obj_scroll.c lets a build set it)

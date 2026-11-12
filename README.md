@@ -1,5 +1,5 @@
 <p align="center"><img src="docs/images/edgeos-banner.png" width="900" alt="OpenCarMind EdgeOS 2.0.0, new for the ESP-Mosaico: it decides what runs, when and how fast. A small operating-system layer for the ESP-Mosaico board. 2 models on one chip: CarMind R.E.V and E.V, switch in Settings, each admitted against its deadline. Measured on the board: boot health check rated good at 68 s, lowest free internal RAM 81 KB in any phase against a 60 KB target, model response 4.2 ms against a 1,000 ms deadline, 16 touch apps, a 128 MB NAND for the drive logs. On the board: boot health check, Wi-Fi held until healthy, internal RAM above 60 KB in every phase, battery protection. Firmware: Wi-Fi joined on the screen and used only for the clock, light and dark themes, the desktop app over USB, an alarm banner you clear with a tap or swipe, the graphics accelerator (PPA) on. Next: Active E.V, a model that learns more of your car, is in the works for the ESP-Mosaico."></p>
-<p align="center"><sub>New: <a href="#opencarmind-edgeos-200-esp-mosaico">OpenCarMind EdgeOS 2.0.0</a> for the ESP-Mosaico. Banner photo: Espressif Systems, CC BY-SA 4.0, so this banner image is shared under CC BY-SA 4.0 too. Screen: captured on the board.</sub></p>
+<p align="center"><sub>New: <a href="#opencarmind-edgeos-210-esp-mosaico">OpenCarMind EdgeOS 2.1.0</a> for the ESP-Mosaico, with a Health app. Banner photo: Espressif Systems, CC BY-SA 4.0, so this banner image is shared under CC BY-SA 4.0 too. Screen: captured on the board.</sub></p>
 
 <p align="center">
 <a href="https://github.com/AlveeeRahman/OpenCarMind/actions/workflows/ci.yml"><img src="https://github.com/AlveeeRahman/OpenCarMind/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
@@ -11,13 +11,13 @@
 
 > **This is the detailed branch.** It keeps every method, metric and result behind CarMind R.E.V: the explainable-AI analysis with Grad-CAM, the classifier correction, the learner fault tests and the meta-learner comparison, the edge-learning simulation, and the full ESP-Mosaico notes, from the first ESP32-S31 build to OpenCarMind EdgeOS 2.0.0. The short, easy-to-read README is on [`main`](https://github.com/AlveeeRahman/OpenCarMind/tree/main).
 
-OpenCarMind is an open-source OBD2 logger and dashboard for the ESP32, with a pruned, knowledge-distilled multi-task 1D CNN that adapts its read-out on the device. Its newest firmware, OpenCarMind EdgeOS 2.0.0, is an AI-first operating system for the chip. It runs on FreeRTOS's preemptive scheduler and treats every model as a soft real-time job with a deadline. A model is admitted only when every deadline on its core still holds, and when deadlines slip the board steps down in a fixed order (screen rate, then learning, then the model) so the drive log keeps running. OpenCarMind turns an ESP32 board and a Bluetooth OBD-II adapter into a car data logger that runs neural networks on the chip. It needs no phone, no account and no internet connection. Everything it records goes to the board's own storage (an SD card on the ESP32-S3 board, the 128 MB NAND on the ESP-Mosaico) and, if you pair the board, to the desktop app on your own computer.
+OpenCarMind is an open-source OBD2 logger and dashboard for the ESP32, with a pruned, knowledge-distilled multi-task 1D CNN that adapts its read-out on the device. Its newest firmware, OpenCarMind EdgeOS 2.1.0, is an AI-first operating system for the chip. It runs on FreeRTOS's preemptive scheduler and treats every model as a soft real-time job with a deadline. A model is admitted only when every deadline on its core still holds, and when deadlines slip the board steps down in a fixed order (screen rate, then learning, then the model) so the drive log keeps running. Version 2.1.0 adds AI services that estimate the battery's charge and health, check it for faults and guard Bluetooth and Wi-Fi, and a Health app that tells you in plain words what is wrong and what to do. OpenCarMind turns an ESP32 board and a Bluetooth OBD-II adapter into a car data logger that runs neural networks on the chip. It needs no phone, no account and no internet connection. Everything it records goes to the board's own storage (an SD card on the ESP32-S3 board, the 128 MB NAND on the ESP-Mosaico) and, if you pair the board, to the desktop app on your own computer.
 
 It ships two on-board models, and you choose between them in the desktop app. CarMind E.V is fixed and tested. CarMind R.E.V is my first model that keeps learning in your car. It uses on-device learning: the board itself updates part of the model from what your car reports while you drive, with no computer or cloud in the loop.
 
 Version 2.5.1. Licence: MIT. Website: <https://alveeerahman.github.io/OpenCarMind/>. Downloads for the firmware and the desktop app are on the [Releases page](https://github.com/AlveeeRahman/OpenCarMind/releases/latest).
 
-The same firmware also runs on Espressif's ESP-Mosaico touch-screen board. Its next version, [OpenCarMind EdgeOS 2.0.0](#opencarmind-edgeos-200-esp-mosaico), adds a small operating-system layer: a boot health check, refusals of risky changes while you drive, model admission by response-time analysis and battery protection. [User manuals](#user-manuals) for both boards are in [docs/manual](docs/manual).
+The same firmware also runs on Espressif's ESP-Mosaico touch-screen board. Its newest version, [OpenCarMind EdgeOS 2.1.0](#opencarmind-edgeos-210-esp-mosaico), adds a small operating-system layer (a boot health check, refusals of risky changes while you drive, model admission by response-time analysis and battery protection) and, [new in 2.1.0](#new-in-opencarmind-edgeos-210), AI services for the battery and the radios with a Health app to show them. [User manuals](#user-manuals) for both boards are in [docs/manual](docs/manual).
 
 ## Contents
 
@@ -54,16 +54,18 @@ The same firmware also runs on Espressif's ESP-Mosaico touch-screen board. Its n
 </ol>
 </li>
 <li><a href="#status">Status</a></li>
-<li><a href="#opencarmind-edgeos-200-esp-mosaico">OpenCarMind EdgeOS 2.0.0 (ESP-Mosaico)</a>
+<li><a href="#opencarmind-edgeos-210-esp-mosaico">OpenCarMind EdgeOS 2.1.0 (ESP-Mosaico)</a>
 <ol type="A">
 <li><a href="#what-it-is">What it is</a></li>
 <li><a href="#the-parts-and-why-each-exists">The parts and why each exists</a></li>
 <li><a href="#services-and-runlevels">Services and runlevels</a></li>
 <li><a href="#model-admission-by-response-time-analysis">Model admission by response-time analysis</a></li>
 <li><a href="#scheduler-budgets-per-core">Scheduler budgets per core</a></li>
+<li><a href="#ai-services-in-opencarmind-edgeos">AI services in OpenCarMind EdgeOS</a></li>
 <li><a href="#what-it-costs">What it costs</a></li>
 <li><a href="#what-you-see-on-the-board">What you see on the board</a></li>
 <li><a href="#changes-after-the-board-check">Changes after the board check</a></li>
+<li><a href="#pairing-safety-built-not-yet-checked-on-the-board">Pairing safety (built, not yet checked on the board)</a></li>
 <li><a href="#flash-it-or-go-back-to-mossrev-120">Flash it, or go back to mossREV 1.2.0</a></li>
 <li><a href="#prepared-but-off-ab-rollback-and-the-battery-as-a-ups">Prepared but off: A/B rollback and the battery as a UPS</a></li>
 <li><a href="#what-is-verified-on-the-board">What is verified on the board</a></li>
@@ -120,6 +122,7 @@ Renders, not photos, with example values. Left: page 5 with E.V. Middle: page 5 
 - **Dark and light screen themes**, switched by time of day or fixed in a settings file.
 - **A soft real-time scheduler** that times every job against its deadline and restarts the board if a step hangs.
 - **Optional Wi-Fi, for the clock only**: one HTTPS request to one time server, with its certificate checked. The default is a public server, and you can choose your own in the desktop app. Drives reach your computer over the USB cable while the Wi-Fi upload is reworked (see [Limitations and future work](#limitations-and-future-work)).
+- **On the ESP-Mosaico, a Health app** (OpenCarMind EdgeOS 2.1.0): the battery's charge and health, a battery fault check and a guard for Bluetooth and Wi-Fi, each explained in plain words with what to do.
 - **A desktop app** for Windows, macOS and Linux that receives the drives, charts them, shows fuel and economy per drive, switches the on-board model, takes your fill-ups, and lists every value the car reported, including what the screen has no room for (odometer, oil temperature, hybrid battery and more on newer cars).
 
 ## Local-first
@@ -257,6 +260,7 @@ Settings, SD card files, the Wi-Fi list and the CSV columns are in [docs/CONFIGU
 Two user manuals for drivers and test users, each as Markdown here and as a page on the website:
 
 - [OpenCarMind 2.5.1 on the ESP32-S3 board](docs/manual/esp32-s3.md) ([web page](https://alveeerahman.github.io/OpenCarMind/manual/esp32-s3.html)): the five pages, the BOOT button, the two models, Wi-Fi for the clock and the desktop app.
+- [OpenCarMind EdgeOS 2.1.0 on the ESP-Mosaico](docs/manual/edgeos-2.1.0.md): everything in 2.0.0 plus the Health app, the pairing questions and the new messages.
 - [OpenCarMind EdgeOS 2.0.0 on the ESP-Mosaico](docs/manual/edgeos-2.0.0.md) ([web page](https://alveeerahman.github.io/OpenCarMind/manual/edgeos-2.0.0.html)): the 16 apps, Settings, Wi-Fi, the two models, the health check and every message the board shows.
 
 Both come from one source each in [docs/manual/src](docs/manual/src), built by [docs/manual/build.py](docs/manual/build.py).
@@ -365,8 +369,8 @@ Each window was labelled from the raw OBD signals, independently of the model: s
 | Method | What it shows |
 |---|---|
 | Grad-CAM<sup>[[11]](#ref-11)</sup> | Takes the last convolutional block's output (32 channels × 5 one-second steps), weights each channel by the average gradient of the target score and sums the channels. That gives how much each second pushed the decision. The target here is the braking score minus the cruising score. |
-| Guided Grad-CAM | Multiplies Grad-CAM by guided backpropagation<sup>[[21]](#ref-21),[[22]](#ref-22)</sup>, the descendant of the deconvnet ("reverse convolution") that maps a decision back onto the input. It passes only positive gradients back through each ReLU, which gives a map of input signal × second. |
-| Linear probe on the embedding<sup>[[23]](#ref-23)</sup> | Fits a logistic regression on the 64-value embedding that both heads read, to test whether a concept such as "foot on the gas" is present in it. PCA and t-SNE<sup>[[24]](#ref-24)</sup> draw the embedding in 2-D for viewing only. Distances in t-SNE are not to scale. |
+| Guided Grad-CAM | Multiplies Grad-CAM by guided backpropagation<sup>[[29]](#ref-29),[[30]](#ref-30)</sup>, the descendant of the deconvnet ("reverse convolution") that maps a decision back onto the input. It passes only positive gradients back through each ReLU, which gives a map of input signal × second. |
+| Linear probe on the embedding<sup>[[31]](#ref-31)</sup> | Fits a logistic regression on the 64-value embedding that both heads read, to test whether a concept such as "foot on the gas" is present in it. PCA and t-SNE<sup>[[32]](#ref-32)</sup> draw the embedding in 2-D for viewing only. Distances in t-SNE are not to scale. |
 
 <p align="center"><img src="docs/images/rev-embedding.png" width="900" alt="R.E.V's 64-value embedding drawn with PCA and t-SNE, factory head against final head on the same points. Accelerating, braking and foot-on-gas cruising sit in separate regions. With the factory head 811 of 2,023 labelled windows are wrong, 759 of them cruising called braking; with the final head 91 are wrong, 28 of them cruising called braking"></p>
 
@@ -408,7 +412,7 @@ R.E.V started as a smaller E.V that learns. These steps, each checked before the
 4. **A corrected classifier head.** 126 bytes of the model changed, with the trunk and the estimate head left alone, so what R.E.V already learned in a car stays valid. Held-out drives: 78.3 % → 95.1 % of labelled windows right.
 5. **Fault injection on the learner.** I replayed the drives through the firmware's own learner code with bad labels mixed in. Eight implausible labels out of 898 stopped all learning for the drive, or pushed the read-out most of the way to its drift limit. On 31 public test cars, 1 % bad labels left the learned estimate worse than no learning.
 6. **An outlier-robust learner.** Huber weights on a running error scale, hard rejection and a label cap, from robust recursive least squares<sup>[[10]](#ref-10)</sup>. The same drive replayed through the new code: all 8 bad labels rejected, 10 refits, drift 0.22.
-7. **Checked against meta-learning.** I compared it with two open-source meta-learners from the learn2learn library<sup>[[25]](#ref-25)</sup>, ANIL<sup>[[26]](#ref-26)</sup> and Meta-SGD<sup>[[27]](#ref-27)</sup>, meta-trained on other VED cars to adapt the same fuel head, on the same frozen trunk and the same 31 test cars. The 2.5.1 learner came out ahead, so it ships in 2.5.1:
+7. **Checked against meta-learning.** I compared it with two open-source meta-learners from the learn2learn library<sup>[[33]](#ref-33)</sup>, ANIL<sup>[[34]](#ref-34)</sup> and Meta-SGD<sup>[[35]](#ref-35)</sup>, meta-trained on other VED cars to adapt the same fuel head, on the same frozen trunk and the same 31 test cars. The 2.5.1 learner came out ahead, so it ships in 2.5.1:
 
 | Fuel learner, airflow hidden | Fuel R², clean labels | Fuel R², 1 % bad labels | Cars more than 10 % worse than no learning (clean / bad) |
 |---|---|---|---|
@@ -467,23 +471,52 @@ I have driven the board with the drive-end, power-off, fuel economy and units fe
 
 What has not been checked: R.E.V over many drives and other cars (its wider learning results come from [replay on a computer](#carmind-rev-results-so-far) and that synthetic drive), the corrected R.E.V on the road, the HTTPS clock against a real time server on the board, CarMind E.V on the road (it was flashed after that drive), other boards, any adapter other than the LELink, and what the screens do on a board without a panel. The checks that need a car or a card are listed in [docs/FIELD_CHECKS.md](docs/FIELD_CHECKS.md), with empty result tables for you to fill in.
 
-## OpenCarMind EdgeOS 2.0.0 (ESP-Mosaico)
+<a id="opencarmind-edgeos-200-esp-mosaico"></a>
+
+## OpenCarMind EdgeOS 2.1.0 (ESP-Mosaico)
 
 <p align="center"><img src="docs/images/edgeos.gif" width="900" alt="Animated, OpenCarMind EdgeOS 2.0.0 on the ESP-Mosaico in six steps: a layer of rules on top of FreeRTOS, under the models and apps. Boot health check: each part checked once after a start, health good at 68.0 s, safe mode with Wi-Fi held if bad. Wi-Fi held until healthy: no radio at boot, released at 68.0 s with 131,975 B of internal RAM free. Model admission: CarMind R.E.V answers in 4.2 ms against a 1,000 ms deadline and is admitted with a margin of 995.8 ms, and a model that would miss its deadline is refused. Parked or Driving: during a drive a model switch, the clock and a format are refused because a drive is running, while the model keeps running. Degradation ladder, in a forced test with extra load: UI slowed at 110.6 s, learner paused at 122.6 s, model paused at 134.6 s, back to normal at 348.6 s, and the model is never swapped. Battery protection, in a board test at lowered limits: hot at 34.2 C sheds load, cooled at 33.7 C restores it, and over-voltage at 4188 mV saves the logs and stops. Internal RAM stays above 60 KB in every phase, lowest about 81 KB"></p>
 
 <p align="center"><img src="docs/images/mosaico-rev.png" width="900" alt="OpenCarMind EdgeOS 2.0.0 on the ESP-Mosaico, rendered from the 2.0.0 screen code with example values: three 480 by 480 screens in the dark, light and dark themes. Drive at 64 km/h and 2350 rpm with the AI seeing Cruising 87 % sure, brake 6.3 bar, torque 85 N m and fuel 4.1 L/h, and the tank at 46 %, about 310 km. AI with the four class bars and its estimates. Learning with 14 updates kept, the air constant, a 50 L tank from 3 fill-ups and the model card"></p>
 
-OpenCarMind also runs on Espressif's ESP-Mosaico<sup>[[12]](#ref-12)</sup>, an ESP32-S31 board with a 480 × 480 AMOLED touch screen, 32 MB of PSRAM and a 128 MB NAND for the drive logs. Up to version 1.2.0 that build was called mossREV. Version 2.0.0 is called OpenCarMind EdgeOS 2.0.0, or Edge OS for short. It is not related to Ubiquiti's EdgeOS router software.
+### New in OpenCarMind EdgeOS 2.1.0
 
-Edge OS comes from the same source tree as the S3 version and keeps everything mossREV 1.2.0 has: both models (CarMind R.E.V, the default on a new board, and CarMind E.V, each re-quantized for the S31), the 16 apps on the touch screen with Wi-Fi search and join, a light and a dark theme, and per-drive event logs. What 2.0.0 adds is a small operating-system layer, described below. The image above is rendered on a computer from the 2.0.0 screen code (`tests/host/uishot`, the same LVGL code the board runs) with example values. It is not a photo of the board. The OS layer does not change the S3 build. Up to 4aeff43, every byte the S3 chip loads was the same as in the mossREV 1.2.0 tree. The pairing change merged after the board check is behind one switch, `CONFIG_OBD_BLE_PAIR_CONFIRM`, which is off for the S3 by default. With it off, the S3 image built from this source equals the 4aeff43 S3 image except the build time, the ELF SHA-256 and the image's checksum and hash (see [Changes after the board check](#changes-after-the-board-check)).
+Version 2.1.0 adds small AI services that look after the board itself, and a Health app that tells you about them in plain words.
 
-Edge OS 2.0.0 has been through most of its board check, on build 4aeff43. The soak and a few parts are still open, and four changes merged after the check have not been on a board yet. Until those are done, mossREV 1.2.0 stays the Mosaico release. The [status table](#what-is-verified-on-the-board) at the end of this section says what the board showed.
+- **Health app.** Three pages: Battery, Guard and AI. Each page opens with one card that gives a colour and a word ("Check soon" or "Act now"), what is wrong, what it means and what to do. The header counts the open issues, a dot on the Health icon shows that something needs a look, and a banner with **Open Health** appears when a new issue starts. While you drive, a "check soon" issue is only logged.
+- **Battery charge and health.** An extended Kalman filter on a one-RC cell model gives the charge. Health comes from a count from full charge to cutoff, or from a small regression on parts of a charge, because a board on the car's USB rarely runs flat. The board learns your cell from its first 10 charges.
+- **Battery fault check.** A small autoencoder learns what normal looks like for your cell over its first 24 hours. When 60 s of readings stop looking normal it raises an alarm, and the card names the likely reason, for example "warms up more than usual" or "loses charge while resting". It never cuts power by itself.
+- **Network guard.** An unsupervised detector watches for floods of new Bluetooth addresses and rotating Wi-Fi access points. For its first 2 hours in a place it only learns and blocks nothing. After that a block only does safe things: no new adapter offers, the scan narrows to your paired adapter, and the Wi-Fi time round is skipped. It never cuts your adapter during a drive, and you can switch blocking off in Settings.
+- **Pairing safety.** The board keeps a fingerprint of your adapter and asks you before it pairs again or uses an adapter that behaves differently. It also refuses a Wi-Fi time that jumps more than 24 hours ahead or 10 minutes back.
+- **Services that stay out of the way.** All of them share one worker task below the screen, the models and the OBD poll, and the same response-time check that admits the models admits them. When the board is busy, they are the first thing it slows.
 
-The full guide is [docs/MOSAICO.md](docs/MOSAICO.md): the hardware, flashing, every app, the two models, Smart swipe and Smart UI, the storage, the NAND, the OS layer and the known limits. The [Edge OS user manual](docs/manual/edgeos-2.0.0.md) explains every screen and message for a driver.
+<p align="center">
+<img src="docs/images/mosaico/health-battery-dark.png" width="290" alt="Health app, Battery page, captured on the board: a blue Learning card says Learning your battery, needs 10 more full charges to judge its health, now and then run it low and charge it full. The header says All good.">
+<img src="docs/images/mosaico/health-guard-dark.png" width="290" alt="Health app, Guard page, captured on the board: the network guard is learning this place in its first 2 hours and blocks nothing yet.">
+<img src="docs/images/mosaico/health-ai-dark.png" width="290" alt="Health app, AI page, captured on the board: every AI feature on time.">
+</p>
+<p align="center"><sub>The Health app on the board, OpenCarMind EdgeOS 2.1.0, in its real state after a fresh start: the battery still learning, the guard learning the place, every AI feature on time.</sub></p>
+
+<p align="center">
+<img src="docs/images/mosaico/health-issue-heat-dark.png" width="290" alt="Health app, Battery page with a red Act now card: Battery warms up more than usual, it runs warmer than its load explains, let it cool and keep it out of the sun. The header says 1 thing to check.">
+<img src="docs/images/mosaico/health-issue-worn-light.png" width="290" alt="Health app in the light theme, Battery page with an amber Check soon card: Battery is wearing out, holds 76 % of its rated charge and runs shorter on battery, plan to replace the cell.">
+<img src="docs/images/mosaico/health-banner-dark.png" width="290" alt="An amber banner over the launcher says the battery is wearing out, with an Open Health button, and a dot sits on the Health icon.">
+</p>
+<p align="center"><sub>Issue cards and the banner on the board. A test build wrote each state into the Health screen only, so the battery and its gauge were never touched.</sub></p>
+
+Checked on the board with the release build 81017a5: boot health good at 68.8 s, the battery estimator, the fault check and the guard all admitted (worst-case response 5.00 ms against a 1,000 ms deadline), a 614 s soak with 0 crashes, 0 screen misses and 0 AI misses, internal RAM never below 78,003 B, and the button-free download door working from the new build. Still to check in real use: pairing your own adapter, a drive, a run on battery with USB unplugged (the first charge and health readings), and a car park for the guard's first 2 hours. The worn, fault, block and changed-adapter cards have only been shown by the test build so far.
+
+OpenCarMind also runs on Espressif's ESP-Mosaico<sup>[[12]](#ref-12)</sup>, an ESP32-S31 board with a 480 × 480 AMOLED touch screen, 32 MB of PSRAM and a 128 MB NAND for the drive logs. Up to version 1.2.0 that build was called mossREV. Version 2.0.0 is called OpenCarMind EdgeOS 2.0.0. It is not related to Ubiquiti's EdgeOS router software.
+
+OpenCarMind EdgeOS comes from the same source tree as the S3 version and keeps everything mossREV 1.2.0 has: both models (CarMind R.E.V, the default on a new board, and CarMind E.V, each re-quantized for the S31), the 16 apps on the touch screen with Wi-Fi search and join, a light and a dark theme, and per-drive event logs. What 2.0.0 adds is a small operating-system layer, described below. The image above is rendered on a computer from the 2.0.0 screen code (`tests/host/uishot`, the same LVGL code the board runs) with example values. It is not a photo of the board. The OS layer does not change the S3 build. Up to 4aeff43, every byte the S3 chip loads was the same as in the mossREV 1.2.0 tree. The pairing change merged after the board check is behind one switch, `CONFIG_OBD_BLE_PAIR_CONFIRM`, which is off for the S3 by default. With it off, the S3 image built from this source equals the 4aeff43 S3 image except the build time, the ELF SHA-256 and the image's checksum and hash (see [Changes after the board check](#changes-after-the-board-check)).
+
+OpenCarMind EdgeOS 2.0.0 finished its board check, including a 10-minute soak, and 2.1.0 passed the checks listed above. The Releases page has no Mosaico download yet, so you build it from this repository with the steps in [docs/MOSAICO.md](docs/MOSAICO.md). The [status table](#what-is-verified-on-the-board) at the end of this section says what the board showed.
+
+The full guide is [docs/MOSAICO.md](docs/MOSAICO.md): the hardware, flashing, every app, the two models, Smart swipe and Smart UI, the storage, the NAND, the OS layer and the known limits. The [OpenCarMind EdgeOS user manual](docs/manual/edgeos-2.1.0.md) explains every screen and message for a driver.
 
 ### What it is
 
-Edge OS is not a new kernel. FreeRTOS, as ESP-IDF 6.1 ships it, still schedules the tasks on the S31's two cores. Edge OS is a set of rules on top of it that decide what may run, when and how fast, and what happens when something goes wrong. It adds no task of its own. Its code runs inside the tasks that already exist: the board task every 2 s, the screen task, the USB door and the scheduler monitor.
+OpenCarMind EdgeOS is not a new kernel. FreeRTOS, as ESP-IDF 6.1 ships it, still schedules the tasks on the S31's two cores. The OS is a set of rules on top of it that decide what may run, when and how fast, and what happens when something goes wrong. It adds no task of its own. Its code runs inside the tasks that already exist: the board task every 2 s, the screen task, the USB door and the scheduler monitor.
 
 The rules live in one plain C file, `main/os_core.c`, with no ESP-IDF calls in it, so the host tests on a computer check every rule. `main/os.c` connects the rules to the firmware. Files that the S3 build shares call the OS through macros in `main/os_hooks.h`, which turn back into the old S3 statement on the same line. That is how the OS layer leaves the S3 image as it was.
 
@@ -495,7 +528,8 @@ The rules live in one plain C file, `main/os_core.c`, with no ESP-IDF calls in i
 | Runlevels | Boot, Safe, Parked, Driving, Saving and Update. Several can hold at once, and a service runs only if every active runlevel allows it. | In the middle of a drive, a model switch would mix two models' answers in one log, a clock change would break its timestamps, and a format would erase the drive being written. The board refuses them in one place and says why. |
 | Boot health check | About 65 s after a start the board rates itself good, degraded or bad from the model self-test, the flash FAT check, the NAND, the first screen update, the touch controller and the scheduler's misses, stalls and response times. | It gives you one line to read on the Board page. It is also the signal an A/B rollback needs to keep or reject a new image. |
 | Model admission | A model loads only if response-time analysis says every job on its core still meets its deadline (see [below](#model-admission-by-response-time-analysis)). | A model that is too slow would make the OBD poll or the learner miss deadlines. The check refuses it before it loads, and the old model stays. |
-| Degradation ladder | When the model misses deadlines, the board steps down: the screen refreshes every 33 ms instead of 16 ms, then the R.E.V learner pauses, then the model's inference pauses. A minute without misses steps back up. | Screen frames and learning are worth less than the log and the model during a drive, so they go first. The ladder never swaps models. |
+| Degradation ladder | When the model misses deadlines, the board steps down: first the AI services slow to a tenth of their rate with their learned heads off (new, being checked on the board), then the screen refreshes every 33 ms instead of 16 ms and the AI services pause, then the R.E.V learner pauses, then the model's inference pauses. A minute without misses steps back up, in reverse order. Misses of the screen or the AI services alone reach the first rung only. | Estimates such as the battery SoC, screen frames and learning are worth less than the log and the model during a drive, so they go first. The ladder never swaps models. |
+| AI services | Small periodic AI jobs, the battery SoC and SoH estimator first, in one worker task below the screen and the models, admitted by the same response-time analysis (see [below](#ai-services-in-opencarmind-edgeos)). On build 13757fd the board admitted the worker on core 1 with R 2.00 ms. The estimates are being checked. | More small models are coming, a Bluetooth and Wi-Fi intrusion detector next. Each one gets a deadline, a CPU budget and a place on the ladder, instead of its own task and its own rules. |
 | Battery protection | Every 2 s it reads the gauge's voltage, current and temperature. At 45 °C on USB it sheds load, at 60 °C it stops safely, and at 4.25 V or more it reports a charger fault and stops. | The TP4057 charger has no enable pin and no thermistor input, and its supply comes from USB through diodes. The firmware cannot stop charging, so it watches and stops cleanly instead. The thresholds are placeholders until the cell's datasheet is known. |
 | Wi-Fi boot hold | No Wi-Fi starts at boot. The automatic start waits for the health verdict and goes ahead on good or degraded. Your own start in the Wi-Fi app is never held. | On mossREV 1.2.0 rc3 the boot window was the internal-RAM low point, 57.7 KB free while the Wi-Fi driver started (measured on the board). |
 | One reset path | Every reset the firmware asks for goes through `sys_reset(reason)`: mark it as asked for, flush and lock the flash FAT and the NAND, then reset. The screen stall guard and the hung-job restart skip the mark, so three of them in a row still start safe mode. | A reset between a sector's erase and its write had torn the FAT and lost the whole volume twice on the bench, before the storage fixes. Now no asked-for reset skips the flush. |
@@ -549,11 +583,188 @@ Every timed job registers a period T and a deadline D with the scheduler monitor
 
 The screen job's 7.8 ms is wall time from the start of a run to its end, and 4.98 ms is the CPU the screen task used in it. The difference is time the task waited for other tasks on core 0. The response-time analysis counts only registered jobs, so it reports 4.98 ms for `ui`. The board task (every 2 s), the Wi-Fi task and the scheduler monitor run on core 0 outside the job table.
 
+<a id="ai-services-and-the-battery-estimator"></a>
+
+### AI services in OpenCarMind EdgeOS
+
+OpenCarMind EdgeOS runs its small AI models as services. Since 2.1.0 there are three: the battery estimator, which gives the cell's state of charge (SoC) and state of health (SoH, now with the partial-charge regressor), the battery anomaly detector, and a network guard for Bluetooth and Wi-Fi. The Health app shows all three in plain words. Each of its pages opens with one status card: a colour, an icon and a word (Good, Learning, Check soon, Act now), a headline such as "Battery is wearing out", what it means and what to do. The header counts the issues ("All good", "1 thing to check"), a new issue raises the banner with Open Health, and the Health icon on Home gets an amber or red dot. The scores and counters stay below the card for experts. All services share one worker task at FreeRTOS priority 1, below the screen, the R.E.V learner, the model and the OBD poll, so any of those can preempt a service at any instruction. The worker is admitted by the same response-time analysis as the models. On build 13757fd the board admitted it on core 1 with a worst-case response of 2.00 ms against a 1,000 ms deadline, and the battery estimator's self-test took 570 µs of its 2 ms budget.
+
+A service reads copies of its inputs and writes its results without a lock, so it cannot hold up the jobs above it. No service acts on power, and none cuts the car link during a drive. When the model misses deadlines, the AI services are the first thing the board slows. On 13757fd the boot health check rated the board good at 68.9 s and released Wi-Fi with 130,623 B of internal RAM free. The estimates themselves, the new ladder rung and the pairing rules are built and being checked on the board now.
+
+<p align="center"><img src="docs/images/edgeos-ai-services.png" width="900" alt="Where the AI services run, hand-drawn. Step 1, who preempts whom, FreeRTOS fixed priorities: obd_poll 5, the ml model 3, the ui screen 2 on core 0, the R.E.V learner 2, the AI worker 1, on core 1 on build 13757fd with R 2.00 ms, then idle. Step 2, the worker's release table, deadline-monotonic: bat_est for battery charge and health, T 1 s, D 1 s, budget 2 ms, self-test 570 microseconds, on the board. ids, the network intrusion detector, T 5 s, D 1 s, about 60 integer ops, shadow mode first, validated on the Mac, firmware service next. Future services plug in as one table entry each, with no new task. Admission treats the worker as one job with C the sum of the budgets, T the shortest period and D the shortest deadline. Step 3, in: snapshots of the gauge's V, I and T and the radio counters, one writer and a seqlock, so a reader never waits. One service step takes no mutex, waits on no queue, does no I/O and allocates nothing. Step 4, out: a lock-free result struct the screen reads, and log rows into a ring the board task writes to the NAND. The ladder when the model misses deadlines: 1, AI services slowed to a tenth of their rate with learned heads off, new in this build and being checked on the board. 2, UI slowed to 33 ms and AI services paused. 3, learner paused. 4, model paused, while the drive log keeps running. An overrun finishes and skips its next release. Board, build 13757fd: boot health good at 68.9 s, worker admitted on core 1 with R 2.00 ms and a 998 ms margin, battery self-test 570 microseconds, Wi-Fi released with 130,623 B free."></p>
+
+| Model | What it does | Cost per step | Status |
+|---|---|---|---|
+| Battery charge (SoC): extended Kalman filter on a one-RC cell model | counts the charge and corrects it with the voltage, once a second | 111 flops and 1 exp, 324 B | on the board with placeholder parameters. Self-test checked on 13757fd, estimates being checked |
+| Battery health (SoH): counted capacity and resistance trend | capacity between two charge anchors, and a DC resistance flag | a few ops, inside the charge estimator | on the board, being checked |
+| Battery health: partial-charge regressor | SoH from the shape of a deep charge, with no full count | 8 multiply-adds and 16 ops, 100 B | in the firmware since 2.1.0 (C matches the Mac to 1.3e-7). Needs 10 deep charges of this cell to learn its reference, so not yet seen working on the board |
+| Battery anomaly detector | an alarm when 60 s windows stop looking normal for this cell. The Health card names the feature with the largest error in plain words, for example "warms up more than usual" | under 400 ops a window, 920 B | in the firmware since 2.1.0 (1.05e-6 against the Mac). Admitted on the board, in its 24 h warm-up |
+| Network intrusion detector: rotation detector | scores each 5 s of Bluetooth and Wi-Fi traffic for address-rotation floods | about 60 integer ops, 552 B per head | in the firmware since 2.1.0 as the network guard (bit-exact against the Mac). Admitted on the board, in its 2 h shadow |
+| Pairing rules R1, R2 and R6 | adapter fingerprint, no silent re-pair, clock jump guard ([Pairing safety](#pairing-safety-built-not-yet-checked-on-the-board)) | one compare per link or clock sync, 48 B in NVS | on the board, being checked |
+| Residual MLP, 3-state EKF, neural ECM, KalmanNet-lite, pure MLP, general IDS learners | learned replacements or corrections | | tested, not shipped (see the last dropdown) |
+
+<details>
+<summary><b>For experts: how the battery charge estimator works</b> (figure, equations, test results)</summary>
+
+<p align="center"><img src="docs/images/edgeos-ai-soc.png" width="900" alt="How the battery charge estimator works, hand-drawn. On the board with placeholder parameters. The gauge gives voltage V, current I and temperature T from the sample the board task already reads, with no new I2C traffic, and the gauge is never written. The cell model is one RC pair: an open-circuit voltage source OCV(z), a series resistance R0, then R1 in parallel with C1, so V equals OCV(z) plus v1 plus R0 times I. OCV is a 41-point table over the charge z from 0 to 1, and tau equals R1 times C1. The filter runs one step per second on the state z and v1 with covariance P. Predict: z minus equals z plus eta I delta t over 3600 Q SoH, v1 minus equals a v1 plus 1 minus a times R1 I with a equal to exp of minus delta t over tau, P minus equals F P F transpose plus W with F equal to diag 1, a. Expect: V hat equals OCV of z minus plus v1 minus plus R0 I, with H equal to dOCV/dz and 1. Correct: K equals P minus H transpose over H P minus H transpose plus R, x equals x minus plus K times V minus V hat, P equals P minus minus K H P minus. Anchors: after 300 s at rest z equals the inverse OCV of V, and at the end of a CV charge z equals 1. Tried on top of it and not shipped: a residual MLP with 11 inputs, 12 tanh units and one clamped output, and an EKF with a third state for the current offset. Results on the Mac: on the 18650 NMC cycling set RMSE 0.33 to 0.53 percent and worst 2.4 to 4.0 percent. Start 20 percent wrong: EKF 0.75 to 2.0 percent, coulomb counting 8.6 to 10.5 percent. NASA cells with the 18650 OCV curve: 7.9 to 21 percent. Cost 111 flops and 1 exp, 324 B."></p>
+
+The cell is modelled as a voltage source that depends on the charge, OCV(z), in series with a resistance R₀ and one resistor-capacitor pair R₁ ∥ C₁. R₀ gives the instant drop when current flows. The RC pair gives the slow part, with time constant τ = R₁C₁. The filter keeps two states, the charge z (0 to 1) and the voltage v₁ on the RC pair, and a 2 × 2 covariance P that says how sure it is of them. Plett laid out this use of the extended Kalman filter for battery management systems<sup>[[21]](#ref-21)</sup>.
+
+Every second it predicts. It counts the charge and lets the RC voltage decay towards its new level:
+
+$$z_k^- = z_{k-1} + \frac{\eta\, I_k\, \Delta t}{3600\, Q\, \mathrm{SoH}}, \qquad v_{1,k}^- = a\, v_{1,k-1} + (1 - a)\, R_1 I_k, \qquad a = e^{-\Delta t/\tau}$$
+
+Here I is the current in amps (positive while charging), Δt the seconds since the last step, Q the capacity in Ah, η the charge efficiency, and SoH the share of the capacity the cell still has. The covariance grows by the process noise W: P⁻ = F P Fᵀ + W, with F = diag(1, a).
+
+Then it predicts the terminal voltage and compares it with the gauge:
+
+$$\hat V_k = \mathrm{OCV}(z_k^-) + v_{1,k}^- + R_0 I_k, \qquad H_k = \left[\, \frac{d\,\mathrm{OCV}}{dz}\bigg|_{z_k^-} ,\quad 1 \,\right]$$
+
+The gap V − V̂ is the innovation. The Kalman gain K decides how much of it goes into each state:
+
+$$K_k = \frac{P_k^- H_k^{\top}}{H_k P_k^- H_k^{\top} + R}, \qquad x_k = x_k^- + K_k \left(V_k - \hat V_k\right), \qquad P_k = P_k^- - K_k H_k P_k^-$$
+
+R is the variance of the voltage reading. Where the OCV curve is steep, the voltage says a lot about z, and the filter follows it. Where the curve is flat, dOCV/dz is small, K shrinks, and the filter trusts the charge count. That is how a wrong start fixes itself: with the start 20 % off, the EKF's error stayed at 0.75 to 2.0 % RMSE, where plain coulomb counting stayed at 8.6 to 10.5 %.
+
+Two anchors reset the charge outright. After 300 s at rest the voltage is the OCV, so z = OCV⁻¹(V). At the end of a CV charge, z = 1. Until the first anchor the Board page says "learning". Two anchors at least 30 % of charge apart give a capacity sample for the health estimate.
+
+In the firmware (`main/bat_est.c`, math in `main/bat_est_core.c`, model in `main/bat_model.h`) the step matches the Mac reference to within 1.1e-6 over 370 test steps (`make -C tests/host bat BAT_MODEL=<fitted header>`). It reads the gauge sample the board task already takes every 2 s, so there is no new I2C traffic, and the gauge is never written. The learnt values and the last SoC go to NVS at most every 10 minutes and on the safe-shutdown path. Every 10 s a training row (V, I, average I, T, the gauge's SoC and remaining capacity, the estimator's SoC, SoH and mode) goes to `obd/bat/bNNNNNN.csv` on the NAND, at most 2 MB in all, oldest file first out. Those rows are what the cell's own OCV curve will be fitted from. Until then the firmware runs placeholder parameters for a 4.2 V cell, and the nominal capacity is `CONFIG_OCM_BAT_NOMINAL_MAH`, 65 mAh from the cell's label (UNVERIFIED).
+
+Tested on the Mac, held out from fitting:
+
+| Test | 2-state EKF (shipped) | For comparison |
+|---|---|---|
+| An 18650 NMC cycling data set, held-out early, middle and late life | RMSE 0.33 to 0.53 %, worst 2.4 to 4.0 % | |
+| Start 20 % wrong | RMSE 0.75 to 2.0 % | coulomb counting 8.6 to 10.5 % |
+| NASA cells<sup>[[26]](#ref-26)</sup>, with the 18650 cell's OCV curve | RMSE 7.9 to 21 % | the OCV curve is specific to the cell, so it has to come from this board's logs |
+| Current offset of +0.01C (0.65 mA on 65 mAh) | RMSE 5.3 % | the 3-state EKF: 0.27 to 0.79 % |
+| Cost per step | 111 flops and 1 exp, 324 B | |
+
+I checked where the EKF's remaining error comes from. It is a slow drift of about ±0.3 % from counting charge, and it does not sit at the low-charge knee, in the CV taper or with heat. An unscented Kalman filter<sup>[[22]](#ref-22)</sup> with one or two RC pairs gave the same RMSE. Neither the linearisation nor the model order is the limit. The biggest risk is a current offset, which the 3-state EKF in the last dropdown is kept ready for.
+
+</details>
+
+<details>
+<summary><b>For experts: how the battery health estimate works</b> (figure, features, test results)</summary>
+
+<p align="center"><img src="docs/images/edgeos-ai-soh.png" width="900" alt="How the battery health estimate works, hand-drawn. State of health is the capacity the cell still holds as a share of its label capacity. Card 1, counted capacity, on the board: two anchors at least 30 percent of charge apart give one capacity sample, and SoH equals the learnt capacity over the label capacity. A full charge counted to the cutoff: 0.12 percent error on the 18650 set and 1.2 percent on the NASA cells. Card 2, DC resistance trend, on the board: a current step gives the DC resistance over 120 s, with r of minus 0.88 against capacity, used as a flag, and 6.42 percent off as an SoH estimate on its own. Card 3, partial-charge regressor, validated on the Mac: features from an ordinary charge relative to the cell's first 10 cycles, the charge added between 3.9 and 4.1 V, dQ/dV peak height and position, CV duration and taper constant, DC resistance over 120 s and mean temperature. Ridge regression, 8 multiply-adds and 16 ops, 100 B, picked by forward cross-validation over a GBDT and an 8-unit MLP. Held-out cycles: on the 18650 set the ridge 1.45 percent, the DCIR trend 6.42 percent, the full-charge count 0.08 percent with a full cycle. On the NASA discharge-only cells the ridge 13.9 to 25.0 percent and the DCIR trend 8.5 to 19.2 percent."></p>
+
+SoH is the capacity the cell still holds divided by its label capacity. The board gets it two ways.
+
+The firmware counts it. Two anchors (a rest, or the end of a CV charge) at least 30 % of charge apart give one sample: the charge counted between them divided by the change in z. A full charge counted down to the cutoff was off by 0.12 % on the 18650 set and by 1.2 % on the NASA cells. Current steps also give a DC resistance (DCIR) over 120 s. It rises as the cell fades (r = −0.88 against capacity on the 18650 set), but as an SoH estimate on its own it is off by 6.42 %, so the board uses it as a flag.
+
+A count from full to the cutoff needs the board to run its cell flat, which a board on the car's USB rarely does. So I trained a regressor on what an ordinary charge shows. Its features are taken relative to the cell's first 10 cycles: the charge added between 3.9 and 4.1 V, the height and position of the dQ/dV peak (the charge added per volt of rise), the CV duration and its taper constant, the DCIR over 120 s and the mean temperature. Ridge regression won the forward cross-validation (0.83 % against 1.96 % for a tree ensemble (GBDT) and 20 % for an 8-unit MLP). It costs 8 multiply-adds and 16 ops, in 100 B.
+
+| Held-out cycles, forward in time (MAPE) | Partial-charge ridge | DCIR trend | Full-charge count |
+|---|---|---|---|
+| 18650 NMC cycling set | 1.45 % | 6.42 % | 0.08 %, needs a full cycle |
+| NASA cells<sup>[[26]](#ref-26)</sup>, discharge only | 13.9 to 25.0 % | 8.5 to 19.2 % | not compared |
+
+The regressor passes on the cell it learned and does not transfer to cells it never saw charge. It needs the board's own first charges as its reference. The plan is the count when there is a full cycle and the regressor otherwise. The regressor is trained and tested on the Mac, not in the firmware yet.
+
+</details>
+
+<details>
+<summary><b>For experts: how the battery anomaly detector works</b> (figure, features, fault tests)</summary>
+
+<p align="center"><img src="docs/images/edgeos-ai-anomaly.png" width="900" alt="How the battery anomaly detector works, hand-drawn. Validated on the Mac, not in the firmware yet. Card 1, every 60 s, 9 features from the EKF and the gauge: innovation mean and RMS as slow averages, voltage drift and current at rest, temperature against a one-node heat model, voltage sag per C-rate against R0 at that temperature, the DC resistance ratio at a current step, load level and gauge read glitches. Card 2, three detectors: a 9-4-9 tanh autoencoder raises the alarm from its reconstruction error, a z-score with a frugal median and MAD and an online Gaussian are diagnostics only. False alarms on 388 h of held-out normal data: autoencoder 0.0026 per hour with a 95 percent upper bound of 0.012, z-score 0.245 and Gaussian 0.126, which drift with ageing. Card 3: a 24 h warm-up, learning only from clearly normal windows, an alarm after 3 windows in a row, a banner and a log line, and it never acts on power. Under 400 ops per window, 280 B of state and 640 B of parameters. Injected faults caught and median time: resistance plus 100 percent 92 percent in 72 min, temperature plus 15 C 83 percent in 164 min, soft short 5 percent per hour 75 percent in 176 min, resistance plus 30 percent 25 percent, soft short 0.5 percent per hour 8 percent, current offset 8 percent, intermittent reads 0 to 8 percent, temperature plus 5 C, current gain error and extra drain 0 percent."></p>
+
+The detector learns what normal looks like for this cell and raises an alarm when 60 s windows stop looking like it. Nobody labels a fault for it. Each window has 9 features from the EKF and the gauge: the innovation's mean and RMS as slow averages, the voltage drift and the current at rest, the temperature against a one-node heat model, the voltage sag per C-rate against R₀ at that temperature, the DC resistance ratio at a current step, the load level and the gauge's read glitches.
+
+Three detectors ran side by side. One is a z-score against a frugal streaming median and MAD<sup>[[25]](#ref-25)</sup>, one an online Gaussian, and one a 9 → 4 → 9 tanh autoencoder whose score is its reconstruction error. All three warm up for 24 h, learn only from clearly normal windows, and alarm after 3 windows in a row. On 388 h of held-out normal data the autoencoder gave 0.0026 false alarms per hour (95 % upper bound 0.012). The z-score gave 0.245 per hour and the Gaussian 0.126, because the cell's ageing moved them. So only the autoencoder raises alarms, and the other two only log.
+
+| Injected fault | Caught | Median time to the alarm |
+|---|---|---|
+| Resistance +100 % | 92 % | 72 min |
+| Temperature +15 °C | 83 % | 164 min |
+| Soft short, 5 % of capacity per hour | 75 % | 176 min |
+| Resistance +30 % | 25 % | |
+| Soft short, 0.5 % per hour | 8 % | |
+| Current offset | 8 % | |
+| Intermittent reads | 0 to 8 % | |
+| Temperature +5 °C, current gain error, extra drain | 0 % | |
+
+It catches large faults only. The thresholds were learned on public cell data, so they have to be learned again on the board's own cell before an alarm means anything there. An alarm shows a banner and writes a log line. It never acts on power: the fixed battery protection above stays in charge of that. The cost is under 400 ops a window, with 280 B of state and 640 B of parameters. It is trained and tested on the Mac, not in the firmware yet.
+
+</details>
+
+<details>
+<summary><b>For experts: how the network intrusion detector works</b> (figure, rules, attack tests)</summary>
+
+<p align="center"><img src="docs/images/edgeos-ai-ids.png" width="900" alt="How the network intrusion detector works, hand-drawn. Rotation detector validated on the Mac, rules R1, R2 and R6 on the board. Card 1, radio callbacks: BLE adverts and link events, Wi-Fi round events, counters and three 1,024-bit bitmaps per head, no locks and no allocation. Card 2, the scan head every 5 s window: three features that measure rotation, not crowd size: single-use new transmitters, churn and adverts per address. Score: a frugal streaming median m and MAD per feature, m moves by eta times s times the sign of x minus m, z equals x minus m over 1.4826 MAD, one-sided, plus a fixed prior of 15 or more single-use new transmitters in one window. Block when 3 of the last 6 windows exceed, learning only from clean windows with clamped medians, after a 2 h shadow. Below it, the link head for relay timing is advisory only, the Wi-Fi head looks for floods of rotating access-point addresses with the fixed prior only, and the fixed rules on the board are R1 adapter fingerprint, R2 no silent re-pair and R6 clock jump guard. Step 6, a block does only safe, reversible steps: no pairing offers or re-pair requests, the scan narrowed to the paired adapter, the Wi-Fi round aborted with the current time kept, rows kept out of the learner, lifted 10 min after the last bad window or from the banner. It never cuts the paired adapter while driving, transmits, or pairs on its own. On the Mac: 0 false blocks in 446 h of BLE adverts, 2 times 120 h of a crowd shift and 769 h of Wi-Fi traffic. Advert floods at 100 ms and 20 ms 80 of 80, the stealthy 500 ms flood 71 of 80, a slow poisoning ramp blocked at 4.9 adverts per second, Wi-Fi floods with rotating access-point addresses 15 of 15. Cost 40 B of state and 512 B of bitmaps per head, about 60 integer ops a window. A stealthy flood inside a crowd of 150 or more devices was not caught."></p>
+
+The detector looks for a transmitter that changes its address on almost every advert, which is how Bluetooth spam floods and prompt-spam tools look. Each radio callback only sets bits and adds to counters. Every 5 s the IDS service turns three 1,024-bit bitmaps (seen this window, seen twice, seen last window) into three features:
+
+- single-use new: transmitters seen once that were not there in the last window,
+- churn: the share of transmitters that are new,
+- adverts per address, which falls towards 1 in a flood.
+
+A crowd of real phones repeats inside a window and keeps each address for minutes, so these features stay low in a busy car park. A raw count of adverts would not.
+
+For each feature the board keeps a frugal streaming median m and median absolute deviation (MAD)<sup>[[25]](#ref-25)</sup>. After each window the median moves one small step towards the new value, m ← m + η·s·sign(x − m), where η is the step and s the feature's scale. Over time m settles where half the values lie above it, and it costs one number per feature. The MAD follows the same rule on |x − m|. Scoring is one-sided, z = (x − m) / (1.4826·MAD), so only more rotation counts. With the factor 1.4826 the MAD equals the standard deviation for Gaussian data. A fixed prior adds that 15 or more single-use new transmitters in one window is a flood whatever the board has learned. A block starts when 3 of the last 6 windows exceed. The first 2 h are a shadow that learns and never blocks. After that the baseline learns only from clean windows, and its medians are clamped, so a slow poisoner cannot drag them into flood territory.
+
+A block only stops what the board would do on its own. It offers no new adapter and asks for no re-pair, narrows the scan to the paired adapter, aborts the Wi-Fi clock round with the current time kept, and keeps the rows out of the learner. The block lifts 10 minutes after the last bad window, and you can clear it from the banner. It never cuts the paired adapter while you drive, never transmits, and never pairs on its own. Cloned adapters, silent re-pairs and clock jumps are left to the fixed rules R1, R2 and R6 in [Pairing safety](#pairing-safety-built-not-yet-checked-on-the-board). A link head that watches for relay delay is advisory only: it marks rows unverified and blocks nothing.
+
+The data: a public BLE scanner data set, used for local testing only (nothing fitted on it ships), the UJI Probes<sup>[[27]](#ref-27)</sup> and IPIN2021<sup>[[28]](#ref-28)</sup> Wi-Fi probe-request captures, and a synthetic crowd of 5 to 300 devices for the busy car park. Attacks were injected into them.
+
+| Test on the Mac | Result |
+|---|---|
+| False blocks on normal traffic | 0 in 446 h of BLE adverts, 0 in 2 × 120 h of a crowd shift, 0 in 769 h of Wi-Fi management traffic. Target ≤ 0.05 per hour |
+| Advert floods at 100 ms and 20 ms | 80 / 80 each, blocked 10 to 15 s after the start |
+| Stealthy flood at 500 ms | 71 / 80. Inside a synthetic crowd of 150 or more devices: 0 / 15 |
+| Slow poisoning, 0 to 50 adverts per second over 6 h | blocked at 4.9 adverts per second, and the block held at full rate |
+| Wi-Fi floods of fake access points with rotating addresses | 15 / 15 on both captures |
+| Cost | 40 B of state and 512 B of bitmaps per head, about 60 integer ops a window |
+
+On the Mac the detector is bit-exact against its Python reference on 21,601 test windows. It is not in the firmware yet. Its service row is ready (T 5 s, D 1 s), and it will start in shadow mode, logging and never blocking, until a week of logs from real car parks shows its false-block rate on the board.
+
+</details>
+
+<details>
+<summary><b>For experts: why the AI services meet their deadlines and cannot deadlock</b> (the scheduling argument)</summary>
+
+The AI services are soft real-time jobs. A late result is worth less, never dangerous, so a miss is counted and fed to the ladder, never fatal.
+
+Each service is one table entry with a period T, a relative deadline D ≤ T, a CPU budget C and four hooks (`main/ai_svc.c`, rules in `main/ai_svc_core.c`). Inside the worker, a release table picks the due service with the shortest deadline first (deadline-monotonic order), and a step runs to its end. One worker instead of one task per service saves a stack and a scheduler slot per service. The cost is that one service can wait for one step of another, and the admission covers that. The worker is analysed as one job:
+
+$$C_w = \sum_{s} C_s, \qquad T_w = \min_{s} T_s, \qquad D_w = \min_{s} D_s$$
+
+and its response R<sub>w</sub> comes from the same response-time analysis as the models<sup>[[5]](#ref-5)</sup>, with every measured job above it on that core. If R<sub>w</sub> ≤ D<sub>w</sub>, every service is released at most once inside any window of length R<sub>w</sub>, so the sum of the budgets bounds all the work the worker can face, waiting for another service included. On 13757fd that gave R 2.00 ms on core 1, a margin of 998 ms. Admission runs when the boot health verdict is formed, about 65 s after a start, once the scheduler monitor has measured the other jobs, on the core with the lower measured load first. A service whose self-test takes longer than its budget is refused on its own. If both cores refuse the worker, the board runs without AI services and the Board page says why. In safe mode they stay off.
+
+Overruns do not pile up. A step that runs past its budget may finish, and that service's next release is skipped. A worker that comes back late runs only the newest release and counts the older ones as skipped. No job ever waits in a queue behind another, so overload cannot build a backlog. `make -C tests/host ai` simulates the release table under overload (a step 3.5 periods long, budget overruns, a blocked worker) and checks that no service ever has more than one job outstanding, and that the ladder sheds in the order AI services, screen, learner, model, and comes back in reverse.
+
+The worker cannot deadlock either. A deadlock needs a cycle of tasks, each holding something the next one waits for. A service step takes no mutex, waits on no queue, does no I/O and allocates nothing. Its input is a copy of the latest sample in a single-writer seqlock: the reader retries a torn copy at most four times, then keeps the last good one, and never waits. Its result goes out the same way, and the screen reads it without a lock. Rows for storage go into a single-producer, single-consumer ring that drops and counts when full. The board task drains it, since it already owns NVS and the file writes. The only lock on a step's path is the scheduler monitor's spinlock, held for a few field copies and never nested. So the worker never holds one resource while it waits for another, and the cycle cannot form through it.
+
+On the Board page, the AI SERVICES card shows each service's period, deadline, budget, runs, misses, skips and worst response.
+
+</details>
+
+<details>
+<summary><b>For experts: the models we tested and did not ship</b> (what each was for, and why it lost)</summary>
+
+| Model | What it tried | Result on the Mac | Why it is not shipped |
+|---|---|---|---|
+| Residual MLP, phase 2 (10 → 12 tanh → 1, 375 multiply-add equivalents, 984 B) | learn the EKF's remaining SoC error | RMSE 0.49 % middle and 0.21 % late life against the EKF's 0.53 and 0.33 %, but a worst error of 6.49 % on the forward test against 3.96 %, and NASA 12.1 % against 12.9 % | better in some places, worse in others. The gate was to beat the EKF everywhere |
+| Residual MLP, phase 3 (11 → 12 tanh → 1, trained with 120 simulated cells of random OCV shape, capacity, resistance and offset, with a confidence gate) | make the correction hold on other cells | the gate switched it off, or it raised the worst error | it did not pass |
+| EKF with a third state for the current offset | cancel a current-sensor offset | under +0.01C offset, RMSE 5.3 % down to 0.27 to 0.79 %. On clean data the early-life worst error rose from 4.0 % to 7.5 % | kept for boards whose measured offset is above about 0.003C (0.2 mA on 65 mAh), not the default |
+| UKF with one or two RC pairs<sup>[[22]](#ref-22)</sup> | a better nonlinear filter | the same RMSE as the EKF, a higher worst error (5.8 % against 2.5 % in middle life), 360 against 90 multiply-add equivalents | linearisation was not the limit |
+| Neural ECM | a network in place of the cell's voltage map | 62 % RMSE on the NASA cells | it learned one cell's voltage map |
+| Pure MLP | SoC straight from V, I and T | 32 % on the NASA cells, worst 10.8 % early in life, and no recovery from a wrong start | no physics to fall back on |
+| KalmanNet-lite, a small KalmanNet<sup>[[23]](#ref-23)</sup> | a learned Kalman gain | worse than the EKF everywhere, for example 3.51 % RMSE early in life against 0.45 %, after a short training run | it lost on every test |
+| SoH: GBDT and an 8-unit MLP | other SoH regressors | 1.96 % and 20 % MAPE in forward cross-validation, against 0.83 % for ridge | ridge was better and smaller |
+| Battery anomaly: z-score and online Gaussian as alarms | simple baselines | 0.245 and 0.126 false alarms per hour on normal data, against a target of 0.05 | ageing moved them. They only log |
+| IDS: z-score on all six features, diagonal Gaussian, Mahalanobis, online k-means, Half-Space Trees<sup>[[24]](#ref-24)</sup>, a tiny autoencoder | learn normal traffic, block anything unusual | 0.10 to 0.16 false blocks per hour on stable data (the autoencoder 0.009). After a move from a quiet place to a busy one, stuck blocking 33 to 100 % of the time | they learned the crowd's size, and the guard against poisoning froze them in the new place |
+| IDS: paired-adapter signal strength as a clone detector | spot a second transmitter on the paired address | 0 / 60 clones found at z = 6 | the public data has no fixed transmitter, so it could not answer. Clones stay with rule R1 |
+
+The two studies came out opposite ways. For the intrusion detector, the general learners failed and a baseline built for one pattern, address rotation, passed. For the battery anomaly detector, the simple baselines failed on ageing drift and the autoencoder passed.
+
+</details>
+
 ### What it costs
 
 Measured with `idf.py size` on the S31 build of the release (920318e, the firmware in main), against mossREV 1.2.0 rc3 (8b0b96f):
 
-| | Edge OS 2.0.0 | mossREV 1.2.0 rc3 | Change |
+| | OpenCarMind EdgeOS 2.0.0 | mossREV 1.2.0 rc3 | Change |
 |---|---|---|---|
 | App image | 4,778,560 B, 76.0 % of the 6 MB app slot (24 % free) | 4,752,720 B | +25,840 B |
 | Static internal RAM (DIRAM) | 194,198 B of 503,744 B (38.6 %) | 192,124 B | +2,074 B: PPA and 2D-DMA +2,380 B (mostly IRAM code), the pairing change +184 B, the OS parts and fixes +100 B, the feature gate −590 B |
@@ -562,7 +773,7 @@ Measured with `idf.py size` on the S31 build of the release (920318e, the firmwa
 
 At 09ec8f5 the graphics work had added 37,312 B to the app image and the OS parts together about 9 KB. The 16 px text floor later saved 24,304 B by dropping the 12 and 14 px fonts, so the release is 25,840 B larger overall. With the UPS option switched on, the deep-sleep path alone would add about 12 KB of IRAM, which is one reason that option stays off.
 
-The target for internal RAM at run time is more than 60 KB free in every phase. This was measured on the board, EdgeOS 2.0.0 4aeff43, with a debug build of that code that adds a RAM monitor. Each figure is the lowest free internal RAM in that phase, all internal heaps added up:
+The target for internal RAM at run time is more than 60 KB free in every phase. This was measured on the board, OpenCarMind EdgeOS 2.0.0 4aeff43, with a debug build of that code that adds a RAM monitor. Each figure is the lowest free internal RAM in that phase, all internal heaps added up:
 
 | Phase | Lowest free internal RAM |
 |---|---|
@@ -589,7 +800,7 @@ Before 4aeff43, the Board page's "lowest" read 32 KB too low. A photo showed 49 
 - The ladder and the battery write events such as "Model deadlines: UI slowed", with the miss count, or "Battery hot (45.0 C on USB): load shed".
 - The Board page's battery card shows the current, "on USB" or "on battery", the gauge temperature, and "uncalibrated" with the cycle count until the gauge is set up for the 65 mAh cell.
 
-The [user manual](docs/manual/edgeos-2.0.0.md#os) lists every message with what to do about it.
+The [user manual](docs/manual/edgeos-2.1.0.md#os) lists every message with what to do about it.
 
 ### Changes after the board check
 
@@ -599,6 +810,18 @@ Four changes were merged after the board check, at 06ddf1d. Each is built and ho
 - **Driving starts only when the car's computer answers.** The same neighbour's adapter kept putting the board into Driving for short spells, a median of about 4 s and at most 14 s, because connect attempts counted as Driving. Now the board is Driving only once the car's computer answers and rows are logged. Searching, connecting and an adapter in a parked car with the engine off keep it Parked.
 - **Model names on the screen.** The model's file shows as "ev-frozen" for E.V and "active-estimator" for R.E.V, where the screen showed a 12-character hash before. The hash stays in the logs, the session files and the USB door.
 - **No text smaller than 16 px.** The screen used 12 px and 14 px text in places. NHTSA's driver-interface guidance (DOT HS 812 360)<sup>[[14]](#ref-14)</sup>, following ISO 15008, asks for capital letters of at least 16 arcminutes for urgent text and 12 arcminutes for the rest, with 20 arcminutes as the best size. On this 2.16 inch, 480 × 480 screen, 16 px text has capitals about 1 mm tall. At about 65 cm from your eyes, that is about 5 arcminutes. So 16 px is the smallest size the screen uses, and even that is small for a driver. That is why the Drive screen and the alarm banner keep a few big items. The alarm banner's headline is now 32 px. The Board page now scrolls.
+
+<a id="pairing-safety-built-not-yet-checked-on-the-board"></a>
+
+### Pairing safety
+
+The saved adapter used to be known by its Bluetooth address alone. A device that copies that address could connect with no question, and the Bluetooth stack paired it again by itself when it claimed to have lost its key. Three rules close that on the Mosaico. The S3 build does not change.
+
+- **Adapter fingerprint.** On the first link after you say yes to an adapter, the board saves a fingerprint in NVS. It is one 32-bit hash each for the address type, the advertised name, service UUIDs and maker id, the serial line it uses, and the ATI and AT@1 replies. The car's protocol is kept too, as a soft field. The VIN is not part of it. No raw reply is stored or logged, only an 8-digit hash id. On every later link the board compares. A match changes nothing. A difference keeps the drive logged, marks it `"adapter_check": {"result": "changed"}` in its session file, and gives the R.E.V learner and the pattern model none of its rows. When parked, the board asks "This adapter looks different. Use it?" Use it saves the new fingerprint. Not this one drops the link and leaves the saved adapter alone for 10 minutes. While driving the link is never cut, and the question waits until you park. Fields that change on their own are left out or compared only when both sides have them: the signal, the advert flags, the bytes after the maker id, which packet kind carried a field (advert or scan response), case and spaces in the replies, and a missing AT@1 reply. A different protocol alone (the adapter moved to another car) is noted, not counted as a change.
+- **No silent re-pair.** In ESP-IDF 6.1 the NimBLE stack starts a new pairing by itself when the adapter refuses the saved key (`BLE_RESTART_PAIR` is fixed at 1 in `esp_nimble_cfg.h`), and the `BLE_GAP_EVENT_REPEAT_PAIRING` event the old code handled never reaches a central. So the board copies the saved key when the link comes up and compares it after encryption. A new key is a re-pair. When parked, the board holds the link with no data and asks "The adapter asks to pair again. Allow?" Allow keeps the new key. Don't allow, or no answer in 30 s, puts the old key back, drops the link and waits 10 minutes. While driving, the board puts the old key back, keeps the link, marks the rows and logs "Re-pair refused (driving)". The event handler follows the same table. The session file counts the events.
+- **Clock jump guard.** When the clock came from Wi-Fi, a new network time more than 24 hours ahead or more than 10 minutes behind is refused, and the events say "Clock sync refused: N min ahead" (or behind). A clock set by hand, an estimated clock and no clock at all are not guarded. The 2026 to 2099 range check stays.
+
+`make -C tests/host guard` checks the fingerprint, both decision tables and the question, and audits the glue in the sources. `make -C tests/host clock` checks the jump guard. Pairing with a real LELink has not been checked on this board yet.
 
 ### Flash it, or go back to mossREV 1.2.0
 
@@ -617,9 +840,9 @@ Two parts are built into 2.0.0 and switched off by default.
 
 ### What is verified on the board
 
-Two board passes ran. The first on EdgeOS 2.0.0 4aeff43 (SHA-256 `a225125d27f3906c...`), the second on 06ddf1d, which adds the pairing change, the 16 px text and the model names (merged image SHA-256 `4cc402a76a53edc2...`). The release image in this branch is rebuilt from its tip, whose Mosaico code equals 06ddf1d apart from the Home card fix in ce58ca7. VERIFIED means a board log line shows it. Some rows ran on a scratch build of the 2.0.0 code with one test switch on, and the row says so. A scratch build is never shipped. Host tests pass for every part: `make os` (41,635 checks at 4aeff43, 41,719 with the pairing change), `make pair`, `make ppa`, `make uimetrics` and the source audits in `tests/host/os_audit.sh`.
+Two board passes ran. The first on OpenCarMind EdgeOS 2.0.0 4aeff43 (SHA-256 `a225125d27f3906c...`), the second on 06ddf1d, which adds the pairing change, the 16 px text and the model names (merged image SHA-256 `4cc402a76a53edc2...`). The release image in this branch is rebuilt from its tip, whose Mosaico code equals 06ddf1d apart from the Home card fix in ce58ca7. VERIFIED means a board log line shows it. Some rows ran on a scratch build of the 2.0.0 code with one test switch on, and the row says so. A scratch build is never shipped. Host tests pass for every part: `make os` (41,635 checks at 4aeff43, 41,719 with the pairing change), `make pair`, `make ppa`, `make uimetrics` and the source audits in `tests/host/os_audit.sh`.
 
-Of the 28 rows in the table, 21 are VERIFIED (6 of those on a scratch build), 3 PARTLY and 4 NOT: not run yet, or switched off in this release. The three figures below show the main results. The full table is folded under them.
+Of the 28 rows from those two passes, 21 are VERIFIED (6 of those on a scratch build), 3 PARTLY and 4 NOT: not run yet, or switched off in this release. The three figures below show the main results. A third pass is running on build 13757fd, which adds the AI services and pairing safety. Its 8 rows are at the end of the table: 4 VERIFIED so far, 3 being checked, and 1 for the intrusion detector, which is not in the firmware yet. The full table is folded under the figures.
 
 <p align="center"><img src="docs/images/edgeos-boot.png" width="900" alt="Boot and runlevels on the board. The release boot on 4aeff43, in seconds after power-on: running at 4.3 s with Wi-Fi held, boot health good at 68.0 s with Wi-Fi released and 128.9 KB of internal RAM free, the Wi-Fi driver up at 88.1 s, the clock synced at 98.0 s, the driver down at 106.5 s. If health is bad, on a scratch build forced bad: safe mode, Wi-Fi held, and Sync clock now still starts it by hand. The runlevels seen in the tests: Parked. Driving on a forced drive. Saving when the battery was hot at 34.2 °C, back to Parked when it cooled to 33.7 °C. Safe mode on a forced bad health check. Refused while Driving: the USB door answered ERR busy, and the screen said Not now: a drive is running for the clock sync and Format."></p>
 
@@ -633,7 +856,7 @@ The ladder drops the screen rate first and the model last, and climbs back one r
 
 Every phase stays above the 60 KB target. The lowest is 80.9 KB, with an adapter search and a clock sync running at once.
 
-<details><summary>Full board results table</summary>
+<details><summary><b>Full board results table</b> (all 36 rows, with the build each one ran on)</summary>
 
 | Part | Result | What the board showed | Build |
 |---|---|---|---|
@@ -665,6 +888,22 @@ Every phase stays above the 60 KB target. The lowest is 80.9 KB, with an adapter
 | Pairing: offering and saving your adapter | NOT | needs the owner's adapter next to the board | |
 | Model names and 16 px text on screen | VERIFIED | 37 board captures: "active-estimator" and "ev-frozen" on the model pages, no text under 16 px, nothing in a 60 px corner. One overlap on Home (fixed in ce58ca7, host-checked) | 06ddf1d |
 | The download door in every state | VERIFIED | the 1200-baud door entered the ROM download mode on the release, in Saving, during a forced drive and after a battery safety stop | 4aeff43, 06ddf1d, scratch |
+| Boot health, with the AI services | VERIFIED | rated good at 68.9 s | 13757fd |
+| Wi-Fi boot hold, with the AI services | VERIFIED | Wi-Fi released after the good verdict with 130,623 B of internal RAM free | 13757fd |
+| AI worker admission | VERIFIED | admitted on core 1 with R 2.00 ms against its 1,000 ms deadline, a margin of 998 ms | 13757fd |
+| Battery estimator self-test | VERIFIED | 570 µs against its 2 ms budget | 13757fd |
+| Battery SoC and SoH on the Board page | BEING CHECKED | built, being checked on the board. The parameters are placeholders until the cell's curve is fitted | 13757fd |
+| Ladder rung "AI services slowed" | BEING CHECKED | built, being checked on the board | 13757fd |
+| Pairing safety: fingerprint, no silent re-pair, clock jump guard | BEING CHECKED | built, being checked on the board | 13757fd |
+| Network intrusion detector | BEING CHECKED | in the firmware since 2.1.0 as the network guard, see the 2.1.0 rows | 73db232 |
+| 2.1.0: boot health and AI admission | VERIFIED | health good at 68.8 s; bat, banom and ids admitted on core 1, R 5.00 ms against 1,000 ms, margin 995 ms; self-tests (fastest of 5) 229, 19 and 58 µs, the IDS self-test replays 64 vectors | 73db232 |
+| 2.1.0: 10-minute soak | VERIFIED | 640 s, 0 restarts, 0 USB drops, 0 UI misses in 64 windows, 0 scheduler misses; bat 536, banom 537 and ids 108 runs, 0 deadline misses, worst response 12.9, 13.0 and 11.9 ms | 73db232 |
+| 2.1.0: network guard in its shadow | VERIFIED | scan score 0 to 34 of 256 over 112 windows (22,585 adverts), 0 blocks, 0 "would block"; the first Wi-Fi scan (15 networks) scored 256, at the threshold, not over it; no pairing prompt; the clock sync was accepted | 73db232 |
+| 2.1.0: internal RAM, lowest per phase | VERIFIED | debug build of 73db232 with the RAM monitor: 122,795 B at the boot verdict, 109,643 B as the AI services and the guard start, 78,227 B over a Wi-Fi round with the Health app open (13757fd round: 81,531 B), 108,327 B on Board and Settings; all above 60 KB. The AI worker's stack never used 2,648 of its 4,096 B | 73db232 |
+| 2.1.0: Health app on the board | VERIFIED | 3 pages in both themes captured from the board, no overlap, 16 px text | 73db232 |
+| 2.1.0: Health in plain words | VERIFIED | real states on the board (battery learning, guard learning this place, AI on time) and, on a debug build that puts a state into the Health view only, battery good, worn, three anomaly reasons, guard watching, blocking and adapter mismatch, AI slowed, in both themes. The banner with Open Health opened the right page, a swipe closed it. The first Wi-Fi scan after a start is no longer scored (0 scans, "no data", 73db232 showed 290 of 256) | 81017a5 |
+| 2.1.0: battery anomaly detector | BEING CHECKED | admitted, in its 24 h warm-up | 73db232 |
+| 2.1.0: SoH regressor, counted SoH and DCIR | NOT | the cell stayed full at 0 mA, so no charge cycle, no capacity sample and no DCIR sample yet (0 of 10 reference cycles) | 73db232 |
 
 </details>
 
@@ -673,7 +912,7 @@ Every phase stays above the 60 KB target. The lowest is 80.9 KB, with an adapter
 
 ### The ESP-Mosaico against the S3 board
 
-The ESP-Mosaico<sup>[[12]](#ref-12),[[28]](#ref-28)</sup> is built on the ESP32-S31<sup>[[29]](#ref-29)</sup>: two 32-bit RISC-V cores at 320 MHz, one with a 128-bit SIMD data path, 512 KB of SRAM, Wi-Fi 6, and Bluetooth 5.4 with both LE and Classic (BR/EDR). If you build things with the ESP32, this is a good board to get, and the port gets better with more people testing it. The Vision Combo Kit (Core Unit v1.2, camera module and interaction module) is 59 USD on the [ESP-Mosaico Store](https://store.mosaico.ai/products/esp-mosaico). It was on pre-order with an estimated 15-day dispatch on 3 November 2026. If you have one, open an issue or a pull request with what you find.
+The ESP-Mosaico<sup>[[12]](#ref-12),[[36]](#ref-36)</sup> is built on the ESP32-S31<sup>[[37]](#ref-37)</sup>: two 32-bit RISC-V cores at 320 MHz, one with a 128-bit SIMD data path, 512 KB of SRAM, Wi-Fi 6, and Bluetooth 5.4 with both LE and Classic (BR/EDR). If you build things with the ESP32, this is a good board to get, and the port gets better with more people testing it. The Vision Combo Kit (Core Unit v1.2, camera module and interaction module) is 59 USD on the [ESP-Mosaico Store](https://store.mosaico.ai/products/esp-mosaico). It was on pre-order with an estimated 15-day dispatch on 3 November 2026. If you have one, open an issue or a pull request with what you find.
 
 What the Mosaico adds for a car logger:
 
@@ -689,7 +928,7 @@ What the Mosaico adds for a car logger:
 | Storage for drives | microSD | no microSD slot. Drives go to the 128 MB NAND |
 | Price | 12.99 to 13.99 USD from [Waveshare](https://www.waveshare.com/esp32-s3-lcd-1.47b.htm), about 15 EUR in the EU from [OpenELAB](https://openelab.io/pl/products/waveshare-esp32-s3-lcd-1-47b) | 59 USD for the Vision Combo Kit from the [ESP-Mosaico Store](https://store.mosaico.ai/products/esp-mosaico) |
 
-Sources for this table: Espressif and Waveshare documentation, the Circuit Rocks review and the store pages, prices seen on 3 November 2026<sup>[[12]](#ref-12),[[28]](#ref-28)–[[32]](#ref-32)</sup>, and for the PSRAM size the chip's own report on the board ([docs/MOSAICO.md](docs/MOSAICO.md#the-hardware)).
+Sources for this table: Espressif and Waveshare documentation, the Circuit Rocks review and the store pages, prices seen on 3 November 2026<sup>[[12]](#ref-12),[[36]](#ref-36)–[[40]](#ref-40)</sup>, and for the PSRAM size the chip's own report on the board ([docs/MOSAICO.md](docs/MOSAICO.md#the-hardware)).
 
 For the model, the most useful step is motion data. An accelerometer measures braking and acceleration directly, so it can check the labels the network predicts from OBD data. The S3 board has an IMU the firmware does not read yet, and the Mosaico adds a magnetometer for heading. Bluetooth Classic matters for compatibility: the adapters that fail today because they only speak Classic SPP could work, once an SPP client is written. TWAI with a transceiver on the headers is the route to reading the CAN bus directly, for the faults OBD-II cannot see.
 
@@ -709,10 +948,10 @@ CarMind R.E.V already fine-tunes on today's board, but only where the car suppli
 
 The goal on the Mosaico is to let the manoeuvre classifier learn in the car:
 
-- Labels for the classifier from an IMU. An accelerometer measures braking and acceleration directly, so stopped, braking, accelerating and cruising can be labelled in the car. The Mosaico has a BMI270<sup>[[28]](#ref-28)</sup>. The S3 board has an IMU too<sup>[[31]](#ref-31)</sup>, which the firmware does not read yet, so this part could start on today's board. The physics judge of [edge learning](#edge-learning-rev-picks-what-to-learn) is the label source that needs no extra sensor.
+- Labels for the classifier from an IMU. An accelerometer measures braking and acceleration directly, so stopped, braking, accelerating and cruising can be labelled in the car. The Mosaico has a BMI270<sup>[[36]](#ref-36)</sup>. The S3 board has an IMU too<sup>[[39]](#ref-39)</sup>, which the firmware does not read yet, so this part could start on today's board. The physics judge of [edge learning](#edge-learning-rev-picks-what-to-learn) is the label source that needs no extra sensor.
 - A self-check. CarMind R.E.V 2 will forecast the next moment's manoeuvre. Comparing that forecast with what the classifier sees a moment later checks the classifier without any extra sensor.
 - True torque where the car reports it. The firmware already reads PIDs 0x62 and 0x63 when a car reports them, and those readings can teach the torque head on those cars. Brake pressure has no label in any car, so that head stays fixed.
-- Only the heads would train. ESP-DL runs inference only, so the quantised trunk stays frozen, and the heads (a 64-wide feature into 4 classes and 3 estimates, a few hundred weights) are updated in plain C on the CPU, as R.E.V's fuel read-out already is. That is the approach of TinyOL<sup>[[33]](#ref-33)</sup> and TinyTL<sup>[[34]](#ref-34)</sup>. Updating parts of the trunk as well, as in<sup>[[35]](#ref-35)</sup>, is where the S31's extra speed and memory would count.
+- Only the heads would train. ESP-DL runs inference only, so the quantised trunk stays frozen, and the heads (a 64-wide feature into 4 classes and 3 estimates, a few hundred weights) are updated in plain C on the CPU, as R.E.V's fuel read-out already is. That is the approach of TinyOL<sup>[[41]](#ref-41)</sup> and TinyTL<sup>[[42]](#ref-42)</sup>. Updating parts of the trunk as well, as in<sup>[[43]](#ref-43)</sup>, is where the S31's extra speed and memory would count.
 - A replay buffer against forgetting. A replay buffer keeps a sample of past windows and mixes them into each update, so the model keeps seeing old drives while it learns from new ones. One 5-second window of the model's input (5 bins of 30 values) is 600 bytes in float. The S31's 32 MB of PSRAM (8 MB on the S3 board) holds thousands of past windows, and its 128 MB NAND keeps them between drives.
 - Time to finish. The 65 mAh battery lets an update and its save complete after the ignition is off.
 
@@ -726,7 +965,7 @@ What 2.5.1 and EdgeOS 2.0.0 cannot do yet, and what is being built for it:
 - **Torque is a physics estimate, not a measurement**, checked against one public car and for petrol engines only. That car's "truth" is its engine computer's own torque model. Accessories such as the air conditioning are not modelled, the efficiency is a typical value the board cannot learn without a torque sensor, and it reads high at a standstill in Drive (so the screen shows "idle"). R.E.V learns the engine size it uses, about 2.1 L from my car's last two drives, but not the torque itself. Cars that report torque (PIDs 0x62 and 0x63) could give a learned torque read-out its label, the way the fuel read-out learns now, and then the physics would not be needed. That is planned, not built or tested. My Sentra and most pre-2020 cars report no torque, so there is no label, and physics, or the ESP-Mosaico's accelerometer as a label, stays needed there.
 - **The tank size needs driving to settle.** About 10 litres with the level between 10 % and 95 % before it shows anything, more on cars whose level reading jumps. A fuel sender that is not linear with the tank's shape is not modelled, and the range runs to an empty reading, not to the reserve below it.
 - **The classifier and brake pressure do not learn in the car yet.** Nothing in OBD gives a label for them. Edge learning with a physics judge, accelerometer labels on the ESP-Mosaico and a self-check that forecasts the next moment (CarMind R.E.V 2) are the routes being worked on.
-- **No Wi-Fi upload yet.** Sending drives over TCP and TLS stalls the whole stream when one packet is lost on a weak home Wi-Fi link, the problem known as head-of-line blocking. The upload is being reworked so that each file travels on its own stream, as in QUIC<sup>[[13]](#ref-13)</sup>, which removes that stall<sup>[[36]](#ref-36)</sup>, while keeping resume from the last byte and the pinned certificate. It will come back once it is measured against today's path on a lossy link. Until then drives come over the USB cable.
+- **No Wi-Fi upload yet.** Sending drives over TCP and TLS stalls the whole stream when one packet is lost on a weak home Wi-Fi link, the problem known as head-of-line blocking. The upload is being reworked so that each file travels on its own stream, as in QUIC<sup>[[13]](#ref-13)</sup>, which removes that stall<sup>[[44]](#ref-44)</sup>, while keeping resume from the last byte and the pinned certificate. It will come back once it is measured against today's path on a lossy link. Until then drives come over the USB cable.
 - **The clock is only as exact as one second.** It comes from the time server's HTTP Date header, which has one-second resolution, enough for drive logs. It needs a known Wi-Fi network within reach. Without one, the board keeps the time it saved to the card.
 
 ## Planned
@@ -735,7 +974,7 @@ What 2.5.1 and EdgeOS 2.0.0 cannot do yet, and what is being built for it:
 - Code-signed installers.
 - A test drive of the corrected R.E.V before it goes into a release, and a per-car closed-throttle baseline learned on the board.
 - Edge learning on the board: the margin rules, the buffer in PSRAM and the drift alarm from [Edge learning](#edge-learning-rev-picks-what-to-learn).
-- A trunk meta-trained for on-board learning, as in OML<sup>[[37]](#ref-37)</sup>, once the classifier can learn in the car. It changes the embedding, so the classifier correction would be redone with it.
+- A trunk meta-trained for on-board learning, as in OML<sup>[[45]](#ref-45)</sup>, once the classifier can learn in the car. It changes the embedding, so the classifier correction would be redone with it.
 - More regularised models, to fit more cars.
 - CarMind R.E.V 2: a forecast of the next moment's manoeuvre, learned on the board, as a self-check that lets the classifier learn in the car.
 - A faster version built on a Jetson.
@@ -782,39 +1021,57 @@ What 2.5.1 and EdgeOS 2.0.0 cannot do yet, and what is being built for it:
 
 <a id="ref-20"></a>[20] S. Dasgupta, "Two faces of active learning," *Theoretical Computer Science*, 2011. [cseweb.ucsd.edu](https://cseweb.ucsd.edu/~dasgupta/papers/twoface.pdf)
 
-<a id="ref-21"></a>[21] M. D. Zeiler and R. Fergus, "Visualizing and understanding convolutional networks," in *Proc. European Conf. on Computer Vision (ECCV)*, 2014. [arXiv:1311.2901](https://arxiv.org/abs/1311.2901)
+<a id="ref-21"></a>[21] G. L. Plett, "Extended Kalman filtering for battery management systems of LiPB-based HEV battery packs: Part 3. State and parameter estimation," *Journal of Power Sources*, vol. 134, no. 2, pp. 277–292, 2004. [doi:10.1016/j.jpowsour.2004.02.033](https://doi.org/10.1016/j.jpowsour.2004.02.033)
 
-<a id="ref-22"></a>[22] J. T. Springenberg, A. Dosovitskiy, T. Brox and M. Riedmiller, "Striving for simplicity: The all convolutional net," in *ICLR Workshop*, 2015. [arXiv:1412.6806](https://arxiv.org/abs/1412.6806)
+<a id="ref-22"></a>[22] S. J. Julier and J. K. Uhlmann, "Unscented filtering and nonlinear estimation," *Proceedings of the IEEE*, vol. 92, no. 3, pp. 401–422, 2004. [doi:10.1109/JPROC.2003.823141](https://doi.org/10.1109/JPROC.2003.823141)
 
-<a id="ref-23"></a>[23] G. Alain and Y. Bengio, "Understanding intermediate layers using linear classifier probes," arXiv preprint, 2016. [arXiv:1610.01644](https://arxiv.org/abs/1610.01644)
+<a id="ref-23"></a>[23] G. Revach, N. Shlezinger, X. Ni, A. L. Escoriza, R. J. G. van Sloun and Y. C. Eldar, "KalmanNet: Neural network aided Kalman filtering for partially known dynamics," *IEEE Transactions on Signal Processing*, vol. 70, pp. 1532–1547, 2022. [arXiv:2107.10043](https://arxiv.org/abs/2107.10043)
 
-<a id="ref-24"></a>[24] L. van der Maaten and G. Hinton, "Visualizing data using t-SNE," *Journal of Machine Learning Research*, vol. 9, pp. 2579–2605, 2008.
+<a id="ref-24"></a>[24] S. C. Tan, K. M. Ting and T. F. Liu, "Fast anomaly detection for streaming data," in *Proc. IJCAI*, 2011, pp. 1511–1516. [ijcai.org](https://www.ijcai.org/proceedings/2011/0254.pdf)
 
-<a id="ref-25"></a>[25] S. M. R. Arnold, P. Mahajan, D. Datta, I. Bunner and K. S. Zarkias, "learn2learn: A library for meta-learning research," arXiv preprint, 2020. [arXiv:2008.12284](https://arxiv.org/abs/2008.12284)
+<a id="ref-25"></a>[25] Q. Ma, S. Muthukrishnan and M. Sandler, "Frugal streaming for estimating quantiles: One (or two) memory suffices," 2014. [arXiv:1407.1121](https://arxiv.org/abs/1407.1121)
 
-<a id="ref-26"></a>[26] A. Raghu, M. Raghu, S. Bengio and O. Vinyals, "Rapid learning or feature reuse? Towards understanding the effectiveness of MAML," in *ICLR*, 2020. [arXiv:1909.09157](https://arxiv.org/abs/1909.09157)
+<a id="ref-26"></a>[26] B. Saha and K. Goebel, "Battery data set," NASA Prognostics Data Repository, NASA Ames Research Center, Moffett Field, CA, 2007. [nasa.gov](https://www.nasa.gov/intelligent-systems-division/discovery-and-systems-health/pcoe/pcoe-data-set-repository/)
 
-<a id="ref-27"></a>[27] Z. Li, F. Zhou, F. Chen and H. Li, "Meta-SGD: Learning to learn quickly for few-shot learning," arXiv preprint, 2017. [arXiv:1707.09835](https://arxiv.org/abs/1707.09835)
+<a id="ref-27"></a>[27] T. Bravenec, J. Torres-Sospedra, M. Gould and T. Fryza, Supplementary materials for "UJI Probes: Dataset of Wi-Fi probe requests," Zenodo, 2023. Licence CC BY 4.0. [doi:10.5281/zenodo.7801798](https://doi.org/10.5281/zenodo.7801798)
 
-<a id="ref-28"></a>[28] Espressif Systems, "ESP-Mosaico V1.0," ESP Board Manager guide. [docs.espressif.com](https://docs.espressif.com/projects/esp-board-manager/en/latest/references/boards/esp_mosaico.html)
+<a id="ref-28"></a>[28] T. Bravenec, J. Torres-Sospedra, M. Gould and T. Fryza, Supplementary materials for "What your wearable devices revealed about you and possibilities of non-cooperative 802.11 presence detection during your last IPIN visit," Zenodo, 2022. Licence CC BY 4.0. [doi:10.5281/zenodo.6798302](https://doi.org/10.5281/zenodo.6798302)
 
-<a id="ref-29"></a>[29] Espressif Systems, "Espressif unveils ESP32-S31: a dual-core RISC-V SoC with Wi-Fi 6, Bluetooth 5.4, and advanced HMI capabilities," press release, 26 March 2026. [espressif.com](https://www.espressif.com/en/news/ESP32_S31_Release)
+The UJI Probes and IPIN2021 probe-request captures are © T. Bravenec, J. Torres-Sospedra, M. Gould and T. Fryza, used under CC BY 4.0. Only windowed counts derived from them were used, on the Mac, and nothing from them is in this repository.
 
-<a id="ref-30"></a>[30] Circuit Rocks, "ESP-Mosaico: ESP32-S31 board for AI-written firmware," 2026. [blog.circuit.rocks](https://blog.circuit.rocks/esp-mosaico-espressifs-59-board-where-ai-writes-the-firmware)
+<a id="ref-29"></a>[29] M. D. Zeiler and R. Fergus, "Visualizing and understanding convolutional networks," in *Proc. European Conf. on Computer Vision (ECCV)*, 2014. [arXiv:1311.2901](https://arxiv.org/abs/1311.2901)
 
-<a id="ref-31"></a>[31] Waveshare, "ESP32-S3-LCD-1.47B," product page. [waveshare.com](https://www.waveshare.com/ESP32-S3-LCD-1.47B.htm)
+<a id="ref-30"></a>[30] J. T. Springenberg, A. Dosovitskiy, T. Brox and M. Riedmiller, "Striving for simplicity: The all convolutional net," in *ICLR Workshop*, 2015. [arXiv:1412.6806](https://arxiv.org/abs/1412.6806)
 
-<a id="ref-32"></a>[32] OpenELAB, "Waveshare ESP32-S3-LCD-1.47B," listing, price seen 3 November 2026. [openelab.io](https://openelab.io/pl/products/waveshare-esp32-s3-lcd-1-47b)
+<a id="ref-31"></a>[31] G. Alain and Y. Bengio, "Understanding intermediate layers using linear classifier probes," arXiv preprint, 2016. [arXiv:1610.01644](https://arxiv.org/abs/1610.01644)
 
-<a id="ref-33"></a>[33] H. Ren, D. Anicic and T. A. Runkler, "TinyOL: TinyML with online-learning on microcontrollers," in *Proc. Int. Joint Conf. Neural Networks (IJCNN)*, 2021. [arXiv:2103.08295](https://arxiv.org/abs/2103.08295)
+<a id="ref-32"></a>[32] L. van der Maaten and G. Hinton, "Visualizing data using t-SNE," *Journal of Machine Learning Research*, vol. 9, pp. 2579–2605, 2008.
 
-<a id="ref-34"></a>[34] H. Cai, C. Gan, L. Zhu and S. Han, "TinyTL: Reduce activations, not trainable parameters for efficient on-device learning," in *Advances in Neural Information Processing Systems (NeurIPS)*, 2020. [arXiv:2007.11622](https://arxiv.org/abs/2007.11622)
+<a id="ref-33"></a>[33] S. M. R. Arnold, P. Mahajan, D. Datta, I. Bunner and K. S. Zarkias, "learn2learn: A library for meta-learning research," arXiv preprint, 2020. [arXiv:2008.12284](https://arxiv.org/abs/2008.12284)
 
-<a id="ref-35"></a>[35] J. Lin, L. Zhu, W.-M. Chen, W.-C. Wang, C. Gan and S. Han, "On-device training under 256KB memory," in *Advances in Neural Information Processing Systems (NeurIPS)*, 2022. [arXiv:2206.15472](https://arxiv.org/abs/2206.15472)
+<a id="ref-34"></a>[34] A. Raghu, M. Raghu, S. Bengio and O. Vinyals, "Rapid learning or feature reuse? Towards understanding the effectiveness of MAML," in *ICLR*, 2020. [arXiv:1909.09157](https://arxiv.org/abs/1909.09157)
 
-<a id="ref-36"></a>[36] P. Kumar and B. Dezfouli, "Implementation and analysis of QUIC for MQTT," arXiv preprint, 2018. [arXiv:1810.07730](https://arxiv.org/abs/1810.07730)
+<a id="ref-35"></a>[35] Z. Li, F. Zhou, F. Chen and H. Li, "Meta-SGD: Learning to learn quickly for few-shot learning," arXiv preprint, 2017. [arXiv:1707.09835](https://arxiv.org/abs/1707.09835)
 
-<a id="ref-37"></a>[37] K. Javed and M. White, "Meta-learning representations for continual learning," in *NeurIPS*, 2019. [arXiv:1905.12588](https://arxiv.org/abs/1905.12588)
+<a id="ref-36"></a>[36] Espressif Systems, "ESP-Mosaico V1.0," ESP Board Manager guide. [docs.espressif.com](https://docs.espressif.com/projects/esp-board-manager/en/latest/references/boards/esp_mosaico.html)
+
+<a id="ref-37"></a>[37] Espressif Systems, "Espressif unveils ESP32-S31: a dual-core RISC-V SoC with Wi-Fi 6, Bluetooth 5.4, and advanced HMI capabilities," press release, 26 March 2026. [espressif.com](https://www.espressif.com/en/news/ESP32_S31_Release)
+
+<a id="ref-38"></a>[38] Circuit Rocks, "ESP-Mosaico: ESP32-S31 board for AI-written firmware," 2026. [blog.circuit.rocks](https://blog.circuit.rocks/esp-mosaico-espressifs-59-board-where-ai-writes-the-firmware)
+
+<a id="ref-39"></a>[39] Waveshare, "ESP32-S3-LCD-1.47B," product page. [waveshare.com](https://www.waveshare.com/ESP32-S3-LCD-1.47B.htm)
+
+<a id="ref-40"></a>[40] OpenELAB, "Waveshare ESP32-S3-LCD-1.47B," listing, price seen 3 November 2026. [openelab.io](https://openelab.io/pl/products/waveshare-esp32-s3-lcd-1-47b)
+
+<a id="ref-41"></a>[41] H. Ren, D. Anicic and T. A. Runkler, "TinyOL: TinyML with online-learning on microcontrollers," in *Proc. Int. Joint Conf. Neural Networks (IJCNN)*, 2021. [arXiv:2103.08295](https://arxiv.org/abs/2103.08295)
+
+<a id="ref-42"></a>[42] H. Cai, C. Gan, L. Zhu and S. Han, "TinyTL: Reduce activations, not trainable parameters for efficient on-device learning," in *Advances in Neural Information Processing Systems (NeurIPS)*, 2020. [arXiv:2007.11622](https://arxiv.org/abs/2007.11622)
+
+<a id="ref-43"></a>[43] J. Lin, L. Zhu, W.-M. Chen, W.-C. Wang, C. Gan and S. Han, "On-device training under 256KB memory," in *Advances in Neural Information Processing Systems (NeurIPS)*, 2022. [arXiv:2206.15472](https://arxiv.org/abs/2206.15472)
+
+<a id="ref-44"></a>[44] P. Kumar and B. Dezfouli, "Implementation and analysis of QUIC for MQTT," arXiv preprint, 2018. [arXiv:1810.07730](https://arxiv.org/abs/1810.07730)
+
+<a id="ref-45"></a>[45] K. Javed and M. White, "Meta-learning representations for continual learning," in *NeurIPS*, 2019. [arXiv:1905.12588](https://arxiv.org/abs/1905.12588)
 
 ## Repository layout
 
