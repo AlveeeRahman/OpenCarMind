@@ -833,6 +833,26 @@ static lv_obj_t *s_sb, *sb_row1, *sb_time, *sb_dcpu, *sb_dpwr, *sb_bt, *sb_wifi,
 enum { SB_HOME = 0, SB_DRIVE, SB_APP };
 static int s_sb_mode = -1;
 
+static bool s_banner_alarm;                            /* the banner shows a critical alarm */
+static char s_banner_gone[64];                         /* the alarm cleared on the screen, until a snapshot shows it gone */
+static void banner_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) == LV_EVENT_GESTURE) {
+        lv_dir_t d = lv_indev_get_gesture_dir(lv_indev_active());
+        if (d != LV_DIR_LEFT && d != LV_DIR_RIGHT && d != LV_DIR_TOP) return;   /* sideways or up; the banner holds the press */
+        lv_indev_wait_release(lv_indev_active());          /* the swipe does not also reach the page underneath */
+    }
+    if (!s_banner_alarm) return;                         /* the pairing code stays until it times out */
+    STATUS_LOCK();
+    if (g_status.alarm_text[0] && g_status.alarm_critical) {
+        snprintf(s_banner_gone, sizeof s_banner_gone, "%s", g_status.alarm_text);
+        g_status.alarm_text[0] = 0; g_status.alarm_critical = false;
+    }
+    STATUS_UNLOCK();
+    s_banner_alarm = false;
+    lv_obj_add_flag(s_banner, LV_OBJ_FLAG_HIDDEN);
+}
+
 static void build_status_bar(void)
 {
     lv_obj_t *top = lv_layer_top();
@@ -883,7 +903,12 @@ static void build_status_bar(void)
     lv_obj_set_style_border_width(s_banner, UI_THEME.border_accent, 0);
     lv_obj_set_style_border_color(s_banner, lv_color_hex(UI_THEME.warn), 0);
     lv_obj_set_style_pad_all(s_banner, 12, 0);
-    lv_obj_remove_flag(s_banner, LV_OBJ_FLAG_CLICKABLE);
+    /* a critical alarm can be cleared on the screen too: a tap, or a swipe up or sideways on the banner, does what the Function
+       key's tap does (app_main.c); the fault stays in the Faults app and on the Home card */
+    lv_obj_add_flag(s_banner, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_remove_flag(s_banner, LV_OBJ_FLAG_GESTURE_BUBBLE);
+    lv_obj_add_event_cb(s_banner, banner_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(s_banner, banner_cb, LV_EVENT_GESTURE, NULL);
     s_banner_txt = ui_label(s_banner, UI_THEME.f_body, UI_TEXT, "");
     lv_obj_set_width(s_banner_txt, 372);
     lv_label_set_long_mode(s_banner_txt, LV_LABEL_LONG_WRAP);
@@ -956,7 +981,7 @@ static void refresh_status_bar(const ui_snap_t *s)
     uint32_t col = UI_WARN;
     /* floating banner: critical alarms, and the desktop pairing code (it must be read off the screen); prompts such as
        "No engine data yet" go into the Home smart card instead */
-    if (st->alarm_text[0] && st->alarm_critical) { txt = st->alarm_text; col = UI_RED; }
+    if (st->alarm_text[0] && st->alarm_critical && strcmp(st->alarm_text, s_banner_gone)) { txt = st->alarm_text; col = UI_RED; }
     else if (st->sys_popup[0] && s->now_ms < st->sys_popup_until_ms && !strncmp(st->sys_popup, "Desktop pairing code", 20)) { txt = st->sys_popup; col = UI_GREEN; }
     if (txt) {
         ui_set_text(s_banner_txt, txt);
@@ -964,6 +989,8 @@ static void refresh_status_bar(const ui_snap_t *s)
             lv_obj_set_style_border_color(s_banner, lv_color_hex(col), 0);
     }
     show(s_banner, txt != NULL);
+    s_banner_alarm = txt == st->alarm_text;
+    if (!st->alarm_text[0]) s_banner_gone[0] = 0;          /* the snapshot caught up with the clear */
 }
 
 /* ---------- wallpaper (Home and Apps): computed once at boot into PSRAM by a low-priority task. Vertical lerp #121318 to
