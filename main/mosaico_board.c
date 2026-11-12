@@ -364,6 +364,7 @@ static void do_request(const mb_req_t *r)
     case MB_FILES_DELETE_ALL: mosaico_files_delete(0); break;
     case MB_BLE_FORGET:       obd_ble_forget_adapter(); ESP_LOGI(TAG, "adapter forgotten from the screen"); break;
     case MB_BLE_SEARCH:       elm_explore(); break;
+    case MB_BLE_PAIR:         obd_ble_pair_answer(r->arg != 0); break;   /* may write NVS: this task's stack is internal */
     case MB_FORMAT: {
         char why[64] = "", note[64];
         uint32_t fr = 0;

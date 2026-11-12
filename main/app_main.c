@@ -110,13 +110,34 @@ static void button_task(void *arg)
     int64_t last_tap_ms = 0;
     int64_t bad_since = 0, last_nag = -60000, last_check = 0;
     uint32_t auto_epoch = 0;           /* adapter connection the automatic search last ran for */
+#if !BOARD_MOSAICO
+    uint32_t pair_seq = obd_ble_pair_seq();   /* the pairing question last shown (the ESP-Mosaico asks on its screen) */
+#endif
     bool auto_scan_done = false;       /* the automatic adapter search runs once per boot */
     for (;;) {
         vTaskDelay(pdMS_TO_TICKS(20));
         bool down = gpio_get_level(BOARD_BUTTON) == 0;
         int64_t now_ms = esp_timer_get_time() / 1000;
+#if !BOARD_MOSAICO
+        if (obd_ble_pair_seq() != pair_seq) {
+            /* a new adapter answered: "Use <name>? / Strong. Tap = use it" for the 5 s a tap confirms it in (the owner's
+               "OBD adapter found: <name>, signal strong. Use this adapter?" cut to two lines of the 160 px prompt) */
+            pair_seq = obd_ble_pair_seq();
+            char name[24];
+            const char *str;
+            int left;
+            if (obd_ble_pair_offer(name, sizeof name, &str, &left)) {
+                STATUS_LOCK();
+                snprintf(g_status.prompt_text, sizeof g_status.prompt_text, "Use %.10s?\n%s. Tap = use it", name,
+                         str[0] == 's' ? "Strong" : "Good");
+                g_status.prompt_until_ms = now_ms + left * 1000LL;
+                STATUS_UNLOCK();
+            }
+        }
+#endif
         if (now_ms - last_check >= 1000) {
             last_check = now_ms;
+            obd_ble_pair_poll();               /* a pairing question nobody answered in time: closed, nothing saved */
             STATUS_LOCK();
             bool ok = g_status.ble == BLE_ST_LOGGING && (OBD_HAS(&g_status.obd, F_rpm) || OBD_HAS(&g_status.obd, F_speed));
             bool prompt_busy = g_status.prompt_text[0] && now_ms < g_status.prompt_until_ms;
@@ -131,12 +152,12 @@ static void button_task(void *arg)
                     if (now_ms - elm_link_up_ms() >= AUTO_LINKED_MS && ep != auto_epoch) {
                         auto_epoch = ep;
                         ESP_LOGI(TAG, "no engine data: automatic search");
-                        elm_explore();
+                        elm_explore_auto();
                     }
                 } else if (!auto_scan_done) {
                     auto_scan_done = true;
                     ESP_LOGI(TAG, "no adapter: automatic adapter search");
-                    elm_explore();
+                    elm_explore_auto();               /* never looks past a saved adapter (obd_ble_explore) */
                 }
             }
             if (bad_since && now_ms - bad_since > 45000 && now_ms - last_nag > 60000 && !prompt_busy && !elm_exploring()) {
@@ -195,6 +216,13 @@ static void button_task(void *arg)
             if (g_status.alarm_text[0] && g_status.alarm_critical) { g_status.alarm_text[0] = 0; g_status.alarm_critical = false; handled = true; }
             else if (g_status.sys_popup[0] && now_ms < g_status.sys_popup_until_ms) { g_status.sys_popup[0] = 0; handled = true; }
             STATUS_UNLOCK();
+#if !BOARD_MOSAICO
+            if (!handled && obd_ble_pair_offer(NULL, 0, NULL, NULL)) {
+                STATUS_LOCK(); g_status.prompt_text[0] = 0; STATUS_UNLOCK();
+                obd_ble_pair_answer(true);                            /* the user's yes: the only way an adapter is saved */
+                handled = true;
+            }
+#endif
             if (!handled && now_ms < forget_prompt_until) {
                 forget_prompt_until = 0;
                 STATUS_LOCK(); g_status.prompt_text[0] = 0; STATUS_UNLOCK();

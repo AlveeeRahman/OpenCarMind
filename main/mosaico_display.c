@@ -40,6 +40,8 @@
 #include "sched_mon.h"
 #include "remote_config.h"
 #include "elm327.h"
+#include "obd_ble.h"
+#include "obd_pair.h"
 #include "mosaico_drive.h"
 #include "sdlog.h"
 #include "fault_engine.h"
@@ -514,6 +516,55 @@ void ui_confirm(const char *text, const char *yes, void (*cb)(void *arg), void *
     lv_obj_set_pos(t, 2, 2);
     modal_button(c, "Cancel", UI_THEME.track, UI_TEXT, modal_no, LV_ALIGN_BOTTOM_LEFT);
     modal_button(c, yes, UI_RED, UI_BG, modal_yes, LV_ALIGN_BOTTOM_RIGHT);   /* white on the dark red was 4.0:1 */
+}
+
+/* ---------- OBD pairing sheet (owner 2026-11-11, "ask + strong signal"). obd_ble.c found a new adapter at a strong signal,
+   it answered the ELM327 reset and the link was dropped; nothing is saved until "Use this adapter". "Not this one" skips it
+   for this boot; no answer in 30 s closes the sheet and saves nothing. The answer goes to the board task (MB_BLE_PAIR:
+   NVS). Built on the top layer like ui_confirm, from the PSRAM LVGL heap (no internal RAM), refreshed once a second and
+   at once when a new question wakes the screen (ui_tick). Same geometry as ui_confirm. ---------- */
+static lv_obj_t *s_pair_sheet, *s_pair_left;
+static uint32_t s_pair_shown, s_pair_done;               /* the question shown, and the one answered on this screen */
+
+static void pair_close(void) { if (s_pair_sheet) { lv_obj_delete_async(s_pair_sheet); s_pair_sheet = NULL; } }
+static void pair_reply(bool yes)
+{
+    if (!mosaico_board_request(MB_BLE_PAIR, yes ? 1 : 0)) return;   /* the board task is busy: the sheet stays, tap again */
+    s_pair_done = s_pair_shown;
+    pair_close();
+}
+static void pair_yes_cb(lv_event_t *e) { (void)e; pair_reply(true); }
+static void pair_no_cb(lv_event_t *e) { (void)e; pair_reply(false); }
+
+static void pair_sheet_refresh(void)
+{
+    char name[OBD_PAIR_NAME_LEN];
+    const char *strength;
+    int left;
+    uint32_t seq = obd_ble_pair_seq();
+    if (!obd_ble_pair_offer(name, sizeof name, &strength, &left) || seq == s_pair_done) { pair_close(); return; }
+    if (s_pair_sheet && seq != s_pair_shown) pair_close();
+    if (!s_pair_sheet) {
+        s_pair_shown = seq;
+        s_pair_sheet = lv_obj_create(lv_layer_top());
+        lv_obj_remove_style_all(s_pair_sheet);
+        lv_obj_set_size(s_pair_sheet, UI_W, UI_H);
+        lv_obj_set_style_bg_color(s_pair_sheet, lv_color_hex(UI_THEME.scrim), 0);
+        lv_obj_set_style_bg_opa(s_pair_sheet, LV_OPA_60, 0);
+        lv_obj_add_flag(s_pair_sheet, LV_OBJ_FLAG_CLICKABLE);         /* swallows taps behind it */
+        lv_obj_t *c = ui_card(s_pair_sheet, UI_MARGIN, UI_H - 220 - UI_MARGIN, UI_W - 2 * UI_MARGIN, 220, UI_BORDER);
+        char q[96];
+        snprintf(q, sizeof q, "OBD adapter found: %s, signal %s. Use this adapter?", name, strength);
+        lv_obj_t *t = ui_label(c, UI_THEME.f_value, UI_TEXT, q);
+        lv_obj_set_width(t, UI_W - 2 * UI_MARGIN - 2 * UI_THEME.pad_card - 4);
+        lv_label_set_long_mode(t, LV_LABEL_LONG_WRAP);
+        lv_obj_set_pos(t, 2, 2);
+        s_pair_left = ui_label(c, UI_THEME.f_label, UI_MUTED, "");
+        lv_obj_align(s_pair_left, LV_ALIGN_BOTTOM_LEFT, 2, -64);
+        modal_button(c, "Not this one", UI_THEME.track, UI_TEXT, pair_no_cb, LV_ALIGN_BOTTOM_LEFT);
+        modal_button(c, "Use this adapter", UI_THEME.section[SEC_GREEN], UI_BG, pair_yes_cb, LV_ALIGN_BOTTOM_RIGHT);
+    }
+    ui_set_fmt(s_pair_left, "Nothing is saved unless you choose. %d s", left);
 }
 
 /* ---------- End drive / Start drive control: a 64 px ring with a stop icon, held 1 s (the ring fills) to end a drive,
@@ -2661,6 +2712,8 @@ static void tick_cb(lv_timer_t *t)
 
     ui_settings_t set;
     ui_settings_get(&set);
+    static uint32_t s_pair_wake;                          /* a new pairing question wakes the screen and shows at once */
+    if (obd_ble_pair_seq() != s_pair_wake) { s_pair_wake = obd_ble_pair_seq(); lv_display_trigger_activity(s_disp); s_last_sec_ms = 0; }
     uint32_t idle_ms = lv_display_get_inactive_time(s_disp);
     int power_to = -1;                                    /* the panel's own commands run after the job (see below) */
     if (s_panel_on && set.screen_off_s && idle_ms > set.screen_off_s * 1000u) power_to = 0;
@@ -2679,6 +2732,7 @@ static void tick_cb(lv_timer_t *t)
             sec_due = true;
             refresh_status_bar(&s_snap);
             if (s_cur < 0 && lv_screen_active() == s_home) refresh_home(&s_snap);
+            pair_sheet_refresh();
         }
         if (mosaico_drive_take_auto_open())                  /* after End drive: the drive summary */
             for (int i = 0; i < ui_app_count(); i++) if (!strcmp(ui_app(i)->id, "summary")) { open_app(i); break; }

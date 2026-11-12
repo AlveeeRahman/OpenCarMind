@@ -31,7 +31,7 @@ endif()
 idf_component_register(
     SRCS ${ocm_board_srcs}
          "app_main.c"
-         "obd_ble.c"
+         "obd_ble.c" "obd_pair.c"
          "adapter_match.c"
          "econ.c"
          "obd_fresh.c"

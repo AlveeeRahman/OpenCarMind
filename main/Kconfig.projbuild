@@ -25,8 +25,17 @@ menu "OBD Logger Configuration"
             string "Write characteristic UUID (hex, empty = auto-detect)"
             default "FFE1"
         config OBD_BLE_MIN_RSSI
-            int "Minimum RSSI (dBm) to attempt a connection"
+            int "Minimum RSSI (dBm) to connect to the paired adapter"
             default -90
+        config OBD_BLE_PAIR_MIN_RSSI
+            int "Minimum RSSI (dBm) to offer a new adapter for pairing"
+            default -70
+            help
+                A device that is not the paired adapter is offered for pairing only
+                at this signal or stronger, so an adapter in a car parked nearby is
+                not offered. Nothing is saved until the user says yes on the screen
+                (ESP-Mosaico) or taps BOOT within 5 s (car board). The paired
+                adapter keeps connecting down to OBD_BLE_MIN_RSSI.
 
         config OBD_POLL_INTERVAL_MS
             int "Delay between PID polling cycles (ms)"

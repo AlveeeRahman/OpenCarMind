@@ -31,7 +31,8 @@ typedef struct { bool ok; uint32_t total_kb, free_kb; bool nand; uint32_t flash_
    BLE or Wi-Fi itself. Never blocks: false when the queue (8 deep) is full. */
 typedef enum { MB_FILES_SCAN = 0, MB_FILES_DETAIL, MB_FILES_DELETE, MB_FILES_DELETE_ALL, MB_BLE_FORGET, MB_BLE_SEARCH,
                MB_WIFI_NOW, MB_FORMAT, MB_BUZZ, MB_CLOCK_SET, MB_MODEL_SET, MB_SETTINGS_KICK, MB_WIFI_LIST,
-               MB_WIFI_FORGET, MB_WIFI_SCAN, MB_WIFI_JOIN, MB_GAUGE_CAL } mb_cmd_t;
+               MB_WIFI_FORGET, MB_WIFI_SCAN, MB_WIFI_JOIN, MB_GAUGE_CAL,
+               MB_BLE_PAIR /* the pairing sheet's answer: arg 1 = Use this adapter, 0 = Not this one */ } mb_cmd_t;
 bool mosaico_board_request(mb_cmd_t cmd, uint32_t arg);
 /* Settings > Model (MB_MODEL_SET, arg = ml_model_id_t): the board task switches with ml_select_model, the path the USB door's
    MODEL SET takes, after the same "drive running" check. gen counts finished requests; why is the refusal when ok is false. */

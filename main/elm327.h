@@ -24,12 +24,14 @@ void elm_request_stop(void);
 bool elm_wait_stopped(uint32_t timeout_ms);
 void elm_resume(void);
 
-/* Connection search (automatic after a minute without engine data, or a BOOT double-click). With no adapter linked it
-   lifts the saved-adapter lock and clears the skip list for 90 s (obd_ble_explore). With an adapter linked it stops the
+/* Connection search: elm_explore() is the user's (Find OBD, a BOOT double-click), elm_explore_auto() the automatic one
+   (after a minute without engine data). With no adapter linked, the user's search lets a new adapter be offered for 90 s
+   (obd_ble_explore(true)); the automatic one never looks past a saved adapter. With an adapter linked both stop the
    current attempt and, read-only, tries every protocol, lists the computers that answer (broadcast request with headers,
    plus each 11-bit physical address 7E0..7E7), asks each for RPM on its own address and keeps the engine for this boot
    (checked again at the next connect). The result is shown on screen and saved in the session JSON ("search"). */
 void     elm_explore(void);
+void     elm_explore_auto(void);
 bool     elm_exploring(void);
 bool     elm_link_is_up(void);
 int64_t  elm_link_up_ms(void);   /* esp_timer ms when the current link came up, -1 when down */
