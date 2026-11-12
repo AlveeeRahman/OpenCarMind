@@ -14,6 +14,14 @@ clock_src_t clock_source(const clock_flags_t *f)
     return CLOCK_SRC_NONE;
 }
 
+clock_jump_t clock_jump_check(clock_src_t src, int64_t now_s, int64_t new_s)
+{
+    if (src != CLOCK_SRC_WIFI) return CLOCK_JUMP_OK;
+    if (new_s - now_s > CLOCK_JUMP_AHEAD_S) return CLOCK_JUMP_AHEAD;
+    if (now_s - new_s > CLOCK_JUMP_BEHIND_S) return CLOCK_JUMP_BEHIND;
+    return CLOCK_JUMP_OK;
+}
+
 const char *clock_source_name(clock_src_t s)
 {
     switch (s) {

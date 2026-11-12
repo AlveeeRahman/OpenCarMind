@@ -27,6 +27,17 @@ void clock_on_manual(clock_flags_t *f);
 void clock_on_wifi(clock_flags_t *f);
 void clock_on_boot(clock_flags_t *f, bool rtc_manual);
 
+/* The Wi-Fi clock's jump guard (pairing hardening R6, wifi_sync.c on the ESP-Mosaico). While the running clock came from
+   a Wi-Fi sync (this boot, or kept through a software reset with the Wi-Fi note), a new network time more than
+   CLOCK_JUMP_AHEAD_S ahead of it or more than CLOCK_JUMP_BEHIND_S behind it is refused: the RTC drifts seconds per day,
+   so a bigger step means a wrong server answer. A clock set by hand, an estimated clock (resumed after a power cut,
+   so behind by the time the board was off) and no clock at all are not guarded. The 2026-2099 range
+   (harden_epoch_plausible) is checked before this, always. */
+typedef enum { CLOCK_JUMP_OK = 0, CLOCK_JUMP_AHEAD, CLOCK_JUMP_BEHIND } clock_jump_t;
+#define CLOCK_JUMP_AHEAD_S  (24 * 3600)
+#define CLOCK_JUMP_BEHIND_S (10 * 60)
+clock_jump_t clock_jump_check(clock_src_t src, int64_t now_s, int64_t new_s);
+
 /* the picker's range: harden_epoch_plausible() accepts 2026-01-01 to 2099-12-31 (UTC), so earlier years never reach it */
 #define CLOCK_YEAR_MIN 2026
 #define CLOCK_YEAR_MAX 2099
