@@ -323,11 +323,11 @@ Not checked yet: R.E.V over many drives and other cars, the corrected R.E.V on t
 
 <p align="center"><img src="docs/images/edgeos.gif" width="900" alt="Animated, OpenCarMind EdgeOS 2.0.0 on the ESP-Mosaico in six steps: a layer of rules on top of FreeRTOS, under the models and apps. Boot health check: each part checked once after a start, health good at 68.0 s, safe mode with Wi-Fi held if bad. Wi-Fi held until healthy: no radio at boot, released at 68.0 s with 131,975 B of internal RAM free. Model admission: CarMind R.E.V answers in 4.2 ms against a 1,000 ms deadline and is admitted with a margin of 995.8 ms, and a model that would miss its deadline is refused. Parked or Driving: during a drive a model switch, the clock and a format are refused because a drive is running, while the model keeps running. Degradation ladder, in a forced test with extra load: UI slowed at 110.6 s, learner paused at 122.6 s, model paused at 134.6 s, back to normal at 348.6 s, and the model is never swapped. Battery protection, in a board test at lowered limits: hot at 34.2 C sheds load, cooled at 33.7 C restores it, and over-voltage at 4188 mV saves the logs and stops. Internal RAM stays above 60 KB in every phase, lowest about 81 KB"></p>
 
-<p align="center"><img src="docs/images/mosaico-rev.png" width="900" alt="Concept: OpenCarMind with CarMind R.E.V on ESP-Mosaico, three 480 by 480 screens in the dark, light and dark themes: drive gauges, what R.E.V sees and estimates, and what it has learned"></p>
+<p align="center"><img src="docs/images/mosaico-rev.png" width="900" alt="OpenCarMind EdgeOS 2.0.0 on the ESP-Mosaico, rendered from the 2.0.0 screen code with example values: three 480 by 480 screens in the dark, light and dark themes. Drive at 64 km/h and 2350 rpm with the AI seeing Cruising 87 % sure, brake 6.3 bar, torque 85 N m and fuel 2.1 L/h, and the tank at 46 %, about 310 km. AI with the four class bars and its estimates. Learning with 14 updates kept, the air constant, a 50 L tank from 3 fill-ups and the model card"></p>
 
 OpenCarMind also runs on Espressif's ESP-Mosaico<sup>[[12]](#ref-12)</sup>, an ESP32-S31 board with a 480 × 480 AMOLED touch screen, 32 MB of PSRAM and a 128 MB NAND for the drive logs. Up to version 1.2.0 that build was called mossREV. Version 2.0.0 is called OpenCarMind EdgeOS 2.0.0, or Edge OS for short. It is not related to Ubiquiti's EdgeOS router software.
 
-Edge OS comes from the same source tree as the S3 version and keeps everything mossREV 1.2.0 has: both models (CarMind R.E.V, the default on a new board, and CarMind E.V, each re-quantized for the S31), the 16 apps on the touch screen with Wi-Fi search and join, a light and a dark theme, and per-drive event logs. What 2.0.0 adds is a small operating-system layer, described below. The image above is a render with example values. The OS layer does not change the S3 build. Up to 4aeff43, every byte the S3 chip loads was the same as in the mossREV 1.2.0 tree. The pairing change merged after the board check is behind one switch, `CONFIG_OBD_BLE_PAIR_CONFIRM`, which is off for the S3 by default. With it off, the S3 image built from this source equals the 4aeff43 S3 image except the build time, the ELF SHA-256 and the image's checksum and hash (see [Changes after the board check](#changes-after-the-board-check)).
+Edge OS comes from the same source tree as the S3 version and keeps everything mossREV 1.2.0 has: both models (CarMind R.E.V, the default on a new board, and CarMind E.V, each re-quantized for the S31), the 16 apps on the touch screen with Wi-Fi search and join, a light and a dark theme, and per-drive event logs. What 2.0.0 adds is a small operating-system layer, described below. The image above is rendered on a computer from the 2.0.0 screen code (`tests/host/uishot`, the same LVGL code the board runs) with example values. It is not a photo of the board. The OS layer does not change the S3 build. Up to 4aeff43, every byte the S3 chip loads was the same as in the mossREV 1.2.0 tree. The pairing change merged after the board check is behind one switch, `CONFIG_OBD_BLE_PAIR_CONFIRM`, which is off for the S3 by default. With it off, the S3 image built from this source equals the 4aeff43 S3 image except the build time, the ELF SHA-256 and the image's checksum and hash (see [Changes after the board check](#changes-after-the-board-check)).
 
 Edge OS 2.0.0 has been through most of its board check, on build 4aeff43. The soak and a few parts are still open, and four changes merged after the check have not been on a board yet. Until those are done, mossREV 1.2.0 stays the Mosaico release. The [status table](#what-is-verified-on-the-board) at the end of this section says what the board showed.
 
@@ -425,16 +425,16 @@ The screen job's 7.8 ms is wall time from the start of a run to its end, and 4.9
 
 ### What it costs
 
-Measured with `idf.py size` against mossREV 1.2.0 rc3 (8b0b96f), on the S31 build at 09ec8f5:
+Measured with `idf.py size` on the S31 build of the release (920318e, the firmware in main), against mossREV 1.2.0 rc3 (8b0b96f):
 
-| | Edge OS 2.0.0 | Change from 1.2.0 |
-|---|---|---|
-| App image | 4,798,464 B, 76.3 % of the 6 MB app slot | +45,744 B |
-| Static internal RAM (DIRAM) | | +1,874 B: PPA and 2D-DMA +2,380 B (mostly IRAM code), the OS parts +84 B, the feature gate −590 B |
-| Static PSRAM | | +1,480 B, mostly the admission's buffers (1,352 B) |
-| Tasks | | none added |
+| | Edge OS 2.0.0 | mossREV 1.2.0 rc3 | Change |
+|---|---|---|---|
+| App image | 4,778,560 B, 76.0 % of the 6 MB app slot (24 % free) | 4,752,720 B | +25,840 B |
+| Static internal RAM (DIRAM) | 194,198 B of 503,744 B (38.6 %) | 192,124 B | +2,074 B: PPA and 2D-DMA +2,380 B (mostly IRAM code), the pairing change +184 B, the OS parts and fixes +100 B, the feature gate −590 B |
+| Static PSRAM | 291,200 B | 289,664 B | +1,536 B, mostly the admission's buffers (1,352 B) |
+| Tasks | the same tasks as 1.2.0 | | none added: the OS layer runs inside the existing tasks |
 
-Most of the app growth is the graphics work (+37,312 B). The OS parts together add about 9 KB to the app image. With the UPS option switched on, the deep-sleep path alone would add about 12 KB of IRAM, which is one reason that option stays off.
+At 09ec8f5 the graphics work had added 37,312 B to the app image and the OS parts together about 9 KB. The 16 px text floor later saved 24,304 B by dropping the 12 and 14 px fonts, so the release is 25,840 B larger overall. With the UPS option switched on, the deep-sleep path alone would add about 12 KB of IRAM, which is one reason that option stays off.
 
 The target for internal RAM at run time is more than 60 KB free in every phase. This was measured on the board, EdgeOS 2.0.0 4aeff43, with a debug build of that code that adds a RAM monitor. Each figure is the lowest free internal RAM in that phase, all internal heaps added up:
 

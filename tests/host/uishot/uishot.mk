@@ -4,6 +4,8 @@
 #   make textfit   builds every screen in both themes with worst-case texts and fails on any text that is cut, clipped,
 #                  overlapping, outside the rounded screen corners or set below 16 px
 #   make uishot    the same, and writes one PNG per screen and theme to UISHOT_OUT (default uishot/out)
+# The demo case (<screen>_demo_<theme>.png) uses realistic example values for the README and the manual. The other
+# screens show the Mac's clock, and the status bar width follows it: UISHOT_CLOCK=HH:MM fixes it (UISHOT_CLOCK=20:08 make textfit).
 LVGL_DIR  ?= ../../managed_components/lvgl__lvgl
 UISHOT_OUT ?= uishot/out
 UI_B       = uishot/build

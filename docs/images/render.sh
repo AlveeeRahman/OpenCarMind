@@ -22,7 +22,7 @@ shot training 1200 728 docs/images/workflow/training.png
 shot rev-changes 900 520 docs/images/rev-changes.png
 shot banner 1280 420 docs/images/banner.png
 shot logo 512 512 assets/logo/opencarmind-logo.png 00000000
-shot mosaico-rev 1600 740 docs/images/mosaico-rev.png
+shot mosaico-rev 1600 660 docs/images/mosaico-rev.png
 shot lcd-amoled 1200 260 docs/images/lcd-amoled.png
 shot leaders 1600 810 docs/images/leaders.png
 shot learner-board 1600 740 docs/images/learner-board.png
