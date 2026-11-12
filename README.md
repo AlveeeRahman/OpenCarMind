@@ -394,29 +394,7 @@ The rules live in one plain C file, `main/os_core.c`, with no ESP-IDF calls in i
 
 ### Services and runlevels
 
-```mermaid
-flowchart TB
-  subgraph inputs["What the OS reads on every check"]
-    b["start-up has not finished"]
-    s["3 abnormal resets in a row"]
-    d["a drive is recorded,<br/>or the car's computer answers"]
-    v["battery hot, or USB lost<br/>(UPS option, off)"]
-    u["a reset, a door entry<br/>or a format is running"]
-    n["none of these"]
-  end
-  b --> BOOT[Boot]
-  s --> SAFE[Safe]
-  d --> DRIVING[Driving]
-  v --> SAVING[Saving]
-  u --> UPDATE[Update]
-  n --> PARKED[Parked]
-  svc["a service asks to run:<br/>model switch, clock, format,<br/>Wi-Fi edit, Wi-Fi radio, USB door,<br/>model, R.E.V learner"] --> gate
-  BOOT & SAFE & DRIVING & SAVING & UPDATE & PARKED --> gate{"os_allows(service):<br/>does every active<br/>runlevel enable it?"}
-  gate -- yes --> run["the service runs"]
-  gate -- no --> refuse["refused with the phrase of the<br/>highest blocking runlevel<br/>Update, Saving, Driving, Safe, Boot"]
-  health["boot health at 65 s"] -- "good or degraded" --> wifi["the Wi-Fi task starts"]
-  health -- bad --> held["Wi-Fi held until you start it"]
-```
+<p align="center"><img src="docs/images/edgeos-runlevels.png" width="900" alt="How the OS decides what may run, drawn as a hand-drawn flow. Step 1, inputs the OS reads: fresh on every check, from start-up, the count of abnormal resets, the drive log and the car link, the battery gauge and USB power, and the reset path and the format, read in rl_inputs() in main/os.c. Step 2, it sets the active runlevels: Boot when start-up has not finished, Safe after 3 abnormal resets in a row, Driving when a drive is recorded or the car's computer answers, Saving when the battery is hot or over-voltage or USB is lost (UPS option, off), Update when a reset, a door entry or a format is running, and Parked when none of these holds. Several can hold at once, for example Safe while Driving. Step 3, a service asks to run: model switch, clock, format, Wi-Fi edit, Wi-Fi radio, USB door, model or R.E.V learner, one mask each in MASK[] in main/os_core.c. Step 4, os_allows(service): every active runlevel must allow the service, and one that does not is enough to stop it. Step 5, yes: the service runs. No: refused with the phrase of the highest blocking runlevel, highest first: Update, an update or format is running. Saving, the board is saving power. Driving, a drive is running, or the car link is up when only the link is on. Safe, safe mode is on. Boot, the board is starting. Parked never blocks, because every service allows it. Separately, once per boot: step 6, boot health at 65 s rates the board good, degraded or bad. Step 7, good or degraded: the Wi-Fi task starts. Bad: Wi-Fi is held until you start it, and a start you make yourself in the Wi-Fi app is never held."></p>
 
 Which runlevels each service may run in, from the mask table in `main/os_core.c`:
 

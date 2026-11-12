@@ -32,3 +32,4 @@ shot edgeos-scheduler 1200 1320 docs/images/edgeos-scheduler.png
 shot edgeos-boot 1200 950 docs/images/edgeos-boot.png
 shot edgeos-ladder-battery 1200 920 docs/images/edgeos-ladder-battery.png
 shot edgeos-ram 1200 790 docs/images/edgeos-ram.png
+shot edgeos-runlevels 1200 1590 docs/images/edgeos-runlevels.png
