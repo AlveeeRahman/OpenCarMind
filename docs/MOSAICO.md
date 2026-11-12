@@ -1,8 +1,10 @@
-# OpenCarMind on the ESP-Mosaico (mossREV 2.0.0)
+# OpenCarMind EdgeOS 2.0.0 on the ESP-Mosaico
 
-mossREV is the build of OpenCarMind for Espressif's ESP-Mosaico board. It comes from the same source tree as the ESP32-S3 version and does the same job: it reads your car over a Bluetooth OBD-II adapter, logs every drive, and runs a small neural network on the chip. The Mosaico adds a 480 x 480 touch screen, more memory and a 128 MB store for the drive logs.
+OpenCarMind EdgeOS 2.0.0 (Edge OS for short) is the build of OpenCarMind for Espressif's ESP-Mosaico board. Up to version 1.2.0 it was called mossREV. It is not related to Ubiquiti's EdgeOS router software. It comes from the same source tree as the ESP32-S3 version and does the same job: it reads your car over a Bluetooth OBD-II adapter, logs every drive, and runs a small neural network on the chip. The Mosaico adds a 480 x 480 touch screen, more memory and a 128 MB store for the drive logs.
 
 The S3 build is not changed by any of this. For the Waveshare ESP32-S3 board, keep using the S3 releases and the main [README](../README.md).
+
+This guide is for building, flashing and checking the board. The [user manual](manual/edgeos-2.0.0.md) explains every screen and message for a driver.
 
 ## Contents
 
@@ -16,7 +18,7 @@ The S3 build is not changed by any of this. For the Waveshare ESP32-S3 board, ke
 8. [Storage that survives resets](#storage-that-survives-resets)
 9. [The 128 MB NAND](#the-128-mb-nand)
 10. [Swiping between pages](#swiping-between-pages)
-11. [The OS layer (mossREV 2.0.0, draft)](#the-os-layer-mossrev-200-draft)
+11. [The OS layer](#the-os-layer)
 12. [Known limits](#known-limits)
 13. [Coming next](#coming-next)
 14. [Licences](#licences)
@@ -41,7 +43,7 @@ There is no SD card slot. The drive logs live on the NAND, and the learned model
 
 ## Flashing
 
-You need the merged image `mossREV-2.0.0-esp32s31-merged.bin` (its SHA-256 is in the `.sha256` file next to it), a USB-C cable, Python with pyserial (`pip install pyserial`), and esptool 5.6.0 or later (`pip install "esptool>=5.6.0"`), the version this release was tested with.
+You need the merged image `EdgeOS-2.0.0-esp32s31-merged.bin` (its SHA-256 is in the `.sha256` file next to it), a USB-C cable, Python with pyserial (`pip install pyserial`), and esptool 5.6.0 or later (`pip install "esptool>=5.6.0"`), the version this release was tested with.
 
 **Before you flash, copy your drives off the board and expect to pair again.** The merged image starts at address 0x0 and covers the NVS partition (0x9000 to 0xF000). Flashing it erases the pairing with the desktop app, the saved Wi-Fi networks, the settings, the Smart swipe and Smart UI verdicts, the model choice and the session counter. The flash FAT (0xC40000) and the NAND are not written, and the next session number continues after the highest one found on the storage, so old drives are not overwritten. Import your drives first anyway. A flash that stops halfway is not covered by that.
 
@@ -56,10 +58,16 @@ You need the merged image `mossREV-2.0.0-esp32s31-merged.bin` (its SHA-256 is in
 
    ```sh
    esptool --chip esp32s31 --port <ROM port> --before no-reset --after hard-reset \
-       write-flash --flash-mode dio --flash-freq 80m --flash-size 16MB 0x0 mossREV-2.0.0-esp32s31-merged.bin
+       write-flash --flash-mode dio --flash-freq 80m --flash-size 16MB 0x0 EdgeOS-2.0.0-esp32s31-merged.bin
    ```
 
-4. The board restarts into mossREV. The console (115200 baud on the same port) prints `OpenCarMind mossREV 2.0.0 running`. Pair it again from the desktop app.
+4. The board restarts into Edge OS. The console (115200 baud on the same port) prints `OpenCarMind EdgeOS 2.0.0 running`. Pair it again from the desktop app.
+
+<!-- VERIFY: the release image's file name (EdgeOS-2.0.0-esp32s31-merged.bin assumed here and in the manual) and the boot line on the final image, from OS2. -->
+
+To go back to mossREV 1.2.0, flash `mossREV-1.2.0-esp32s31-merged.bin` with the same steps. It erases the NVS again, so pair again after it. Going back has not been tried on the board yet.
+
+<!-- VERIFY: mossREV 1.2.0 flashed over 2.0.0 and back on the board, drives and R.E.V's learned state kept or not. -->
 
 To build it yourself, use ESP-IDF 6.1. The S31 is a preview target there, hence `--preview`:
 
@@ -101,22 +109,22 @@ Wi-Fi still does one thing: it sets the board's clock from an HTTPS time server 
 
 ## The two models
 
-mossREV carries both on-board models, each re-quantized by ESP-PPQ for the esp32s31 from the same trained weights and calibration windows as the S3 files (8-bit weights, 16-bit activations):
+Edge OS carries both on-board models, each re-quantized by ESP-PPQ for the esp32s31 from the same trained weights and calibration windows as the S3 files (8-bit weights, 16-bit activations):
 
 | | CarMind R.E.V | CarMind E.V |
 |---|---|---|
 | File | `ml/onboard_s31/rev/onboard.espdl`, version `bdcf1bb83f01` | `ml/onboard_s31/ev/onboard.espdl`, version `621f1ce3196e` |
 | Self-test on the board | exact: 0 of 64 z values, 0 of 3 estimates, 0 of 4 class scores off | exact: 0 of 3 estimates, 0 of 4 class scores off |
 | Same class as the float model | 255 of 255 calibration windows, 16 of 16 test windows | 255 of 255 calibration windows, 16 of 16 test windows |
-| One inference on the board | 1,960 us (the timed run at boot) | not measured yet |
+| One inference on the board | 1,960 us on mossREV 1.2.0, 2,236 us on a 2.0.0 build (09ec8f5), the timed run at boot | 4,172 us on mossREV 1.2.0 rc3 (`MODEL SET ev`) |
 
 Both files are exported without ESP-PPQ's int16 lookup table (`int16_lut_step=-1`). ESP-DL reads a stepped int16 table by nearest neighbour while ESP-PPQ's simulator computes the exact ReLU, and that was the whole gap between the chip and the PC.
 
-A new board starts on R.E.V. To switch, tap Use in the R.E.V or E.V app, open Settings > MODEL and tap R.E.V or E.V, or use the desktop app's model switch. A switch needs the car to be parked: during a drive the board says "A drive is active. End the drive first, then switch models." The board keeps the choice after a restart. Every model mark and name on the screen follows the model in use, and what R.E.V learned stays on the board while E.V runs. One model is loaded at a time.
+A new board starts on R.E.V. To switch, tap Use in the R.E.V or E.V app, open Settings > MODEL and tap R.E.V or E.V, or use the desktop app's model switch. A switch needs the car to be parked: during a drive the board says "A drive is active. End the drive first, then switch models.", and while it connects to the adapter "Not now: the car link is up. Try again later." The board keeps the choice after a restart. Every model mark and name on the screen follows the model in use, and what R.E.V learned stays on the board while E.V runs. One model is loaded at a time.
 
 ## Smart swipe and Smart UI
 
-**Smart swipe** is a small learner on the board (`main/swipe_intent.c`, 1,680 bytes of RAM). 40 ms after your finger lands on the launcher it predicts whether the swipe goes to the next page, the previous page or stays. It never moves a page itself. When it may act, it keeps the Home picture fresh while you rest on a page you usually leave for Home, and starts the snap at the lift.
+**Smart swipe** is a small learner on the board (`main/swipe_intent.c`, 904 bytes of RAM since 2.0.0, 1,680 before). 40 ms after your finger lands on the launcher it predicts whether the swipe goes to the next page, the previous page or stays. It never moves a page itself. When it may act, it keeps the Home picture fresh while you rest on a page you usually leave for Home, and starts the snap at the lift.
 
 **Smart UI** measures every touch interaction the same way, by class: app opens, Back, in-app controls and list scrolls. Its first helper is a press-time prefetch: it starts building the app you are opening, or the launcher you are going back to, when your finger goes down instead of when it lifts.
 
@@ -176,9 +184,9 @@ Pages slide as cached pictures sent straight to the panel while your finger move
 
 A full 480 x 480 frame takes 23.6 ms on the panel link (measured), so a full-screen redraw cannot get faster than that.
 
-## The OS layer (mossREV 2.0.0, draft)
+## The OS layer
 
-mossREV 2.0.0 treats the firmware as a small operating system. The parts that already existed (the scheduler checks, the reset-safe storage, the self-tested models, the self-checking Smart features) now sit under one OS layer with fixed rules. The layer adds no task. It runs inside the board task, the screen task and the jobs that already exist. Its static internal RAM is 60 bytes, and moving Smart swipe's own gate into it gave back 776 bytes.
+Edge OS treats the firmware as a small operating system. The parts that already existed (the scheduler checks, the reset-safe storage, the self-tested models, the self-checking Smart features) now sit under one OS layer with fixed rules. The layer adds no task. It runs inside the board task, the screen task and the jobs that already exist. Its parts take 84 bytes of static internal RAM, and moving Smart swipe's own gate into it gave back 776 bytes.
 
 ```
 +----------------------------------------------------------------------+
@@ -314,7 +322,7 @@ What the flashing would need:
 
 ## Coming next
 
-mossREV 2.0.0 also uses the S31's pixel-processing accelerator and 2D-DMA for the screen (the slide and large LVGL fills and copies, with a CPU fallback). Its board numbers come from the 2.0.0 board check. After 2.0.0: the battery as a UPS once its draw is measured, the A/B rollback once the flashing flow is decided, and a resource manager for pins and buses.
+Edge OS also uses the S31's pixel-processing accelerator and 2D-DMA for the screen (the slide and large LVGL fills and copies, with a CPU fallback). Its board numbers come from the 2.0.0 board check. After 2.0.0: the battery as a UPS once its draw is measured, the A/B rollback once the flashing flow is decided, and a resource manager for pins and buses.
 
 ## Licences
 
