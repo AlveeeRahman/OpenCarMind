@@ -378,28 +378,71 @@ The board's own health, for checks and bug reports. The page scrolls: the RAM an
 
 ### Health
 
+<p><img src="img/mosaico-health-battery-dark.png" width="240" alt="Health, Battery page, dark theme, on the board: the header says All good, a blue status card says Learning your battery, Needs 10 more full charges to judge its health, Now and then, run it low and charge it full, then Recent issues: None since the start"> <img src="img/mosaico-health-guard-blocking-dark.png" width="240" alt="Health, Guard page, dark theme, a test state on the board: the header says 1 thing to check, an amber card says Blocked, Blocked a flood of Bluetooth devices, New adapters and pairing paused until 15:31, Nothing to do. Tap Clear block if this is your own device, with the Clear block button"></p>
+
+*Health on the board: the Battery page while it learns the cell (left), and the Guard page in a test state that shows a block (right).*
+
 Health shows how the board itself is doing, on three pages. Tap **Battery**, **Guard** or **AI** under the title to switch pages. Swipe left or right to go to the next app, as everywhere. Nothing on this app changes a setting. The one button, **Clear block**, appears only while the guard is blocking.
 
-**Battery**
-- **Charge:** the estimated state of charge in %, from the board's own estimator. It says "learning" until the estimator has seen one rest or one full charge.
-- **Mode:** charging, CV (the last part of a charge, when the current tapers off), discharging or rest.
-- **Current and power:** in mA and mW. On USB the current is labelled "charging".
-- **Temperature:** what the fuel gauge measures, in °C.
-- **Health (SoH):** the battery's capacity against new, in %, and where the figure comes from. "full-cycle count" is a charge counted from nearly empty to full, the most exact. "partial-cycle model" is the small model that reads the shape of a charge. "learning (n of 10 charges)" means the board is still learning your cell from its first 10 deep charges. A deep charge starts below about 3.6 V and ends full. A top-up does not count.
-- **Resistance trend:** the cell's internal resistance now against the first one measured, for example x1.04. It rises slowly as a cell ages.
-- **Anomaly:** "warming up, h of 24" for the first 24 hours, then "normal", or "alarm" with the kind of fault it sees, for example "resistance rise" or "unexpected heating". An alarm also shows the red banner. It never switches anything off. If you see one, unplug the battery and let it cool, and check it before you use it again.
-- **Last event:** the last battery message and how long ago it came.
+**The header** counts what needs you: "All good" in green, or "1 thing to check" and "2 things to check". The count is amber when the worst one can wait and red when it needs you now. Learning and slowing down on purpose are not counted.
 
-**Guard**
-- **State:** "Learning" before the guard has seen any radio data, "Shadow, h of 2" for its first two hours, when it learns your surroundings and blocks nothing, "Watching", or "Blocking" with the reason and the minutes left.
-- **Scores:** three small bars, one per check: the Bluetooth scan, the car link's timing and Wi-Fi. The mark on each bar is the threshold. A grey bar has no data right now, for example the scan while the car link is up.
-- **Counts:** adapter fingerprint checks, re-pair requests refused, clock jumps refused and blocks today.
-- **Recent:** the last three guard messages.
-- **Clear block:** ends a block at once. The guard keeps what it learned.
+**The status card.** Each page opens with one card:
+- A colour, an icon and a word: green "Good", blue "Learning" (or "Starting", "Slowed"), amber "Check soon", red "Act now". The word is there so you do not have to rely on the colour.
+- A headline, for example "Battery is healthy".
+- One line on what it means, for example "Holds 98 % of its rated charge".
+- One line on what to do, or "Nothing to do".
 
-**AI**
-- One row per AI service: its runs, missed deadlines, worst response time and its time budget. bat is the battery estimator with its health model, banom the anomaly detector and ids the network guard.
-- **Ladder:** the board's degradation state. When deadlines are missed the AI services slow down first, the guard then checks every fourth window, and they come back last.
+**Recent issues.** The last five issues of the page with their time, newest first, and the line that says when one ended, for example "Block lifted". It says "None since the start" until there is one. The list starts again after a restart.
+
+**Details** below the card are for checks and bug reports. Scroll down to see them all.
+
+**Battery: what the card can say**
+
+| Card | What it means | What to do |
+|---|---|---|
+| Battery is healthy | Holds 98 % of its rated charge (counted on a full charge), or "about 97 % of its starting charge" from the small model | Nothing |
+| Learning your battery | It needs n more full charges to judge its health | Now and then, run it low and charge it full. A charge counts when it starts below about 3.6 V and ends full. A top-up does not count |
+| Battery is wearing out (amber) | It holds less than 80 % of its charge, so it runs shorter on battery | Plan to replace the cell |
+| Battery is worn out (red) | It holds less than 70 % | Replace the cell soon |
+| Battery warms up more than usual (red) | It runs warmer than its load explains | Let it cool, keep it out of the sun |
+| Battery loses charge while resting | Its voltage falls with nothing drawing power | If it keeps happening, replace the cell |
+| Battery current reading looks wrong | A current shows while the board rests | Check the battery connector |
+| Voltage drops more under load | The battery's resistance went up | If it keeps happening, replace the cell |
+| Board draws more power than usual | The battery empties faster than it learnt | Check what is plugged into the board |
+| Connection to the battery glitches | Some battery readings jump or go missing | Check the battery connector |
+| Battery charge reading drifts | The charge level and the voltage disagree | Charge it fully once so it can reset |
+
+The last seven come from the anomaly detector. It learns your cell's normal for 24 hours, then looks at nine things once a minute. When it raises an alarm, the card names the one that looks most unusual. It never switches anything off.
+
+Battery details: the charge level and mode (resting, on battery, charging, topping up), the current ("resting, 0 mA", "charging +12 mA" or "on battery -118 mA"), power and temperature, the health estimate and where it comes from, the resistance against its first value, the unusual-behaviour check ("learning, 3.2 of 24 h", "normal" or the alarm), its score against the alarm level, and the detector's last message.
+
+**Guard: what the card can say**
+
+| Card | What it means | What to do |
+|---|---|---|
+| Learning this place (1.2 of 2 h) | The first two hours after a start | Nothing. It blocks nothing yet |
+| No threats seen | Watching Bluetooth and Wi-Fi around the car | Nothing |
+| Blocked a flood of Bluetooth devices (amber) | New adapters and pairing paused until 14:12 | Nothing. Tap Clear block if this is your own device |
+| Blocked a flood of Wi-Fi networks, or a Wi-Fi disconnect attack (amber) | Clock sync over Wi-Fi paused until 14:12 | The same |
+| An adapter that looks like yours behaved differently (amber) | Its data is kept out of learning | Check that the adapter in the car is yours |
+| Car link answers slower than usual | Its data is kept out of learning | Nothing |
+| Saw a flood of ... | Blocking is off in Settings, so nothing was paused | Turn on blocking in Settings to pause it |
+
+Guard details: the mode, adapter checks, re-pair requests refused, clock jumps refused and blocks today, one score bar per check (Bluetooth, car link, Wi-Fi, the mark is the limit, "no data" when the check has nothing right now), and the guard log with its last three messages. The first Wi-Fi scan after a start has nothing to compare with, so it is not scored.
+
+**AI: what the card can say**
+
+| Card | What it means | What to do |
+|---|---|---|
+| All AI features on time | Battery and guard checks run in the background | Nothing |
+| Board busy: AI features slowed (or paused) | Keeps the screen and the drive log smooth | Nothing |
+| AI features mostly on time | n runs finished late since the start | Nothing |
+| Some AI features are off (amber) | One of them did not pass its start check | Restart the board once |
+| AI features starting | They start once the board has booted well, about a minute after a start | Nothing |
+
+AI details: the degradation ladder, the worker's core, and one card per feature (Battery charge, Battery check, Network guard) with its runs, late runs and skipped runs, "worst time 12.9 ms (limit 1,000 ms)", the longest a run took from its start time to its end, against its deadline, and "work per run 0.23 ms (budget 2 ms)", the longest a run computed, against its time budget.
+
+**The banner.** When a battery wear, a battery alarm, a guard block or an adapter question starts, the banner shows "Check soon" or "Act now", the headline and **Open Health**. Tap it to open the right page. Swipe it away to just close it. While you drive, amber issues only go into the list, and red ones show for 10 seconds. On Home, the Health icon gets an amber or red dot while an issue is active.
 
 ### Files
 
@@ -696,6 +739,10 @@ To clear it, tap the banner, swipe up or sideways on it, or press the orange key
 ### Other faults
 
 Faults that are not critical never pop up. They show in the Faults app and on the Home card. The Faults app ranks every code by severity and groups codes that share a cause.
+
+### The Health banner
+
+When a new health issue starts, the same banner shows it with an amber edge ("Check soon") or a red one ("Act now"), the plain headline, for example "Battery is wearing out", and **Open Health**. Tap it to open Health on the right page. Swipe it up or sideways, or press the orange key, to just close it. It shows for a battery that wears out, a battery alarm, a guard block and an adapter that looks different. While you drive, amber issues only go into Health's recent list, and red ones show for 10 seconds so they never stay over the Drive screen. When the issue ends, its banner goes too.
 
 ### The green banner
 
