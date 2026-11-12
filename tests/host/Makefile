@@ -151,5 +151,9 @@ rev_tests: $(REV_SRCS) ../../main/rev_learn.h ../../main/rev_cal.h ../../main/re
 	$(CC) $(CFLAGS) -o $@ $(REV_SRCS) -lm
 
 clean:
-	rm -f carmind_tests rev_tests tank_tests session_tests reset_tests swipe_tests clock_tests uimetrics_tests prefetch_tests logstore_tests nandfat_tests settings_tests wifi_tests events_tests theme_tests wificreds_tests rows_tests ppa_tests os_tests pair_tests
-.PHONY: run rev session reset swipe clock uimetrics prefetch logstore clean settings wifi events theme wificreds rows eventtext ppa os pair
+	rm -f carmind_tests rev_tests tank_tests session_tests reset_tests swipe_tests clock_tests uimetrics_tests prefetch_tests logstore_tests nandfat_tests settings_tests wifi_tests events_tests theme_tests wificreds_tests rows_tests ppa_tests os_tests pair_tests uishot_bin
+	rm -rf uishot_bin.dSYM
+.PHONY: run rev session reset swipe clock uimetrics prefetch logstore clean settings wifi events theme wificreds rows eventtext ppa os pair textfit uishot uishot_lvgl
+
+# ESP-Mosaico screens rendered on the Mac: text fit, corners, the 16 px floor (uishot/uishot.mk)
+include uishot/uishot.mk
