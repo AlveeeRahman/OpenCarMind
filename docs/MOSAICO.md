@@ -1,4 +1,4 @@
-# OpenCarMind on the ESP-Mosaico (mossREV 1.2.0)
+# OpenCarMind on the ESP-Mosaico (mossREV 2.0.0)
 
 mossREV is the build of OpenCarMind for Espressif's ESP-Mosaico board. It comes from the same source tree as the ESP32-S3 version and does the same job: it reads your car over a Bluetooth OBD-II adapter, logs every drive, and runs a small neural network on the chip. The Mosaico adds a 480 x 480 touch screen, more memory and a 128 MB store for the drive logs.
 
@@ -16,9 +16,10 @@ The S3 build is not changed by any of this. For the Waveshare ESP32-S3 board, ke
 8. [Storage that survives resets](#storage-that-survives-resets)
 9. [The 128 MB NAND](#the-128-mb-nand)
 10. [Swiping between pages](#swiping-between-pages)
-11. [Known limits](#known-limits)
-12. [Coming next](#coming-next)
-13. [Licences](#licences)
+11. [The OS layer (mossREV 2.0.0, draft)](#the-os-layer-mossrev-200-draft)
+12. [Known limits](#known-limits)
+13. [Coming next](#coming-next)
+14. [Licences](#licences)
 
 ## The hardware
 
@@ -40,7 +41,7 @@ There is no SD card slot. The drive logs live on the NAND, and the learned model
 
 ## Flashing
 
-You need the merged image `mossREV-1.2.0-esp32s31-merged.bin` (its SHA-256 is in the `.sha256` file next to it), a USB-C cable, Python with pyserial (`pip install pyserial`), and esptool 5.6.0 or later (`pip install "esptool>=5.6.0"`), the version this release was tested with.
+You need the merged image `mossREV-2.0.0-esp32s31-merged.bin` (its SHA-256 is in the `.sha256` file next to it), a USB-C cable, Python with pyserial (`pip install pyserial`), and esptool 5.6.0 or later (`pip install "esptool>=5.6.0"`), the version this release was tested with.
 
 **Before you flash, copy your drives off the board and expect to pair again.** The merged image starts at address 0x0 and covers the NVS partition (0x9000 to 0xF000). Flashing it erases the pairing with the desktop app, the saved Wi-Fi networks, the settings, the Smart swipe and Smart UI verdicts, the model choice and the session counter. The flash FAT (0xC40000) and the NAND are not written, and the next session number continues after the highest one found on the storage, so old drives are not overwritten. Import your drives first anyway. A flash that stops halfway is not covered by that.
 
@@ -55,10 +56,10 @@ You need the merged image `mossREV-1.2.0-esp32s31-merged.bin` (its SHA-256 is in
 
    ```sh
    esptool --chip esp32s31 --port <ROM port> --before no-reset --after hard-reset \
-       write-flash --flash-mode dio --flash-freq 80m --flash-size 16MB 0x0 mossREV-1.2.0-esp32s31-merged.bin
+       write-flash --flash-mode dio --flash-freq 80m --flash-size 16MB 0x0 mossREV-2.0.0-esp32s31-merged.bin
    ```
 
-4. The board restarts into mossREV. The console (115200 baud on the same port) prints `OpenCarMind mossREV 1.2.0 running`. Pair it again from the desktop app.
+4. The board restarts into mossREV. The console (115200 baud on the same port) prints `OpenCarMind mossREV 2.0.0 running`. Pair it again from the desktop app.
 
 To build it yourself, use ESP-IDF 6.1. The S31 is a preview target there, hence `--preview`:
 
@@ -175,6 +176,106 @@ Pages slide as cached pictures sent straight to the panel while your finger move
 
 A full 480 x 480 frame takes 23.6 ms on the panel link (measured), so a full-screen redraw cannot get faster than that.
 
+## The OS layer (mossREV 2.0.0, draft)
+
+mossREV 2.0.0 treats the firmware as a small operating system. The parts that already existed (the scheduler checks, the reset-safe storage, the self-tested models, the self-checking Smart features) now sit under one OS layer with fixed rules. The layer adds no task. It runs inside the board task, the screen task and the jobs that already exist. Its static internal RAM is 60 bytes, and moving Smart swipe's own gate into it gave back 776 bytes.
+
+```
++----------------------------------------------------------------------+
+| APPS        Drive, AI, R.E.V, E.V, Summary, Fuel, Faults, Board, ... |
++----------------------------------------------------------------------+
+| SHELL       launcher, slide, status bar, sheets, theme, settings     |
++-----------------------+----------------------+-----------------------+
+| AI SERVICES           | ADAPTIVE UI          | CAR SERVICES          |
+| E.V and R.E.V models  | Smart swipe          | OBD over Bluetooth    |
+| R.E.V learner         | Smart UI prefetch    | drive recorder        |
++-----------------------+----------------------+-----------------------+
+| OS LAYER    runlevels, one reset path, boot health, model admission,  |
+|             service contracts, degradation ladder, feature gate,      |
+|             UPS power state, A/B rollback (prepared)                  |
++----------------------------------------------------------------------+
+| KERNEL      scheduler monitor (deadlines, response times, stalls,     |
+|             CPU reservations), safe mode, event ring, clock, storage  |
+|             (flash FAT, NAND, quiesce), USB door, Wi-Fi clock         |
++----------------------------------------------------------------------+
+| BOARD       pins, safe pin state, I2C, gauge, display, touch, USB     |
++----------------------------------------------------------------------+
+| ESP-IDF 6.1, FreeRTOS on 2 cores, ESP32-S31, 32 MB PSRAM             |
++----------------------------------------------------------------------+
+```
+
+The rules live in one plain C file (`main/os_core.c`) that the host tests check. The firmware side is `main/os.c`. Files that the S3 build also uses call the OS through two macros in `main/os_hooks.h`, which turn back into the old S3 code on the S3, so the S3 firmware stays byte for byte the same.
+
+### One reset path
+
+Every reset the firmware asks for goes through `sys_reset(reason)`: the REBOOT command, the USB download door, the restart after a format, the screen stall guard, the scheduler's restart of a hung job and, when enabled, the battery power-off and the rollback. Each one runs the same steps in the same order. First the "asked for" mark, so the next boot does not count it as a crash. Then the flash FAT and the NAND are flushed and locked. Then the reset itself. The stall guard and the hung-job restart leave the mark out on purpose, because three of those in a row should still put the board into safe mode. The next boot says in the log which reset ended the last run.
+
+### Runlevels
+
+The board is always in one or more of six states, called runlevels:
+
+- **Boot**: start-up has not finished.
+- **Safe**: three crashes in a row. The model and the learner stay off.
+- **Parked**: nothing else holds.
+- **Driving**: a drive is recorded or the car link is up.
+- **Saving**: USB power is gone and the board runs on its battery (only with the UPS option).
+- **Update**: a reset, a door entry or a format is running.
+
+Each service has a list of runlevels it may run in. A service runs only if every runlevel that holds allows it. So in safe mode while driving, both sets of limits apply. The services never ask which runlevel holds. They only ask "may I run now". This is how PebbleOS does it. Switching models, setting the clock, formatting, editing Wi-Fi networks, using the Wi-Fi radio and the USB door's commands all go through this one check. Safe mode still allows a format, the clock, the door and Wi-Fi, so the board can always be repaired. The Board page shows the runlevel.
+
+### Boot health
+
+About a minute after boot the board gives itself one verdict: good, degraded or bad. It looks at the model's self-test, the flash FAT check, the NAND, the first screen update, the touch controller and the scheduler's deadline record.
+
+- **Bad** means this firmware should not be kept: the screen never updated, or the board is in safe mode.
+- **Degraded** means it runs but something is off, for example a model self-test that does not match, a repaired store, no NAND, missed deadlines or a slow start.
+- **Good** is everything else.
+
+A damaged store counts as degraded, not bad, because older firmware would not fix the data. The verdict goes into the boot log, the events list and the Board page.
+
+### Model admission
+
+A model is a real-time job, not just a function call. When a model loads at boot or on a switch, its measured run time from the self-test, doubled for safety, is checked with response-time analysis. The analysis asks: if every job on that core starts at the same moment, does each job still finish before its deadline? For a job i with run time C, period T and deadline D, its worst-case response time R solves
+
+R = C_i + sum of ceil(R / T_j) x C_j over the higher-priority jobs j on the same core,
+
+and every job needs R <= D. If any job would miss, the model is refused and the old one stays. The log shows each job's R and the margin. The doubling is there because one measured run is not a worst case.
+
+### Service contracts
+
+Each model and learner declares in one table: how often it runs, its deadline, how long it may be silent before it counts as stalled, how much CPU it may use (the R.E.V learner gets 2 % of a core in 30 ms bursts), how it tests itself, which model replaces it when it does not load (R.E.V falls back to E.V), and which runlevels it may run in. The board registers the jobs from this table, so the numbers exist in one place.
+
+### Degradation ladder
+
+If the model starts missing its deadlines, the board gives up comfort before function, one step every 10 s while misses continue:
+
+1. The screen draws half as many frames.
+2. The R.E.V learner pauses. What it learned is kept.
+3. The model's inference pauses. The same model stays loaded.
+
+A minute without misses takes one step back. The ladder never switches to another model. Models change only while parked and only when the owner asks. The last step is undone only when parked, so the model does not go on and off during one drive.
+
+### Feature gate
+
+Smart swipe and the Smart UI prefetch are features that must prove themselves on the board. They are now run by one OS service. A feature tells the OS its class (which kind of touch it helps), its action, and which measurement judges it. The OS splits the touches 50/50 between "feature on" and "feature off", compares the finger-lift-to-settled times with a Mann-Whitney test, corrects for testing several features at once (Holm), saves the verdict for each firmware version, and switches the feature on or off. The feature cannot see or change the thresholds. The rule is still the owner's: keep a feature only if its slow cases (the 95th percentile) get faster and it was ready more than 80 % of the time.
+
+### Battery as a UPS (off by default)
+
+The board can run on its small battery when the car's USB goes away. With the UPS option on, two gauge readings in a row that show the battery discharging start a grace period: the logs are flushed, the screen dims and the board refuses changes. Cranking the engine drops USB for a few seconds, so if USB comes back within 15 s everything returns to normal. If not, storage is closed and the board turns itself off through the power switch line (GPIO57). At 3.4 V on battery it turns off at once, before a brown-out can hurt a write. This stays off until the board's real draw and the gauge's current sign are measured.
+
+### A/B slots and rollback (prepared, not in use)
+
+The flash has two 6 MB app slots, and today only the first one is used. The rollback option is prepared but off, because it needs a change to how the board is flashed, and that is the owner's call.
+
+How it would work: the bootloader's rollback setting gives a new image exactly one boot to prove itself. The boot health verdict confirms the image when it is good or degraded. When it is bad, the board goes back to the other slot. The rollback counts as asked for, so the old image does not start in safe mode.
+
+What the flashing would need:
+
+- **flash.sh**: write the new app to the slot that is not running (0x620000 when the board runs 0x20000), then write an otadata entry for that slot in the NEW state (sequence number, its CRC32, state 0). esptool and IDF's otatool can write the slot, but otatool leaves the state at "undefined", which turns rollback off, so flash.sh needs a small otadata writer of its own.
+- **Merged images**: they erase otadata and NVS. They stay the recovery path, not the update path.
+- **The USB door**: it would stay as it is. The ROM download mode it enters can write the inactive slot like any other address. No new desktop-app command is needed.
+- **Timing**: the verdict comes at 65 s. A power cut in the first minute after an update would also roll back. Confirming earlier, after the first screen update and the storage mount, is an option.
+
 ## Known limits
 
 - **A panic in the middle of a write can still damage a file.** The volume survives, but 21 of 200 reset-test cycles damaged a file, almost all of them after a panic, which cannot flush first. There is no journal.
@@ -189,7 +290,7 @@ A full 480 x 480 frame takes 23.6 ms on the panel link (measured), so a full-scr
 
 ## Coming next
 
-mossREV 2.0.0 will use the S31's pixel-processing accelerator and 2D-DMA for the screen, together with the internal-RAM work.
+mossREV 2.0.0 also uses the S31's pixel-processing accelerator and 2D-DMA for the screen (the slide and large LVGL fills and copies, with a CPU fallback). Its board numbers come from the 2.0.0 board check. After 2.0.0: the battery as a UPS once its draw is measured, the A/B rollback once the flashing flow is decided, and a resource manager for pins and buses.
 
 ## Licences
 
