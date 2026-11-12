@@ -1,0 +1,88 @@
+<!doctype html>
+<!-- OpenCarMind EdgeOS figure: the battery anomaly detector, hand-drawn like edgeos-runlevels.html.
+     Render with docs/images/render.sh. Every number is from phase 3 of the battery study on the Mac (final):
+     60 s windows, 9 features, 3 detectors, 3 windows in a row, 24 h warm-up, 388 h benign held-out, detection rate
+     and median time per injected fault, cost < 400 ops per window, 280 B state + 640 B parameters.
+     It is trained and tested on the Mac and not in the firmware yet. -->
+<html lang="en"><head><meta charset="utf-8"><title>Battery anomaly detector</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Kalam:wght@400;700&family=Patrick+Hand&display=swap">
+<style>
+html, body { margin: 0; background: #FBF4E4; }
+svg { display: block; }
+</style></head><body>
+<svg id="fig" width="1200" height="1360" viewBox="0 0 1200 1360" xmlns="http://www.w3.org/2000/svg"></svg>
+<script src="edgeos-ai-draw.js"></script>
+<script>
+const W = 1200, H = 1360;
+seed = 20261116;
+
+function draw() {
+  heading(W, 'How the battery anomaly detector works',
+    'It learns what normal looks like for this cell and raises an alarm when 60 s windows stop looking like it. ' +
+    'Nobody labels a fault for it. On the Mac it caught large faults and missed small ones.');
+  chip(60, 200, 'mac', { label: 'validated on the Mac, not in the firmware yet' });
+
+  // ---- 1 features ----
+  const r1 = 262, h1 = 460;
+  let y = card(1, 40, r1, 360, h1, C.orange, 'Every 60 s: 9 features', 'Inputs, from the EKF and the gauge');
+  for (const s of ['innovation mean and RMS, as slow averages', 'voltage drift and current at rest',
+                   'temperature against a one-node heat model', 'voltage sag per C-rate against R₀ at that temperature',
+                   'DC resistance ratio at a current step', 'load level', 'gauge read glitches']) {
+    y = bullet(66, y + 30, s, 310, C.orange, { size: 18.5, lh: 23 });
+  }
+  roughLine([[402, r1 + 200], [446, r1 + 200]], C.ink);
+
+  // ---- 2 detectors ----
+  y = card(2, 450, r1, 380, h1, C.blue, 'Three detectors', 'Unsupervised: one raises alarms, two log');
+  const det = [
+    ['Autoencoder 9 → 4 → 9, tanh', 'raises the alarm: the reconstruction error is the score', C.green],
+    ['Robust z, frugal median and MAD', 'diagnostic only', C.soft],
+    ['Online Gaussian', 'diagnostic only', C.soft],
+  ];
+  let dy = y + 26;
+  det.forEach(([n, w, col], i) => {
+    roughRect(476, dy, 330, i ? 64 : 88, 12, col, { sw: i ? 1.6 : 2.6, amp: 0.7, fill: i ? C.card : '#E5F2E8', dash: i ? '6 5' : undefined });
+    text(492, dy + 28, n, { font: TITLE, weight: 700, size: 19, color: i ? C.ink : C.green });
+    wrap(492, dy + 52, w, 300, 22, { size: 17.5, color: C.soft });
+    dy += (i ? 64 : 88) + 14;
+  });
+  wrap(476, dy + 20, 'False alarms on 388 h of held-out normal data: autoencoder 0.0026 per hour (95 % upper bound 0.012), ' +
+    'robust z 0.245 and Gaussian 0.126. Those two drift with ageing, so they only log.', 330, 22, { size: 17.5 });
+  roughLine([[832, r1 + 200], [866, r1 + 200]], C.ink);
+
+  // ---- 3 learning and alarm ----
+  y = card(3, 870, r1, 290, h1, C.purple, 'Learn, then alarm', 'Rules around the score');
+  y = bullet(896, y + 30, '24 h warm-up before any alarm', 240, C.purple);
+  y = bullet(896, y + 28, 'learns only from clearly normal windows', 240, C.purple);
+  y = bullet(896, y + 28, 'alarm after 3 windows in a row', 240, C.purple);
+  y = bullet(896, y + 28, 'on alarm: a banner and a log line', 240, C.purple);
+  y = bullet(896, y + 28, 'never acts on power', 240, C.red, { color: C.red });
+  wrap(896, y + 40, 'Under 400 ops per window. 280 B of state and 640 B of parameters.', 240, 22, { size: 17.5, color: C.soft });
+
+  // ---- results: detection per injected fault ----
+  const r2 = 772;
+  roughLine([[40, r2 - 18], [W - 40, r2 - 18]], C.rule, { arrow: false, sw: 1.6, bow: 0.002, dash: '3 8' });
+  text(60, r2 + 18, 'Injected faults: share of runs caught, and the median time to the alarm', { font: TITLE, weight: 700, size: 22 });
+  const res = [
+    ['resistance +100 %', 92, '72 min'], ['temperature +15 °C', 83, '164 min'], ['soft short, 5 % per hour', 75, '176 min'],
+    ['resistance +30 %', 25, ''], ['soft short, 0.5 % per hour', 8, ''], ['current offset', 8, ''],
+    ['intermittent reads', 8, '0 to 8 %'], ['temperature +5 °C', 0, ''], ['current gain error', 0, ''], ['extra drain', 0, ''],
+  ];
+  const bx = 360, bw = 520;
+  res.forEach(([n, p, t], i) => {
+    const yy = r2 + 60 + i * 42;
+    text(60, yy + 6, n, { size: 19 });
+    roughLine([[bx, yy], [bx + bw, yy]], C.rule, { arrow: false, sw: 1.2, bow: 0, dash: '2 6' });
+    const col = p >= 70 ? C.green : (p >= 20 ? C.brown : C.red);
+    if (p > 0) roughRect(bx, yy - 11, Math.max(8, bw * p / 100), 22, 6, col, { sw: 1.8, amp: 0.5, fill: col + '33' });
+    else el('circle', { cx: bx + 4, cy: yy, r: 4, fill: C.red });
+    const label = n === 'intermittent reads' ? t : `${p} %`;
+    text(bx + bw + 20, yy + 6, label, { size: 19, weight: 700, color: col });
+    if (t && n !== 'intermittent reads') text(bx + bw + 100, yy + 6, t, { size: 19, color: C.soft });
+  });
+  wrap(60, r2 + 60 + res.length * 42 + 24, 'It catches large faults only. The thresholds were learned on public cell data, so they ' +
+    'have to be learned again on the board\'s own cell before an alarm means anything there.', 1080, 24, { size: 19, color: C.soft });
+}
+start(draw, W, H);
+</script>
+</body></html>

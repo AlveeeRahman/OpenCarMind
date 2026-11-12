@@ -16,7 +16,7 @@
 extern "C" {
 #endif
 
-#define UI_MAX_APPS 16
+#define UI_MAX_APPS 20          /* 16 up to version 7 (ui_settings_v7_t); 20 from version 8 (the Health app made 17) */
 typedef struct {
     uint8_t  ver;
     uint8_t  n;                      /* entries in order[] */
@@ -29,19 +29,38 @@ typedef struct {
     uint8_t  theme;                  /* 0 auto (light by day once the clock is known), 1 light, 2 dark */
 } ui_settings_t;
 /* 6: the Wi-Fi app joined the registry (just before Settings) and app hiding is gone. Same size and layout as 5.
-   7: the E.V app joined the registry right after the R.E.V app (mossREV M1). Same size and layout as 6. */
-#define UI_SETTINGS_VER 7
+   7: the E.V app joined the registry right after the R.E.V app (mossREV M1). Same size and layout as 6.
+   8: the Health app joined the registry right after the Board app (OpenCarMind EdgeOS 2.1.0). order[] grew from 16 to
+      UI_MAX_APPS entries, so version 8 is a new layout: a blob of the old size loads as ui_settings_v7_t and
+      ocm_settings_from_v7() copies it over, then ocm_settings_migrate() takes the version steps. */
+#define UI_SETTINGS_VER 8
+
+#define UI_MAX_APPS_V7 16
+typedef struct {                     /* versions 5, 6 and 7 in NVS (26 bytes) */
+    uint8_t  ver;
+    uint8_t  n;
+    uint8_t  order[UI_MAX_APPS_V7];
+    uint16_t hidden_v5;
+    uint8_t  widget;
+    uint8_t  brightness;
+    uint16_t screen_off_s;
+    uint8_t  econ_l100;
+    uint8_t  theme;
+} ui_settings_v7_t;
+/* the old layout -> this one, fields unchanged (the version stays, so the migration still takes its steps) */
+void ocm_settings_from_v7(const ui_settings_v7_t *in, ui_settings_t *out);
 
 /* ---- loading: the saved blob -> the settings to use ----
    napps = apps in this firmware's registry (Settings is the last one). wifi = the Wi-Fi app's registry index (the app
-   version 6 added), ev = the E.V app's registry index (the app version 7 added, registered right after R.E.V); -1 when
-   the firmware has none. Each step moves every saved index from the new app's index upwards up by one:
+   version 6 added), ev = the E.V app's registry index (the app version 7 added, registered right after R.E.V), health =
+   the Health app's registry index (the app version 8 added, registered right after Board); -1 when the firmware has none.
+   7 -> 8 puts Health in just after the app before it in the registry (Board). Each step moves every saved index from the new app's index upwards up by one:
    5 -> 6 puts Wi-Fi in just before Settings and shows every hidden app again, 6 -> 7 puts E.V in just after R.E.V (the
    app before it in the registry), so a user's order is kept around the new app. A version-5 blob takes both steps.
    Any version: invalid and repeated indices are dropped and apps missing from the order are appended in registry
    order. */
 enum { OCM_SET_REJECT = 0, OCM_SET_OK, OCM_SET_CHANGED };   /* REJECT: use the defaults; CHANGED: save the result back */
-int ocm_settings_migrate(const ui_settings_t *saved, ui_settings_t *out, int napps, int wifi, int ev);
+int ocm_settings_migrate(const ui_settings_t *saved, ui_settings_t *out, int napps, int wifi, int ev, int health);
 
 /* ---- Home order: move the app at pos one place up (dir -1) or down (+1); false at either end ---- */
 bool ocm_order_move(ui_settings_t *s, int pos, int dir);

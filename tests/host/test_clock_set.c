@@ -15,8 +15,40 @@ static int64_t conv(const char *tz, int y, int mo, int d, int h, int mi)
     return clock_local_to_epoch(tz, y, mo, d, h, mi, &e) ? e : -1;
 }
 
+/* R6, the Wi-Fi clock's jump guard (clock_set.h clock_jump_check): what a sync may do to the running clock */
+static void test_clock_jump(void)
+{
+    const int64_t now = 1794700800;                                  /* 2026-11-15 00:00 UTC */
+    /* Wi-Fi was the source: up to 24 h ahead and 10 min behind pass, one second more is refused */
+    CHECK(clock_jump_check(CLOCK_SRC_WIFI, now, now) == CLOCK_JUMP_OK);
+    CHECK(clock_jump_check(CLOCK_SRC_WIFI, now, now + 3) == CLOCK_JUMP_OK);                /* normal drift */
+    CHECK(clock_jump_check(CLOCK_SRC_WIFI, now, now + CLOCK_JUMP_AHEAD_S) == CLOCK_JUMP_OK);
+    CHECK(clock_jump_check(CLOCK_SRC_WIFI, now, now + CLOCK_JUMP_AHEAD_S + 1) == CLOCK_JUMP_AHEAD);
+    CHECK(clock_jump_check(CLOCK_SRC_WIFI, now, now + 400LL * 86400) == CLOCK_JUMP_AHEAD);   /* a year on, still in range */
+    CHECK(clock_jump_check(CLOCK_SRC_WIFI, now, now - CLOCK_JUMP_BEHIND_S) == CLOCK_JUMP_OK);
+    CHECK(clock_jump_check(CLOCK_SRC_WIFI, now, now - CLOCK_JUMP_BEHIND_S - 1) == CLOCK_JUMP_BEHIND);
+    CHECK(clock_jump_check(CLOCK_SRC_WIFI, now, now - 3600) == CLOCK_JUMP_BEHIND);
+    /* not guarded: no clock yet, an estimate after a power cut, a clock set by hand */
+    const clock_src_t free_src[] = {CLOCK_SRC_NONE, CLOCK_SRC_ESTIMATED, CLOCK_SRC_MANUAL};
+    for (int i = 0; i < 3; i++) {
+        CHECK(clock_jump_check(free_src[i], now, now + 400LL * 86400) == CLOCK_JUMP_OK);
+        CHECK(clock_jump_check(free_src[i], now, now - 400LL * 86400) == CLOCK_JUMP_OK);
+        CHECK(clock_jump_check(free_src[i], 0, now) == CLOCK_JUMP_OK);                      /* epoch 0: never set */
+    }
+    /* the source comes from the same flags Settings shows: a by-hand set clears Wi-Fi, a later sync makes it Wi-Fi again */
+    clock_flags_t f = {.wifi = true};
+    CHECK(clock_jump_check(clock_source(&f), now, now - 7200) == CLOCK_JUMP_BEHIND);
+    clock_on_manual(&f);
+    CHECK(clock_jump_check(clock_source(&f), now, now - 7200) == CLOCK_JUMP_OK);
+    clock_on_wifi(&f);
+    CHECK(clock_jump_check(clock_source(&f), now, now + 2 * 86400) == CLOCK_JUMP_AHEAD);
+    /* the 2026-2099 range check stays in front of the guard in wifi_sync.c */
+    CHECK(!harden_epoch_plausible(1735689599) && harden_epoch_plausible(1767225600));
+}
+
 int main(void)
 {
+    test_clock_jump();
     /* leap years and month lengths */
     CHECK(clock_leap(2028) && clock_leap(2000) && clock_leap(2096));
     CHECK(!clock_leap(2026) && !clock_leap(2100) && !clock_leap(2027));

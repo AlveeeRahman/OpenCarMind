@@ -35,7 +35,7 @@ extern const lv_image_dsc_t ocm_mark_rev_34, ocm_mark_rev_24, ocm_mark_rev_tile,
    and Format texts name R.E.V on both models. */
 #define LEARNED_STATE "R.E.V"
 #define LEARNED_STATE_AND "R.E.V"
-extern const lv_image_dsc_t ocm_icon_drive_52, ocm_icon_ai_52, ocm_icon_learn_52, ocm_icon_summary_52, ocm_icon_live_52, ocm_icon_fuel_52, ocm_icon_brakes_52, ocm_icon_trip_52, ocm_icon_engine_52, ocm_icon_faults_52, ocm_icon_board_52, ocm_icon_files_52, ocm_icon_settings_52, ocm_icon_wifi_52;
+extern const lv_image_dsc_t ocm_icon_drive_52, ocm_icon_ai_52, ocm_icon_learn_52, ocm_icon_summary_52, ocm_icon_live_52, ocm_icon_fuel_52, ocm_icon_brakes_52, ocm_icon_trip_52, ocm_icon_engine_52, ocm_icon_faults_52, ocm_icon_board_52, ocm_icon_files_52, ocm_icon_settings_52, ocm_icon_wifi_52, ocm_icon_health_52;
 #include "elm327.h"
 #include "mosaico_clock.h"
 #include "remote_config.h"
@@ -45,6 +45,13 @@ extern const lv_image_dsc_t ocm_icon_drive_52, ocm_icon_ai_52, ocm_icon_learn_52
 #include "sdlog.h"
 #include "sys_mode.h"
 #include "uploader.h"
+#if CONFIG_OCM_AI_SVC
+#include "ai_svc.h"
+#include "health_view.h"
+#endif
+#if CONFIG_OCM_BAT_EST
+#include "bat_est.h"
+#endif
 
 #define F48 (UI_THEME.f_hero)
 #define F32 (UI_THEME.f_big)
@@ -1023,7 +1030,10 @@ static void engine_update(const ui_snap_t *s)
 /* ======================= Board: flex columns and rows; the deadline table is an lv grid sized to its texts ======= */
 static lv_obj_t *o_dot, *o_jobs_ok, *o_touch, *o_ram_v, *o_ram_note, *o_psram, *o_bat_v, *o_bat_note, *o_cal, *o_store,
                 *o_sbar, *o_flash, *o_fw, *o_health;
-#define O_ROWS 6
+#define O_ROWS 8                                           /* sched_mon's MAX_JOBS: the AI worker's "ai" row too */
+#if CONFIG_OCM_AI_SVC
+static lv_obj_t *o_est, *o_ai_lv, *o_ai[AI_SVC_MAX + 1];  /* the estimator line; the AI services card (+1: why not) */
+#endif
 static lv_obj_t *o_rn[O_ROWS], *o_rr[O_ROWS], *o_rw[O_ROWS], *o_rb[O_ROWS], *o_rm[O_ROWS];
 
 static lv_obj_t *fbox(lv_obj_t *p, lv_flex_flow_t f, lv_flex_align_t main, lv_flex_align_t cross, int gap)
@@ -1085,6 +1095,9 @@ static void board_create(lv_obj_t *p)
     o_bat_v = ui_label(c, UI_THEME.f_title, UI_TEXT, "--");
     o_bat_note = ui_label(c, UI_THEME.f_small, UI_MUTED, "");
     o_cal = ui_label(c, UI_THEME.f_small, UI_WARN, "");
+#if CONFIG_OCM_AI_SVC
+    o_est = ui_label(c, UI_THEME.f_small, UI_MUTED, "");      /* the estimator: "est 87 %, SoH 98 %" */
+#endif
     c = fcard(col, 0);
     lv_obj_set_width(c, LV_PCT(100));
     lv_obj_t *r = frow(c);
@@ -1147,6 +1160,20 @@ static void board_create(lv_obj_t *p)
         o_rm[i] = ui_label(g, UI_THEME.f_small, UI_GREEN, "");
         lv_obj_set_grid_cell(o_rm[i], LV_GRID_ALIGN_END, 4, 1, LV_GRID_ALIGN_CENTER, i + 1, 1);
     }
+#if CONFIG_OCM_AI_SVC
+    /* AI services (ai_svc.c): one wrapped line pair per service, so nothing runs past the card */
+    c = fcard(col, 0);
+    lv_obj_set_width(c, LV_PCT(100));
+    r = frow(c);
+    d_lab(r, "AI SERVICES", 0, 0, UI_MUTED);
+    o_ai_lv = ui_label(r, UI_THEME.f_label, UI_MUTED, "");
+    for (int i = 0; i <= AI_SVC_MAX; i++) {
+        o_ai[i] = ui_label(c, UI_THEME.f_small, UI_TEXT, "");
+        lv_obj_set_width(o_ai[i], LV_PCT(100));
+        lv_label_set_long_mode(o_ai[i], LV_LABEL_LONG_WRAP);
+        lv_obj_add_flag(o_ai[i], LV_OBJ_FLAG_HIDDEN);
+    }
+#endif
     /* footer: two centred lines, clear of the rounded corners at the bottom of the page */
     lv_obj_t *f = fbox(col, LV_FLEX_FLOW_COLUMN, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, 2);
     lv_obj_set_size(f, LV_PCT(100), LV_SIZE_CONTENT);
@@ -1173,12 +1200,53 @@ static void board_update(const ui_snap_t *s)
         /* widest texts: "4.89 V, -10.0 C" 165 px (Montserrat 24), "-999 mA, on battery" 171 px and "uncalibrated, 9999 cyc"
            (Montserrat 16), in the card's 194 px */
         ui_set_fmt(o_bat_v, "%.2f V, %.1f C", s->gauge.mv / 1000.0, s->gauge.temp_dc / 10.0);
+#if CONFIG_OCM_BAT_EST
+        bat_est_out_t be;
+        static const char *const MODE_WORD[4] = { "rest", "discharge", "charging", "CV taper" };   /* widest "-999 mA, discharge" */
+        if (bat_est_read(&be)) ui_set_fmt(o_bat_note, "%d mA, %s", s->gauge.ma, MODE_WORD[be.mode & 3]);
+        else
+#endif
         ui_set_fmt(o_bat_note, "%d mA, %s", s->gauge.ma, s->gauge.ma > -5 ? "on USB" : "on battery");
         uint8_t bs = os_battery_state();                   /* battery safety (os_core.h section 8) first */
         if (bs != OS_BAT_OK) { ui_set_text(o_cal, os_bat_name(bs)); ui_set_color(o_cal, bs == OS_BAT_HOT ? UI_WARN : UI_RED); }
         else if (mosaico_gauge_uncalibrated(&s->gauge)) { ui_set_fmt(o_cal, "uncalibrated, %d cyc", s->gauge.cycles); ui_set_color(o_cal, UI_WARN); }
         else { ui_set_fmt(o_cal, "SOH %d %%, %d cyc", s->gauge.soh, s->gauge.cycles); ui_set_color(o_cal, UI_MUTED); }   /* the % is in the status bar */
     } else { ui_set_text(o_bat_v, "--"); ui_set_text(o_bat_note, "gauge not read"); ui_set_text(o_cal, ""); }
+#if CONFIG_OCM_AI_SVC
+    ai_svc_status_t as;
+    bool have_as = ai_svc_status(&as);
+#if CONFIG_OCM_BAT_EST
+    {   /* widest "est 100 %, SoH 120 %" 20 characters, about 180 px of the card's 194 */
+        bat_est_out_t be;
+        if (bat_est_read(&be)) {
+            if (be.anchored) ui_set_fmt(o_est, "est %.0f %%, SoH %.0f %%", (double)be.soc_pct, (double)be.soh_pct);
+            else ui_set_fmt(o_est, "est %.0f %%, learning", (double)be.soc_pct);
+        } else if (have_as && as.n && as.s[0].state == AI_ST_SAFE) ui_set_text(o_est, "est off (safe mode)");
+        else if (have_as && as.n && as.s[0].state != AI_ST_RUNNING) ui_set_text(o_est, "est refused");
+        else ui_set_text(o_est, "est starting");
+    }
+#endif
+    if (!have_as || !as.n) {
+        ui_set_text(o_ai_lv, "starting");
+        for (int i = 0; i <= AI_SVC_MAX; i++) lv_obj_add_flag(o_ai[i], LV_OBJ_FLAG_HIDDEN);
+    } else {
+        if (as.core >= 0) ui_set_fmt(o_ai_lv, "core %d, %s", as.core, ai_dl_name(as.level));
+        else ui_set_text(o_ai_lv, "not running");
+        ui_set_color(o_ai_lv, as.core < 0 ? UI_WARN : as.level ? UI_WARN : UI_GREEN);
+        for (int i = 0; i < AI_SVC_MAX; i++) {
+            if (i >= as.n) { lv_obj_add_flag(o_ai[i], LV_OBJ_FLAG_HIDDEN); continue; }
+            const ai_svc_stat_t *v = &as.s[i];
+            lv_obj_remove_flag(o_ai[i], LV_OBJ_FLAG_HIDDEN);
+            /* two short lines (BRD: the old first line wrapped and left "ms" alone); the deadline is in the Health app */
+            ui_set_fmt(o_ai[i], "%s: every %lu ms, budget %.1f ms\n%lu runs, %lu missed, WCRT %.2f ms",
+                       v->name, (unsigned long)v->period_ms, v->budget_us / 1000.0,
+                       (unsigned long)v->done, (unsigned long)v->missed, v->wcrt_us / 1000.0);
+            ui_set_color(o_ai[i], v->missed ? UI_WARN : UI_TEXT);
+        }
+        if (as.why[0]) { lv_obj_remove_flag(o_ai[AI_SVC_MAX], LV_OBJ_FLAG_HIDDEN); ui_set_text(o_ai[AI_SVC_MAX], as.why); ui_set_color(o_ai[AI_SVC_MAX], UI_WARN); }
+        else lv_obj_add_flag(o_ai[AI_SVC_MAX], LV_OBJ_FLAG_HIDDEN);
+    }
+#endif
     if (s->fat.ok && s->fat.total_kb) {
 #if CONFIG_OCM_NAND_LOGS
         if (s->fat.nand) {
@@ -1208,6 +1276,461 @@ static void board_update(const ui_snap_t *s)
     ui_set_fmt(o_health, "%s, health %s", os_rl_name(os_runlevel()), os_health_name(hv));
     ui_set_color(o_health, hv == OS_H_GOOD ? UI_GREEN : hv == OS_H_DEGRADED ? UI_WARN : hv == OS_H_BAD ? UI_RED : UI_MUTED);
 }
+
+#if CONFIG_OCM_AI_SVC
+/* ======================= Health (EdgeOS 2.1.0): the battery, the network guard and the AI services, read-only =========
+ * Three pages under one header, picked with a 3-segment tab row (left/right swipe still steps apps, Back goes home).
+ * Each page opens with ONE status card in plain words (health_text.h: a severity colour, icon and word, a headline, what
+ * it means, what to do), then the page's recent issues (health_mon, newest first), then the details for experts.
+ * The header counts the issues ("All good", "1 thing to check"), coloured by the worst one.
+ * Only the visible page has LVGL objects: a tab tap repaints the tabs in the same frame and rebuilds the page body once,
+ * 30 ms later. update() reads one health_view_t copy (lock-free, health_view.h) and changes texts only. The one action
+ * is "Clear block" while the guard blocks (ids_request_clear sets a flag the IDS step reads). */
+#include "health_text.h"
+enum { HP_BAT = HS_P_BAT, HP_GUARD = HS_P_GUARD, HP_AI = HS_P_AI, HP_N = HS_PAGES };
+#define H_TAB_Y   (DY + 10)              /* tabs: 44 px drawn, a 64 px touch area (ext 10), 10 px between touch areas */
+#define H_TAB_H   44
+#define H_TAB_EXT 10
+#define H_TAB_GAP (10 + 2 * H_TAB_EXT)
+#define H_BODY_Y  (H_TAB_Y + H_TAB_H + H_TAB_EXT + 2)
+#define H_DET_N   8                      /* detail rows per page at most */
+_Static_assert(H_TAB_Y - H_TAB_EXT >= DY, "Health tabs: the touch area reaches into Back's");
+EXT_RAM_BSS_ATTR static health_view_t h_v;
+static lv_color_t st_pressed(void);
+static uint8_t h_page;
+static lv_obj_t *h_p, *h_sum, *h_tab[HP_N], *h_body;
+static lv_timer_t *h_tmr;
+/* every page: the status card, the recent issues, the detail rows */
+static lv_obj_t *hc_card, *hc_icon, *hc_word, *hc_head, *hc_mean, *hc_act, *hr_ev[HV_RI_N], *hd_val[H_DET_N];
+/* page 2 extras */
+static lv_obj_t *hg_clear, *hg_clear_t, *hg_bar[HV_HEADS], *hg_val[HV_HEADS], *hg_ev[HV_EV_N];
+/* page 3 extras */
+static lv_obj_t *ha_card[AI_SVC_MAX], *ha_name[AI_SVC_MAX], *ha_st[AI_SVC_MAX], *ha_line[AI_SVC_MAX];
+
+static void h_forget(void)
+{
+    hc_card = hc_icon = hc_word = hc_head = hc_mean = hc_act = NULL;
+    memset(hr_ev, 0, sizeof hr_ev); memset(hd_val, 0, sizeof hd_val);
+    hg_clear = hg_clear_t = NULL;
+    memset(hg_bar, 0, sizeof hg_bar); memset(hg_val, 0, sizeof hg_val); memset(hg_ev, 0, sizeof hg_ev);
+    memset(ha_card, 0, sizeof ha_card); memset(ha_name, 0, sizeof ha_name); memset(ha_st, 0, sizeof ha_st); memset(ha_line, 0, sizeof ha_line);
+}
+
+static uint32_t h_sev_color(uint8_t sev)
+{
+    return sev == HS_ACT ? UI_RED : sev == HS_CHECK ? UI_WARN : sev == HS_INFO ? UI_THEME.section[SEC_SKY] : UI_GREEN;
+}
+static const char *h_sev_icon(uint8_t sev)
+{
+    return sev >= HS_CHECK ? LV_SYMBOL_WARNING : sev == HS_INFO ? LV_SYMBOL_REFRESH : LV_SYMBOL_OK;
+}
+
+/* a card row: the name on the left, the value taking the rest of the width, right-aligned and wrapped */
+static lv_obj_t *h_row(lv_obj_t *card, const char *name)
+{
+    lv_obj_t *r = fbox(card, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, 10);
+    lv_obj_set_size(r, LV_PCT(100), LV_SIZE_CONTENT);
+    ui_label(r, UI_THEME.f_small, UI_MUTED, name);
+    lv_obj_t *v = ui_label(r, UI_THEME.f_small, UI_TEXT, "--");
+    lv_obj_set_flex_grow(v, 1);
+    lv_label_set_long_mode(v, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_align(v, LV_TEXT_ALIGN_RIGHT, 0);
+    return v;
+}
+static lv_obj_t *h_wrap(lv_obj_t *p, const lv_font_t *f, uint32_t c)
+{
+    lv_obj_t *l = ui_label(p, f, c, "");
+    lv_obj_set_width(l, LV_PCT(100));
+    lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
+    return l;
+}
+static lv_obj_t *h_card(lv_obj_t *p, const char *cap, uint32_t c)
+{
+    lv_obj_t *k = fcard(p, 0);
+    lv_obj_set_width(k, LV_PCT(100));
+    if (cap) d_lab(k, cap, 0, 0, c);
+    return k;
+}
+static void h_age(char *b, size_t n, int32_t s)
+{
+    if (s < 60) snprintf(b, n, "just now");
+    else if (s < 3600) snprintf(b, n, "%ld min ago", (long)(s / 60));
+    else if (s < 172800) snprintf(b, n, "%ld h ago", (long)(s / 3600));
+    else snprintf(b, n, "%ld days ago", (long)(s / 86400));
+}
+/* the time of something age_s ago: "14:05" with a clock, else "12 min ago" */
+static void h_when(char *b, size_t n, int32_t age_s)
+{
+    time_t now = time(NULL);
+    if (now > 1767225600 && age_s >= 0 && age_s < 43200) {   /* older than 12 h: "1 day ago" says more than a clock time */
+        time_t t = now - age_s;
+        struct tm tm;
+        localtime_r(&t, &tm);
+        snprintf(b, n, "%02d:%02d", tm.tm_hour, tm.tm_min);
+    } else h_age(b, n, age_s < 0 ? 0 : age_s);
+}
+static int h_now_min(void)
+{
+    time_t now = time(NULL);
+    if (now <= 1767225600) return -1;
+    struct tm tm;
+    localtime_r(&now, &tm);
+    return tm.tm_hour * 60 + tm.tm_min;
+}
+
+/* the status card: icon and word on top, the headline, what it means, what to do */
+static void h_build_status(lv_obj_t *col)
+{
+    hc_card = h_card(col, NULL, 0);
+    lv_obj_set_style_border_width(hc_card, 2, 0);
+    lv_obj_set_style_pad_ver(hc_card, 12, 0);
+    lv_obj_set_style_pad_row(hc_card, 6, 0);
+    lv_obj_t *r = fbox(hc_card, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, 10);
+    lv_obj_set_size(r, LV_PCT(100), LV_SIZE_CONTENT);
+    hc_icon = ui_label(r, F20, UI_GREEN, LV_SYMBOL_OK);
+    hc_word = ui_pill(r, "--", UI_GREEN);
+    hc_head = h_wrap(hc_card, F20, UI_TEXT);
+    hc_mean = h_wrap(hc_card, F16, UI_TEXT);
+    hc_act = h_wrap(hc_card, F16, UI_MUTED);
+}
+static void h_build_recent(lv_obj_t *col)
+{
+    lv_obj_t *c = h_card(col, "RECENT ISSUES", UI_MUTED);
+    for (int k = 0; k < HV_RI_N; k++) hr_ev[k] = h_wrap(c, UI_THEME.f_small, UI_TEXT);
+}
+static lv_obj_t *h_details(lv_obj_t *col, const char *cap, const char *const *names, int n, int first)
+{
+    lv_obj_t *c = h_card(col, cap, UI_MUTED);
+    for (int k = 0; k < n && first + k < H_DET_N; k++) hd_val[first + k] = h_row(c, names[k]);
+    return c;
+}
+
+static void h_build_bat(lv_obj_t *col)
+{
+    h_build_status(col);
+    h_build_recent(col);
+    static const char *const N[] = { "Charge level", "Current", "Power, temperature", "Health estimate", "Resistance",
+                                     "Unusual-behaviour check", "Check score", "Last detector event" };
+    h_details(col, "DETAILS", N, 8, 0);
+}
+
+static void h_bar_tick(lv_obj_t *b)                       /* the limit (256 of 512): a mark in the middle of the bar */
+{
+    lv_obj_t *t = ui_rect(b, 0, 0, 2, 14, UI_TEXT, 0);
+    lv_obj_align(t, LV_ALIGN_CENTER, 0, 0);
+}
+static void h_clear_cb(lv_event_t *e)
+{
+    (void)e;
+    ids_request_clear();
+    if (hg_clear_t) ui_set_text(hg_clear_t, "Clearing");     /* in this frame; the next update shows the new state */
+}
+static void h_build_guard(lv_obj_t *col)
+{
+    h_build_status(col);
+    hg_clear = lv_button_create(hc_card);
+    lv_obj_set_size(hg_clear, LV_PCT(100), 64);
+    lv_obj_set_style_bg_color(hg_clear, lv_color_hex(UI_THEME.track), 0);
+    lv_obj_set_style_bg_color(hg_clear, st_pressed(), LV_STATE_PRESSED);
+    lv_obj_set_style_border_width(hg_clear, UI_THEME.border_card, 0);
+    lv_obj_set_style_border_color(hg_clear, lv_color_hex(UI_WARN), 0);
+    lv_obj_set_style_radius(hg_clear, UI_THEME.radius_row, 0);
+    lv_obj_set_style_shadow_width(hg_clear, 0, 0);
+    lv_obj_add_event_cb(hg_clear, h_clear_cb, LV_EVENT_CLICKED, NULL);
+    hg_clear_t = ui_label(hg_clear, F16, UI_WARN, "Clear block");
+    lv_obj_center(hg_clear_t);
+    lv_obj_add_flag(hg_clear, LV_OBJ_FLAG_HIDDEN);
+    h_build_recent(col);
+    static const char *const N[] = { "Mode", "Adapter checks", "Re-pair requests refused", "Clock jumps refused", "Blocks today" };
+    lv_obj_t *c = h_details(col, "DETAILS", N, 5, 0);
+    d_lab(c, "SCORES (MARK = LIMIT)", 0, 0, UI_MUTED);
+    static const char *const HN[HV_HEADS] = { "Bluetooth", "Car link", "Wi-Fi" };
+    for (int k = 0; k < HV_HEADS; k++) {
+        lv_obj_t *r = frow(c);
+        lv_obj_t *n = ui_label(r, UI_THEME.f_small, UI_MUTED, HN[k]);
+        lv_obj_set_width(n, 92);
+        hg_bar[k] = lv_bar_create(r);
+        lv_obj_set_size(hg_bar[k], 140, 10);
+        lv_bar_set_range(hg_bar[k], 0, 512);
+        lv_obj_set_style_bg_color(hg_bar[k], lv_color_hex(UI_THEME.track), 0);
+        lv_obj_set_style_bg_opa(hg_bar[k], LV_OPA_COVER, 0);
+        lv_obj_set_style_radius(hg_bar[k], 5, 0);
+        lv_obj_set_style_radius(hg_bar[k], 5, LV_PART_INDICATOR);
+        lv_obj_remove_flag(hg_bar[k], LV_OBJ_FLAG_CLICKABLE);
+        h_bar_tick(hg_bar[k]);
+        hg_val[k] = ui_label(r, UI_THEME.f_small, UI_TEXT, "--");
+        lv_obj_set_flex_grow(hg_val[k], 1);
+        lv_obj_set_style_text_align(hg_val[k], LV_TEXT_ALIGN_RIGHT, 0);
+    }
+    c = h_card(col, "GUARD LOG", UI_MUTED);
+    for (int k = 0; k < HV_EV_N; k++) hg_ev[k] = h_wrap(c, UI_THEME.f_small, UI_TEXT);
+}
+
+static void h_build_ai(lv_obj_t *col)
+{
+    h_build_status(col);
+    h_build_recent(col);
+    static const char *const N[] = { "Ladder", "Worker" };
+    h_details(col, "DETAILS", N, 2, 0);
+    for (int i = 0; i < AI_SVC_MAX; i++) {
+        lv_obj_t *c = ha_card[i] = h_card(col, NULL, 0);
+        lv_obj_t *r = frow(c);
+        ha_name[i] = ui_label(r, F16, UI_TEXT, "");
+        ha_st[i] = ui_label(r, UI_THEME.f_small, UI_MUTED, "");
+        ha_line[i] = h_wrap(c, UI_THEME.f_small, UI_TEXT);
+        lv_obj_add_flag(c, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+static void health_update(const ui_snap_t *s);
+static void h_tab_paint(void)
+{
+    for (int i = 0; i < HP_N; i++) {
+        bool on = i == h_page;
+        lv_obj_set_style_bg_color(h_tab[i], lv_color_hex(on ? UI_ORANGE : UI_THEME.track), 0);
+        ui_set_color(lv_obj_get_child(h_tab[i], 0), on ? UI_BG : UI_TEXT);
+    }
+}
+static void h_build(void)
+{
+    if (!h_p) return;
+    if (h_body) lv_obj_delete(h_body);
+    h_forget();
+    h_body = fbox(h_p, LV_FLEX_FLOW_COLUMN, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, 8);
+    lv_obj_set_pos(h_body, DX, H_BODY_Y);
+    lv_obj_set_size(h_body, DW, UI_H - 16 - H_BODY_Y);
+    lv_obj_add_flag(h_body, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scroll_dir(h_body, LV_DIR_VER);
+    lv_obj_set_style_pad_bottom(h_body, 40, 0);          /* at the end of the scroll the last row clears the rounded corners */
+    lv_obj_set_scrollbar_mode(h_body, LV_SCROLLBAR_MODE_ACTIVE);
+    if (h_page == HP_BAT) h_build_bat(h_body);
+    else if (h_page == HP_GUARD) h_build_guard(h_body);
+    else h_build_ai(h_body);
+    health_update(NULL);
+}
+static void h_tmr_cb(lv_timer_t *t) { (void)t; h_tmr = NULL; h_build(); }
+static void h_tab_cb(lv_event_t *e)
+{
+    int k = (int)(intptr_t)lv_event_get_user_data(e);
+    if (k == h_page || k < 0 || k >= HP_N) return;
+    h_page = (uint8_t)k;
+    h_tab_paint();                                         /* feedback in this frame */
+    if (h_tmr) lv_timer_delete(h_tmr);
+    h_tmr = lv_timer_create(h_tmr_cb, 30, NULL);           /* the rebuild once, after the frame */
+    lv_timer_set_repeat_count(h_tmr, 1);
+}
+
+/* the banner's "Open Health": the page to show when the app opens next (or now, if it is open) */
+void ui_health_set_page(int k)
+{
+    if (k < 0 || k >= HP_N) return;
+    h_page = (uint8_t)k;
+    if (h_p) { h_tab_paint(); h_build(); }
+}
+
+static void health_create(lv_obj_t *p)
+{
+    h_p = p;
+    h_body = NULL;
+    d_header(p, "Health");
+    h_sum = d_right(p, "", UI_MUTED);
+    static const char *const TN[HP_N] = { "Battery", "Guard", "AI" };
+    int w = (DW - (HP_N - 1) * H_TAB_GAP) / HP_N;
+    for (int i = 0; i < HP_N; i++) {
+        lv_obj_t *b = lv_obj_create(p);
+        lv_obj_remove_style_all(b);
+        lv_obj_set_pos(b, DX + i * (w + H_TAB_GAP), H_TAB_Y);
+        lv_obj_set_size(b, w, H_TAB_H);
+        lv_obj_set_style_radius(b, UI_THEME.radius_row, 0);
+        lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
+        lv_obj_set_ext_click_area(b, H_TAB_EXT);
+        lv_obj_add_flag(b, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_GESTURE_BUBBLE);
+        lv_obj_remove_flag(b, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_add_event_cb(b, h_tab_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+        lv_obj_center(ui_label(b, F16, UI_TEXT, TN[i]));
+        h_tab[i] = b;
+    }
+    h_tab_paint();
+    h_build();
+}
+
+static void health_destroy(void)
+{
+    if (h_tmr) { lv_timer_delete(h_tmr); h_tmr = NULL; }
+    h_p = h_body = h_sum = NULL;
+    memset(h_tab, 0, sizeof h_tab);
+    h_forget();
+}
+
+static void h_update_status(const health_view_t *v)
+{
+    hs_card_t c;
+    hs_card(v, h_page, h_now_min(), &c);
+    uint32_t col = h_sev_color(c.sev);
+    if (lv_color_to_u32(lv_obj_get_style_border_color(hc_card, 0)) != lv_color_to_u32(lv_color_hex(col)))
+        lv_obj_set_style_border_color(hc_card, lv_color_hex(col), 0);
+    ui_set_text(hc_icon, h_sev_icon(c.sev));
+    ui_set_color(hc_icon, col);
+    pill_set(hc_word, c.word, col);
+    ui_set_text(hc_head, c.head);
+    ui_set_text(hc_mean, c.mean);
+    bool nothing = !strcmp(c.act, "Nothing to do");
+    if (nothing) ui_set_text(hc_act, c.act); else ui_set_fmt(hc_act, LV_SYMBOL_RIGHT " %s", c.act);
+    ui_set_color(hc_act, nothing ? UI_MUTED : UI_TEXT);
+}
+static void h_update_recent(const health_view_t *v)
+{
+    int shown = 0;
+    for (int k = 0; k < HV_RI_N; k++) {
+        const char *t = v->recent[h_page][k].text;
+        if (!t[0]) { lv_obj_add_flag(hr_ev[k], LV_OBJ_FLAG_HIDDEN); continue; }
+        char w[24];
+        h_when(w, sizeof w, v->recent[h_page][k].age_s);
+        uint8_t sv = v->recent[h_page][k].sev;
+        ui_set_fmt(hr_ev[k], "%s  %s", w, t);
+        ui_set_color(hr_ev[k], sv >= HS_CHECK ? h_sev_color(sv) : UI_TEXT);
+        lv_obj_remove_flag(hr_ev[k], LV_OBJ_FLAG_HIDDEN);
+        shown++;
+    }
+    if (!shown) {
+        ui_set_text(hr_ev[0], "None since the start");
+        ui_set_color(hr_ev[0], UI_MUTED);
+        lv_obj_remove_flag(hr_ev[0], LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+static void h_update_bat(const health_view_t *v)
+{
+    static const char *const MODE[4] = { "resting", "on battery", "charging", "topping up" };
+    lv_obj_t **d = hd_val;
+    if (!v->bat_valid) { for (int k = 0; k < 7; k++) ui_set_text(d[k], "--"); }
+    else {
+        ui_set_fmt(d[0], v->bat_anchored ? "%.0f %%, %s" : "%.0f %%, %s, still learning", (double)v->soc_pct, MODE[v->bat_mode & 3]);
+        long ma = lroundf(v->i_ma);                       /* the gauge's sign: + charging, - from the battery */
+        if (ma > -5 && ma < 5) ui_set_fmt(d[1], "resting, %ld mA", ma);
+        else if (ma > 0) ui_set_fmt(d[1], "charging +%ld mA", ma);
+        else ui_set_fmt(d[1], "on battery %ld mA", ma);
+        ui_set_fmt(d[2], "%.0f mW, %.1f C", (double)fabsf(v->p_mw), (double)v->temp_c);
+        if (v->soh_src == HV_SOH_MODEL || v->soh_src == HV_SOH_FULL)
+            ui_set_fmt(d[3], "%.0f %%, %s", (double)v->soh_pct, v->soh_src == HV_SOH_FULL ? "counted on a full charge" : "from part charges");
+        else ui_set_fmt(d[3], "learning, %u of %u charges", (unsigned)v->soh_ref_n, (unsigned)v->soh_ref_need);
+        if (v->dcir_ratio > 0) ui_set_fmt(d[4], "%.2f x its first value", (double)v->dcir_ratio); else ui_set_text(d[4], "no samples yet");
+        ui_set_color(d[4], v->dcir_ratio > 1.5f ? UI_WARN : UI_TEXT);
+        switch (v->anom_state) {
+        case HV_ANOM_WARMUP: ui_set_fmt(d[5], "learning, %.1f of %.0f h", (double)v->anom_warm_h, (double)v->anom_warm_need_h); break;
+        case HV_ANOM_NORMAL: ui_set_text(d[5], "normal"); break;
+        case HV_ANOM_ALARM: ui_set_fmt(d[5], "alarm: %s", hs_anom_reason_text(hs_anom_reason(v->anom_err))); break;
+        default: ui_set_text(d[5], "off"); break;
+        }
+        ui_set_color(d[5], v->anom_state == HV_ANOM_ALARM ? UI_WARN : UI_TEXT);
+        if (v->anom_state) ui_set_fmt(d[6], "%.1f (alarm over %.1f)", (double)v->anom_score, (double)v->anom_thr); else ui_set_text(d[6], "--");
+    }
+    if (v->bat_event[0] && v->bat_event_age_s >= 0) {
+        char a[24];
+        h_age(a, sizeof a, v->bat_event_age_s);
+        ui_set_fmt(d[7], "%s, %s", v->bat_event, a);
+    } else ui_set_text(d[7], "none yet");
+}
+
+static void h_update_guard(const health_view_t *v)
+{
+    char b[96];
+    lv_obj_t **d = hd_val;
+    switch (v->ids_state) {
+    case HV_IDS_LEARNING: snprintf(b, sizeof b, "starting"); break;
+    case HV_IDS_SHADOW: snprintf(b, sizeof b, "learning, %.1f of %.0f h", (double)v->shadow_h, (double)v->shadow_need_h); break;
+    case HV_IDS_WATCHING: snprintf(b, sizeof b, "watching"); break;
+    case HV_IDS_BLOCKING: snprintf(b, sizeof b, "blocking, %s", v->block_reason[0] ? v->block_reason : "anomaly"); break;
+    default: snprintf(b, sizeof b, "off"); break;
+    }
+    if (!v->blocking_on) snprintf(b + strlen(b), sizeof b - strlen(b), ", blocking off");
+    ui_set_text(d[0], b);
+    bool blk = v->ids_state == HV_IDS_BLOCKING && v->blocking_on;
+    if (blk) { if (lv_obj_has_flag(hg_clear, LV_OBJ_FLAG_HIDDEN)) { lv_obj_remove_flag(hg_clear, LV_OBJ_FLAG_HIDDEN); ui_set_text(hg_clear_t, "Clear block"); } }
+    else lv_obj_add_flag(hg_clear, LV_OBJ_FLAG_HIDDEN);
+    ui_set_fmt(d[1], "%lu%s", (unsigned long)v->fp_checks, v->adapter_mismatch ? ", one looks different" : "");
+    ui_set_color(d[1], v->adapter_mismatch ? UI_WARN : UI_TEXT);
+    const uint32_t cn[3] = { v->repair_refusals, v->clock_refusals, v->blocks_today };
+    for (int k = 0; k < 3; k++) { char t[16]; hs_thousands(t, sizeof t, cn[k]); ui_set_text(d[2 + k], t); }
+    for (int k = 0; k < HV_HEADS; k++) {
+        int q = v->head_q8[k] < 0 ? 0 : v->head_q8[k] > 512 ? 512 : (int)v->head_q8[k];
+        bar_set(hg_bar[k], v->head_on[k] ? q : 0);
+        uint32_t c = !v->head_on[k] ? UI_THEME.dim : v->head_q8[k] > 256 ? UI_WARN : UI_GREEN;
+        lv_obj_set_style_bg_color(hg_bar[k], lv_color_hex(c), LV_PART_INDICATOR);
+        if (v->head_on[k]) ui_set_fmt(hg_val[k], "%ld of 256", (long)v->head_q8[k]); else ui_set_text(hg_val[k], "no data");
+        ui_set_color(hg_val[k], v->head_on[k] ? UI_TEXT : UI_MUTED);
+    }
+    for (int k = 0; k < HV_EV_N; k++) {
+        if (v->guard_ev[k][0]) {
+            char a[24];
+            h_age(a, sizeof a, v->guard_ev_age_s[k] < 0 ? 0 : v->guard_ev_age_s[k]);
+            snprintf(b, sizeof b, "%s, %s", v->guard_ev[k], a);
+            ui_set_text(hg_ev[k], b);
+            lv_obj_remove_flag(hg_ev[k], LV_OBJ_FLAG_HIDDEN);
+        } else if (k == 0) { ui_set_text(hg_ev[k], "none yet"); lv_obj_remove_flag(hg_ev[k], LV_OBJ_FLAG_HIDDEN); }
+        else lv_obj_add_flag(hg_ev[k], LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+/* "0.23" ms from us, with fewer decimals as it grows */
+static void h_ms(char *b, size_t n, uint32_t us)
+{
+    double ms = us / 1000.0;
+    if (us >= 100000u) snprintf(b, n, "%.0f", ms); else if (us >= 10000u) snprintf(b, n, "%.1f", ms); else snprintf(b, n, "%.2f", ms);
+}
+static void h_update_ai(const health_view_t *v)
+{
+    static const char *const DL[3] = { "normal", "slowed", "paused" };
+    static const char *const ST[5] = { "off", "running", "refused", "safe mode", "no task" };
+    lv_obj_t **d = hd_val;
+    if (v->os_level) ui_set_fmt(d[0], "rung %u, %s", (unsigned)v->os_level, hv_ladder_name(v->os_level)); else ui_set_text(d[0], "normal");
+    ui_set_color(d[0], v->os_level ? UI_WARN : UI_TEXT);
+    if (v->ai_core >= 0) ui_set_fmt(d[1], "core %d, services %s", v->ai_core, DL[v->ai_level < 3 ? v->ai_level : 0]);
+    else ui_set_text(d[1], v->ai_why[0] ? v->ai_why : "not running");
+    ui_set_color(d[1], v->ai_core < 0 || v->ai_level ? UI_WARN : UI_TEXT);
+    for (int i = 0; i < AI_SVC_MAX; i++) {
+        if (i >= v->ai_n) { lv_obj_add_flag(ha_card[i], LV_OBJ_FLAG_HIDDEN); continue; }
+        lv_obj_remove_flag(ha_card[i], LV_OBJ_FLAG_HIDDEN);
+        const char *nm = v->ai[i].name;
+        ui_set_text(ha_name[i], !strcmp(nm, "bat") ? "Battery charge" : !strcmp(nm, "banom") ? "Battery check"
+                                : !strcmp(nm, "ids") ? "Network guard" : nm);
+        uint8_t st = v->ai[i].state < 5 ? v->ai[i].state : 0;
+        char per[16];
+        if (v->ai[i].period_ms % 1000u == 0) snprintf(per, sizeof per, "%lu s", (unsigned long)(v->ai[i].period_ms / 1000u));
+        else snprintf(per, sizeof per, "%lu ms", (unsigned long)v->ai[i].period_ms);
+        ui_set_fmt(ha_st[i], "%s, every %s", ST[st], per);
+        ui_set_color(ha_st[i], st == 1 ? UI_GREEN : st == 0 ? UI_MUTED : UI_WARN);
+        char r[16], m[16], k[16], w[16], lim[16], wk[16], bud[16];
+        hs_thousands(r, sizeof r, v->ai[i].runs); hs_thousands(m, sizeof m, v->ai[i].misses); hs_thousands(k, sizeof k, v->ai[i].skipped);
+        h_ms(w, sizeof w, v->ai[i].wcrt_us); hs_thousands(lim, sizeof lim, v->ai[i].deadline_ms);
+        h_ms(wk, sizeof wk, v->ai[i].step_us);
+        if (v->ai[i].budget_us % 1000u == 0) snprintf(bud, sizeof bud, "%lu", (unsigned long)(v->ai[i].budget_us / 1000u));
+        else snprintf(bud, sizeof bud, "%.1f", v->ai[i].budget_us / 1000.0);
+        ui_set_fmt(ha_line[i], "%s runs, %s late, %s skipped\nworst time %s ms (limit %s ms)\nwork per run %s ms (budget %s ms)",
+                   r, m, k, w, lim, wk, bud);
+        ui_set_color(ha_line[i], v->ai[i].misses ? UI_WARN : UI_TEXT);
+    }
+}
+
+static void health_update(const ui_snap_t *s)
+{
+    (void)s;
+    if (!h_p || !h_body || !hc_card) return;
+    health_view_read(&h_v);
+    const health_view_t *v = &h_v;
+    uint8_t worst;
+    uint32_t m = hs_issues(v, &worst);
+    char b[32];
+    hs_header(m, b, sizeof b);
+    ui_set_text(h_sum, b);
+    ui_set_color(h_sum, h_sev_color(worst));
+    h_update_status(v);
+    h_update_recent(v);
+    if (h_page == HP_BAT) h_update_bat(v);
+    else if (h_page == HP_GUARD) h_update_guard(v);
+    else h_update_ai(v);
+}
+#endif
 
 /* ======================= Drive (H_Drive): dark = pure black and near-black panels, light = white panels on the light
    ground (theme panel tokens). Flex rows and columns throughout ===== */
@@ -2532,7 +3055,7 @@ static void model_show(int active, bool ready)
 
 
 /* segmented controls: user data = (setting << 8) | option */
-enum { SEG_THEME = 1, SEG_UNITS, SEG_OFF, SEG_MODEL, SEG_N };
+enum { SEG_THEME = 1, SEG_UNITS, SEG_OFF, SEG_MODEL, SEG_GUARD, SEG_N };
 static const uint16_t OFF_S[] = {0, 10, 20, 60};
 static lv_obj_t *g_seg[SEG_N][4];                         /* the segments of each row, painted in place */
 static void seg_cb(lv_event_t *e)
@@ -2545,6 +3068,13 @@ static void seg_cb(lv_event_t *e)
         model_show(ml_model_active(), m.ready);
         return;
     }
+#if CONFIG_OCM_AI_SVC
+    if (what == SEG_GUARD) {                               /* not a UI setting: the IDS keeps it (RAM now, NVS by the board task) */
+        for (int i = 0; i < 2; i++) if (g_seg[SEG_GUARD][i]) seg_paint(g_seg[SEG_GUARD][i], i == opt);
+        ids_set_blocking(opt == 0);
+        return;
+    }
+#endif
     if (what <= 0 || what >= SEG_N || opt > 3) return;
     for (int i = 0; i < 4; i++) if (g_seg[what][i]) seg_paint(g_seg[what][i], i == opt);   /* shown in this frame */
     ui_settings_t s;
@@ -2934,6 +3464,13 @@ static void settings_fill(void)
     text_btn(g_list, LV_SYMBOL_BLUETOOTH " Find OBD adapter", 0, y, half, UI_ORANGE, search_cb);   /* not Wi-Fi: the Wi-Fi app searches */
     text_btn(g_list, LV_SYMBOL_CLOSE " Forget adapter", half + ST_GAP, y, half, UI_RED, forget_cb);
     y += ST_H + ST_GAP + 6;
+#if CONFIG_OCM_AI_SVC
+    static const char *const GD[2] = {"Blocking on", "Blocking off"};
+    at(ui_caption(g_list, "NETWORK GUARD"), 0, y); y += 22;
+    segmented(g_list, y, GD, 2, ids_blocking_enabled() ? 0 : 1, SEG_GUARD, NULL); y += ST_H + 6;
+    y += st_h(st_note(g_list, y, "Shadow for 2 h after each start, then blocks radio floods. It never cuts the car link "
+                                 "and never pairs. Health > Guard shows it.")) + 10;
+#endif
 #if CONFIG_OCM_SWIPE_INTENT
     at(ui_caption(g_list, "SMART SWIPE (KEEPS ITSELF IF FASTER)"), 0, y); y += 22;
     g_swipe = st_note(g_list, y, "--");
@@ -3675,6 +4212,9 @@ static const ocm_app_t APPS[] = {          /* launcher order and tile colours as
     { "engine",   "Engine",   LV_SYMBOL_WARNING,   engine_create,   engine_update,   NULL,             1000, SEC_AMBER, 0xFCCA21, 0xB8590A, 0, &ocm_icon_engine_52, NULL, NULL },
     { "faults",   "Faults",   LV_SYMBOL_WARNING,   faults_create,   faults_update,   faults_destroy,   1000, SEC_RED,   0xFD5A4A, 0xC92A2A, 0, &ocm_icon_faults_52, NULL, NULL },
     { "board",    "Board",    LV_SYMBOL_SD_CARD,   board_create,    board_update,    NULL,             1000, SEC_AQUA,  0x72ECE4, 0x087F5B, 0, &ocm_icon_board_52, NULL, NULL },
+#if CONFIG_OCM_AI_SVC
+    { "health",   "Health",   LV_SYMBOL_CHARGE,    health_create,   health_update,   health_destroy,   1000, SEC_GREEN, 0x56F487, 0x2B8A3E, 0, &ocm_icon_health_52, NULL, NULL },   /* EdgeOS 2.1.0: after Board */
+#endif
     { "files",    "Files",    LV_SYMBOL_DIRECTORY, files_create,    files_update,    files_destroy,    500, SEC_AQUA,   0xFFB38A, 0x3B5BDB, 0, &ocm_icon_files_52, NULL, NULL },
     { "wifi",     "Wi-Fi",    LV_SYMBOL_WIFI,      wifi_create,     wifi_update,     wifi_destroy,     250,  SEC_CYAN,  0x66D9E8, 0x0B7285, 0, &ocm_icon_wifi_52, NULL, NULL },   /* S1: just before Settings */
     { "settings", "Settings", LV_SYMBOL_SETTINGS,  settings_create, settings_update, settings_destroy, 1000, SEC_VIOLET, 0xB8B8B8, 0x5F6368, 0, &ocm_icon_settings_52, NULL, NULL },   /* keep last */

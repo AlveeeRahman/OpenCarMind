@@ -38,6 +38,15 @@
 #include "events.h"
 #if CONFIG_OBD_BLE_PAIR_CONFIRM
 #include "obd_pair.h"
+#if BOARD_MOSAICO
+#include "adapter_guard.h"
+#include "esp_attr.h"
+#include "sdlog.h"
+#include "sys_mode.h"
+#endif
+#endif
+#if BOARD_MOSAICO
+#include "ids_svc.h"                   /* the network guard: hooks (counters only) and its verdict (OpenCarMind EdgeOS 2.1.0) */
 #endif
 
 static const char *TAG = "obd_ble";
@@ -120,6 +129,41 @@ static void probe_failed(void)
     portEXIT_CRITICAL(&s_pair_mux);
 }
 #endif
+#if CONFIG_OBD_BLE_PAIR_CONFIRM && BOARD_MOSAICO
+/* Pairing safety (adapter_guard.h): the paired adapter's fingerprint (R1) and no silent re-pair (R2). The question and the
+   records are shared like s_pair, under s_pair_mux; the actions (NVS, bonds, links, events) run after the lock. */
+static ag_q_t        s_q;
+static adapter_fp_t  s_fp_now;             /* this link's: the advert (host task), the discovery, the ELM replies (obd task) */
+static adapter_fp_t  s_fp_saved;           /* NVS "fp", valid when s_fp_have */
+static bool          s_fp_have;
+static volatile bool s_fp_changed;         /* R1: this link's adapter looks different and the user has not said "Use it" */
+static volatile bool s_fp_ask_due;         /* R1: ask when parked (the board task's 1 s poll opens the question) */
+static volatile bool s_fp_trusted;         /* R1: this link matched or was learned, so its protocol may be added */
+static volatile bool s_fp_checked;         /* R1: decided once per link (elm_initialise runs again while the ECU sleeps) */
+static volatile bool s_bond_bad;           /* R2: this link's re-pair was refused or waits for the answer */
+static volatile bool s_bond_hold;          /* R2: the link waits for the answer: no subscribe, no data */
+static bool          s_bond_had, s_bond_our_had;
+/* the saved adapter's bond when this link came up: host task and board task only, never with the cache off, so PSRAM */
+EXT_RAM_BSS_ATTR static struct ble_store_value_sec s_bond_peer, s_bond_our;
+static int64_t       s_hold_until_ms;      /* "Not this one", "Don't allow" or no answer: the saved address waits */
+static int64_t       s_allow_until_ms;     /* "Allow": a pairing request is let through until then */
+static uint32_t      s_meta_gen = 1, s_meta_done, s_meta_session;
+static struct { uint16_t r1_changed, r2_seen, r2_refused, r2_allowed, r1_checks; } s_cnt;
+
+static int64_t now_ms(void) { return esp_timer_get_time() / 1000; }
+static bool guard_driving(void) { return elm_drive_active() || sys_mode_get() == MODE_DRIVE; }
+static bool guard_held(void)
+{
+    portENTER_CRITICAL(&s_pair_mux);
+    bool h = now_ms() < s_hold_until_ms || s_q.kind == AG_Q_REPAIR;   /* a re-pair question: no new link meanwhile */
+    portEXIT_CRITICAL(&s_pair_mux);
+    return h;
+}
+static void fp_from_adv(const struct ble_gap_disc_desc *d, const struct ble_hs_adv_fields *f);
+static void guard_link_up(void);
+static bool guard_after_enc(void);
+static int  guard_repeat_pairing(void);
+#endif
 
 static portMUX_TYPE s_reject_mux = portMUX_INITIALIZER_UNLOCKED;
 static struct { ble_addr_t addr; int64_t until; } s_reject[N_REJECT];
@@ -135,6 +179,10 @@ static void load_saved(void)
     if (nvs_get_blob(h, "addr", &s_saved_addr, &len) == ESP_OK && len == sizeof s_saved_addr) s_have_saved = true;
     len = sizeof s_cur_name;
     nvs_get_str(h, "name", s_cur_name, &len);
+#if CONFIG_OBD_BLE_PAIR_CONFIRM && BOARD_MOSAICO
+    len = sizeof s_fp_saved;
+    s_fp_have = nvs_get_blob(h, "fp", &s_fp_saved, &len) == ESP_OK && len == sizeof s_fp_saved && afp_valid(&s_fp_saved);
+#endif
     nvs_close(h);
 #if CONFIG_OBD_BLE_PAIR_CONFIRM
     snprintf(s_saved_name, sizeof s_saved_name, "%s", s_cur_name);
@@ -152,6 +200,12 @@ static void save_adapter(const ble_addr_t *a, const char *name)
     if (nvs_open("obdble", NVS_READWRITE, &h) != ESP_OK) return;
     nvs_set_blob(h, "addr", a, sizeof *a);
     nvs_set_str(h, "name", name);
+#if BOARD_MOSAICO
+    nvs_erase_key(h, "fp");                /* a new pairing: the fingerprint is learned on its first link (adapter_guard.h) */
+    portENTER_CRITICAL(&s_pair_mux);
+    s_fp_have = false;
+    portEXIT_CRITICAL(&s_pair_mux);
+#endif
     nvs_commit(h);
     nvs_close(h);
     s_saved_addr = *a;
@@ -183,6 +237,13 @@ void obd_ble_forget_adapter(void)
         nvs_close(h);
     }
     s_have_saved = false;
+#if CONFIG_OBD_BLE_PAIR_CONFIRM && BOARD_MOSAICO
+    portENTER_CRITICAL(&s_pair_mux);
+    s_fp_have = false;                     /* nvs_erase_all took the fingerprint too */
+    s_hold_until_ms = 0;
+    ag_q_close(&s_q);                      /* a question about the forgotten adapter is void */
+    portEXIT_CRITICAL(&s_pair_mux);
+#endif
 #if CONFIG_OBD_BLE_PAIR_CONFIRM
     s_saved_name[0] = 0;
     STATUS_LOCK(); g_status.adapter_saved = false; STATUS_UNLOCK();
@@ -317,6 +378,11 @@ static bool resolve_handles(const struct peer *peer)
     if (!adapter_choose(flat, n, CONFIG_OBD_BLE_SVC_UUID, CONFIG_OBD_BLE_NOTIFY_UUID, CONFIG_OBD_BLE_WRITE_UUID,
                         &ni, &wi, &profile)) return false;
     const struct peer_chr *nc = refs[ni], *wc = refs[wi];
+#if CONFIG_OBD_BLE_PAIR_CONFIRM && BOARD_MOSAICO
+    portENTER_CRITICAL(&s_pair_mux);
+    afp_set_gatt(&s_fp_now, flat[ni].svc.b, flat[ni].chr.b, flat[wi].chr.b);
+    portEXIT_CRITICAL(&s_pair_mux);
+#endif
     find_cccd(nc, &s_cccd_handle);
     s_notify_handle = nc->chr.val_handle;
     s_write_handle  = wc->chr.val_handle;
@@ -335,6 +401,9 @@ static int gap_event(struct ble_gap_event *event, void *arg);
 /* obd_ble_set_paused() stops the scan loop (an existing link is kept); obd_ble_probe() opens one short scan window
    while paused. Nothing in the logger pauses the receiver by default; the hooks stay for experiments. */
 static volatile bool s_paused;
+#if BOARD_MOSAICO && CONFIG_OCM_IDS
+static bool s_scan_wl;                  /* host task: the running scan uses the accept list (the guard blocks) */
+#endif
 
 static void start_scan(void)
 {
@@ -345,7 +414,15 @@ static void start_scan(void)
     p.passive = 0;          /* active: ask for scan responses so we see names */
     p.itvl = 0x60;          /* 60 ms */
     p.window = 0x30;        /* 30 ms: leaves radio time for Wi-Fi */
-    int rc = ble_gap_disc(s_own_addr_type, BLE_HS_FOREVER, &p, gap_event, NULL);
+    int32_t dur = BLE_HS_FOREVER;
+#if BOARD_MOSAICO && CONFIG_OCM_IDS
+    /* The network guard blocks (a flood nearby): the scan is narrowed to the paired adapter through the controller's
+       accept list, so the flood is dropped before the host sees it. Scanned in 30 s pieces then, so the restart at the
+       end of each piece (DISC_COMPLETE) opens the scan again as soon as the block lifts. Nothing is transmitted. */
+    s_scan_wl = ids_ble_blocking() && s_have_saved && ble_gap_wl_set(&s_saved_addr, 1) == 0;
+    if (s_scan_wl) { p.filter_policy = BLE_HCI_SCAN_FILT_USE_WL; dur = 30000; }
+#endif
+    int rc = ble_gap_disc(s_own_addr_type, dur, &p, gap_event, NULL);
     if (rc != 0 && rc != BLE_HS_EALREADY) ESP_LOGE(TAG, "ble_gap_disc rc=%d", rc);
     STATUS_LOCK(); g_status.ble = BLE_ST_SCANNING; STATUS_UNLOCK();
 }
@@ -388,6 +465,9 @@ static obd_pick_t is_candidate(const struct ble_gap_disc_desc *d, const struct b
     portENTER_CRITICAL(&s_pair_mux);
     obd_pick_t pick = obd_pair_pick(&s_pair, &a, CONFIG_OBD_BLE_MIN_RSSI, CONFIG_OBD_BLE_PAIR_MIN_RSSI);
     portEXIT_CRITICAL(&s_pair_mux);
+#if BOARD_MOSAICO
+    if (pick == OBD_PICK_OFFER && ids_ble_blocking()) return OBD_PICK_NONE;   /* the guard blocks: no new-adapter offers */
+#endif
     return pick;
 }
 #else
@@ -520,7 +600,17 @@ static int gap_event(struct ble_gap_event *event, void *arg)
 
     switch (event->type) {
     case BLE_GAP_EVENT_DISC: {
+#if BOARD_MOSAICO
+        IDS_HOOK(ids_hook_ble_adv(event->disc.addr.val, event->disc.addr.type));   /* a count and a bitmap bit, no more */
+#endif
         if (ble_gap_conn_active()) return 0;   /* already connecting */
+#if BOARD_MOSAICO && CONFIG_OCM_IDS
+        if (ids_ble_blocking() != s_scan_wl && s_conn == BLE_HS_CONN_HANDLE_NONE) {   /* the verdict changed: restart */
+            ble_gap_disc_cancel();
+            start_scan();
+            return 0;
+        }
+#endif
         const struct ble_gap_disc_desc *d = &event->disc;
         int64_t now = esp_timer_get_time();
 #if CONFIG_OBD_BLE_PAIR_CONFIRM
@@ -533,6 +623,10 @@ static int gap_event(struct ble_gap_event *event, void *arg)
             if (f.name && f.name_len) snprintf(name, sizeof name, "%.*s", (int)f.name_len, (const char *)f.name);
 #if CONFIG_OBD_BLE_PAIR_CONFIRM
             if (pick == OBD_PICK_SAVED) {
+#if BOARD_MOSAICO
+                if (guard_held()) return 0;    /* the user said no to it, or a re-pair question is open */
+                fp_from_adv(d, &f);
+#endif
                 if (!name[0]) snprintf(name, sizeof name, "%s", s_saved_name);
                 connect_to(&d->addr, name, d->rssi, OBD_PICK_SAVED);
 #else
@@ -575,11 +669,17 @@ static int gap_event(struct ble_gap_event *event, void *arg)
         }
         s_conn = event->connect.conn_handle;
         s_sec_tried = false;
+#if BOARD_MOSAICO
+        IDS_HOOK(ids_hook_link(true));
+#endif
 #if CONFIG_OBD_BLE_PAIR_CONFIRM
         s_probe_drop = false;
 #endif
         ble_hs_cfg.sm_io_cap = (s_pin_valid && ble_addr_cmp(&s_pin_addr, &s_cur_addr) == 0) ? BLE_SM_IO_CAP_KEYBOARD_ONLY
                                                                                           : BLE_SM_IO_CAP_NO_IO;
+#if CONFIG_OBD_BLE_PAIR_CONFIRM && BOARD_MOSAICO
+        guard_link_up();
+#endif
         ESP_LOGI(TAG, "connected handle=%d", s_conn);
         STATUS_LOCK(); g_status.ble = BLE_ST_DISCOVERING; STATUS_UNLOCK();
         peer_add(s_conn);
@@ -592,6 +692,9 @@ static int gap_event(struct ble_gap_event *event, void *arg)
         return 0;
 
     case BLE_GAP_EVENT_DISCONNECT:
+#if BOARD_MOSAICO
+        IDS_HOOK(ids_hook_link(false));
+#endif
 #if CONFIG_OBD_BLE_PAIR_CONFIRM
         if (s_probe_drop) s_probe_drop = false;                    /* dropped on purpose: the user is being asked */
         else {
@@ -600,6 +703,12 @@ static int gap_event(struct ble_gap_event *event, void *arg)
         }
 #else
         if (s_ready) sys_event(EV_WARN, "OBD adapter disconnected (reason %d)", event->disconnect.reason);
+#endif
+#if CONFIG_OBD_BLE_PAIR_CONFIRM && BOARD_MOSAICO
+        portENTER_CRITICAL(&s_pair_mux);
+        if (s_q.kind == AG_Q_CHANGED) ag_q_close(&s_q);              /* the next link is checked again */
+        portEXIT_CRITICAL(&s_pair_mux);
+        s_bond_hold = false;
 #endif
         peer_delete(event->disconnect.conn.conn_handle);
         s_conn = BLE_HS_CONN_HANDLE_NONE;
@@ -611,6 +720,9 @@ static int gap_event(struct ble_gap_event *event, void *arg)
 
     case BLE_GAP_EVENT_ENC_CHANGE:
         ESP_LOGI(TAG, "encryption %s (status %d)", event->enc_change.status == 0 ? "on" : "failed", event->enc_change.status);
+#if CONFIG_OBD_BLE_PAIR_CONFIRM && BOARD_MOSAICO
+        if (event->enc_change.status == 0 && event->enc_change.conn_handle == s_conn && guard_after_enc()) return 0;
+#endif
         if (s_sec_tried && !s_ready && event->enc_change.conn_handle == s_conn) {
             if (event->enc_change.status == 0) {
                 subscribe(s_conn);
@@ -628,10 +740,14 @@ static int gap_event(struct ble_gap_event *event, void *arg)
         return 0;
 
     case BLE_GAP_EVENT_REPEAT_PAIRING: {
+#if CONFIG_OBD_BLE_PAIR_CONFIRM && BOARD_MOSAICO
+        return guard_repeat_pairing();         /* never silently (adapter_guard.h R2) */
+#else
         /* the adapter lost its bond (reset or re-paired elsewhere): drop ours and pair again */
         struct ble_gap_conn_desc desc;
         if (ble_gap_conn_find(event->repeat_pairing.conn_handle, &desc) == 0) ble_store_util_delete_peer(&desc.peer_id_addr);
         return BLE_GAP_REPEAT_PAIRING_RETRY;
+#endif
     }
 
     case BLE_GAP_EVENT_PASSKEY_ACTION:
@@ -762,12 +878,18 @@ void obd_ble_pair_answer(bool yes)
     pair_finish(&r);
 }
 
+#if BOARD_MOSAICO
+static void guard_tick(void);
+#endif
 void obd_ble_pair_poll(void)
 {
     portENTER_CRITICAL(&s_pair_mux);
     obd_pair_result_t r = obd_pair_tick(&s_pair, esp_timer_get_time() / 1000);
     portEXIT_CRITICAL(&s_pair_mux);
     pair_finish(&r);
+#if BOARD_MOSAICO
+    guard_tick();
+#endif
 }
 
 bool obd_ble_pair_offer(char *name, size_t n, const char **strength, int *secs_left)
@@ -783,9 +905,336 @@ uint32_t obd_ble_pair_seq(void)
 {
     portENTER_CRITICAL(&s_pair_mux);
     uint32_t q = s_pair.seq;
+#if BOARD_MOSAICO
+    q += s_q.seq;                                 /* a guard question wakes the screen too */
+#endif
     portEXIT_CRITICAL(&s_pair_mux);
     return q;
 }
+
+#if BOARD_MOSAICO
+/* ------------------------------------------------------------------ pairing safety (adapter_guard.h) */
+static bool saved_link(void) { return s_have_saved && s_conn != BLE_HS_CONN_HANDLE_NONE && ble_addr_cmp(&s_cur_addr, &s_saved_addr) == 0; }
+
+static void fp_store(const adapter_fp_t *fp)
+{
+    nvs_handle_t h;
+    if (nvs_open("obdble", NVS_READWRITE, &h) == ESP_OK) {
+        nvs_set_blob(h, "fp", fp, sizeof *fp);
+        nvs_commit(h);
+        nvs_close(h);
+    }
+    portENTER_CRITICAL(&s_pair_mux);
+    s_fp_saved = *fp;
+    s_fp_have = true;
+    portEXIT_CRITICAL(&s_pair_mux);
+}
+
+/* the saved adapter's advert that led to this connect: its stable parts only (adapter_guard.h). Host task only. */
+static void fp_from_adv(const struct ble_gap_disc_desc *d, const struct ble_hs_adv_fields *f)
+{
+    EXT_RAM_BSS_ATTR static uint16_t u16[AFP_MAX_UUIDS];     /* scratch, host task only: PSRAM, not internal RAM */
+    EXT_RAM_BSS_ATTR static uint32_t u32[AFP_MAX_UUIDS];
+    EXT_RAM_BSS_ATTR static uint8_t  u128[AFP_MAX_UUIDS][16];
+    afp_adv_t a = {.name = f->name, .name_len = f->name_len, .mfg = f->mfg_data, .mfg_len = f->mfg_data_len,
+                   .uuid16 = u16, .uuid32 = u32, .uuid128 = (const uint8_t (*)[16])u128};
+    for (int i = 0; i < f->num_uuids16 && a.n16 < AFP_MAX_UUIDS; i++) u16[a.n16++] = f->uuids16[i].value;
+    for (int i = 0; i < f->num_uuids32 && a.n32 < AFP_MAX_UUIDS; i++) u32[a.n32++] = f->uuids32[i].value;
+    for (int i = 0; i < f->num_uuids128 && a.n128 < AFP_MAX_UUIDS; i++) memcpy(u128[a.n128++], f->uuids128[i].value, 16);
+    adapter_fp_t fp;
+    afp_init(&fp);
+    afp_set_addr_type(&fp, d->addr.type);
+    afp_set_adv(&fp, d->event_type == BLE_HCI_ADV_RPT_EVTYPE_SCAN_RSP, &a);
+    portENTER_CRITICAL(&s_pair_mux);
+    s_fp_now = fp;
+    portEXIT_CRITICAL(&s_pair_mux);
+}
+
+static bool bond_key(struct ble_store_key_sec *k)
+{
+    struct ble_gap_conn_desc desc;
+    if (ble_gap_conn_find(s_conn, &desc) != 0) return false;
+    memset(k, 0, sizeof *k);
+    k->peer_addr = desc.peer_id_addr;
+    return true;
+}
+
+/* a new link (host task): nothing is trusted yet; the saved adapter's bond is copied so a re-pair can be seen (R2) */
+static void guard_link_up(void)
+{
+    s_fp_changed = false;
+    s_fp_ask_due = false;
+    s_fp_trusted = false;
+    s_fp_checked = false;
+    s_bond_bad = false;
+    s_bond_hold = false;
+    s_bond_had = s_bond_our_had = false;
+    s_meta_gen++;
+    struct ble_store_key_sec k;
+    if (!saved_link() || !bond_key(&k)) return;
+    s_bond_had = ble_store_read_peer_sec(&k, &s_bond_peer) == 0 && s_bond_peer.ltk_present;
+    s_bond_our_had = s_bond_had && ble_store_read_our_sec(&k, &s_bond_our) == 0;
+}
+
+static void bond_restore(void)
+{
+    if (!s_bond_had) return;
+    ble_store_write_peer_sec(&s_bond_peer);
+    if (s_bond_our_had) ble_store_write_our_sec(&s_bond_our);
+}
+
+static void bond_keep_new(void)
+{
+    struct ble_store_key_sec k;
+    if (!bond_key(&k)) return;
+    s_bond_had = ble_store_read_peer_sec(&k, &s_bond_peer) == 0 && s_bond_peer.ltk_present;
+    s_bond_our_had = s_bond_had && ble_store_read_our_sec(&k, &s_bond_our) == 0;
+}
+
+static ag_r2_t r2_decide(bool *driving)
+{
+    int64_t now = now_ms();
+    *driving = guard_driving();
+    portENTER_CRITICAL(&s_pair_mux);
+    bool busy = s_q.kind != AG_Q_NONE || s_pair.phase == OBD_PAIR_ASKING;
+    ag_r2_t r = ag_r2_decide(*driving, now < s_allow_until_ms, busy);
+    if (r == AG_R2_ASK && ids_ble_blocking()) r = AG_R2_REFUSE;   /* the guard blocks: no re-pair request reaches the user */
+    if (r == AG_R2_ASK && !ag_q_open(&s_q, AG_Q_REPAIR, now, PAIR_ASK_MS)) r = AG_R2_REFUSE;
+    if (r == AG_R2_ALLOW) s_allow_until_ms = 0;            /* one pairing per "Allow" */
+    portEXIT_CRITICAL(&s_pair_mux);
+    s_cnt.r2_seen++;
+    if (r == AG_R2_ALLOW) s_cnt.r2_allowed++;
+    if (r == AG_R2_REFUSE) s_cnt.r2_refused++;
+    return r;
+}
+
+/* After an encryption (host task): did the saved adapter get a new key? NimBLE re-pairs by itself when the saved key is
+   refused (adapter_guard.h R2). True: stop here, the link waits for the user's answer. */
+static bool guard_after_enc(void)
+{
+    if (!s_bond_had || !saved_link()) return false;
+    struct ble_store_key_sec k;
+    struct ble_store_value_sec v;
+    if (!bond_key(&k) || ble_store_read_peer_sec(&k, &v) != 0) return false;
+    if (v.ltk_present && !memcmp(v.ltk, s_bond_peer.ltk, sizeof v.ltk) && v.ediv == s_bond_peer.ediv &&
+        v.rand_num == s_bond_peer.rand_num) return false;             /* the saved key: restored, not paired again */
+    bool driving;
+    ag_r2_t r = r2_decide(&driving);
+    s_meta_gen++;
+    if (r == AG_R2_ALLOW) {
+        bond_keep_new();
+        sys_event(EV_INFO, "Adapter paired again (allowed)");
+        return false;
+    }
+    if (r == AG_R2_REFUSE) {
+        bond_restore();                                                /* the new key is not kept; the link stays, marked */
+        s_bond_bad = true;
+        sys_event(EV_WARN, "Re-pair refused (%s), %u so far", driving ? "driving" : "busy", (unsigned)s_cnt.r2_refused);
+        return false;
+    }
+    s_bond_bad = true;
+    s_bond_hold = true;
+    sys_event(EV_WARN, "Adapter asks to pair again: asking");
+    return true;
+}
+
+/* BLE_GAP_EVENT_REPEAT_PAIRING: NimBLE 6.1 does not send it to a central; the same table in case a stack does */
+static int guard_repeat_pairing(void)
+{
+    bool driving;
+    ag_r2_t r = r2_decide(&driving);
+    if (r == AG_R2_ALLOW) {
+        struct ble_store_key_sec k;
+        if (bond_key(&k)) ble_store_util_delete_peer(&k.peer_addr);
+        sys_event(EV_INFO, "Adapter paired again (allowed)");
+        return BLE_GAP_REPEAT_PAIRING_RETRY;
+    }
+    if (r == AG_R2_REFUSE) sys_event(EV_WARN, "Re-pair refused (%s), %u so far", driving ? "driving" : "busy", (unsigned)s_cnt.r2_refused);
+    else sys_event(EV_WARN, "Adapter asks to pair again: asking");
+    return BLE_GAP_REPEAT_PAIRING_IGNORE;
+}
+
+void obd_ble_guard_elm(const char *ati, const char *at1)
+{
+    if (!saved_link() || s_fp_checked) return;
+    s_fp_checked = true;
+    adapter_fp_t now, saved;
+    portENTER_CRITICAL(&s_pair_mux);
+    afp_set_elm(&s_fp_now, AFP_ATI, ati);
+    afp_set_elm(&s_fp_now, AFP_AT1, at1);
+    now = s_fp_now;
+    saved = s_fp_saved;
+    bool have = s_fp_have;
+    portEXIT_CRITICAL(&s_pair_mux);
+    uint16_t diff;
+    bool driving = guard_driving();
+    ag_r1_t r = ag_r1_decide(have ? &saved : NULL, &now, driving, &diff);
+    s_cnt.r1_checks++;
+    unsigned long id = (unsigned long)afp_id(&now);
+    s_meta_gen++;
+    switch (r) {
+    case AG_R1_LEARN:
+        fp_store(&now);
+        s_fp_trusted = true;
+        sys_event(EV_INFO, "Adapter fingerprint saved (%08lx)", id);
+        break;
+    case AG_R1_USE:
+        s_fp_trusted = true;
+        ESP_LOGI(TAG, "adapter fingerprint %08lx: same as when paired", id);
+        break;
+    default:
+        s_fp_changed = true;
+        s_fp_ask_due = true;
+        s_cnt.r1_changed++;
+        sys_event(EV_WARN, "Adapter looks different (%s)", afp_field_name(afp_first(diff & ~AFP_SOFT)));
+        ESP_LOGW(TAG, "adapter fingerprint %08lx, paired as %08lx: rows marked, nothing to the learner, %s", id,
+                 (unsigned long)afp_id(&saved), driving ? "asking once parked" : "asking");
+        break;
+    }
+}
+
+void obd_ble_guard_protocol(const char *dpn)
+{
+    if (!saved_link()) return;
+    portENTER_CRITICAL(&s_pair_mux);
+    bool known = afp_set_proto(&s_fp_now, dpn);
+    uint32_t h = s_fp_now.h[AFP_PROTO];
+    bool had = s_fp_have && (s_fp_saved.known & (1u << AFP_PROTO));
+    bool differs = had && known && s_fp_saved.h[AFP_PROTO] != h;
+    adapter_fp_t add = s_fp_saved;
+    portEXIT_CRITICAL(&s_pair_mux);
+    if (differs) {
+        ESP_LOGI(TAG, "adapter fingerprint: another protocol than when paired (another car?), noted only");
+    } else if (known && !had && s_fp_trusted && s_fp_have) {
+        add.h[AFP_PROTO] = h;                          /* a trusted link: the protocol joins the record (soft field) */
+        add.known |= 1u << AFP_PROTO;
+        fp_store(&add);
+    }
+}
+
+bool obd_ble_adapter_changed(void) { return s_fp_changed || s_bond_bad || ids_rows_suspect(); }   /* + the network guard */
+void obd_ble_guard_counts(uint32_t *fp_checks, uint32_t *repair_refused)
+{
+    *fp_checks = s_cnt.r1_checks;
+    *repair_refused = s_cnt.r2_refused;
+}
+
+void obd_ble_guard_meta(void)
+{
+    uint32_t sess = sdlog_session_id();
+    if (s_meta_done == s_meta_gen && s_meta_session == sess) return;
+    s_meta_done = s_meta_gen;
+    s_meta_session = sess;
+    portENTER_CRITICAL(&s_pair_mux);
+    unsigned long id = (unsigned long)afp_id(&s_fp_now);
+    portEXIT_CRITICAL(&s_pair_mux);
+    char j[160];
+    snprintf(j, sizeof j, "{\"result\":\"%s\",\"fp\":\"%08lx\",\"repair\":\"%s\",\"repair_events\":%u,\"changed_links\":%u}",
+             s_fp_changed ? "changed" : s_fp_trusted ? "same" : "unchecked", id,
+             s_bond_hold ? "asking" : s_bond_bad ? "refused" : "none", (unsigned)s_cnt.r2_seen, (unsigned)s_cnt.r1_changed);
+    sdlog_meta_set_json("adapter_check", j);
+}
+
+bool obd_ble_guard_offer(const char **text, const char **yes, const char **no, const char **note, int *secs_left, uint32_t *seq)
+{
+    ag_q_kind_t k;
+    int left;
+    uint32_t sq;
+    portENTER_CRITICAL(&s_pair_mux);
+    bool open = ag_q_offer(&s_q, now_ms(), &k, &left, &sq);
+    portEXIT_CRITICAL(&s_pair_mux);
+    if (!open) return false;
+    if (text) *text = ag_q_text(k);
+    if (yes) *yes = ag_q_yes(k);
+    if (no) *no = ag_q_no(k);
+    if (note) *note = k == AG_Q_CHANGED ? "Its data is kept apart until you choose." : "Nothing changes unless you choose.";
+    if (secs_left) *secs_left = left;
+    if (seq) *seq = sq & 0x7FFFFFFFu;
+    return true;
+}
+
+/* an answer, or none in time (yes = false, timeout = true). Board task (NVS) or the 1 s poll. */
+static void guard_finish(ag_q_kind_t k, bool yes, bool timeout)
+{
+    int64_t now = now_ms();
+    s_meta_gen++;
+    if (k == AG_Q_CHANGED) {
+        if (yes) {
+            portENTER_CRITICAL(&s_pair_mux);
+            adapter_fp_t fp = s_fp_now;
+            portEXIT_CRITICAL(&s_pair_mux);
+            fp_store(&fp);                             /* re-learned: only ever after this yes */
+            s_fp_changed = false;
+            s_fp_trusted = true;
+            sys_event(EV_INFO, "Adapter accepted (%08lx)", (unsigned long)afp_id(&fp));
+        } else if (timeout) {
+            sys_event(EV_INFO, "No answer: adapter data kept apart");
+        } else {
+            portENTER_CRITICAL(&s_pair_mux);
+            s_hold_until_ms = now + AG_HOLD_MS;
+            portEXIT_CRITICAL(&s_pair_mux);
+            sys_event(EV_INFO, "Adapter not used for 10 min");
+            if (saved_link()) ble_gap_terminate(s_conn, BLE_ERR_REM_USER_CONN_TERM);
+        }
+        return;
+    }
+    if (k != AG_Q_REPAIR) return;
+    if (yes) {
+        if (s_bond_hold) {                             /* NimBLE already paired: keep the new key and go on */
+            s_cnt.r2_allowed++;
+            bond_keep_new();
+            s_bond_hold = false;
+            s_bond_bad = false;
+            sys_event(EV_INFO, "Adapter paired again (allowed)");
+            if (saved_link() && !s_ready) subscribe(s_conn);
+        } else {
+            portENTER_CRITICAL(&s_pair_mux);
+            s_allow_until_ms = now + AG_ALLOW_MS;
+            portEXIT_CRITICAL(&s_pair_mux);
+            sys_event(EV_INFO, "Pairing again allowed for 2 min");
+            if (saved_link()) ble_gap_terminate(s_conn, BLE_ERR_REM_USER_CONN_TERM);
+        }
+        return;
+    }
+    s_cnt.r2_refused++;
+    bond_restore();                                    /* the key from before stays the saved one */
+    s_bond_hold = false;
+    portENTER_CRITICAL(&s_pair_mux);
+    s_hold_until_ms = now + AG_HOLD_MS;
+    portEXIT_CRITICAL(&s_pair_mux);
+    sys_event(EV_INFO, "Re-pair %s: old key kept", timeout ? "not answered" : "refused");
+    if (saved_link()) ble_gap_terminate(s_conn, BLE_ERR_REM_USER_CONN_TERM);
+}
+
+void obd_ble_guard_answer(uint32_t seq, bool yes)
+{
+    portENTER_CRITICAL(&s_pair_mux);
+    uint32_t cur = s_q.seq & 0x7FFFFFFFu;
+    ag_q_kind_t k = cur == (seq & 0x7FFFFFFFu) ? ag_q_answer(&s_q, s_q.seq, now_ms()) : AG_Q_NONE;
+    portEXIT_CRITICAL(&s_pair_mux);
+    if (k == AG_Q_NONE) { ESP_LOGI(TAG, "late answer to an adapter question: ignored"); return; }
+    guard_finish(k, yes, false);
+}
+
+/* the 1 s poll: a question whose time ran out, a question that must not stay open while driving, and the "looks
+   different" question once parked */
+static void guard_tick(void)
+{
+    int64_t now = now_ms();
+    bool driving = guard_driving();
+    bool linked = saved_link();
+    portENTER_CRITICAL(&s_pair_mux);
+    ag_q_kind_t expired = ag_q_tick(&s_q, now);
+    bool closed = false;
+    if (s_q.kind == AG_Q_CHANGED && driving) { ag_q_close(&s_q); closed = true; }
+    bool asked = !driving && linked && s_fp_ask_due && s_fp_changed && s_pair.phase != OBD_PAIR_ASKING &&
+                 ag_q_open(&s_q, AG_Q_CHANGED, now, PAIR_ASK_MS);
+    portEXIT_CRITICAL(&s_pair_mux);
+    if (closed) { s_fp_ask_due = true; ESP_LOGI(TAG, "adapter question closed for the drive; asked again once parked"); }
+    if (asked) { s_fp_ask_due = false; ESP_LOGI(TAG, "asking whether to use the different-looking adapter"); }
+    if (expired != AG_Q_NONE) guard_finish(expired, false, true);
+}
+#endif
 #else
 void obd_ble_explore(void)
 {
@@ -878,3 +1327,8 @@ esp_err_t obd_ble_start(void)
     nimble_port_freertos_init(host_task);
     return ESP_OK;
 }
+
+#if CONFIG_OBD_BLE_PAIR_CONFIRM && BOARD_MOSAICO
+/* the Health app's adapter question (rule R1's "looks different"), at the end of the file so the S3's line numbers stay */
+bool obd_ble_adapter_mismatch(void) { return s_fp_changed; }
+#endif

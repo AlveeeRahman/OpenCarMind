@@ -33,3 +33,8 @@ shot edgeos-boot 1200 950 docs/images/edgeos-boot.png
 shot edgeos-ladder-battery 1200 920 docs/images/edgeos-ladder-battery.png
 shot edgeos-ram 1200 790 docs/images/edgeos-ram.png
 shot edgeos-runlevels 1200 1590 docs/images/edgeos-runlevels.png
+shot edgeos-ai-services 1200 1410 docs/images/edgeos-ai-services.png
+shot edgeos-ai-soc 1200 1560 docs/images/edgeos-ai-soc.png
+shot edgeos-ai-soh 1200 1050 docs/images/edgeos-ai-soh.png
+shot edgeos-ai-anomaly 1200 1360 docs/images/edgeos-ai-anomaly.png
+shot edgeos-ai-ids 1200 1440 docs/images/edgeos-ai-ids.png

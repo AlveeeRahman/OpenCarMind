@@ -138,6 +138,22 @@ The board pairs with one adapter, and after that it connects to it by itself. It
 
 This pairing sheet is new in 2.0.0. It is built and checked on a computer, not yet tested on the board.
 
+### When the adapter looks different, or asks to pair again
+
+After pairing, the board remembers a fingerprint of your adapter: its name, what it advertises, its serial line and its answers to two identity questions. It keeps no VIN and shows no address. Two more questions can then appear, in the same sheet as the pairing question, with 30 s to answer.
+
+- **"This adapter looks different. Use it?"** The adapter at your adapter's address does not match the fingerprint. Under the question you see "Its data is kept apart until you choose." The drive is still logged but marked, and the learning gets none of it.
+  - **Use it:** the board learns this adapter as yours. Tap it after a firmware update of the adapter, for example.
+  - **Not this one:** the link is dropped, and the board leaves that address alone for 10 minutes.
+  - **No answer:** the data stays apart until the link ends. The next link is checked again.
+  - **While driving** the link is never cut and the question waits until you park.
+- **"The adapter asks to pair again. Allow?"** Your adapter refused the saved key and wants a new one. That is normal after an adapter reset, and suspicious otherwise. No data flows while the question is open.
+  - **Allow:** the new key is kept and the board goes on.
+  - **Don't allow, or no answer:** the old key stays, the link is dropped, and the board waits 10 minutes.
+  - **While driving** the board refuses at once, keeps the link and marks the rows. The events say "Re-pair refused (driving)".
+
+These two questions are built and checked on a computer, not yet tested on the board.
+
 <a id="nav"></a>
 
 ## The launcher, apps and Back
@@ -747,6 +763,8 @@ The board offers a new adapter only at a strong signal. Bring the board close to
 ### The clock is wrong
 
 If Settings says "Not set" or "Estimated, not synced", join Wi-Fi and tap Sync clock now, or set it by hand in Settings > Set clock. Auto theme needs the clock.
+
+If the events say "Clock sync refused: N min ahead" (or behind), the time server's answer was more than a day ahead of the clock, or more than 10 minutes behind it, and the board kept its own time. If you know the clock is wrong, set it by hand. The next sync then sets it.
 
 ### A storage error after a restart
 

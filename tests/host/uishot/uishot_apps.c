@@ -28,3 +28,24 @@ void uishot_close_overlays(void)
     if (pw_page) { lv_obj_delete(pw_page); pw_page = NULL; }
     if (ck_page) { lv_obj_delete(ck_page); ck_page = NULL; }
 }
+void uishot_health_page(int k)
+{
+    if (k == h_page) return;
+    h_page = (uint8_t)k;
+    h_tab_paint();
+    h_build();
+}
+/* Settings scrolled so the NETWORK GUARD row is at the top of the list (shoot_scrolled stops after six pages) */
+void uishot_settings_guard(void)
+{
+    if (!g_list) return;
+    for (uint32_t i = 0; i < lv_obj_get_child_count(g_list); i++) {
+        lv_obj_t *c = lv_obj_get_child(g_list, (int32_t)i);
+        if (lv_obj_check_type(c, &lv_label_class) && !strcmp(lv_label_get_text(c), "NETWORK GUARD")) {
+            lv_obj_update_layout(g_list);
+            lv_obj_scroll_to_y(g_list, lv_obj_get_y(c), LV_ANIM_OFF);
+            lv_obj_update_layout(g_list);
+            return;
+        }
+    }
+}

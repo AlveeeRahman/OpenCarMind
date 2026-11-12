@@ -148,6 +148,7 @@ void      ui_set_text(lv_obj_t *o, const char *t);                   /* change-o
 void      ui_set_fmt(lv_obj_t *o, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
 void      ui_set_color(lv_obj_t *o, uint32_t c);
 void      ui_go_home(void);
+void      ui_health_set_page(int k);       /* EdgeOS 2.1.0: the Health page the app opens on (the banner's "Open Health") */
 /* true while the shell rebuilds the open app for a theme switch: an app may keep its scroll position across it */
 bool      ui_theme_reopening(void);
 bool      ui_apps_overlay_open(void);   /* the Wi-Fi password page or the clock picker is open (a theme switch waits) */

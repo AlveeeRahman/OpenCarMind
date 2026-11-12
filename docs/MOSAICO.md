@@ -1,6 +1,6 @@
-# OpenCarMind EdgeOS 2.0.0 on the ESP-Mosaico
+# OpenCarMind EdgeOS 2.1.0 on the ESP-Mosaico
 
-OpenCarMind EdgeOS 2.0.0 (Edge OS for short) is the build of OpenCarMind for Espressif's ESP-Mosaico board. Up to version 1.2.0 it was called mossREV. It is not related to Ubiquiti's EdgeOS router software. It comes from the same source tree as the ESP32-S3 version and does the same job: it reads your car over a Bluetooth OBD-II adapter, logs every drive, and runs a small neural network on the chip. The Mosaico adds a 480 x 480 touch screen, more memory and a 128 MB store for the drive logs.
+OpenCarMind EdgeOS 2.0.0 is the build of OpenCarMind for Espressif's ESP-Mosaico board. Up to version 1.2.0 it was called mossREV. It is not related to Ubiquiti's EdgeOS router software. It comes from the same source tree as the ESP32-S3 version and does the same job: it reads your car over a Bluetooth OBD-II adapter, logs every drive, and runs a small neural network on the chip. The Mosaico adds a 480 x 480 touch screen, more memory and a 128 MB store for the drive logs.
 
 The OS layer does not change the S3 build. The pairing change merged after the board check is behind `CONFIG_OBD_BLE_PAIR_CONFIRM`, on for the Mosaico and off for the S3 by default, so the S3 image stays the tested one. For the Waveshare ESP32-S3 board, keep using the S3 releases and the main [README](../README.md).
 
@@ -19,9 +19,10 @@ This guide is for building, flashing and checking the board. The [user manual](m
 9. [The 128 MB NAND](#the-128-mb-nand)
 10. [Swiping between pages](#swiping-between-pages)
 11. [The OS layer](#the-os-layer)
-12. [Known limits](#known-limits)
-13. [Coming next](#coming-next)
-14. [Licences](#licences)
+12. [Pairing safety](#pairing-safety)
+13. [Known limits](#known-limits)
+14. [Coming next](#coming-next)
+15. [Licences](#licences)
 
 ## The hardware
 
@@ -61,9 +62,9 @@ You need the merged image `EdgeOS-2.0.0-esp32s31-merged.bin` (its SHA-256 is in 
        write-flash --flash-mode dio --flash-freq 80m --flash-size 16MB 0x0 EdgeOS-2.0.0-esp32s31-merged.bin
    ```
 
-4. The board restarts into Edge OS. The console (115200 baud on the same port) prints `OpenCarMind EdgeOS 2.0.0 running`. Pair it again from the desktop app.
+4. The board restarts into OpenCarMind EdgeOS. The console (115200 baud on the same port) prints `OpenCarMind EdgeOS 2.0.0 running`. Pair it again from the desktop app.
 
-Measured on the board, EdgeOS 2.0.0 4aeff43: the image `EdgeOS-2.0.0-esp32s31-merged.bin` (SHA-256 `a225125d27f3906c...`) printed `OpenCarMind EdgeOS 2.0.0 running` at 4.3 s and `boot health good` at 68.0 s. That image is not published yet. The merged branch tip (06ddf1d) has no released image yet. The release image will be rebuilt from the branch tip, with a new SHA-256.
+Measured on the board, OpenCarMind EdgeOS 2.0.0 4aeff43: the image `EdgeOS-2.0.0-esp32s31-merged.bin` (SHA-256 `a225125d27f3906c...`) printed `OpenCarMind EdgeOS 2.0.0 running` at 4.3 s and `boot health good` at 68.0 s. That image is not published yet. The merged branch tip (06ddf1d) has no released image yet. The release image will be rebuilt from the branch tip, with a new SHA-256.
 
 To go back to mossREV 1.2.0, flash `mossREV-1.2.0-esp32s31-merged.bin` with the same steps. It erases the NVS again, so pair again after it. Going back is not yet verified on the board.
 
@@ -83,7 +84,7 @@ The desktop app talks to the Mosaico over the same USB protocol as the S3: pairi
 
 ## The apps
 
-The launcher has a Home page and 16 apps on four more pages. Swipe left and right between pages, tap an app to open it, and tap Back (the round arrow at the top left) or swipe down to come home. Back is a 44 px circle with a touch area 104 px wide that reaches from the screen corner down to the first card, so a thumb from the corner always hits it.
+The launcher has a Home page and 17 apps on five more pages (2.1.0 added Health after Board, so Settings sits alone on the last page). Swipe left and right between pages, tap an app to open it, and tap Back (the round arrow at the top left) or swipe down to come home. Back is a 44 px circle with a touch area 104 px wide that reaches from the screen corner down to the first card, so a thumb from the corner always hits it.
 
 - **Drive.** The live drive view (speed, rpm and more) and the End drive control (hold it for 1 second).
 - **AI.** What the model in use sees: the manoeuvre class and the three estimates (brake pressure, flywheel torque, fuel rate).
@@ -93,6 +94,7 @@ The launcher has a Home page and 16 apps on four more pages. Swipe left and righ
 - **Live, Fuel, Brakes, Trip, Engine.** The live OBD values grouped by topic.
 - **Faults.** Stored, pending and permanent trouble codes, ranked by severity and grouped by shared cause.
 - **Board.** Firmware version, chip, memory, storage, the scheduler's job table.
+- **Health** (2.1.0). Three read-only pages. Battery: charge, mode, current and power, temperature, SoH with its source (full-cycle count, partial-cycle model or "learning, n of 10 charges"), the resistance trend, the anomaly detector's state and the last battery event. Guard: the network guard's state (learning, shadow h of 2, watching, blocking with reason and minutes left), a score bar per head against its threshold, the guard counts and the last 3 guard events, with Clear block while it blocks. AI: each AI service's runs, misses, worst response and budget, and the ladder state. User manual: [docs/manual/edgeos-2.1.0.md](manual/edgeos-2.1.0.md).
 - **Files.** The drive logs on the board: size, rows and date of each, its files, and delete (always behind a confirm sheet). The drive being written cannot be deleted.
 - **Wi-Fi.** Search for networks and join one from the screen (see below), the saved networks with Forget, and Sync clock now.
 - **Settings.** Brightness, theme, the model, the clock, units, screen off, the order of the apps on Home, the OBD adapter, Format storage, and the firmware version.
@@ -107,7 +109,7 @@ Wi-Fi still does one thing: it sets the board's clock from an HTTPS time server 
 
 ## The two models
 
-Edge OS carries both on-board models, each re-quantized by ESP-PPQ for the esp32s31 from the same trained weights and calibration windows as the S3 files (8-bit weights, 16-bit activations):
+OpenCarMind EdgeOS carries both on-board models, each re-quantized by ESP-PPQ for the esp32s31 from the same trained weights and calibration windows as the S3 files (8-bit weights, 16-bit activations):
 
 | | CarMind R.E.V | CarMind E.V |
 |---|---|---|
@@ -186,7 +188,7 @@ A full 480 x 480 frame takes 23.6 ms on the panel link (measured), so a full-scr
 
 ## The OS layer
 
-Edge OS treats the firmware as a small operating system. The parts that already existed (the scheduler checks, the reset-safe storage, the self-tested models, the self-checking Smart features) now sit under one OS layer with fixed rules. The layer adds no task. It runs inside the board task, the screen task and the jobs that already exist. Its parts take 84 bytes of static internal RAM, and moving Smart swipe's own gate into it gave back 776 bytes.
+OpenCarMind EdgeOS treats the firmware as a small operating system. The parts that already existed (the scheduler checks, the reset-safe storage, the self-tested models, the self-checking Smart features) now sit under one OS layer with fixed rules. The layer adds no task. It runs inside the board task, the screen task and the jobs that already exist. Its parts take 84 bytes of static internal RAM, and moving Smart swipe's own gate into it gave back 776 bytes.
 
 ```
 +----------------------------------------------------------------------+
@@ -259,11 +261,12 @@ Each model and learner declares in one table: how often it runs, its deadline, h
 
 If the model starts missing its deadlines, the board gives up comfort before function, one step every 10 s while misses continue:
 
-1. The screen draws half as many frames.
-2. The R.E.V learner pauses. What it learned is kept.
-3. The model's inference pauses. The same model stays loaded.
+1. The AI services run at a tenth of their rate with their learned heads off; the network guard evaluates every 4th 5 s window. Checked on the board for the estimator (13757fd); the guard's rate is built, being checked on the board.
+2. The screen draws half as many frames, and the AI services pause.
+3. The R.E.V learner pauses. What it learned is kept.
+4. The model's inference pauses. The same model stays loaded.
 
-A minute without misses takes one step back. The ladder never switches to another model. Models change only while parked and only when the owner asks. The last step is undone only when parked, so the model does not go on and off during one drive.
+Misses of the screen or of the AI services alone reach step 1 only. A minute without misses takes one step back, in reverse order. The ladder never switches to another model. Models change only while parked and only when the owner asks. The last step is undone only when parked, so the model does not go on and off during one drive.
 
 ### Feature gate
 
@@ -308,6 +311,26 @@ What the flashing would need:
 - **The USB door**: it would stay as it is. The ROM download mode it enters can write the inactive slot like any other address. No new desktop-app command is needed.
 - **Timing**: the verdict comes at 65 s. A power cut in the first minute after an update would also roll back. Confirming earlier, after the first screen update and the storage mount, is an option.
 
+## AI services in 2.1.0
+
+Three services share the AI worker (priority 1, admitted by response-time analysis, see the README section "AI services in OpenCarMind EdgeOS"):
+
+- **bat**: the battery SoC estimator and, new, the SoH ridge regressor (`main/bat_soh.c`, `main/bat_soh_model.h`). It computes the regressor's charge features on the samples the estimator already gets and learns the cell's reference from its first 10 usable cycles (NVS "ocm_bat"/"soh"). A usable cycle needs a charge from 3.60 V or lower into the CV part and a discharge from full to 30 %, so a top-up gives no sample. A count from nearly empty to full wins over the model.
+- **banom**: the battery anomaly detector (`main/bat_anom.c`, `main/bat_anom_core.c`): 60 s windows of the 2 s gauge samples, 9 features, the autoencoder alarm only, a 24 h warm-up kept in NVS, statistics updated only on clean windows. An alarm writes an event and shows the banner. It never acts on power.
+- **ids**: the network guard (`main/ids_svc.c`, `main/ids_core.c`, `main/ids_model.h`). The radio callbacks only count and set bitmap bits (`main/ids_hooks.h`, audited by `tests/host/ids_audit.sh`). Every 5 s the step runs the BLE scan's rotation detector, the car link's timing head (advisory) and the Wi-Fi round's scan and deauth rules. Two hours of shadow, then a block stops pairing offers and re-pair requests, narrows the scan to the paired adapter through the controller's accept list, stops the Wi-Fi round with the clock kept and keeps rows out of the learners. It never cuts the paired link, transmits, pairs or sets the clock, and lifts 10 min after the last anomalous window. Settings > Network guard: blocking on or off.
+
+The admission self-test of every service runs 5 times and the fastest run decides, with one retry 30 s later, because one wall-clock run can be preempted (one boot of 7 on 13757fd measured 26,089 us).
+
+## Pairing safety
+
+Built, not yet checked on the board. Three rules keep the saved OBD adapter honest. They are compiled for the Mosaico only (`CONFIG_OBD_BLE_PAIR_CONFIRM` on and `BOARD_MOSAICO`), and the S3 image does not change. The rules are pure C in `main/adapter_guard.c` and `main/clock_set.c`, host-tested by `make -C tests/host guard` and `make -C tests/host clock`.
+
+- **Fingerprint (R1).** The saved adapter is no longer known by its address alone. On the first link after the pairing yes, the board stores one 32-bit FNV-1a hash per field in NVS (`obdble/fp`, 48 bytes): address type, advertised name, service UUIDs and maker id (per packet kind), the serial line `adapter_choose()` picked, and the ATI and AT@1 replies. The protocol is a soft field. The VIN is never a field. On a mismatch the link stays up, the session file gets `"adapter_check": {"result": "changed"}`, the R.E.V learner and the pattern model get no rows, and when parked the screen asks "This adapter looks different. Use it?" (Use it, Not this one, 30 s). Only Use it re-learns the fingerprint. Not this one leaves the saved address alone for 10 minutes. While driving there is no question until the car is parked.
+- **No silent re-pair (R2).** NimBLE in IDF 6.1 re-pairs by itself as a central when the saved key is refused, and never sends `BLE_GAP_EVENT_REPEAT_PAIRING` to a central. The board copies the bond at connect and compares it after each encryption. Parked: the link is held and the screen asks "The adapter asks to pair again. Allow?" (Allow, Don't allow, 30 s). Driving, or with another question open: the old key is put back, the link stays and is marked. The event handler uses the same table.
+- **Clock jump guard (R6).** A Wi-Fi time more than 24 h ahead of a clock that came from Wi-Fi, or more than 10 min behind it, is refused and logged. Hand-set, estimated and unset clocks are not guarded. The 2026 to 2099 range comes first, as before.
+
+The 1200-baud download door is not touched: `mosaico_console.c` and `os.c` are unchanged, and none of this code runs in the door's timer. Pairing with a real LELink has not been tried on this board.
+
 ## Known limits
 
 - **A panic in the middle of a write can still damage a file.** The volume survives, but 21 of 200 reset-test cycles damaged a file, almost all of them after a panic, which cannot flush first. There is no journal.
@@ -322,7 +345,7 @@ What the flashing would need:
 
 ## Coming next
 
-Edge OS also uses the S31's pixel-processing accelerator and 2D-DMA for the screen (the slide and large LVGL fills and copies, with a CPU fallback). Its board numbers come from the 2.0.0 board check. After 2.0.0: the battery as a UPS once its draw is measured, the A/B rollback once the flashing flow is decided, and a resource manager for pins and buses.
+OpenCarMind EdgeOS also uses the S31's pixel-processing accelerator and 2D-DMA for the screen (the slide and large LVGL fills and copies, with a CPU fallback). Its board numbers come from the 2.0.0 board check. After 2.0.0: the battery as a UPS once its draw is measured, the A/B rollback once the flashing flow is decided, and a resource manager for pins and buses.
 
 ## Licences
 

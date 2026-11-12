@@ -235,6 +235,64 @@ menu "OBD Logger Configuration"
             help
                 Off: single-line SPI with WP# and HOLD# held high as GPIOs. On: quad reads and writes (the driver sets
                 the chip's QE bit). Untested on the board.
+        config OCM_AI_SVC
+            bool "EdgeOS: small AI services (one low-priority worker, admitted by response-time analysis)"
+            depends on IDF_TARGET_ESP32S31
+            default y
+            help
+                Periodic AI services (the battery estimator first) in one worker task at priority 1, below the UI and
+                the models, on the core with the most slack. Each service declares a period, a deadline and a CPU
+                budget; the set is admitted by the same response-time analysis as the models, misses are counted, and
+                the services are the first to slow down (period x10, then pause) under the degradation ladder.
+                See main/ai_svc.c and main/ai_svc_core.h.
+        config OCM_BAT_EST
+            bool "AI service: battery SoC and SoH estimator (reads the gauge sample, never writes the gauge)"
+            depends on OCM_AI_SVC
+            default y
+            help
+                A 1RC equivalent-circuit model, a 2-state extended Kalman filter and a small ridge correction
+                (main/bat_est_core.c, the model in main/bat_model.h), run once a second on the gauge sample the board
+                task already reads every 2 s. No new I2C traffic and no gauge writes. The learnt capacity, R0 and the
+                last SoC are kept in NVS at most every 10 minutes and on the safe-shutdown path.
+        config OCM_BAT_NOMINAL_MAH
+            int "Battery nominal capacity in mAh (UNVERIFIED: 65 mAh is the cell's label, not a measurement)"
+            depends on OCM_BAT_EST
+            range 20 5000
+            default 65
+        config OCM_BAT_LOG
+            bool "Battery log for training data on the NAND (bNNNNNN.csv, one row every 10 s)"
+            depends on OCM_BAT_EST && OCM_NAND_LOGS
+            default y
+            help
+                V, I, average I, T, the gauge's SoC and remaining capacity, the estimator's SoC, SoH and mode, every
+                10 s, in a numbered ring of files in obd/bat on the NAND. The board task writes them (the worker never
+                touches storage) and skips them while storage is busy or nearly full. The desktop app lists them with
+                the drive files.
+        config OCM_BAT_LOG_CAP_KB
+            int "Battery log: all files together at most (KB), the oldest deleted first"
+            depends on OCM_BAT_LOG
+            range 256 16384
+            default 2048
+        config OCM_BAT_ANOM
+            bool "AI service: battery anomaly detector (60 s windows, autoencoder alarm, never acts on power)"
+            depends on OCM_BAT_EST
+            default y
+            help
+                Nine features per 60 s window from the estimator's samples, scored by a 9-4-9 autoencoder (the alarm,
+                three windows in a row after a 24 h warm-up) with a robust z and a Gaussian score as diagnostics. Its
+                statistics update only on clean windows (poisoning guard) and are kept in NVS. An alarm writes an event
+                and shows the banner; nothing else. main/bat_anom.c, main/bat_anom_core.c, main/bat_anom_model.h.
+        config OCM_IDS
+            bool "AI service: network guard (BLE and Wi-Fi anomaly detection, shadow first, never transmits)"
+            depends on OCM_AI_SVC
+            default y
+            help
+                The radio callbacks only count and set bitmap bits; the service evaluates one 5 s window at a time:
+                the BLE scan's rotation detector (blocks floods), the car link's timing (advisory) and the Wi-Fi
+                round's scan and deauth rules. Two hours of shadow first. A block stops pairing offers and re-pair
+                requests, narrows the scan to the paired adapter and stops the Wi-Fi round with the clock kept; it
+                never cuts the paired link, transmits or pairs, and lifts 10 min after the last anomalous window.
+                Settings > Network guard turns the blocking off (it then only logs). main/ids_svc.c, main/ids_core.c.
         config OCM_NAND_SELFTEST
             bool "Bench: NAND speed self-test at boot (writes and deletes 1 MB)"
             depends on OCM_NAND_LOGS
