@@ -19,10 +19,15 @@
 #include "esp_attr.h"
 #include "esp_log.h"
 #include "esp_system.h"
+#include "board.h"
 #include "esp_timer.h"
 #include "esp_task_wdt.h"
 #include "events.h"
 #include "sched_mon.h"
+#if BOARD_MOSAICO
+#include "esp_rom_sys.h"
+#include "reset_class.h"
+#endif
 
 static const char *TAG = "sched";
 
@@ -82,6 +87,29 @@ static const char *reset_name(esp_reset_reason_t r)
     }
 }
 
+#if BOARD_MOSAICO
+#define RTC_INTENT_MAGIC 0x1A7E57EDu
+static RTC_NOINIT_ATTR uint32_t s_rtc_intent;       /* RTC_INTENT_MAGIC: the coming reset was asked for */
+
+void sched_mark_intentional_reset(void) { s_rtc_intent = RTC_INTENT_MAGIC; }
+
+static reset_kind_t reset_kind(esp_reset_reason_t r)
+{
+    switch (r) {
+    case ESP_RST_POWERON:   return RESET_KIND_POWERON;
+    case ESP_RST_SW:        return RESET_KIND_SW;
+    case ESP_RST_PANIC:     return RESET_KIND_PANIC;
+    case ESP_RST_INT_WDT:   return RESET_KIND_INT_WDT;
+    case ESP_RST_TASK_WDT:  return RESET_KIND_TASK_WDT;
+    case ESP_RST_WDT:       return RESET_KIND_WDT;
+    case ESP_RST_USB:       return RESET_KIND_USB;
+    case ESP_RST_DEEPSLEEP: return RESET_KIND_DEEPSLEEP;
+    case ESP_RST_BROWNOUT:  return RESET_KIND_BROWNOUT;
+    default:                return RESET_KIND_OTHER;
+    }
+}
+#endif
+
 void sched_boot_check(void)
 {
     esp_reset_reason_t r = esp_reset_reason();
@@ -90,9 +118,18 @@ void sched_boot_check(void)
         s_rtc_abnormal = 0;
         s_rtc_reason[0] = 0;
     }
+#if BOARD_MOSAICO
+    /* a reset somebody asked for (door, REBOOT, format) never counts, whatever reason the chip reports for it */
+    bool intent = s_rtc_magic == RTC_MAGIC && s_rtc_intent == RTC_INTENT_MAGIC;
+    s_rtc_intent = 0;
+    bool abnormal = reset_is_abnormal(reset_kind(r), s_rtc_reason[0] != 0, intent);
+    ESP_LOGI(TAG, "reset: %s (ROM reason %d)%s, %s", reset_name(r), (int)esp_rom_get_reset_reason(0),
+             intent ? ", asked for (door, REBOOT or format)" : "", abnormal ? "counts toward safe mode" : "not a crash");
+#else
     /* a software reset is abnormal only when the monitor itself asked for it (it leaves a reason behind) */
     bool abnormal = r == ESP_RST_PANIC || r == ESP_RST_INT_WDT || r == ESP_RST_TASK_WDT || r == ESP_RST_WDT ||
                     (r == ESP_RST_SW && s_rtc_reason[0]);
+#endif
     s_rtc_abnormal = abnormal ? s_rtc_abnormal + 1 : 0;
     s_sys.boot_abnormal = s_rtc_abnormal;
     s_sys.safe_mode = s_rtc_abnormal >= SCHED_BOOTLOOP_LIMIT;
@@ -299,7 +336,7 @@ static void restart_hung(const char *name)
     snprintf(s_rtc_reason, sizeof s_rtc_reason, "%.14s hung", name);
     sys_event(EV_ERROR, "%s hung past %dx deadline, restarting", name, SCHED_RESTART_FACTOR);
     vTaskDelay(pdMS_TO_TICKS(200));                 /* let the log line out */
-    esp_restart();
+    OCM_SYS_RESET(SYS_RESET_MONITOR, (void)0); esp_restart();
 }
 
 static void monitor_task(void *arg)
@@ -380,8 +417,13 @@ static void monitor_task(void *arg)
 
 void sched_mon_start(void)
 {
+#if BOARD_HAS_SD
     /* stack in PSRAM, as sys_mode.c: the monitor never runs with the flash cache disabled */
     xTaskCreatePinnedToCoreWithCaps(monitor_task, "sched", 4096, NULL, 1, NULL, 0, MALLOC_CAP_SPIRAM);
+#else
+    /* internal stack: restart_hung() calls esp_restart(), whose shutdown handler flushes the logs in the NOR flash */
+    xTaskCreatePinnedToCore(monitor_task, "sched", 4096, NULL, 1, NULL, 0);
+#endif
     if (s_sys.boot_abnormal)
         sys_event(s_sys.safe_mode ? EV_ERROR : EV_WARN, "Restarted after %s (%lu in a row)%s", s_sys.last_reset,
                   (unsigned long)s_sys.boot_abnormal, s_sys.safe_mode ? ", safe mode: ML off" : "");

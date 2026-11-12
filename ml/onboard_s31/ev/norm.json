@@ -1,0 +1,55 @@
+{
+ "channels": [
+  "rpm",
+  "speed_kph",
+  "engine_load_pct",
+  "maf_gps",
+  "throttle_pct",
+  "stft_b1_pct",
+  "ltft_b1_pct",
+  "coolant_c",
+  "intake_temp_c",
+  "map_kpa"
+ ],
+ "mean": [
+  1385.674072265625,
+  26.27198028564453,
+  42.59757995605469,
+  10.091785430908203,
+  13.061267852783203,
+  0.05298042669892311,
+  2.8693714141845703,
+  84.13561248779297,
+  34.027767181396484,
+  0.0
+ ],
+ "std": [
+  619.5309448242188,
+  24.84347915649414,
+  18.061067581176758,
+  10.863126754760742,
+  16.220426559448242,
+  3.106900930404663,
+  1.424294114112854,
+  6.862147808074951,
+  5.971067905426025,
+  1.0
+ ],
+ "trained": [
+  true,
+  true,
+  true,
+  true,
+  true,
+  true,
+  true,
+  true,
+  true,
+  false
+ ],
+ "rule": "a channel with trained=false must be fed as missing (value 0, mask 0) even when the car reports it",
+ "window": 5,
+ "bin_s": 1,
+ "deltas": true,
+ "layout": "[1, 30, 1, W]: values, masks, differences; oldest first"
+}

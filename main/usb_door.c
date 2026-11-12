@@ -12,7 +12,18 @@
 #include "esp_system.h"
 #include "esp_timer.h"
 #include "esp_heap_caps.h"
+#include "board.h"
+#if BOARD_MOSAICO
+#include "sched_mon.h"
+#endif
+#if BOARD_MOSAICO
+#include "mosaico_console.h"        /* the Type-C port is USB OTG: the door runs on the TinyUSB CDC console */
+#if CONFIG_OCM_GAUGE_CAL
+#include "mosaico_board.h"          /* GAUGE-CAL hands the work to the board task */
+#endif
+#else
 #include "driver/usb_serial_jtag.h"
+#endif
 #include "psa/crypto.h"
 #include "mbedtls/base64.h"
 #include "cJSON.h"
@@ -20,6 +31,9 @@
 #include "uploader.h"
 #include "elm327.h"
 #include "wifi_creds.h"
+#if BOARD_MOSAICO
+#include "wifi_sync.h"
+#endif
 #include "remote_config.h"
 #include "sdlog.h"
 #include "status.h"
@@ -51,7 +65,11 @@ static void write_all(const char *s, size_t n)
 {
     while (n) {
         size_t piece = n < 256 ? n : 256;
+#if BOARD_MOSAICO
+        int w = mosaico_console_write(s, piece);
+#else
         int w = usb_serial_jtag_write_bytes(s, piece, pdMS_TO_TICKS(500));
+#endif
         if (w <= 0) return;                         /* nobody is reading: drop it */
         s += w; n -= (size_t)w;
     }
@@ -137,7 +155,11 @@ static void cmd_get(char *name, char *off_s, char *len_s, char *buf, char *b64)
     long off = off_s ? atol(off_s) : -1, len = len_s ? atol(len_s) : -1;
     if (!name || !valid_name(name) || off < 0 || len <= 0 || len > GET_MAX) { reply("ERR usage: GET <name> <offset> <1..%d>", GET_MAX); return; }
     char path[96];
+#if CONFIG_OCM_NAND_LOGS
+    sdlog_drive_file(name, path, sizeof path);       /* the NAND first, then the flash FAT (drives not moved yet) */
+#else
     snprintf(path, sizeof path, SDLOG_SESSIONS_DIR "/%.20s", name);
+#endif
     FILE *f = fopen(path, "rb");
     if (!f) { reply("ERR no such file"); return; }
     size_t n = fseek(f, off, SEEK_SET) == 0 ? fread(buf, 1, (size_t)len, f) : 0;
@@ -166,7 +188,12 @@ static void cmd_model(const char *sub, const char *key)
 {
     if (sub && !strcmp(sub, "GET")) { reply_model(); return; }
     if (!sub || strcmp(sub, "SET") || !key) { reply("ERR usage: MODEL GET | MODEL SET ev|rev"); return; }
+#if BOARD_MOSAICO
+    const char *no = os_refusal(OS_SVC_MODEL_SWITCH);   /* the runlevels (os_core.h): "a drive is running" while driving */
+    if (no) { reply("ERR %s: switch models while parked", no); return; }
+#else
     if (elm_drive_active()) { reply("ERR a drive is running: switch models while parked"); return; }
+#endif
     int id = -1;
     for (int i = 0; i < ML_MODEL_COUNT; i++) if (!strcmp(key, ml_model_key(i))) id = i;
     if (id < 0) { reply("ERR unknown model %.8s: ev or rev", key); return; }
@@ -300,7 +327,15 @@ static void handle(char *line, char *buf, char *b64)
         s_nonce[0] = 0;                              /* one try per HELLO */
         if (ok) {
             s_authed = true; s_pair_only = false; s_last_ms = t;
+#if BOARD_MOSAICO
+            /* the release name has a space ("EdgeOS 2.0.0") and a key=value field cannot: fw=EdgeOS-2.0.0 */
+            char fw[32];
+            snprintf(fw, sizeof fw, "%s", CARMIND_VERSION);
+            for (char *c = fw; *c; c++) if (*c == ' ') *c = '-';
+            reply("OK AUTH fw=%s board=%s paired=1", fw, uploader_board_id());
+#else
             reply("OK AUTH fw=%s board=%s paired=1", CARMIND_VERSION, uploader_board_id());
+#endif
         }
         else reply("ERR not accepted: send HELLO, then pair with a code if this app is new");
         return;
@@ -309,7 +344,12 @@ static void handle(char *line, char *buf, char *b64)
     if ((!s_authed && !s_pair_only) || t - s_last_ms > SESSION_IDLE_MS) { s_authed = s_pair_only = false; reply("ERR not authenticated"); return; }
     if (!s_authed && strcmp(cmd, "PAIR")) { reply("ERR pair this computer first: the screen code only allows PAIR"); return; }
     s_last_ms = t;
+#if BOARD_MOSAICO
+    const char *no = os_refusal(OS_SVC_DOOR);           /* "the car link is up" while connecting or logging, as before */
+    if (no) { reply("ERR busy: %s, try again when parked", no); return; }
+#else
     if (sys_mode_get() == MODE_DRIVE) { reply("ERR busy: the car link is up, try again when parked"); return; }
+#endif
 
     if (!strcmp(cmd, "PAIR")) {
         if (!a1 || !a2 || !a3 || !a4 || !unb64(a4, buf, GET_MAX)) { reply("ERR usage: PAIR <host> <port> <token> <cert b64>"); return; }
@@ -333,12 +373,30 @@ static void handle(char *line, char *buf, char *b64)
     } else if (!strcmp(cmd, "WIFI-ADD")) {
         char ssid[40], pw[72];
         if (!a1 || !unb64(a1, ssid, sizeof ssid) || (a2 && !unb64(a2, pw, sizeof pw))) { reply("ERR usage: WIFI-ADD <ssid b64> [password b64]"); return; }
+#if BOARD_MOSAICO
+        if (OCM_REFUSED(OS_SVC_WIFI_EDIT, false)) { reply("ERR busy: %s, try again when parked", os_refusal(OS_SVC_WIFI_EDIT)); return; }
+        int ar = wifi_sync_add(ssid, a2 ? pw : "");     /* under the round lock, like WIFI-FORGET */
+        if (ar > 0) reply("OK WIFI-ADD");
+        else if (ar == -1) reply("ERR busy: Wi-Fi is using the network list, try again in a minute");
+        else reply("ERR rejected: SSID 1-32 bytes, password empty or 8-64 bytes, list holds 8");
+#else
         if (wifi_creds_add(ssid, a2 ? pw : "")) reply("OK WIFI-ADD");
         else reply("ERR rejected: SSID 1-32 bytes, password empty or 8-64 bytes, list holds 8");
+#endif
     } else if (!strcmp(cmd, "WIFI-FORGET")) {
         char ssid[40];
         if (!a1 || !unb64(a1, ssid, sizeof ssid)) { reply("ERR usage: WIFI-FORGET <ssid b64>"); return; }
+#if BOARD_MOSAICO
+        /* not while the Wi-Fi task holds a pointer into the list (a round running), the screen's Forget rule */
+        if (OCM_REFUSED(OS_SVC_WIFI_EDIT, false)) { reply("ERR busy: %s, try again when parked", os_refusal(OS_SVC_WIFI_EDIT)); return; }
+        int fr = wifi_sync_forget(ssid);
+        if (fr > 0) reply("OK WIFI-FORGET");
+        else if (fr == 0) reply("ERR no such network");
+        else if (fr == -1) reply("ERR busy: Wi-Fi is using the network list, try again in a minute");
+        else reply("ERR could not write the network list");
+#else
         if (wifi_creds_remove(ssid)) reply("OK WIFI-FORGET"); else reply("ERR no such network");
+#endif
     } else if (!strcmp(cmd, "CONFIG")) {
         if (!a1 || !unb64(a1, buf, GET_MAX)) { reply("ERR usage: CONFIG <json b64>"); return; }
         cJSON *root = cJSON_Parse(buf);
@@ -346,6 +404,28 @@ static void handle(char *line, char *buf, char *b64)
         cJSON_Delete(root);
         if (n < 0) reply("ERR not a JSON object"); else reply("OK CONFIG applied=%d", n);
     } else if (!strcmp(cmd, "LIST")) {
+#if CONFIG_OCM_NAND_LOGS
+        /* both stores, the NAND first; a name on both (a move cut by a reset) is listed once, from the NAND, as GET reads it */
+        const char *dirs[2];
+        int nd = sdlog_ok() ? sdlog_drive_dirs(dirs) : 0;
+        if (!nd) { reply("ERR no SD card"); return; }
+        for (int k = 0; k < nd; k++) {
+            DIR *d = opendir(dirs[k]);
+            for (struct dirent *e; d && (e = readdir(d)) != NULL;) {
+                if (!valid_name(e->d_name)) continue;
+                char path[96];
+                struct stat st;
+                if (k > 0) {
+                    snprintf(path, sizeof path, "%s/%.20s", dirs[0], e->d_name);
+                    if (stat(path, &st) == 0) continue;
+                }
+                snprintf(path, sizeof path, "%s/%.20s", dirs[k], e->d_name);
+                if (stat(path, &st) == 0) reply("D %s %ld", e->d_name, (long)st.st_size);
+            }
+            if (d) closedir(d);
+        }
+        reply("OK LIST");
+#else
         DIR *d = sdlog_ok() ? opendir(SDLOG_SESSIONS_DIR) : NULL;
         if (!d) { reply("ERR no SD card"); return; }
         struct dirent *e;
@@ -358,6 +438,7 @@ static void handle(char *line, char *buf, char *b64)
         }
         closedir(d);
         reply("OK LIST");
+#endif
     } else if (!strcmp(cmd, "GET")) {
         cmd_get(a1, a2, a3, buf, b64);
     } else if (!strcmp(cmd, "MODEL")) {
@@ -374,9 +455,19 @@ static void handle(char *line, char *buf, char *b64)
         if (!a1) { reply("ERR usage: REV-TANK-ACK <seq>"); return; }
         rev_tank_suggestions_ack((uint32_t)strtoul(a1, NULL, 10));
         reply("OK REV-TANK-ACK");
+#if BOARD_MOSAICO && CONFIG_OCM_GAUGE_CAL
+    } else if (!strcmp(cmd, "GAUGE-CAL")) {             /* debug build only: the owner decides before it runs */
+        unsigned mah = a1 ? (unsigned)atoi(a1) : 0;
+        if (mah < 20 || mah > 5000) { reply("ERR usage: GAUGE-CAL <design mAh 20..5000>"); return; }
+        if (mosaico_board_request(MB_GAUGE_CAL, mah)) reply("OK GAUGE-CAL queued, the result is in the log");
+        else reply("ERR busy");
+#endif
     } else if (!strcmp(cmd, "REBOOT")) {
         reply("OK REBOOT");
         vTaskDelay(pdMS_TO_TICKS(300));
+#if BOARD_MOSAICO
+        sys_reset(SYS_RESET_REBOOT, "door REBOOT");
+#endif
         esp_restart();
     } else reply("ERR unknown command");
 }
@@ -392,7 +483,11 @@ static void door_task(void *arg)
     bool overflow = false;
     for (;;) {
         uint8_t c;
+#if BOARD_MOSAICO
+        if (mosaico_console_read(&c, 1, portMAX_DELAY) != 1) continue;
+#else
         if (usb_serial_jtag_read_bytes(&c, 1, portMAX_DELAY) != 1) continue;
+#endif
         if (c == '\r') continue;
         if (c != '\n') {
             if (n < LINE_CAP - 1) line[n++] = (char)c; else overflow = true;
@@ -408,7 +503,11 @@ static void door_task(void *arg)
 
 void usb_door_start(void)
 {
+#if BOARD_MOSAICO
+    if (!mosaico_console_ready()) { ESP_LOGW(TAG, "TinyUSB CDC not up: no desktop setup over USB"); return; }
+#else
     usb_serial_jtag_driver_config_t cfg = { .tx_buffer_size = 1024, .rx_buffer_size = 1024 };
     if (usb_serial_jtag_driver_install(&cfg) != ESP_OK) { ESP_LOGW(TAG, "USB driver not installed: no desktop setup over USB"); return; }
+#endif
     if (xTaskCreate(door_task, "usb_door", 6144, NULL, 2, NULL) != pdPASS) ESP_LOGW(TAG, "USB door task did not start");
 }

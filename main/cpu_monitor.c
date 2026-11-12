@@ -6,8 +6,15 @@
 #include "esp_heap_caps.h"
 #include "driver/temperature_sensor.h"
 #include "esp_ipc.h"
+#include "esp_timer.h"
+#include "esp_cpu.h"
+#if !CONFIG_IDF_TARGET_ARCH_XTENSA
+#include "riscv/rv_utils.h"
+#endif
+#if CONFIG_IDF_TARGET_ARCH_XTENSA
 #include "xtensa_perfmon_access.h"
 #include "xtensa/xt_perf_consts.h"
+#endif
 #include "esp_attr.h"
 #include "esp_log.h"
 #include "status.h"
@@ -103,21 +110,53 @@ static float chip_temp(void)
  * read 0 on this chip and are not used. 32-bit counters wrap after ~17 s; they are read and cleared every second. */
 typedef struct { uint32_t cyc, insn; } pmu_sample_t;
 
+/* RISC-V (ESP32-S31): the standard cycle and minstret counters, read on their own core. At start each core runs a known
+ * loop between two reads: the counter is trusted only if 0 < d_instret <= d_cycle (else MIPS is not shown). */
+static bool s_rv_ok[2];
+#if !CONFIG_IDF_TARGET_ARCH_XTENSA
+static uint32_t s_rv_cyc[2], s_rv_ins[2], s_rv_chk[2][2];
+static inline uint32_t rv_instret(void) { return RV_READ_CSR(minstret); }
+#endif
+
+static volatile uint32_t s_ai_us;
+void cpu_monitor_add_ai_us(uint32_t us) { __atomic_fetch_add(&s_ai_us, us, __ATOMIC_RELAXED); }
+
 static void pmu_setup(void *arg)
 {
+#if !CONFIG_IDF_TARGET_ARCH_XTENSA
+    (void)arg;
+    int core = esp_cpu_get_core_id();
+    uint32_t c0 = rv_utils_get_cycle_count(), i0 = rv_instret();
+    volatile uint32_t acc = 0;
+    for (int k = 0; k < 20000; k++) acc += (uint32_t)k;
+    uint32_t dc = rv_utils_get_cycle_count() - c0, di = rv_instret() - i0;
+    s_rv_ok[core] = di > 0 && di <= dc;
+    s_rv_chk[core][0] = di; s_rv_chk[core][1] = dc;          /* logged by the monitor task: no printf on the IPC stack */
+    s_rv_cyc[core] = rv_utils_get_cycle_count();
+    s_rv_ins[core] = rv_instret();
+#else
+    s_rv_ok[0] = s_rv_ok[1] = true;
     xtensa_perfmon_stop();
     xtensa_perfmon_init(0, XTPERF_CNT_CYCLES, XTPERF_MASK_CYCLES, 0, -1);
     xtensa_perfmon_init(1, XTPERF_CNT_INSN, XTPERF_MASK_INSN_ALL, 0, -1);
     xtensa_perfmon_start();
+#endif
 }
 
 static void pmu_take(void *arg)
 {
     pmu_sample_t *p = arg;
+#if !CONFIG_IDF_TARGET_ARCH_XTENSA
+    int core = esp_cpu_get_core_id();
+    uint32_t c = rv_utils_get_cycle_count(), i = rv_instret();
+    p->cyc = c - s_rv_cyc[core]; p->insn = i - s_rv_ins[core];
+    s_rv_cyc[core] = c; s_rv_ins[core] = i;
+#else
     xtensa_perfmon_stop();
     p->cyc = xtensa_perfmon_value(0); p->insn = xtensa_perfmon_value(1);
     xtensa_perfmon_reset(0); xtensa_perfmon_reset(1);
     xtensa_perfmon_start();
+#endif
 }
 
 static void cpu_task(void *arg)
@@ -130,6 +169,11 @@ static void cpu_task(void *arg)
     uint32_t prev_total = 0;
     pmu_setup(NULL);
     esp_ipc_call_blocking(1, pmu_setup, NULL);
+#if !CONFIG_IDF_TARGET_ARCH_XTENSA
+    for (int c = 0; c < 2; c++)
+        ESP_LOGI("cpumon", "SYS minstret core%d: d_instret=%lu d_cycle=%lu over a 20000-step loop: %s", c, (unsigned long)s_rv_chk[c][0],
+                 (unsigned long)s_rv_chk[c][1], s_rv_ok[c] ? "PASS" : "FAIL (MIPS hidden)");
+#endif
     /* fixed-rate release (the FreeRTOS form of clock_nanosleep with TIMER_ABSTIME): a relative vTaskDelay would start
        each second only after the previous loop ended, so the period would stretch with the loop time and preemption.
        MIPS stays exact either way (instructions over the cycles actually counted); this keeps the screen's cadence. */
@@ -152,7 +196,19 @@ static void cpu_task(void *arg)
             pmu_sample_t pm[2] = {0};
             pmu_take(&pm[0]);                                   /* this task is pinned to core 0 */
             esp_ipc_call_blocking(1, pmu_take, &pm[1]);
+            int64_t now_us = esp_timer_get_time();
+            static int64_t ai_t0;
+            static uint32_t ai_prev;
+            uint32_t ai_now = __atomic_load_n(&s_ai_us, __ATOMIC_RELAXED);
+            uint8_t ai_pct = 0;
+            if (ai_t0 && now_us > ai_t0) {
+                float a = 100.0f * (float)(ai_now - ai_prev) / (2.0f * (float)(now_us - ai_t0));
+                ai_pct = (uint8_t)(a > 100 ? 100 : a + 0.5f);
+            }
+            ai_t0 = now_us; ai_prev = ai_now;
             STATUS_LOCK();
+            g_status.ai_pct = ai_pct;
+            g_status.mips_ok = s_rv_ok[0] && s_rv_ok[1];
             g_status.chip_temp_c = temp_c;
             for (int c = 0; c < 2; c++)
                 g_status.pmu_mips[c] = pm[c].cyc ? (float)pm[c].insn / pm[c].cyc * CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ : 0;

@@ -12,6 +12,7 @@
 #include "esp_heap_caps.h"
 #include "nvs.h"
 #include "sdkconfig.h"
+#include "board.h"
 #include "rev_task.h"
 #include "rev_state.h"
 #include "ml_infer.h"
@@ -19,7 +20,11 @@
 #include "sdlog.h"
 #include "events.h"
 #if CONFIG_CARMIND_REV_ENABLE
+#if CONFIG_IDF_TARGET_ESP32S31
+#include "ml_params_rev_s31.h"   /* generated from ml/onboard_s31/rev: the S31 export has its own hash, exponents and W0 */
+#else
 #include "ml_params_rev.h"
+#endif
 #define PRIOR_ID MLR_PRIOR_ID
 #define REV_ON   1
 #else
@@ -234,7 +239,7 @@ void rev_init(void)
 #endif
     cal_nvs_t nv;
     bool have_nv = cal_nvs_load(&nv);
-    s_safe = sched_safe_mode();
+    s_safe = OCM_REFUSED(OS_SVC_LEARNER, sched_safe_mode());   /* the Safe runlevel on the S31 (os_core.h) */
     if (s_safe) {
         /* no learning, no state file (a bad file must not keep the board in a boot loop), c read-only from NVS */
         s_c = have_nv ? nv.c : 1.0f;
@@ -255,12 +260,22 @@ void rev_init(void)
        model's; the deadline is the commit cadence, since a fold may wait for CPU budget. Not on the watchdog: the job also
        saves to the card, so sched_mon's I/O rule (restart after 3 x deadline) applies. */
     int stride = CONFIG_CARMIND_ML_STRIDE_S > 0 ? CONFIG_CARMIND_ML_STRIDE_S : 10;
+#if BOARD_MOSAICO
+    (void)stride;
+    s_job = os_ai_register(OS_AI_REV_LEARNER, false);               /* the AI service contract: 2 % in 30 ms bursts, 60 s stall */
+#else
     s_job = sched_register("rev", stride * 1000, 30000, false);
     sched_set_cpu_share(s_job, 20, 30);                              /* 2 % of a core on average, 30 ms bursts */
     sched_set_stall_ms(s_job, 60000);
+#endif
     sched_set_expected(s_job, false);
+#if BOARD_HAS_SD
     /* stack in PSRAM: computation and SD file I/O only, no NVS, so it never runs with the flash cache disabled */
     if (xTaskCreatePinnedToCoreWithCaps(rev_task, "rev", 6144, NULL, 2, &s_task, 1, MALLOC_CAP_SPIRAM) != pdPASS) {
+#else
+    /* internal stack: the state files are in the NOR flash here (see sdlog.c, sync task) */
+    if (xTaskCreatePinnedToCore(rev_task, "rev", 6144, NULL, 2, &s_task, 1) != pdPASS) {
+#endif
         sys_event(EV_ERROR, "Fuel learning could not start (no memory)");
         return;
     }

@@ -577,7 +577,12 @@ static bool elm_initialise(void)
         if (rc == -1) obd_ble_adapter_rejected("no ELM327 reply");
         return false;
     }
+#if CONFIG_OBD_BLE_PAIR_CONFIRM
+    /* it answered with a prompt: an ELM327-style adapter. A new one is not used before the user says yes (obd_pair.h) */
+    if (!obd_ble_adapter_confirmed()) return false;
+#else
     obd_ble_adapter_confirmed();           /* it answered with a prompt: an ELM327-style adapter, keep it */
+#endif
     {
         const char *t = resp;
         while (*t == ' ' || *t == '\n') t++;
@@ -1012,6 +1017,18 @@ static void obd_task(void *arg)
 
 bool elm_drive_active(void) { return s_in_drive; }
 
+#if CONFIG_OBD_BLE_PAIR_CONFIRM
+static void explore(bool user)
+{
+    if (s_exploring) return;
+    if (!s_link_up) { obd_ble_explore(user); show_prompt("Searching for an OBD adapter...", 15000); return; }
+    s_explore_req = true;
+    show_prompt("Searching protocols and computers...", 60000);
+}
+
+void elm_explore(void) { explore(true); }
+void elm_explore_auto(void) { explore(false); }
+#else
 void elm_explore(void)
 {
     if (s_exploring) return;
@@ -1019,6 +1036,7 @@ void elm_explore(void)
     s_explore_req = true;
     show_prompt("Searching protocols and computers...", 60000);
 }
+#endif
 
 bool elm_exploring(void) { return s_exploring || s_explore_req; }
 bool elm_link_is_up(void) { return s_link_up; }

@@ -1,6 +1,6 @@
 # The on-board models: CarMind E.V and CarMind R.E.V
 
-The firmware carries two models and runs one at a time. CarMind E.V is the default, and most of this page is about it. [CarMind R.E.V](#carmind-rev) is a smaller model that keeps learning your car's fuel use on the board.
+The firmware carries two models and runs one at a time. Most of this page is about CarMind E.V. [CarMind R.E.V](#carmind-rev) is a smaller model that keeps learning your car's fuel use on the board. The firmware on `main` starts a new S3 board on R.E.V. The tagged 2.5.1 release starts it on E.V.
 
 One highly generalized and small convolutional network runs on the ESP32-S3 and answers two questions every time an OBD row arrives. What is the car doing right now, and what are three things the OBD port does not report? This page is for people who use the board. The model is a small quantised network run by ESP-DL. It takes about 89 KB on the chip and about 3.5 ms per run.
 
@@ -62,7 +62,7 @@ R.E.V reads the same inputs and gives the same answers as E.V, from a model abou
 
 Switch models on the desktop app's Board page, over the USB cable. The choice is kept after a restart. What R.E.V learned is saved on the SD card (`obd/rev_state.bin`) and kept when you switch back to E.V. In safe mode nothing learns, and the fill-up correction stays as it was.
 
-R.E.V is new. It has not been checked on a car yet, so E.V stays the default. With R.E.V, every `.ml.csv` line also has the measured fuel over the last 5 s, the factory and learned estimates with the airflow reading hidden, and the learning counters; every main CSV row has the fuel rate before the fill-up correction (`fuel_lph_raw`), the factor (`fuel_cal`) and the uncorrected trip total (`trip_fuel_raw_l`). A forecast of the next moment's manoeuvre is planned for a later R.E.V.
+R.E.V is newer than E.V. The firmware on `main` starts a new S3 board on R.E.V, and the tagged 2.5.1 release starts it on E.V. With R.E.V, every `.ml.csv` line also has the measured fuel over the last 5 s, the factory and learned estimates with the airflow reading hidden, and the learning counters. Every main CSV row has the fuel rate before the fill-up correction (`fuel_lph_raw`), the factor (`fuel_cal`) and the uncorrected trip total (`trip_fuel_raw_l`). A forecast of the next moment's manoeuvre is planned for a later R.E.V.
 
 ## Files
 

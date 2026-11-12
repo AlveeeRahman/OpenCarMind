@@ -1,6 +1,29 @@
 dependencies:
   idf: ">=6.0"
-  espressif/led_strip: "^3.0.0"
+  espressif/led_strip:
+    version: "^3.0.0"
+    rules:
+      - if: "target != esp32s31"              # the Mosaico has no RGB LED
+  espressif/esp_tinyusb:                       # ESP-Mosaico console + USB door: CDC-ACM on the Type-C (OTG) port
+    version: "^3.0.0"
+    rules:
+      - if: "target == esp32s31"
+  espressif/esp_lcd_co5300:                    # ESP-Mosaico 2.16" AMOLED (QSPI)
+    version: "^2.2.0"
+    rules:
+      - if: "target == esp32s31"
+  espressif/esp_lcd_touch_cst9220:             # ESP-Mosaico touch (I2C)
+    version: "^0.1.1"
+    rules:
+      - if: "target == esp32s31"
+  espressif/spi_nand_flash:                    # ESP-Mosaico 128 MB SPI NAND (GD5F1GM7UEYIGR) with the Dhara FTL: the drive logs
+    version: "1.4.4"
+    rules:
+      - if: "target == esp32s31"
+  espressif/spi_nand_flash_fatfs:              # its FatFs disk driver (diskio_nand, esp_vfs_fat_nand_mount)
+    version: "1.1.2"
+    rules:
+      - if: "target == esp32s31"
   espressif/cjson: "^1.7.19"
   espressif/esp-dl: "3.3.14"     # on-board model inference (ml_infer.cpp)
   espressif/esp_lvgl_port: "^2.6.0"

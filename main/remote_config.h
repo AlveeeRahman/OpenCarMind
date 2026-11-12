@@ -26,3 +26,5 @@ int                   remote_config_apply(cJSON *root);
 /* The one HTTPS time server: the user's choice ("time_host", NVS key rconf/thost) or the build default
    CONFIG_OCM_TIME_HTTPS_HOST. Kept outside remote_config_t so older saved settings stay valid. */
 const char           *remote_config_time_host(void);
+/* ESP-Mosaico (Settings > Clock): validate, apply and persist a POSIX TZ string; false if harden_timezone_ok refuses it */
+bool                  remote_config_set_timezone(const char *tz);
