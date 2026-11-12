@@ -23,8 +23,12 @@ shot edge-learning 1200 1400 docs/images/workflow/edge-learning.png
 shot rev-changes 900 520 docs/images/rev-changes.png
 shot banner 1280 420 docs/images/banner.png
 shot logo 512 512 assets/logo/opencarmind-logo.png 00000000
-shot mosaico-rev 1600 740 docs/images/mosaico-rev.png
+shot mosaico-rev 1600 660 docs/images/mosaico-rev.png
 shot lcd-amoled 1200 260 docs/images/lcd-amoled.png
 shot leaders 1600 810 docs/images/leaders.png
 shot learner-board 1600 740 docs/images/learner-board.png
 shot board-bench 2000 920 docs/images/board-bench.png
+shot edgeos-scheduler 1200 1320 docs/images/edgeos-scheduler.png
+shot edgeos-boot 1200 950 docs/images/edgeos-boot.png
+shot edgeos-ladder-battery 1200 920 docs/images/edgeos-ladder-battery.png
+shot edgeos-ram 1200 790 docs/images/edgeos-ram.png

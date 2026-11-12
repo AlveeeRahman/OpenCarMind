@@ -17,7 +17,10 @@
    Limits: the firmware values are the stubs' hand-picked worst cases, not every reachable state; the corner radius is
    an estimate from a photo; overlaps with large shapes and anything about timing are out of scope; it is the Mac, not
    the board: the result says what LVGL lays out, the panel still has to be checked. */
-#include "../../main/mosaico_display.c"
+#include <time.h>
+time_t uishot_time(time_t *t);
+#define time(p) uishot_time(p)   /* the demo case's clock (fw_stubs.c) */
+#include "../../../main/mosaico_display.c"   /* relative to this file: this checkout's main/ */
 #include <zlib.h>
 #include "src/misc/lv_area_private.h"
 #include "src/display/lv_display_private.h"
@@ -626,6 +629,43 @@ int main(int argc, char **argv)
         }
         uishot_case.no_faults = false; uishot_case.no_drive = false;
         uishot_case.idle = false; uishot_case.no_clock = false;
+        /* the demo case: realistic example values (the README panel, host renders in the manual), checked like the rest */
+        uishot_case_t worst = uishot_case;
+        uishot_case.demo = true; uishot_case.health = OS_H_GOOD; uishot_case.runlevel = OS_RL_DRIVING;
+        uishot_fill();
+        all_screens("_demo");
+        /* Brakes and torque fill their 60 s traces one point per update: a minute of driving, two brakings */
+        open_app(app_index("brakes"));
+        for (int i = 0; i < 60; i++) {
+            take_snapshot();
+            float t = (float)i;
+            s_snap.ml.last_est[0] = i >= 18 && i < 24 ? 4.1f * sinf((t - 18) / 6 * (float)M_PI) : i >= 52 ? 6.3f * sinf((t - 51) / 9 * (float)M_PI) : 0;
+            s_st.obd.torque_nm = i >= 18 && i < 26 ? 15 : 85 + 25 * sinf(t / 7) - (i >= 52 ? 10 * (59 - i) / 7.0f : 0);
+            ui_app(app_index("brakes"))->update(&s_snap);
+        }
+        shoot("brakes_demo_60s");
+        ui_go_home();
+        uishot_case.idle = true; uishot_case.no_drive = true;   /* Home before a car connects: No car yet and Search */
+        uishot_fill();
+        take_snapshot(); refresh_status_bar(&s_snap); ui_go_home();
+        lv_tileview_set_tile_by_index(s_tv, 0, 0, LV_ANIM_OFF);
+        refresh_home(&s_snap);
+        shoot("home_demo_nocar");
+        uishot_case.idle = false; uishot_case.no_drive = false;
+        uishot_case.alarm = true;                         /* Home with a critical-fault banner (a real code, P0300) */
+        uishot_fill();
+        take_snapshot(); refresh_status_bar(&s_snap); ui_go_home();
+        lv_tileview_set_tile_by_index(s_tv, 0, 0, LV_ANIM_OFF);
+        refresh_home(&s_snap);
+        shoot("home_demo_alarm");
+        uishot_case.alarm = false;
+        uishot_case.model = ML_MODEL_EV;                  /* the same moment with E.V in use: R.E.V's learning is off */
+        uishot_fill();
+        take_snapshot(); refresh_status_bar(&s_snap);
+        open_app(app_index("learn"));
+        shoot("learn_demo_ev");
+        ui_go_home();
+        uishot_case = worst;
         uishot_fill();
     }
     printf("textfit: %d problem(s); listed only: %d name(s) cut with dots by design or rows crossing a corner mid-scroll%s\n", s_fails, s_warns, s_fails ? "" : "; every other text fits");

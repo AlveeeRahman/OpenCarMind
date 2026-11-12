@@ -1,0 +1,287 @@
+<!doctype html>
+<!-- OpenCarMind EdgeOS figure. Render with docs/images/render.sh. Numbers: code for budgets, board logs for measurements. -->
+<html lang="en"><head><meta charset="utf-8"><title>Scheduler budgets per core</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+html, body { margin: 0; background: #F5F2EB; }
+svg { display: block; font-family: 'IBM Plex Sans', system-ui, sans-serif; }
+.t { font-family: 'Space Grotesk', system-ui, sans-serif; font-weight: 700; }
+.m { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-weight: 500; }
+</style></head><body>
+<svg width="1200" height="1320" viewBox="0 0 1200 1320" xmlns="http://www.w3.org/2000/svg">
+<rect width="1200" height="1320" fill="#F5F2EB"/>
+<defs><marker id="ah" orient="auto" markerWidth="8" markerHeight="8" refX="6" refY="4" markerUnits="userSpaceOnUse"><path d="M0,0 L8,4 L0,8 Z" fill="#57616F"/></marker></defs>
+<text x="64.0" y="70.0" font-size="40" fill="#17212E" font-weight="700" text-anchor="start" class="t">Scheduler budgets per core</text>
+<text x="64.0" y="108.0" font-size="19" fill="#57616F" font-weight="400" text-anchor="start">Each lane is one job. The pale band is its period, the black tick its deadline,</text>
+<text x="64.0" y="134.0" font-size="19" fill="#57616F" font-weight="400" text-anchor="start">the mid-blue bar what the code allows, and the solid bar what the board measured.</text>
+<rect x="64.0" y="155.0" width="28.0" height="16.0" rx="4" fill="#E8EEFC" stroke="#9DB3E8" stroke-width="1"/>
+<text x="102.0" y="168.0" font-size="16" fill="#17212E" font-weight="400" text-anchor="start">period window (code)</text>
+<rect x="308.0" y="155.0" width="28.0" height="16.0" rx="4" fill="#9DB3E8"/>
+<text x="346.0" y="168.0" font-size="16" fill="#17212E" font-weight="400" text-anchor="start">allowance (code)</text>
+<rect x="517.6" y="155.0" width="28.0" height="16.0" rx="4" fill="#2F5FD0"/>
+<text x="555.6" y="168.0" font-size="16" fill="#17212E" font-weight="400" text-anchor="start">measured on the board</text>
+<line x1="778.2" y1="153.0" x2="778.2" y2="171.0" stroke="#17212E" stroke-width="2" stroke-linecap="round"/>
+<text x="792.2" y="168.0" font-size="16" fill="#17212E" font-weight="400" text-anchor="start">deadline</text>
+<text x="64.0" y="232.0" font-size="15" fill="#57616F" font-weight="600" text-anchor="start" letter-spacing="0.08em">CORE 1, ONE 1,000 ms WINDOW</text>
+<line x1="400.0" y1="254.0" x2="400.0" y2="476.0" stroke="#E6E1D7" stroke-width="1" />
+<line x1="500.0" y1="254.0" x2="500.0" y2="476.0" stroke="#E6E1D7" stroke-width="1" />
+<line x1="600.0" y1="254.0" x2="600.0" y2="476.0" stroke="#E6E1D7" stroke-width="1" />
+<line x1="700.0" y1="254.0" x2="700.0" y2="476.0" stroke="#E6E1D7" stroke-width="1" />
+<line x1="796.0" y1="254.0" x2="796.0" y2="476.0" stroke="#E6E1D7" stroke-width="1" />
+<line x1="881.0" y1="254.0" x2="881.0" y2="476.0" stroke="#E6E1D7" stroke-width="1" />
+<line x1="966.0" y1="254.0" x2="966.0" y2="476.0" stroke="#E6E1D7" stroke-width="1" />
+<line x1="1051.0" y1="254.0" x2="1051.0" y2="476.0" stroke="#E6E1D7" stroke-width="1" />
+<line x1="1136.0" y1="254.0" x2="1136.0" y2="476.0" stroke="#E6E1D7" stroke-width="1" />
+<line x1="300.0" y1="488.0" x2="700.0" y2="488.0" stroke="#57616F" stroke-width="1" />
+<line x1="728.0" y1="488.0" x2="1136.0" y2="488.0" stroke="#57616F" stroke-width="1" />
+<line x1="300.0" y1="488.0" x2="300.0" y2="494.0" stroke="#57616F" stroke-width="1" />
+<text x="300.0" y="512.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="middle">0</text>
+<line x1="400.0" y1="488.0" x2="400.0" y2="494.0" stroke="#57616F" stroke-width="1" />
+<text x="400.0" y="512.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="middle">10</text>
+<line x1="500.0" y1="488.0" x2="500.0" y2="494.0" stroke="#57616F" stroke-width="1" />
+<text x="500.0" y="512.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="middle">20</text>
+<line x1="600.0" y1="488.0" x2="600.0" y2="494.0" stroke="#57616F" stroke-width="1" />
+<text x="600.0" y="512.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="middle">30</text>
+<line x1="700.0" y1="488.0" x2="700.0" y2="494.0" stroke="#57616F" stroke-width="1" />
+<text x="700.0" y="512.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="middle">40</text>
+<line x1="796.0" y1="488.0" x2="796.0" y2="494.0" stroke="#57616F" stroke-width="1" />
+<text x="796.0" y="512.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="middle">200</text>
+<line x1="881.0" y1="488.0" x2="881.0" y2="494.0" stroke="#57616F" stroke-width="1" />
+<text x="881.0" y="512.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="middle">400</text>
+<line x1="966.0" y1="488.0" x2="966.0" y2="494.0" stroke="#57616F" stroke-width="1" />
+<text x="966.0" y="512.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="middle">600</text>
+<line x1="1051.0" y1="488.0" x2="1051.0" y2="494.0" stroke="#57616F" stroke-width="1" />
+<text x="1051.0" y="512.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="middle">800</text>
+<line x1="1136.0" y1="488.0" x2="1136.0" y2="494.0" stroke="#57616F" stroke-width="1" />
+<text x="1136.0" y="512.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="middle">1,000</text>
+<text x="1136.0" y="534.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="end">ms after the job's release</text>
+<text x="300.0" y="534.0" font-size="15" fill="#17212E" font-weight="600" text-anchor="start">Axis broken at 40 ms: the first 40 ms are drawn 23 times wider.</text>
+<text x="64.0" y="280.0" font-size="18" fill="#17212E" font-weight="500" text-anchor="start" class="m">obd_poll</text><text x="64.0" y="302.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="start">OBD task, priority 5</text>
+<rect x="300.0" y="262.0" width="836.0" height="44.0" rx="4" fill="#E8EEFC" stroke="#9DB3E8" stroke-width="1"/>
+<text x="312.0" y="290.0" font-size="16" fill="#17212E" font-weight="400" text-anchor="start">T 1,000 ms</text>
+<text x="740.0" y="290.0" font-size="16" fill="#17212E" font-weight="400" text-anchor="start">Not run on the bench: no car.</text>
+<text x="1126.0" y="290.0" font-size="15" fill="#17212E" font-weight="600" text-anchor="end">D 30,000 ms →</text>
+<text x="64.0" y="354.0" font-size="18" fill="#17212E" font-weight="500" text-anchor="start" class="m">ml</text><text x="64.0" y="376.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="start">model task, priority 3</text>
+<rect x="300.0" y="336.0" width="836.0" height="44.0" rx="4" fill="#E8EEFC" stroke="#9DB3E8" stroke-width="1"/>
+<path d="M300.0,344.0 H338.0 Q342.0,344.0 342.0,348.0 V368.0 Q342.0,372.0 338.0,372.0 H300.0 Z" fill="#9DB3E8"/>
+<path d="M300.0,344.0 H317.0 Q321.0,344.0 321.0,348.0 V368.0 Q321.0,372.0 317.0,372.0 H300.0 Z" fill="#2F5FD0"/>
+<text x="352.0" y="356.0" font-size="15" fill="#17212E" font-weight="600" text-anchor="start">self-test 2.1 ms, doubled to C 4.2 ms</text>
+<text x="352.0" y="374.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="start">admitted, R 4.2 ms (4aeff43)</text>
+<text x="740.0" y="364.0" font-size="16" fill="#17212E" font-weight="400" text-anchor="start">T 1,000 ms</text>
+<line x1="1136.0" y1="332.0" x2="1136.0" y2="384.0" stroke="#17212E" stroke-width="2" stroke-linecap="round"/>
+<text x="1126.0" y="364.0" font-size="15" fill="#17212E" font-weight="600" text-anchor="end">D 1,000 ms</text>
+<text x="64.0" y="428.0" font-size="18" fill="#17212E" font-weight="500" text-anchor="start" class="m">rev</text><text x="64.0" y="450.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="start">R.E.V learner, priority 2</text>
+<rect x="300.0" y="410.0" width="836.0" height="44.0" rx="4" fill="#E8EEFC" stroke="#9DB3E8" stroke-width="1"/>
+<path d="M300.0,418.0 H596.0 Q600.0,418.0 600.0,422.0 V442.0 Q600.0,446.0 596.0,446.0 H300.0 Z" fill="#9DB3E8"/>
+<text x="310.0" y="438.0" font-size="15" fill="#17212E" font-weight="600" text-anchor="start">burst cap 30 ms</text>
+<text x="610.0" y="430.0" font-size="15" fill="#17212E" font-weight="600" text-anchor="start">2 % share:</text>
+<text x="610.0" y="448.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="start">20 ms per s</text>
+<text x="740.0" y="430.0" font-size="16" fill="#17212E" font-weight="400" text-anchor="start">T 1,000 ms. Contract logged at boot,</text>
+<text x="740.0" y="450.0" font-size="16" fill="#17212E" font-weight="400" text-anchor="start">no learner run on the bench (4aeff43).</text>
+<text x="1126.0" y="438.0" font-size="15" fill="#17212E" font-weight="600" text-anchor="end">D 30,000 ms →</text>
+<rect x="701.0" y="246.0" width="26.0" height="246.0" rx="0" fill="#F5F2EB"/>
+<path d="M704,496 l8,-16 M712,496 l8,-16" stroke="#57616F" stroke-width="2"/>
+<text x="64.0" y="584.0" font-size="15" fill="#57616F" font-weight="600" text-anchor="start" letter-spacing="0.08em">CORE 0, ONE 100 ms WINDOW (TWO SCREEN PERIODS)</text>
+<line x1="383.6" y1="606.0" x2="383.6" y2="754.0" stroke="#E6E1D7" stroke-width="1" />
+<line x1="467.2" y1="606.0" x2="467.2" y2="754.0" stroke="#E6E1D7" stroke-width="1" />
+<line x1="550.8" y1="606.0" x2="550.8" y2="754.0" stroke="#E6E1D7" stroke-width="1" />
+<line x1="634.4" y1="606.0" x2="634.4" y2="754.0" stroke="#E6E1D7" stroke-width="1" />
+<line x1="718.0" y1="606.0" x2="718.0" y2="754.0" stroke="#E6E1D7" stroke-width="1" />
+<line x1="801.6" y1="606.0" x2="801.6" y2="754.0" stroke="#E6E1D7" stroke-width="1" />
+<line x1="885.2" y1="606.0" x2="885.2" y2="754.0" stroke="#E6E1D7" stroke-width="1" />
+<line x1="968.8" y1="606.0" x2="968.8" y2="754.0" stroke="#E6E1D7" stroke-width="1" />
+<line x1="1052.4" y1="606.0" x2="1052.4" y2="754.0" stroke="#E6E1D7" stroke-width="1" />
+<line x1="1136.0" y1="606.0" x2="1136.0" y2="754.0" stroke="#E6E1D7" stroke-width="1" />
+<line x1="300.0" y1="766.0" x2="1136.0" y2="766.0" stroke="#57616F" stroke-width="1" />
+<line x1="300.0" y1="766.0" x2="300.0" y2="772.0" stroke="#57616F" stroke-width="1" />
+<text x="300.0" y="790.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="middle">0</text>
+<line x1="383.6" y1="766.0" x2="383.6" y2="772.0" stroke="#57616F" stroke-width="1" />
+<text x="383.6" y="790.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="middle">10</text>
+<line x1="467.2" y1="766.0" x2="467.2" y2="772.0" stroke="#57616F" stroke-width="1" />
+<text x="467.2" y="790.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="middle">20</text>
+<line x1="550.8" y1="766.0" x2="550.8" y2="772.0" stroke="#57616F" stroke-width="1" />
+<text x="550.8" y="790.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="middle">30</text>
+<line x1="634.4" y1="766.0" x2="634.4" y2="772.0" stroke="#57616F" stroke-width="1" />
+<text x="634.4" y="790.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="middle">40</text>
+<line x1="718.0" y1="766.0" x2="718.0" y2="772.0" stroke="#57616F" stroke-width="1" />
+<text x="718.0" y="790.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="middle">50</text>
+<line x1="801.6" y1="766.0" x2="801.6" y2="772.0" stroke="#57616F" stroke-width="1" />
+<text x="801.6" y="790.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="middle">60</text>
+<line x1="885.2" y1="766.0" x2="885.2" y2="772.0" stroke="#57616F" stroke-width="1" />
+<text x="885.2" y="790.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="middle">70</text>
+<line x1="968.8" y1="766.0" x2="968.8" y2="772.0" stroke="#57616F" stroke-width="1" />
+<text x="968.8" y="790.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="middle">80</text>
+<line x1="1052.4" y1="766.0" x2="1052.4" y2="772.0" stroke="#57616F" stroke-width="1" />
+<text x="1052.4" y="790.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="middle">90</text>
+<line x1="1136.0" y1="766.0" x2="1136.0" y2="772.0" stroke="#57616F" stroke-width="1" />
+<text x="1136.0" y="790.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="middle">100</text>
+<text x="1136.0" y="812.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="end">ms, linear</text>
+<text x="64.0" y="632.0" font-size="18" fill="#17212E" font-weight="500" text-anchor="start" class="m">ui</text><text x="64.0" y="654.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="start">screen task, priority 2</text>
+<rect x="300.0" y="614.0" width="416.0" height="52.0" rx="4" fill="#E8EEFC" stroke="#9DB3E8" stroke-width="1"/>
+<line x1="717.0" y1="610.0" x2="717.0" y2="670.0" stroke="#17212E" stroke-width="2" stroke-linecap="round"/>
+<rect x="718.0" y="614.0" width="416.0" height="52.0" rx="4" fill="#E8EEFC" stroke="#9DB3E8" stroke-width="1"/>
+<line x1="1135.0" y1="610.0" x2="1135.0" y2="670.0" stroke="#17212E" stroke-width="2" stroke-linecap="round"/>
+<path d="M300.0,621.0 H361.2 Q365.2,621.0 365.2,625.0 V633.0 Q365.2,637.0 361.2,637.0 H300.0 Z" fill="#2F5FD0"/>
+<path d="M300.0,643.0 H337.6 Q341.6,643.0 341.6,647.0 V655.0 Q341.6,659.0 337.6,659.0 H300.0 Z" fill="#2F5FD0"/>
+<text x="375.2" y="634.0" font-size="15" fill="#17212E" font-weight="600" text-anchor="start">worst response 7.8 ms (wall time)</text>
+<text x="375.2" y="656.0" font-size="15" fill="#17212E" font-weight="600" text-anchor="start">worst CPU 4.98 ms</text>
+<text x="706.0" y="645.0" font-size="15" fill="#17212E" font-weight="600" text-anchor="end">T = D 50 ms</text>
+<text x="734.7" y="636.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="start">9,597 runs in the 10-minute soak,</text>
+<text x="734.7" y="656.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="start">0 misses (06ddf1d)</text>
+<text x="64.0" y="706.0" font-size="18" fill="#17212E" font-weight="500" text-anchor="start" class="m">LVGL refresh</text><text x="64.0" y="728.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="start">timer, not a deadline job</text>
+<rect x="300.0" y="698.0" width="130.8" height="26.0" rx="4" fill="#E8EEFC" stroke="#9DB3E8" stroke-width="1"/>
+<rect x="433.8" y="698.0" width="130.8" height="26.0" rx="4" fill="#E8EEFC" stroke="#9DB3E8" stroke-width="1"/>
+<rect x="567.5" y="698.0" width="130.8" height="26.0" rx="4" fill="#E8EEFC" stroke="#9DB3E8" stroke-width="1"/>
+<rect x="701.3" y="698.0" width="130.8" height="26.0" rx="4" fill="#E8EEFC" stroke="#9DB3E8" stroke-width="1"/>
+<rect x="835.0" y="698.0" width="130.8" height="26.0" rx="4" fill="#E8EEFC" stroke="#9DB3E8" stroke-width="1"/>
+<rect x="968.8" y="698.0" width="130.8" height="26.0" rx="4" fill="#E8EEFC" stroke="#9DB3E8" stroke-width="1"/>
+<rect x="1102.6" y="698.0" width="30.4" height="26.0" rx="4" fill="#E8EEFC" stroke="#9DB3E8" stroke-width="1"/>
+<text x="308.0" y="717.0" font-size="14" fill="#17212E" font-weight="400" text-anchor="start">16 ms</text>
+<text x="300.0" y="748.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="start">Every 16 ms, 33 ms when the ladder slows the screen. Slowest full refresh in any 10 s of the soak: 189.3 ms.</text>
+<text x="64.0" y="862.0" font-size="15" fill="#57616F" font-weight="600" text-anchor="start" letter-spacing="0.08em">SLOW JOBS AND THE FIRST 120 s AFTER POWER-ON</text>
+<line x1="369.7" y1="884.0" x2="369.7" y2="1194.0" stroke="#E6E1D7" stroke-width="1" />
+<line x1="439.3" y1="884.0" x2="439.3" y2="1194.0" stroke="#E6E1D7" stroke-width="1" />
+<line x1="509.0" y1="884.0" x2="509.0" y2="1194.0" stroke="#E6E1D7" stroke-width="1" />
+<line x1="578.7" y1="884.0" x2="578.7" y2="1194.0" stroke="#E6E1D7" stroke-width="1" />
+<line x1="648.3" y1="884.0" x2="648.3" y2="1194.0" stroke="#E6E1D7" stroke-width="1" />
+<line x1="718.0" y1="884.0" x2="718.0" y2="1194.0" stroke="#E6E1D7" stroke-width="1" />
+<line x1="787.7" y1="884.0" x2="787.7" y2="1194.0" stroke="#E6E1D7" stroke-width="1" />
+<line x1="857.3" y1="884.0" x2="857.3" y2="1194.0" stroke="#E6E1D7" stroke-width="1" />
+<line x1="927.0" y1="884.0" x2="927.0" y2="1194.0" stroke="#E6E1D7" stroke-width="1" />
+<line x1="996.7" y1="884.0" x2="996.7" y2="1194.0" stroke="#E6E1D7" stroke-width="1" />
+<line x1="1066.3" y1="884.0" x2="1066.3" y2="1194.0" stroke="#E6E1D7" stroke-width="1" />
+<line x1="1136.0" y1="884.0" x2="1136.0" y2="1194.0" stroke="#E6E1D7" stroke-width="1" />
+<line x1="300.0" y1="1206.0" x2="1136.0" y2="1206.0" stroke="#57616F" stroke-width="1" />
+<line x1="300.0" y1="1206.0" x2="300.0" y2="1212.0" stroke="#57616F" stroke-width="1" />
+<text x="300.0" y="1230.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="middle">0</text>
+<line x1="369.7" y1="1206.0" x2="369.7" y2="1212.0" stroke="#57616F" stroke-width="1" />
+<text x="369.7" y="1230.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="middle">10</text>
+<line x1="439.3" y1="1206.0" x2="439.3" y2="1212.0" stroke="#57616F" stroke-width="1" />
+<text x="439.3" y="1230.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="middle">20</text>
+<line x1="509.0" y1="1206.0" x2="509.0" y2="1212.0" stroke="#57616F" stroke-width="1" />
+<text x="509.0" y="1230.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="middle">30</text>
+<line x1="578.7" y1="1206.0" x2="578.7" y2="1212.0" stroke="#57616F" stroke-width="1" />
+<text x="578.7" y="1230.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="middle">40</text>
+<line x1="648.3" y1="1206.0" x2="648.3" y2="1212.0" stroke="#57616F" stroke-width="1" />
+<text x="648.3" y="1230.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="middle">50</text>
+<line x1="718.0" y1="1206.0" x2="718.0" y2="1212.0" stroke="#57616F" stroke-width="1" />
+<text x="718.0" y="1230.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="middle">60</text>
+<line x1="787.7" y1="1206.0" x2="787.7" y2="1212.0" stroke="#57616F" stroke-width="1" />
+<text x="787.7" y="1230.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="middle">70</text>
+<line x1="857.3" y1="1206.0" x2="857.3" y2="1212.0" stroke="#57616F" stroke-width="1" />
+<text x="857.3" y="1230.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="middle">80</text>
+<line x1="927.0" y1="1206.0" x2="927.0" y2="1212.0" stroke="#57616F" stroke-width="1" />
+<text x="927.0" y="1230.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="middle">90</text>
+<line x1="996.7" y1="1206.0" x2="996.7" y2="1212.0" stroke="#57616F" stroke-width="1" />
+<text x="996.7" y="1230.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="middle">100</text>
+<line x1="1066.3" y1="1206.0" x2="1066.3" y2="1212.0" stroke="#57616F" stroke-width="1" />
+<text x="1066.3" y="1230.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="middle">110</text>
+<line x1="1136.0" y1="1206.0" x2="1136.0" y2="1212.0" stroke="#57616F" stroke-width="1" />
+<text x="1136.0" y="1230.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="middle">120</text>
+<text x="1136.0" y="1252.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="end">s, linear</text>
+<text x="64.0" y="908.0" font-size="18" fill="#17212E" font-weight="500" text-anchor="start" class="m">boot</text><text x="64.0" y="930.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="start">measured, 4aeff43</text>
+<rect x="330.0" y="902.0" width="443.8" height="20.0" rx="4" fill="#E8EEFC" stroke="#9DB3E8" stroke-width="1"/>
+<text x="355.7" y="917.0" font-size="14" fill="#17212E" font-weight="400" text-anchor="start">Wi-Fi held from 4.3 s</text>
+<path d="M913.8,902.0 H1038.0 Q1042.0,902.0 1042.0,906.0 V918.0 Q1042.0,922.0 1038.0,922.0 H913.8 Z" fill="#2F5FD0"/>
+<line x1="752.8" y1="894.0" x2="752.8" y2="930.0" stroke="#17212E" stroke-width="2" stroke-linecap="round"/>
+<text x="746.8" y="944.0" font-size="14" fill="#17212E" font-weight="600" text-anchor="end">verdict due 65 s</text>
+<circle cx="773.7" cy="912" r="6" fill="#2D7A31" stroke="#F5F2EB" stroke-width="2"/>
+<text x="777.7" y="944.0" font-size="14" fill="#2D7A31" font-weight="600" text-anchor="start">good at 68.0 s</text>
+<text x="913.8" y="894.0" font-size="14" fill="#17212E" font-weight="600" text-anchor="start">Wi-Fi driver up 88.1 to 106.5 s</text>
+<circle cx="982.7" cy="912" r="5" fill="#FFFFFF" stroke="#17212E" stroke-width="2"/>
+<text x="986.7" y="944.0" font-size="14" fill="#17212E" font-weight="400" text-anchor="start">clock synced 98.0 s</text>
+<text x="64.0" y="970.0" font-size="18" fill="#17212E" font-weight="500" text-anchor="start" class="m">rev</text><text x="64.0" y="992.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="start">learner, core 1</text>
+<rect x="300.0" y="956.0" width="206.0" height="18.0" rx="4" fill="#E8EEFC" stroke="#9DB3E8" stroke-width="1"/>
+<line x1="507.0" y1="952.0" x2="507.0" y2="978.0" stroke="#17212E" stroke-width="2" stroke-linecap="round"/>
+<rect x="509.0" y="956.0" width="206.0" height="18.0" rx="4" fill="#E8EEFC" stroke="#9DB3E8" stroke-width="1"/>
+<line x1="716.0" y1="952.0" x2="716.0" y2="978.0" stroke="#17212E" stroke-width="2" stroke-linecap="round"/>
+<rect x="718.0" y="956.0" width="206.0" height="18.0" rx="4" fill="#E8EEFC" stroke="#9DB3E8" stroke-width="1"/>
+<line x1="925.0" y1="952.0" x2="925.0" y2="978.0" stroke="#17212E" stroke-width="2" stroke-linecap="round"/>
+<rect x="927.0" y="956.0" width="206.0" height="18.0" rx="4" fill="#E8EEFC" stroke="#9DB3E8" stroke-width="1"/>
+<line x1="1134.0" y1="952.0" x2="1134.0" y2="978.0" stroke="#17212E" stroke-width="2" stroke-linecap="round"/>
+<text x="307.0" y="970.0" font-size="14" fill="#17212E" font-weight="600" text-anchor="start">D 30 s</text>
+<path d="M300.0,980.0 H714.0 Q718.0,980.0 718.0,984.0 V990.0 Q718.0,994.0 714.0,994.0 H300.0 Z" fill="#9DB3E8"/>
+<text x="725.0" y="992.0" font-size="14" fill="#17212E" font-weight="400" text-anchor="start">stall limit 60 s</text>
+<text x="64.0" y="1032.0" font-size="18" fill="#17212E" font-weight="500" text-anchor="start" class="m">ml</text><text x="64.0" y="1054.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="start">model, core 1</text>
+<path d="M300.0,1024.0 H365.7 Q369.7,1024.0 369.7,1028.0 V1038.0 Q369.7,1042.0 365.7,1042.0 H300.0 Z" fill="#9DB3E8"/>
+<text x="376.6" y="1038.0" font-size="14" fill="#17212E" font-weight="400" text-anchor="start">stall limit 10 s: no run for 10 s while rows arrive</text>
+<text x="64.0" y="1094.0" font-size="18" fill="#17212E" font-weight="500" text-anchor="start" class="m">OBD task jobs</text><text x="64.0" y="1116.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="start">priority 5, core 1</text>
+<rect x="300.0" y="1076.0" width="627.0" height="13.0" rx="4" fill="#E8EEFC" stroke="#9DB3E8" stroke-width="1"/>
+<line x1="927.0" y1="1073.0" x2="927.0" y2="1092.0" stroke="#17212E" stroke-width="2" stroke-linecap="round"/>
+<text x="934.0" y="1087.0" font-size="14" fill="#17212E" font-weight="400" text-anchor="start">link_search D 90 s</text>
+<rect x="300.0" y="1092.0" width="209.0" height="13.0" rx="4" fill="#E8EEFC" stroke="#9DB3E8" stroke-width="1"/>
+<line x1="509.0" y1="1089.0" x2="509.0" y2="1108.0" stroke="#17212E" stroke-width="2" stroke-linecap="round"/>
+<text x="516.0" y="1103.0" font-size="14" fill="#17212E" font-weight="400" text-anchor="start">obd_poll D 30 s</text>
+<rect x="300.0" y="1108.0" width="69.7" height="13.0" rx="4" fill="#E8EEFC" stroke="#9DB3E8" stroke-width="1"/>
+<line x1="369.7" y1="1105.0" x2="369.7" y2="1124.0" stroke="#17212E" stroke-width="2" stroke-linecap="round"/>
+<text x="376.6" y="1119.0" font-size="14" fill="#17212E" font-weight="400" text-anchor="start">ecu_pick D 10 s. None ran on the bench.</text>
+<text x="64.0" y="1156.0" font-size="18" fill="#17212E" font-weight="500" text-anchor="start" class="m">core 0 tasks</text><text x="64.0" y="1178.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="start">not in the job table</text>
+<line x1="300.0" y1="1144.0" x2="300.0" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="313.9" y1="1144.0" x2="313.9" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="327.9" y1="1144.0" x2="327.9" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="341.8" y1="1144.0" x2="341.8" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="355.7" y1="1144.0" x2="355.7" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="369.7" y1="1144.0" x2="369.7" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="383.6" y1="1144.0" x2="383.6" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="397.5" y1="1144.0" x2="397.5" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="411.5" y1="1144.0" x2="411.5" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="425.4" y1="1144.0" x2="425.4" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="439.3" y1="1144.0" x2="439.3" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="453.3" y1="1144.0" x2="453.3" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="467.2" y1="1144.0" x2="467.2" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="481.1" y1="1144.0" x2="481.1" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="495.1" y1="1144.0" x2="495.1" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="509.0" y1="1144.0" x2="509.0" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="522.9" y1="1144.0" x2="522.9" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="536.9" y1="1144.0" x2="536.9" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="550.8" y1="1144.0" x2="550.8" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="564.7" y1="1144.0" x2="564.7" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="578.7" y1="1144.0" x2="578.7" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="592.6" y1="1144.0" x2="592.6" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="606.5" y1="1144.0" x2="606.5" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="620.5" y1="1144.0" x2="620.5" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="634.4" y1="1144.0" x2="634.4" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="648.3" y1="1144.0" x2="648.3" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="662.3" y1="1144.0" x2="662.3" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="676.2" y1="1144.0" x2="676.2" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="690.1" y1="1144.0" x2="690.1" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="704.1" y1="1144.0" x2="704.1" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="718.0" y1="1144.0" x2="718.0" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="731.9" y1="1144.0" x2="731.9" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="745.9" y1="1144.0" x2="745.9" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="759.8" y1="1144.0" x2="759.8" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="773.7" y1="1144.0" x2="773.7" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="787.7" y1="1144.0" x2="787.7" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="801.6" y1="1144.0" x2="801.6" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="815.5" y1="1144.0" x2="815.5" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="829.5" y1="1144.0" x2="829.5" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="843.4" y1="1144.0" x2="843.4" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="857.3" y1="1144.0" x2="857.3" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="871.3" y1="1144.0" x2="871.3" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="885.2" y1="1144.0" x2="885.2" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="899.1" y1="1144.0" x2="899.1" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="913.1" y1="1144.0" x2="913.1" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="927.0" y1="1144.0" x2="927.0" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="940.9" y1="1144.0" x2="940.9" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="954.9" y1="1144.0" x2="954.9" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="968.8" y1="1144.0" x2="968.8" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="982.7" y1="1144.0" x2="982.7" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="996.7" y1="1144.0" x2="996.7" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="1010.6" y1="1144.0" x2="1010.6" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="1024.5" y1="1144.0" x2="1024.5" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="1038.5" y1="1144.0" x2="1038.5" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="1052.4" y1="1144.0" x2="1052.4" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="1066.3" y1="1144.0" x2="1066.3" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="1080.3" y1="1144.0" x2="1080.3" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="1094.2" y1="1144.0" x2="1094.2" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="1108.1" y1="1144.0" x2="1108.1" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<line x1="1122.1" y1="1144.0" x2="1122.1" y2="1156.0" stroke="#9DB3E8" stroke-width="2" />
+<text x="300.0" y="1174.0" font-size="14" fill="#17212E" font-weight="400" text-anchor="start">board task every 2 s (priority 1)</text>
+<line x1="718.0" y1="1140.0" x2="718.0" y2="1160.0" stroke="#17212E" stroke-width="2" stroke-linecap="round"/>
+<line x1="1136.0" y1="1140.0" x2="1136.0" y2="1160.0" stroke="#17212E" stroke-width="2" stroke-linecap="round"/>
+<text x="724.0" y="1174.0" font-size="14" fill="#17212E" font-weight="400" text-anchor="start">scheduler summary every 60 s</text>
+<text x="724.0" y="1192.0" font-size="14" fill="#57616F" font-weight="400" text-anchor="start">Wi-Fi task: priority 4, I/O bound, not timed</text>
+<text x="64.0" y="1286.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="start">Job bars start at a release and are drawn from 0 to show their length. Budgets: main/os_core.c, elm327.c, ml_infer.cpp,</text>
+<text x="64.0" y="1308.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="start">rev_task.c and mosaico_display.c. Measured: board logs of 4aeff43 (boot, admission) and 06ddf1d (soak).</text>
+</svg>
+</body></html>
