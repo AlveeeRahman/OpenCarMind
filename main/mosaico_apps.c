@@ -6,6 +6,7 @@
 #include <math.h>
 #include <ctype.h>
 #include <stdio.h>
+#include <stdarg.h>
 #include <string.h>
 #include "mosaico_ui.h"
 #include "econ.h"
@@ -96,6 +97,18 @@ static void pill_set(lv_obj_t *p, const char *t, uint32_t c)
 }
 
 static bool rev_in_use(const ui_snap_t *s) { return s->model == ML_MODEL_REV; }
+/* Appends to buf at k and returns the new length, never past cap - 1 (k += snprintf(...) would let k pass the end on a
+   truncation, and sizeof buf - k would then wrap round). */
+static int cat_fmt(char *buf, size_t cap, int k, const char *fmt, ...)
+{
+    if (k < 0 || (size_t)k >= cap) return k;
+    va_list ap; va_start(ap, fmt);
+    int r = vsnprintf(buf + k, cap - (size_t)k, fmt, ap);
+    va_end(ap);
+    if (r < 0) return k;
+    return (size_t)(k + r) >= cap ? (int)cap - 1 : k + r;
+}
+
 static const char *model_tag(const ui_snap_t *s) { return rev_in_use(s) ? "R.E.V" : "E.V"; }
 /* The name shown on screen for each model file (owner, 2026-11-11). The sha256 prefix stays in the logs, the session
    files and the USB door, where tools match on it. */
@@ -746,7 +759,7 @@ static void fuel_update(const ui_snap_t *s)
     const char *src = live ? fuel_src_name((fuel_src_t)o->fuel_src) : "";
     if (live) {
         char up[12]; int i = 0;
-        for (; src[i] && i < 11; i++) up[i] = (char)toupper((unsigned char)src[i]);
+        for (; i < 11 && src[i]; i++) up[i] = (char)toupper((unsigned char)src[i]);
         up[i] = 0;
         pill_set(f_tag, up, econ_src_is_estimate((fuel_src_t)o->fuel_src) ? UI_ORANGE : UI_GREEN);
         ui_set_fmt(f_src_note, "source: %s", src);
@@ -1392,7 +1405,7 @@ static void drive_update(const ui_snap_t *s)
     else if (s->obd_live && o->fuel_lph_calc >= 0) {
         ui_set_fmt(d_ev[2], "%.1f L/h", (double)o->fuel_lph_calc);
         char up[12]; const char *src = fuel_src_name((fuel_src_t)o->fuel_src); int i = 0;
-        for (; src[i] && i < 11; i++) up[i] = (char)toupper((unsigned char)src[i]);
+        for (; i < 11 && src[i]; i++) up[i] = (char)toupper((unsigned char)src[i]);
         up[i] = 0;
         ui_set_text(d_tag[2], up);
     } else { ui_set_text(d_ev[2], "--"); ui_set_text(d_tag[2], rev_in_use(s) ? "LEARNED" : "MODEL"); }
@@ -2311,7 +2324,7 @@ static void fl_fill_detail(void)
     for (int i = 0; i < D->nf && k < (int)sizeof files - 40; i++) {
         char z[16];
         fmt_size(z, sizeof z, D->f[i].bytes);
-        k += snprintf(files + k, sizeof files - k, "%s%s  %s", i ? "\n" : "", D->f[i].name, z);
+        k = cat_fmt(files, sizeof files, k, "%s%s  %s", i ? "\n" : "", D->f[i].name, z);
     }
     ui_set_text(fl, k ? files : "no files");
     if (!D->current) wide_button(fl_body, LV_SYMBOL_TRASH "  Delete this drive log", UI_RED, fl_del_cb, NULL);
@@ -2583,7 +2596,7 @@ static void ck_fill_days(void)
     static char buf[32 * 3];
     int y = CLOCK_YEAR_MIN + (int)lv_roller_get_selected(ck_year), m = (int)lv_roller_get_selected(ck_mon) + 1;
     int n = clock_days_in_month(y, m), sel = (int)lv_roller_get_selected(ck_day), k = 0;
-    for (int d = 1; d <= n; d++) k += snprintf(buf + k, sizeof buf - k, "%s%d", d > 1 ? "\n" : "", d);
+    for (int d = 1; d <= n; d++) k = cat_fmt(buf, sizeof buf, k, "%s%d", d > 1 ? "\n" : "", d);
     if ((int)lv_roller_get_option_count(ck_day) == n) return;
     lv_roller_set_options(ck_day, buf, LV_ROLLER_MODE_NORMAL);
     lv_roller_set_selected(ck_day, (uint32_t)(sel < n ? sel : n - 1), LV_ANIM_OFF);
@@ -2687,11 +2700,11 @@ static void ck_open(void)
 
     static char years[(CLOCK_YEAR_MAX - CLOCK_YEAR_MIN + 1) * 5 + 1], hours[24 * 3], mins[60 * 3];
     int k = 0;
-    for (int i = CLOCK_YEAR_MIN; i <= CLOCK_YEAR_MAX; i++) k += snprintf(years + k, sizeof years - k, "%s%d", k ? "\n" : "", i);
+    for (int i = CLOCK_YEAR_MIN; i <= CLOCK_YEAR_MAX; i++) k = cat_fmt(years, sizeof years, k, "%s%d", k ? "\n" : "", i);
     k = 0;
-    for (int i = 0; i < 24; i++) k += snprintf(hours + k, sizeof hours - k, "%s%02d", i ? "\n" : "", i);
+    for (int i = 0; i < 24; i++) k = cat_fmt(hours, sizeof hours, k, "%s%02d", i ? "\n" : "", i);
     k = 0;
-    for (int i = 0; i < 60; i++) k += snprintf(mins + k, sizeof mins - k, "%s%02d", i ? "\n" : "", i);
+    for (int i = 0; i < 60; i++) k = cat_fmt(mins, sizeof mins, k, "%s%02d", i ? "\n" : "", i);
     ck_day  = ck_roller(ck_page, "1", 24, 64, 0);
     ck_mon  = ck_roller(ck_page, CK_MON, 96, 82, tm.tm_mon);
     ck_year = ck_roller(ck_page, years, 186, 100, y - CLOCK_YEAR_MIN);
@@ -2708,8 +2721,8 @@ static void ck_open(void)
     int cur = clock_tz_find(ck_tz_cur);
     ck_tz_extra = cur < 0;
     k = 0;
-    if (ck_tz_extra) k += snprintf(zones, sizeof zones, "Now: %.36s", ck_tz_cur);
-    for (int i = 0; i < clock_tz_count(); i++) k += snprintf(zones + k, sizeof zones - k, "%s%s", k ? "\n" : "", clock_tz(i)->label);
+    if (ck_tz_extra) k = cat_fmt(zones, sizeof zones, k, "Now: %.36s", ck_tz_cur);
+    for (int i = 0; i < clock_tz_count(); i++) k = cat_fmt(zones, sizeof zones, k, "%s%s", k ? "\n" : "", clock_tz(i)->label);
     ck_tz = lv_dropdown_create(ck_page);
     lv_obj_set_pos(ck_tz, 24, 280);
     lv_obj_set_size(ck_tz, UI_W - 48, ST_H);

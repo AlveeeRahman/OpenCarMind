@@ -1527,7 +1527,7 @@ static void refresh_home(const ui_snap_t *s)
         ui_set_text(h_val, v); ui_set_color(h_val, HT); ui_set_text(h_unit, u);
         if (o->fuel_lph_calc >= 0) {
             char up[12]; const char *src = fuel_src_name((fuel_src_t)o->fuel_src); int i = 0;
-            for (; src[i] && i < 11; i++) up[i] = (char)toupper((unsigned char)src[i]);
+            for (; i < 11 && src[i]; i++) up[i] = (char)toupper((unsigned char)src[i]);
             up[i] = 0;
             home_tag(up, HC_PW);
         } else home_tag("NO SOURCE", HD);
