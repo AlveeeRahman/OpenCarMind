@@ -23,7 +23,7 @@ rustls = { version = "0.23", default-features = false, features = ["ring", "std"
 rcgen = "0.13"
 getrandom = "0.2"
 serialport = "4.10"
-base64 = "0.22"
+base64 = "0.23"
 ring = "0.17"
 tauri-plugin-shell = "2"
 
