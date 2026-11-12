@@ -85,6 +85,12 @@ static uint64_t s_ml_bytes, s_ml_synced;
 static uint32_t s_window_seq;
 static int64_t  s_last_sync_ms;        /* uptime of the last full flush to the card */
 static volatile bool s_unsaved;        /* something was written since the last flush */
+static volatile bool s_quiet;          /* sdlog_quiet(): the Wi-Fi driver holds the RAM the SD transfers need */
+#if BOARD_MOSAICO
+#define SD_QUIET() false                      /* the S31's Wi-Fi does not call sdlog_quiet(): its saves stay as in 2.0.0 */
+#else
+#define SD_QUIET() s_quiet
+#endif
 static volatile int64_t s_last_write_ms = -1;   /* uptime of the last write to a session file */
 static WORD_ALIGNED_ATTR char s_csv_iobuf[2048];   /* internal DRAM, DMA-capable on the S3 */
 
@@ -270,8 +276,16 @@ static void sync_task(void *arg)
     (void)arg;
     for (;;) {
         vTaskDelay(pdMS_TO_TICKS(CONFIG_SDLOG_SYNC_PERIOD_S * 1000));
-        if (s_ok && esp_timer_get_time() / 1000 - s_last_sync_ms >= (int64_t)CONFIG_SDLOG_SYNC_PERIOD_S * 1000 - 500) sdlog_sync_now();
+        if (s_ok && !SD_QUIET() && esp_timer_get_time() / 1000 - s_last_sync_ms >= (int64_t)CONFIG_SDLOG_SYNC_PERIOD_S * 1000 - 500) sdlog_sync_now();
     }
+}
+
+void sdlog_quiet(bool on)
+{
+    if (!s_lock) return;
+    xSemaphoreTake(s_lock, portMAX_DELAY);     /* a save in progress finishes before the radio takes the RAM */
+    s_quiet = on;
+    xSemaphoreGive(s_lock);
 }
 
 /* Opens a new session: CSV with its header and a fresh JSON. Caller holds s_lock. */
@@ -1183,7 +1197,8 @@ void sdlog_meta_set_time_sync(int64_t epoch_ms, int64_t uptime_ms)
     cJSON_ReplaceItemInObject(ts, "epoch_ms", cJSON_CreateNumber((double)epoch_ms));
     cJSON_ReplaceItemInObject(ts, "uptime_ms", cJSON_CreateNumber((double)uptime_ms));
     cJSON_ReplaceItemInObject(s_meta, "started_epoch_ms", cJSON_CreateNumber((double)(epoch_ms - uptime_ms)));
-    meta_flush_locked();
+    if (SD_QUIET()) s_unsaved = true;          /* written by the first save after the radio is off */
+    else meta_flush_locked();
     xSemaphoreGive(s_lock);
 }
 
