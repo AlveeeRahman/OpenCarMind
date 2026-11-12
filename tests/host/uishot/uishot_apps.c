@@ -1,7 +1,10 @@
 /* mosaico_apps.c for the host renderer, with entry points to the pages a tap opens (the static openers), so uishot.c
    can check them too: the recent-events list and one event, a drive log's details, the clock picker, the Wi-Fi
    password page with its keyboard */
-#include "../../main/mosaico_apps.c"
+#include <time.h>
+time_t uishot_time(time_t *t);
+#define time(p) uishot_time(p)   /* the demo case's clock (fw_stubs.c) */
+#include "../../../main/mosaico_apps.c"
 #include "uishot.h"
 
 void uishot_events_list(void) { ev_open(NULL); }

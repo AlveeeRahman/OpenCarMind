@@ -84,9 +84,9 @@ A small neural network, called the model, watches the last few seconds of drivin
 > [!WARNING]
 > **About the captures in this manual.**
 >
-> They come from mossREV 1.2.0 builds, the release before 2.0.0, taken on a bench with no car connected. The apps and their values are the same in 2.0.0. Four things look different in 2.0.0. No text on screen is smaller than 16 px, so several lines are shorter or larger. The Board page scrolls and shows the health in its header. The model's file shows by name, "active-estimator" for R.E.V and "ev-frozen" for E.V. A new adapter is offered on a pairing sheet (see Pairing your OBD adapter). New captures from 2.0.0 will replace these.
+> Most come from an EdgeOS 2.0.0 board (build 06ddf1d), taken on a bench with no car connected. Eight screens had no clean board capture: Home, Learning with E.V in use, Live, Fuel, Brakes and torque, Trip, Engine and the alarm banner. Those are rendered on a computer from the 2.0.0 screen code with example values, and their captions say so. They are not photos of the board.
 >
-> These four changes are built and checked on a computer, not yet seen on the board.
+> The pairing sheet for a new adapter (see Pairing your OBD adapter) has no capture yet.
 
 <a id="start"></a>
 
@@ -96,12 +96,12 @@ Power the board from the car's USB port. A new board starts on CarMind R.E.V and
 
 ### What Home shows
 
-<p><img src="img/mosaico-home-light.png" width="240" alt="Home screen in the light theme: Economy now card, analogue clock, System card and the All apps button"></p>
+<p><img src="img/mosaico-home-light.png" width="240" alt="Home screen in the light theme: Economy card with WAITING, No car yet and Search, analogue clock, System card and the All apps button"></p>
 
-*Home, light theme, before a car is connected.*
+*Home, light theme, before a car is connected. Host render of the 2.0.0 screen code with example values.*
 
 - **Status bar:** the time, Bluetooth, Wi-Fi and the battery voltage (4.20 V here). Inside an app it also shows CPU, AI, MIPS (millions of instructions per second) and the power source.
-- **Economy now:** your fuel economy while you drive. Before a car connects it says "No car yet" and offers Search.
+- **Economy:** your fuel economy while you drive. Before a car connects it says "No car yet" and offers Search.
 - **Clock:** an analogue clock. It shows the right time once you set the clock (see Settings).
 - **System:** how busy each of the two cores is, in % and MIPS, and the power source. "USB current is not measured" is expected.
 - **All apps:** opens the app pages.
@@ -174,13 +174,13 @@ Each helper measures your real use. It stays on only if it makes the screen fast
 
 ## All 16 apps and what their numbers mean
 
-Every number carries its unit. Two dashes (--) mean there is no value yet, usually because no drive is running. The captures were taken on a bench with no car connected, so most values are dashes.
+Every number carries its unit. Two dashes (--) mean there is no value yet, usually because no drive is running. The board captures were taken on a bench with no car connected, so most of their values are dashes. The host renders show example values from a drive.
 
 ### Drive
 
-<p><img src="img/mosaico-drive-light.png" width="240" alt="Drive app, light theme: speed, rpm, AI sees, brake, torque and fuel tiles with MODEL tags, and the tank bar"></p>
+<p><img src="img/mosaico-drive-light.png" width="240" alt="Drive app, light theme, before a car is connected: speed, rpm, AI sees, brake, torque and fuel tiles with MODEL and LEARNED tags, and the tank bar"></p>
 
-*Drive, light theme, with E.V in use.*
+*Drive, light theme, with R.E.V in use, before a car is connected.*
 
 The live view for the road.
 
@@ -193,9 +193,9 @@ The live view for the road.
 
 ### AI
 
-<p><img src="img/mosaico-ai-dark.png" width="240" alt="AI app, dark theme: AI sees with four class bars and AI estimates for brake pressure, engine torque and fuel rate"></p>
+<p><img src="img/mosaico-ai-dark.png" width="240" alt="AI app, dark theme, before the first window: AI sees with four class bars and AI estimates for brake pressure, engine torque and fuel rate"></p>
 
-*AI, dark theme, with E.V in use.*
+*AI, dark theme, with R.E.V in use, before the first window.*
 
 What the model in use sees, in more detail.
 
@@ -208,7 +208,7 @@ What the model in use sees, in more detail.
 
 <p><img src="img/mosaico-learning-rev-light.png" width="240" alt="Learning app with R.E.V in use: fuel read-out, airflow constant, fuel tank and model cards"> <img src="img/mosaico-learning-ev-light.png" width="240" alt="Learning app with E.V in use: cards dimmed and the line Learning off, E.V in use"></p>
 
-*Left:* Learning with R.E.V in use. *Right:* Learning with E.V in use. Learning is off.
+*Left:* Learning with R.E.V in use, on a new board: nothing learned yet. *Right:* Learning with E.V in use. Learning is off. Host render of the 2.0.0 screen code with example values.
 
 What R.E.V has learned in your car so far.
 
@@ -222,9 +222,9 @@ While E.V runs, the cards are dimmed and the page says "Learning off: E.V in use
 
 ### R.E.V and E.V
 
-<p><img src="img/mosaico-rev-light.png" width="240" alt="R.E.V app: model card, self-test exact, learning fuel use in this car, fuel learning counters and an In use button"> <img src="img/mosaico-ev-dark.png" width="240" alt="E.V app, dark theme: model card, self-test exact, runs as shipped with no learning, what E.V answers and an In use button"></p>
+<p><img src="img/mosaico-rev-light.png" width="240" alt="R.E.V app: model card, self-test exact, learning fuel use in this car, fuel learning counters and an In use button"> <img src="img/mosaico-ev-dark.png" width="240" alt="E.V app, dark theme, while R.E.V is in use: model card Not active, self-test waits for E.V to load, what E.V answers and a Use E.V button"></p>
 
-*Left:* R.E.V, in use. *Right:* E.V, in use, dark theme.
+*Left:* R.E.V, in use, on a new board. *Right:* E.V, dark theme, while R.E.V is in use.
 
 One app per model, side by side on the launcher. Each shows the model's name, its file, its self-test and its own figures. The file shows by name: "active-estimator" for R.E.V and "ev-frozen" for E.V.
 
@@ -235,9 +235,9 @@ One app per model, side by side on the launcher. Each shows the model's name, it
 
 ### Summary
 
-<p><img src="img/mosaico-summary-light.png" width="240" alt="Drive summary page with no drive yet and a recent events card: a green Safe to turn off line and one red error line"></p>
+<p><img src="img/mosaico-summary-dark.png" width="240" alt="Drive summary page, dark theme, with no drive yet and a recent events card: Safe to turn off, Boot health good, Saved and the model ready"></p>
 
-*Summary before the first drive. The red line is an error event. This board's drive store was not set up yet when the capture was taken.*
+*Summary before the first drive, dark theme.*
 
 The last drive, and the board's events.
 
@@ -252,9 +252,9 @@ After a restart the Summary shows the last drive again, read back from its files
 
 ### Live
 
-<p><img src="img/mosaico-live-light.png" width="240" alt="Live app, light theme: speed, engine rpm, throttle, engine load, coolant, fuel level and adapter rows"></p>
+<p><img src="img/mosaico-live-light.png" width="240" alt="Live app, light theme, during a drive: speed, engine rpm, throttle, engine load, coolant, fuel level and adapter rows"></p>
 
-*Live, light theme.*
+*Live, light theme, during a drive. Host render of the 2.0.0 screen code with example values.*
 
 Values straight from the car, with no model in between.
 
@@ -270,7 +270,7 @@ Values straight from the car, with no model in between.
 
 <p><img src="img/mosaico-fuel-dark.png" width="240" alt="Fuel app, dark theme: fuel rate now, use now, this drive, fill-ups factor and learner versus factory error"></p>
 
-*Fuel, dark theme, with E.V in use.*
+*Fuel, dark theme, with R.E.V in use. Host render of the 2.0.0 screen code with example values.*
 
 Fuel use now and for this drive, and how your fill-ups correct it.
 
@@ -285,7 +285,7 @@ Fuel use now and for this drive, and how your fill-ups correct it.
 
 <p><img src="img/mosaico-brakes-dark.png" width="240" alt="Brakes and torque app, dark theme: brake pressure and engine torque traces for the last 60 seconds"></p>
 
-*Brakes and torque, dark theme.*
+*Brakes and torque, dark theme, after a minute of driving. Host render of the 2.0.0 screen code with example values.*
 
 The app title reads "Brakes and torque". Two traces cover the last 60 s.
 
@@ -297,7 +297,7 @@ The app title reads "Brakes and torque". Two traces cover the last 60 s.
 
 <p><img src="img/mosaico-trip-dark.png" width="240" alt="Trip app, dark theme: distance, engine on, average speed, fuel used, economy and the session line"></p>
 
-*Trip, dark theme, between drives.*
+*Trip, dark theme, during a drive. Host render of the 2.0.0 screen code with example values.*
 
 This drive so far. The top right says "Logging" during a drive and "Not in a drive" between drives.
 
@@ -313,7 +313,7 @@ This drive so far. The top right says "Logging" during a drive and "Not in a dri
 
 <p><img src="img/mosaico-engine-dark.png" width="240" alt="Engine app, dark theme: trouble codes card and battery, intake air, airflow, manifold, short trim and long trim tiles"></p>
 
-*Engine, dark theme.*
+*Engine, dark theme, during a drive. Host render of the 2.0.0 screen code with example values.*
 
 The engine computer's own sensor readings.
 
@@ -326,9 +326,9 @@ The engine computer's own sensor readings.
 
 ### Faults
 
-<p><img src="img/mosaico-faults-light.png" width="240" alt="Faults app, light theme: no report yet, stored 0, pending 0, permanent 0, and No codes, MIL off"></p>
+<p><img src="img/mosaico-faults-dark.png" width="240" alt="Faults app, dark theme: no report yet, stored 0, pending 0, permanent 0, and No codes, MIL off"></p>
 
-*Faults, light theme, no codes.*
+*Faults, dark theme, no codes.*
 
 The trouble codes from the engine computer, in three kinds.
 
@@ -341,7 +341,9 @@ The board ranks the codes by severity and groups codes that share a cause, so se
 
 ### Board
 
-*[Capture coming] Board: no capture of the 2.0.0 Board page yet.*
+<p><img src="img/mosaico-board-dark.png" width="240" alt="Board page, dark theme: Parked, health good, RAM free, battery, log storage on the NAND and the soft deadlines table with all jobs on time"></p>
+
+*Board, dark theme, parked with health good.*
 
 The board's own health, for checks and bug reports. The page scrolls: the RAM and battery cards, log storage and the first deadline rows fill the screen, and the rest of the table and the footer follow below.
 
@@ -356,9 +358,9 @@ The board's own health, for checks and bug reports. The page scrolls: the RAM an
 
 ### Files
 
-<p><img src="img/mosaico-files-light.png" width="240" alt="Files app, light theme: storage bar, a list of sessions with size and rows, a WRITING tag on the newest and delete buttons on the others"></p>
+<p><img src="img/mosaico-files-dark.png" width="240" alt="Files app, dark theme: the 128 MB NAND storage bar, two sessions with size and rows, a WRITING tag on the newest, a delete button on the other and Delete all drive logs"></p>
 
-*Files on a board that still logged to its 3.7 MB flash store. With the drive store set up, the bar shows the 128 MB NAND.*
+*Files, dark theme, with the drive logs on the 128 MB NAND.*
 
 The drive logs on the board.
 
@@ -370,9 +372,9 @@ The drive logs on the board.
 
 ### Wi-Fi
 
-<p><img src="img/mosaico-wifi-dark.png" width="240" alt="Wi-Fi app, dark theme: status Off, no network saved yet, Sync clock now and Search for networks buttons"></p>
+<p><img src="img/mosaico-wifi-dark.png" width="240" alt="Wi-Fi app, dark theme: status Idle between clock syncs, Sync clock now and Search for networks buttons"></p>
 
-*Wi-Fi, dark theme, no network saved.*
+*Wi-Fi, dark theme, idle between clock syncs.*
 
 Search, join and the clock sync. The radio is off unless one of these is running.
 
@@ -385,9 +387,9 @@ Section 06 covers searching and joining.
 
 ### Settings
 
-<p><img src="img/mosaico-settings-dark.png" width="240" alt="Settings, dark theme: Screen off after with Never, 10 s, 20 s and 60 s, and the Home apps order list with Up and Down buttons"></p>
+<p><img src="img/mosaico-settings-dark.png" width="240" alt="Settings, dark theme: the Home apps order list with Faults, Board, Files and Wi-Fi rows and Up and Down buttons"></p>
 
-*Settings, dark theme: screen off and the Home order.*
+*Settings, dark theme: the Home apps order.*
 
 One scrolling list of everything you can change.
 
@@ -613,9 +615,9 @@ On the board (EdgeOS 2.0.0 4aeff43) both engines stayed on with no failures. How
 
 ### The critical-fault banner
 
-<p><img src="img/mosaico-alarm-banner-dark.png" width="240" alt="Home in the dark theme with a red-edged banner across the top reading TEST: engine misfire, stop safely (P0300)"></p>
+<p><img src="img/mosaico-alarm-banner-dark.png" width="240" alt="Home in the dark theme with a red-edged banner across the top reading P0300, Random/multiple misfire"></p>
 
-*A test alarm on Home, dark theme. The text is a bench test, not a real fault.*
+*A critical alarm on Home, dark theme, for an example fault (P0300). Host render of the 2.0.0 screen code with example values.*
 
 A critical fault shows as a red-edged banner across the top of the screen, over any app. Its headline is 32 px text, so you can read it at a glance.
 

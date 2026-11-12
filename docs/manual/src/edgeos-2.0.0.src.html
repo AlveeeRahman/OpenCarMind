@@ -89,8 +89,8 @@
 </dl></div>
 </div>
 <div class="warn" style="margin-top:16px"><p><strong>About the captures in this manual.</strong></p>
-<p>They come from mossREV 1.2.0 builds, the release before 2.0.0, taken on a bench with no car connected. The apps and their values are the same in 2.0.0. Four things look different in 2.0.0. No text on screen is smaller than 16 px, so several lines are shorter or larger. The Board page scrolls and shows the health in its header. The model's file shows by name, "active-estimator" for R.E.V and "ev-frozen" for E.V. A new adapter is offered on a pairing sheet (see Pairing your OBD adapter). New captures from 2.0.0 will replace these.</p>
-<p>These four changes are built and checked on a computer, not yet seen on the board.</p>
+<p>Most come from an EdgeOS 2.0.0 board (build 06ddf1d), taken on a bench with no car connected. Eight screens had no clean board capture: Home, Learning with E.V in use, Live, Fuel, Brakes and torque, Trip, Engine and the alarm banner. Those are rendered on a computer from the 2.0.0 screen code with example values, and their captions say so. They are not photos of the board.</p>
+<p>The pairing sheet for a new adapter (see Pairing your OBD adapter) has no capture yet.</p>
 </div>
 </section>
 
@@ -99,12 +99,12 @@
 <h2>First boot and the orange key</h2>
 <p class="sub">Power the board from the car's USB port. A new board starts on CarMind R.E.V and opens on Home.</p>
 <div class="app">
-<figure><button class="shot" type="button" aria-label="Open the Home capture full size"><img src="img/mosaico-home-light.png" alt="Home screen in the light theme: Economy now card, analogue clock, System card and the All apps button" width="480" height="480"></button><figcaption>Home, light theme, before a car is connected.</figcaption></figure>
+<figure><button class="shot" type="button" aria-label="Open the Home capture full size"><img src="img/mosaico-home-light.png" alt="Home screen in the light theme: Economy card with WAITING, No car yet and Search, analogue clock, System card and the All apps button" width="480" height="480"></button><figcaption>Home, light theme, before a car is connected. Host render of the 2.0.0 screen code with example values.</figcaption></figure>
 <div class="txt">
 <h3>What Home shows</h3>
 <dl class="kv">
 <dt>Status bar</dt><dd>the time, Bluetooth, Wi-Fi and the battery voltage (4.20 V here). Inside an app it also shows CPU, AI, MIPS (millions of instructions per second) and the power source.</dd>
-<dt>Economy now</dt><dd>your fuel economy while you drive. Before a car connects it says "No car yet" and offers Search.</dd>
+<dt>Economy</dt><dd>your fuel economy while you drive. Before a car connects it says "No car yet" and offers Search.</dd>
 <dt>Clock</dt><dd>an analogue clock. It shows the right time once you set the clock (see Settings).</dd>
 <dt>System</dt><dd>how busy each of the two cores is, in % and MIPS, and the power source. "USB current is not measured" is expected.</dd>
 <dt>All apps</dt><dd>opens the app pages.</dd>
@@ -176,10 +176,10 @@
 <section id="apps">
 <p class="eye">04 · The apps</p>
 <h2>All 16 apps and what their numbers mean</h2>
-<p class="sub">Every number carries its unit. Two dashes (--) mean there is no value yet, usually because no drive is running. The captures were taken on a bench with no car connected, so most values are dashes.</p>
+<p class="sub">Every number carries its unit. Two dashes (--) mean there is no value yet, usually because no drive is running. The board captures were taken on a bench with no car connected, so most of their values are dashes. The host renders show example values from a drive.</p>
 
 <div class="app" id="app-drive">
-<figure><button class="shot" type="button" aria-label="Open the Drive capture full size"><img src="img/mosaico-drive-light.png" alt="Drive app, light theme: speed, rpm, AI sees, brake, torque and fuel tiles with MODEL tags, and the tank bar" width="480" height="480"></button><figcaption>Drive, light theme, with E.V in use.</figcaption></figure>
+<figure><button class="shot" type="button" aria-label="Open the Drive capture full size"><img src="img/mosaico-drive-light.png" alt="Drive app, light theme, before a car is connected: speed, rpm, AI sees, brake, torque and fuel tiles with MODEL and LEARNED tags, and the tank bar" width="480" height="480"></button><figcaption>Drive, light theme, with R.E.V in use, before a car is connected.</figcaption></figure>
 <div class="txt"><h3>Drive</h3><p>The live view for the road.</p>
 <dl class="kv">
 <dt>Speed</dt><dd>road speed in km/h</dd>
@@ -192,7 +192,7 @@
 </div>
 
 <div class="app" id="app-ai">
-<figure><button class="shot" type="button" aria-label="Open the AI capture full size"><img src="img/mosaico-ai-dark.png" alt="AI app, dark theme: AI sees with four class bars and AI estimates for brake pressure, engine torque and fuel rate" width="480" height="480"></button><figcaption>AI, dark theme, with E.V in use.</figcaption></figure>
+<figure><button class="shot" type="button" aria-label="Open the AI capture full size"><img src="img/mosaico-ai-dark.png" alt="AI app, dark theme, before the first window: AI sees with four class bars and AI estimates for brake pressure, engine torque and fuel rate" width="480" height="480"></button><figcaption>AI, dark theme, with R.E.V in use, before the first window.</figcaption></figure>
 <div class="txt"><h3>AI</h3><p>What the model in use sees, in more detail.</p>
 <dl class="kv">
 <dt>AI sees</dt><dd>one bar each for Stopped, Braking, Accelerating and Cruising. The model gives one answer per window, a short slice of the drive. "No windows yet" means it has had no driving to look at.</dd>
@@ -204,8 +204,8 @@
 
 <div class="app pair" id="app-learning">
 <div class="figs">
-<figure><button class="shot" type="button" aria-label="Open the Learning capture full size"><img src="img/mosaico-learning-rev-light.png" alt="Learning app with R.E.V in use: fuel read-out, airflow constant, fuel tank and model cards" width="480" height="480"></button><figcaption>Learning with R.E.V in use.</figcaption></figure>
-<figure><button class="shot" type="button" aria-label="Open the Learning off capture full size"><img src="img/mosaico-learning-ev-light.png" alt="Learning app with E.V in use: cards dimmed and the line Learning off, E.V in use" width="480" height="480"></button><figcaption>Learning with E.V in use. Learning is off.</figcaption></figure>
+<figure><button class="shot" type="button" aria-label="Open the Learning capture full size"><img src="img/mosaico-learning-rev-light.png" alt="Learning app with R.E.V in use: fuel read-out, airflow constant, fuel tank and model cards" width="480" height="480"></button><figcaption>Learning with R.E.V in use, on a new board: nothing learned yet.</figcaption></figure>
+<figure><button class="shot" type="button" aria-label="Open the Learning off capture full size"><img src="img/mosaico-learning-ev-light.png" alt="Learning app with E.V in use: cards dimmed and the line Learning off, E.V in use" width="480" height="480"></button><figcaption>Learning with E.V in use. Learning is off. Host render of the 2.0.0 screen code with example values.</figcaption></figure>
 </div>
 <div class="txt"><h3>Learning</h3><p>What R.E.V has learned in your car so far.</p>
 <dl class="kv">
@@ -220,8 +220,8 @@
 
 <div class="app pair" id="app-rev">
 <div class="figs">
-<figure><button class="shot" type="button" aria-label="Open the R.E.V capture full size"><img src="img/mosaico-rev-light.png" alt="R.E.V app: model card, self-test exact, learning fuel use in this car, fuel learning counters and an In use button" width="480" height="480"></button><figcaption>R.E.V, in use.</figcaption></figure>
-<figure><button class="shot" type="button" aria-label="Open the E.V capture full size"><img src="img/mosaico-ev-dark.png" alt="E.V app, dark theme: model card, self-test exact, runs as shipped with no learning, what E.V answers and an In use button" width="480" height="480"></button><figcaption>E.V, in use, dark theme.</figcaption></figure>
+<figure><button class="shot" type="button" aria-label="Open the R.E.V capture full size"><img src="img/mosaico-rev-light.png" alt="R.E.V app: model card, self-test exact, learning fuel use in this car, fuel learning counters and an In use button" width="480" height="480"></button><figcaption>R.E.V, in use, on a new board.</figcaption></figure>
+<figure><button class="shot" type="button" aria-label="Open the E.V capture full size"><img src="img/mosaico-ev-dark.png" alt="E.V app, dark theme, while R.E.V is in use: model card Not active, self-test waits for E.V to load, what E.V answers and a Use E.V button" width="480" height="480"></button><figcaption>E.V, dark theme, while R.E.V is in use.</figcaption></figure>
 </div>
 <div class="txt"><h3>R.E.V and E.V</h3><p>One app per model, side by side on the launcher. Each shows the model's name, its file, its self-test and its own figures. The file shows by name: "active-estimator" for R.E.V and "ev-frozen" for E.V.</p>
 <dl class="kv">
@@ -233,7 +233,7 @@
 </div>
 
 <div class="app" id="app-summary">
-<figure><button class="shot" type="button" aria-label="Open the Summary capture full size"><img src="img/mosaico-summary-light.png" alt="Drive summary page with no drive yet and a recent events card: a green Safe to turn off line and one red error line" width="480" height="480"></button><figcaption>Summary before the first drive. The red line is an error event. This board's drive store was not set up yet when the capture was taken.</figcaption></figure>
+<figure><button class="shot" type="button" aria-label="Open the Summary capture full size"><img src="img/mosaico-summary-dark.png" alt="Drive summary page, dark theme, with no drive yet and a recent events card: Safe to turn off, Boot health good, Saved and the model ready" width="480" height="480"></button><figcaption>Summary before the first drive, dark theme.</figcaption></figure>
 <div class="txt"><h3>Summary</h3><p>The last drive, and the board's events.</p>
 <dl class="kv">
 <dt>The drive</dt><dd>distance, time, economy and the hard-brake count</dd>
@@ -246,7 +246,7 @@
 </div>
 
 <div class="app" id="app-live">
-<figure><button class="shot" type="button" aria-label="Open the Live capture full size"><img src="img/mosaico-live-light.png" alt="Live app, light theme: speed, engine rpm, throttle, engine load, coolant, fuel level and adapter rows" width="480" height="480"></button><figcaption>Live, light theme.</figcaption></figure>
+<figure><button class="shot" type="button" aria-label="Open the Live capture full size"><img src="img/mosaico-live-light.png" alt="Live app, light theme, during a drive: speed, engine rpm, throttle, engine load, coolant, fuel level and adapter rows" width="480" height="480"></button><figcaption>Live, light theme, during a drive. Host render of the 2.0.0 screen code with example values.</figcaption></figure>
 <div class="txt"><h3>Live</h3><p>Values straight from the car, with no model in between.</p>
 <dl class="kv">
 <dt>Speed, Engine</dt><dd>road speed in km/h and engine speed in rpm</dd>
@@ -260,7 +260,7 @@
 </div>
 
 <div class="app" id="app-fuel">
-<figure><button class="shot" type="button" aria-label="Open the Fuel capture full size"><img src="img/mosaico-fuel-dark.png" alt="Fuel app, dark theme: fuel rate now, use now, this drive, fill-ups factor and learner versus factory error" width="480" height="480"></button><figcaption>Fuel, dark theme, with E.V in use.</figcaption></figure>
+<figure><button class="shot" type="button" aria-label="Open the Fuel capture full size"><img src="img/mosaico-fuel-dark.png" alt="Fuel app, dark theme: fuel rate now, use now, this drive, fill-ups factor and learner versus factory error" width="480" height="480"></button><figcaption>Fuel, dark theme, with R.E.V in use. Host render of the 2.0.0 screen code with example values.</figcaption></figure>
 <div class="txt"><h3>Fuel</h3><p>Fuel use now and for this drive, and how your fill-ups correct it.</p>
 <dl class="kv">
 <dt>Source tag</dt><dd>top right: where the fuel figure comes from. NO SOURCE means there is none yet.</dd>
@@ -273,7 +273,7 @@
 </div>
 
 <div class="app" id="app-brakes">
-<figure><button class="shot" type="button" aria-label="Open the Brakes capture full size"><img src="img/mosaico-brakes-dark.png" alt="Brakes and torque app, dark theme: brake pressure and engine torque traces for the last 60 seconds" width="480" height="480"></button><figcaption>Brakes and torque, dark theme.</figcaption></figure>
+<figure><button class="shot" type="button" aria-label="Open the Brakes capture full size"><img src="img/mosaico-brakes-dark.png" alt="Brakes and torque app, dark theme: brake pressure and engine torque traces for the last 60 seconds" width="480" height="480"></button><figcaption>Brakes and torque, dark theme, after a minute of driving. Host render of the 2.0.0 screen code with example values.</figcaption></figure>
 <div class="txt"><h3>Brakes</h3><p>The app title reads "Brakes and torque". Two traces cover the last 60 s.</p>
 <dl class="kv">
 <dt>Brake pressure</dt><dd>the model's estimate in bar, with the count of brakings and hard brakings this drive</dd>
@@ -283,7 +283,7 @@
 </div>
 
 <div class="app" id="app-trip">
-<figure><button class="shot" type="button" aria-label="Open the Trip capture full size"><img src="img/mosaico-trip-dark.png" alt="Trip app, dark theme: distance, engine on, average speed, fuel used, economy and the session line" width="480" height="480"></button><figcaption>Trip, dark theme, between drives.</figcaption></figure>
+<figure><button class="shot" type="button" aria-label="Open the Trip capture full size"><img src="img/mosaico-trip-dark.png" alt="Trip app, dark theme: distance, engine on, average speed, fuel used, economy and the session line" width="480" height="480"></button><figcaption>Trip, dark theme, during a drive. Host render of the 2.0.0 screen code with example values.</figcaption></figure>
 <div class="txt"><h3>Trip</h3><p>This drive so far. The top right says "Logging" during a drive and "Not in a drive" between drives.</p>
 <dl class="kv">
 <dt>Distance</dt><dd>km driven this drive</dd>
@@ -297,7 +297,7 @@
 </div>
 
 <div class="app" id="app-engine">
-<figure><button class="shot" type="button" aria-label="Open the Engine capture full size"><img src="img/mosaico-engine-dark.png" alt="Engine app, dark theme: trouble codes card and battery, intake air, airflow, manifold, short trim and long trim tiles" width="480" height="480"></button><figcaption>Engine, dark theme.</figcaption></figure>
+<figure><button class="shot" type="button" aria-label="Open the Engine capture full size"><img src="img/mosaico-engine-dark.png" alt="Engine app, dark theme: trouble codes card and battery, intake air, airflow, manifold, short trim and long trim tiles" width="480" height="480"></button><figcaption>Engine, dark theme, during a drive. Host render of the 2.0.0 screen code with example values.</figcaption></figure>
 <div class="txt"><h3>Engine</h3><p>The engine computer's own sensor readings.</p>
 <dl class="kv">
 <dt>Trouble codes</dt><dd>the count of stored, pending and permanent codes, read once the car answers. The top right shows the MIL (check-engine light) state.</dd>
@@ -310,7 +310,7 @@
 </div>
 
 <div class="app" id="app-faults">
-<figure><button class="shot" type="button" aria-label="Open the Faults capture full size"><img src="img/mosaico-faults-light.png" alt="Faults app, light theme: no report yet, stored 0, pending 0, permanent 0, and No codes, MIL off" width="480" height="480"></button><figcaption>Faults, light theme, no codes.</figcaption></figure>
+<figure><button class="shot" type="button" aria-label="Open the Faults capture full size"><img src="img/mosaico-faults-dark.png" alt="Faults app, dark theme: no report yet, stored 0, pending 0, permanent 0, and No codes, MIL off" width="480" height="480"></button><figcaption>Faults, dark theme, no codes.</figcaption></figure>
 <div class="txt"><h3>Faults</h3>
 <p>The trouble codes from the engine computer, in three kinds.</p>
 <dl class="kv">
@@ -323,7 +323,7 @@
 </div>
 
 <div class="app" id="app-board">
-<figure><div class="ph"><span>Capture coming</span></div><figcaption>Board: no capture of the 2.0.0 Board page yet.</figcaption></figure>
+<figure><button class="shot" type="button" aria-label="Open the Board capture full size"><img src="img/mosaico-board-dark.png" alt="Board page, dark theme: Parked, health good, RAM free, battery, log storage on the NAND and the soft deadlines table with all jobs on time" width="480" height="480"></button><figcaption>Board, dark theme, parked with health good.</figcaption></figure>
 <div class="txt"><h3>Board</h3><p>The board's own health, for checks and bug reports. The page scrolls: the RAM and battery cards, log storage and the first deadline rows fill the screen, and the rest of the table and the footer follow below.</p>
 <dl class="kv">
 <dt>Firmware</dt><dd>the firmware version, and the chip with its revision ("S31 rev" and a number)</dd>
@@ -339,7 +339,7 @@
 </div>
 
 <div class="app" id="app-files">
-<figure><button class="shot" type="button" aria-label="Open the Files capture full size"><img src="img/mosaico-files-light.png" alt="Files app, light theme: storage bar, a list of sessions with size and rows, a WRITING tag on the newest and delete buttons on the others" width="480" height="480"></button><figcaption>Files on a board that still logged to its 3.7 MB flash store. With the drive store set up, the bar shows the 128 MB NAND.</figcaption></figure>
+<figure><button class="shot" type="button" aria-label="Open the Files capture full size"><img src="img/mosaico-files-dark.png" alt="Files app, dark theme: the 128 MB NAND storage bar, two sessions with size and rows, a WRITING tag on the newest, a delete button on the other and Delete all drive logs" width="480" height="480"></button><figcaption>Files, dark theme, with the drive logs on the 128 MB NAND.</figcaption></figure>
 <div class="txt"><h3>Files</h3><p>The drive logs on the board.</p>
 <dl class="kv">
 <dt>Storage</dt><dd>free space on the drive store</dd>
@@ -351,7 +351,7 @@
 </div>
 
 <div class="app" id="app-wifi">
-<figure><button class="shot" type="button" aria-label="Open the Wi-Fi capture full size"><img src="img/mosaico-wifi-dark.png" alt="Wi-Fi app, dark theme: status Off, no network saved yet, Sync clock now and Search for networks buttons" width="480" height="480"></button><figcaption>Wi-Fi, dark theme, no network saved.</figcaption></figure>
+<figure><button class="shot" type="button" aria-label="Open the Wi-Fi capture full size"><img src="img/mosaico-wifi-dark.png" alt="Wi-Fi app, dark theme: status Idle between clock syncs, Sync clock now and Search for networks buttons" width="480" height="480"></button><figcaption>Wi-Fi, dark theme, idle between clock syncs.</figcaption></figure>
 <div class="txt"><h3>Wi-Fi</h3><p>Search, join and the clock sync. The radio is off unless one of these is running.</p>
 <dl class="kv">
 <dt>Status</dt><dd>what Wi-Fi is doing, and whether the clock has been synced over Wi-Fi</dd>
@@ -363,7 +363,7 @@
 </div>
 
 <div class="app" id="app-settings">
-<figure><button class="shot" type="button" aria-label="Open the Settings capture full size"><img src="img/mosaico-settings-dark.png" alt="Settings, dark theme: Screen off after with Never, 10 s, 20 s and 60 s, and the Home apps order list with Up and Down buttons" width="480" height="480"></button><figcaption>Settings, dark theme: screen off and the Home order.</figcaption></figure>
+<figure><button class="shot" type="button" aria-label="Open the Settings capture full size"><img src="img/mosaico-settings-dark.png" alt="Settings, dark theme: the Home apps order list with Faults, Board, Files and Wi-Fi rows and Up and Down buttons" width="480" height="480"></button><figcaption>Settings, dark theme: the Home apps order.</figcaption></figure>
 <div class="txt"><h3>Settings</h3><p>One scrolling list of everything you can change.</p>
 <dl class="kv">
 <dt>Look</dt><dd>brightness and the theme (Auto, Light or Dark)</dd>
@@ -541,7 +541,7 @@
 <p class="eye">09 · Alarms and faults</p>
 <h2>A banner for what is urgent, an app for the rest</h2>
 <div class="app">
-<figure><button class="shot" type="button" aria-label="Open the alarm banner capture full size"><img src="img/mosaico-alarm-banner-dark.png" alt="Home in the dark theme with a red-edged banner across the top reading TEST: engine misfire, stop safely (P0300)" width="480" height="480"></button><figcaption>A test alarm on Home, dark theme. The text is a bench test, not a real fault.</figcaption></figure>
+<figure><button class="shot" type="button" aria-label="Open the alarm banner capture full size"><img src="img/mosaico-alarm-banner-dark.png" alt="Home in the dark theme with a red-edged banner across the top reading P0300, Random/multiple misfire" width="480" height="480"></button><figcaption>A critical alarm on Home, dark theme, for an example fault (P0300). Host render of the 2.0.0 screen code with example values.</figcaption></figure>
 <div class="txt">
 <h3>The critical-fault banner</h3>
 <p>A critical fault shows as a red-edged banner across the top of the screen, over any app. Its headline is 32 px text, so you can read it at a glance.</p>
