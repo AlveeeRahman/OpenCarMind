@@ -3291,7 +3291,7 @@ static void pw_open(const ws_row_t *row)
     lv_obj_remove_event_cb(pw_kb, lv_keyboard_def_event_cb);
     lv_obj_add_event_cb(pw_kb, pw_kb_cb, LV_EVENT_VALUE_CHANGED, NULL);
     lv_keyboard_set_textarea(pw_kb, pw_ta);
-    lv_obj_set_pos(pw_kb, 0, 146);
+    lv_obj_align(pw_kb, LV_ALIGN_TOP_LEFT, 0, 146);   /* lv_keyboard_create aligns it BOTTOM_MID: set_pos kept that, 146 px below */
     lv_obj_set_size(pw_kb, UI_W, 400 - 146);
     lv_obj_set_style_bg_color(pw_kb, lv_color_hex(UI_BG), 0);
     lv_obj_set_style_bg_opa(pw_kb, LV_OPA_COVER, 0);
