@@ -3566,8 +3566,10 @@ static void wifi_create(lv_obj_t *p)
     lv_obj_set_size(w_rows, ST_W, 24);
     lv_obj_remove_flag(w_rows, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
     w_note = w_wrapped(w_list, UI_GREEN, "");
-    w_wrapped(w_list, UI_MUTED, "Up to 8 networks: join one above, or add it from the desktop app. The board uses them to set its "
-                                "clock and, when paired with the app, to send new data while parked.");
+    /* the S31 build has no Wi-Fi upload (CONFIG_OCM_WIFI_UPLOAD unset: uploader_wifi_enabled() is false): Wi-Fi only
+       sets the clock, and joins or searches when asked here */
+    w_wrapped(w_list, UI_MUTED, "Up to 8 networks: join one above, or add it from the desktop app. The board uses them "
+                                "only to set its clock.");
     mosaico_board_wifi_list(&w_copy);
     w_gen = w_copy.gen;
     w_clock_gen = w_copy.clock_gen;                      /* an old clock answer is not shown again */
