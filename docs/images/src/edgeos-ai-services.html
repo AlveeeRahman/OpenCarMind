@@ -18,7 +18,7 @@ const W = 1200, H = 1410;
 seed = 20261113;
 
 function draw() {
-  let y = heading(W, 'Where the AI services run',
+  let y; heading(W, 'Where the AI services run',
     'Every small AI model in EdgeOS runs as a service inside one worker task. The worker sits below every job ' +
     'with a deadline, is admitted like a model, and never takes a lock that a job above it holds.');
 

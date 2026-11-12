@@ -11,7 +11,10 @@ limit = int(re.search(r"#define EVENT_TEXT\s+(\d+)", open(os.path.join(d, "event
 W = {"d": 4, "i": 4, "u": 4, "ld": 6, "lu": 6, "lld": 6, "llu": 6, "s": 8, "c": 1, "f": 8, "x": 8, "lx": 8, "%": 1}
 # S3-shared texts: changing them moves the S3 image, so they wait for the S3 copies of these fixes
 EXEMPT = {"Clock sync refused: %s gave %lld, outside 2026-2099"}
-SRC = {fn: open(os.path.join(d, fn), errors="replace").read() for fn in os.listdir(d) if fn.endswith((".c", ".cpp", ".h"))}
+def _read(fn):
+    with open(os.path.join(d, fn), errors="replace") as fh:
+        return fh.read()
+SRC = {fn: _read(fn) for fn in os.listdir(d) if fn.endswith((".c", ".cpp", ".h"))}
 ALL = "\n".join(SRC.values())
 LIT = r"\"((?:[^\"\\]|\\.)*)\""
 FIXED = {"esp_err_to_name": 24}
@@ -42,7 +45,6 @@ def func_width(name):
 
 def arg_width(a, src):
     a = a.strip()
-    lits = re.fullmatch(r"(?:[^\"]*\?)?\s*(" + LIT + r")\s*:\s*(" + LIT + r")\s*", a)
     if re.fullmatch(LIT, a): return len(re.fullmatch(LIT, a).group(1).encode())
     if "?" in a and ":" in a:
         parts = re.findall(LIT, a)

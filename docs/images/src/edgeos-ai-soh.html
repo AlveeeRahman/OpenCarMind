@@ -39,7 +39,7 @@ function draw() {
   chip(x2 + 26, y + 16, 'board', { size: 16 });
   y = wrap(x2 + 26, y + 80, 'A current step gives the DC resistance over 120 s. It rises as the cell loses capacity: ' +
     'r = −0.88 against capacity on the 18650 set.', 300, 24, { size: 19 });
-  y = wrap(x2 + 26, y + 40, 'The board uses it as a flag, not as the SoH. As an SoH estimate on its own it is off by ' +
+  wrap(x2 + 26, y + 40, 'The board uses it as a flag, not as the SoH. As an SoH estimate on its own it is off by ' +
     '6.42 % on held-out cycles.', 300, 24, { size: 19, color: C.soft });
 
   // ---- 3 regressor ----
@@ -51,7 +51,7 @@ function draw() {
                    'CV duration and taper constant', 'DC resistance over 120 s', 'mean temperature']) {
     y = bullet(x3 + 26, y + 28, s, 300, C.blue);
   }
-  y = wrap(x3 + 26, y + 40, 'Ridge regression: 8 multiply-adds and 16 ops, 100 B. Forward cross-validation picked it: ' +
+  wrap(x3 + 26, y + 40, 'Ridge regression: 8 multiply-adds and 16 ops, 100 B. Forward cross-validation picked it: ' +
     'ridge 0.83 %, GBDT 1.96 %, an 8-unit MLP 20 %.', 300, 24, { size: 18, color: C.soft });
 
   roughLine([[392, r1 + 230], [421, r1 + 230]], C.ink, { arrow: false, sw: 2 });

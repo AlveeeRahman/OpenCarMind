@@ -8,6 +8,8 @@
  *   make -C tests/host bat BAT_MODEL=/path/bat_model.h       a header before it lands in main/ */
 #include <math.h>
 #include <stdio.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -293,7 +295,8 @@ static int vectors(const char *path, double *worst_out)
 static void test_vector_reader(void)
 {
     const char *path = "bat_selfvec.csv";
-    FILE *f = fopen(path, "w");
+    int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    FILE *f = fd >= 0 ? fdopen(fd, "w") : NULL;
     if (!f) { CHECK(0, "cannot write %s", path); return; }
     fprintf(f, "scenario,step,kind,z0,p0_z,p0_v,soh,use_ridge,v,i_inst,i_avg,t_c,dt,valid,exp_z_ekf,exp_z_corr,exp_soc_user,exp_innov,exp_v_hat,exp_p00\n");
     cell_t s = { 0.7, 0.0, Q };

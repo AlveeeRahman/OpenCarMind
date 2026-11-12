@@ -40,7 +40,7 @@ function draw() {
   fy = bullet(416, fy + 30, 'single-use new: transmitters seen once that were not there last window', 340, C.blue);
   fy = bullet(416, fy + 28, 'churn: the share of transmitters that are new', 340, C.blue);
   fy = bullet(416, fy + 28, 'adverts per address, which falls towards 1 in a flood', 340, C.blue);
-  fy = wrap(416, fy + 40, 'A crowd of real phones repeats inside a window and keeps its addresses for minutes. ' +
+  wrap(416, fy + 40, 'A crowd of real phones repeats inside a window and keeps its addresses for minutes. ' +
     'A spammer that rotates on every advert does neither.', 340, 23, { size: 18, color: C.soft });
 
   const ex = 790;
@@ -51,7 +51,7 @@ function draw() {
   let sy = wrap(ex, y + 124, 'A frugal streaming median m and MAD per feature. One-sided: only more rotation counts.', 340, 22, { size: 17.5 });
   sy = wrap(ex, sy + 30, 'Plus a fixed prior: 15 or more single-use new transmitters in one window.', 340, 22, { size: 17.5 });
   text(ex, sy + 40, 'Block', { font: TITLE, weight: 700, size: 20, color: C.red });
-  sy = wrap(ex, sy + 68, 'when 3 of the last 6 windows exceed. It learns only from clean windows, its medians are ' +
+  wrap(ex, sy + 68, 'when 3 of the last 6 windows exceed. It learns only from clean windows, its medians are ' +
     'clamped, and the first 2 h are a shadow that never blocks.', 340, 22, { size: 17.5 });
 
   // ---- 3 other heads and rules ----

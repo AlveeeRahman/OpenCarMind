@@ -304,9 +304,9 @@ int main(void)
             int ver = 5 + trial % 3, nreg = ver == 5 ? 14 : ver == 6 ? 15 : 16, o[16], n = 1 + trial % nreg;
             unsigned x = 88172645u + (unsigned)trial * 2654435761u;
             for (int i = 0; i < n; i++) { x ^= x << 13; x ^= x >> 17; x ^= x << 5; o[i] = (int)(x % 19); }
-            ui_settings_t in = ver == 5 ? v5(o, n, (uint16_t)x) : v6(o, n), r, rb;
-            in.ver = (uint8_t)ver;
-            if (ocm_settings_migrate(&in, &r, NAPPS8, WIFI8, EV8, HEALTH8) == OCM_SET_REJECT) { bad++; continue; }
+            ui_settings_t iv = ver == 5 ? v5(o, n, (uint16_t)x) : v6(o, n), r, rb;
+            iv.ver = (uint8_t)ver;
+            if (ocm_settings_migrate(&iv, &r, NAPPS8, WIFI8, EV8, HEALTH8) == OCM_SET_REJECT) { bad++; continue; }
             uint32_t seen = 0;
             int bpos = -1, hpos = -1;
             for (int i = 0; i < r.n; i++) {

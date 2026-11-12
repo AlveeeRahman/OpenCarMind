@@ -74,12 +74,12 @@ function draw() {
   bullet(66, y + 28, 'read-only: the gauge is never written', 250, C.orange);
   roughLine([[342, r1 + 150], [396, r1 + 150]], C.ink);
 
-  y = card(2, 400, r1, 760, h1, C.blue, 'The cell model: one RC pair', 'Physics');
+  card(2, 400, r1, 760, h1, C.blue, 'The cell model: one RC pair', 'Physics');
   circuit(440, r1 + 130);
   let ey = r1 + 128;
   eq(900, ey, 'V = OCV(z) + v_{1} + R_{0}·I');
   ey = wrap(900, ey + 34, 'OCV(z): open-circuit voltage, a 41-point table over the charge z from 0 to 1', 236, 22, { size: 17.5 });
-  ey = wrap(900, ey + 28, 'R₀: the instant drop. R₁ and C₁: the slow part, with time constant τ = R₁·C₁', 236, 22, { size: 17.5 });
+  wrap(900, ey + 28, 'R₀: the instant drop. R₁ and C₁: the slow part, with time constant τ = R₁·C₁', 236, 22, { size: 17.5 });
 
   // ---- 3 the filter ----
   const r2 = 610, h2 = 440;
@@ -112,7 +112,7 @@ function draw() {
                    'V − V̂: the innovation. K turns it into a correction of z and v₁']) {
     ky = bullet(R, ky + 30, s, 480, C.purple, { size: 18, lh: 23 });
   }
-  ky = wrap(R, ky + 38, 'Anchors: after 300 s at rest, z = OCV⁻¹(V). At the end of a CV charge, z = 1. ' +
+  wrap(R, ky + 38, 'Anchors: after 300 s at rest, z = OCV⁻¹(V). At the end of a CV charge, z = 1. ' +
     'Until the first anchor the Board page says "learning".', 480, 23, { size: 18, color: C.soft });
 
   // ---- 4 branch tested, not shipped ----
@@ -120,12 +120,12 @@ function draw() {
   y = card(4, 40, r3, 1120, h3, C.soft, 'Tried on top of it, not shipped', 'Learned corrections', { dash: '10 7', fill: '#F7F1E4' });
   chip(1140, r3 + 18, 'notship', { anchor: 'end', size: 16 });
   let ly = y + 34;
-  ly = wrap(66, ly, 'Residual MLP: 11 inputs (V, C-rate, T, the EKF\'s z, innovation and v₁, and slow averages), ' +
+  wrap(66, ly, 'Residual MLP: 11 inputs (V, C-rate, T, the EKF\'s z, innovation and v₁, and slow averages), ' +
     '12 tanh units, 1 output Δz added to z and clamped. In phase 2 it helped only in middle and late life. ' +
     'In phase 3, trained with 120 simulated cells of random OCV shape, capacity, resistance and offset, ' +
     'its confidence gate switched it off or it raised the worst error.', 520, 23, { size: 18 });
   let by = y + 34;
-  by = wrap(620, by, 'EKF with a third state, the current offset: under a +0.01C offset the RMSE falls from 5.3 % to ' +
+  wrap(620, by, 'EKF with a third state, the current offset: under a +0.01C offset the RMSE falls from 5.3 % to ' +
     '0.27 to 0.79 %. On clean data the early-life worst case rises from 4.0 % to 7.5 %. It is kept for boards ' +
     'whose measured offset is above about 0.003C (0.2 mA on 65 mAh), not as the default.', 520, 23, { size: 18 });
 
