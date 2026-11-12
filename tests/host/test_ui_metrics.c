@@ -23,6 +23,7 @@ static void report(const char *name, int ok, const char *fmt, ...)
 
 static uint32_t rs = 12345;
 static double ur(void) { rs ^= rs << 13; rs ^= rs >> 17; rs ^= rs << 5; return (rs >> 8) / 16777216.0; }
+static double gauss(void) { double u = ur() + 1e-12, v = ur(); return sqrt(-2 * log(u)) * cos(6.283185307179586 * v); }
 static double nr(void) { double u = ur() + 1e-12, v = ur(); return sqrt(-2 * log(u)) * cos(6.283185307 * v); }
 static int cmpu(const void *a, const void *b) { uint32_t x = *(const uint32_t *)a, y = *(const uint32_t *)b; return x < y ? -1 : x > y; }
 
@@ -235,7 +236,7 @@ static double lat_of(int c, int arm)
 static void test_gate(void)
 {
     static um_t m;
-    uint8_t fam = (1u << UM_APP) | (1u << UM_BACK) | (1u << UM_LIST) | (1u << UM_SWIPE);
+    uint8_t fam = (1u << UM_APP) | (1u << UM_BACK) | (1u << UM_LIST);
     um_init(&m, 777, fam, 0xABCD);
     int arms[UM_NCLASS][2] = { { 0 } }, keep_at = -1, ev = 0, aw = 1;
     for (; ev < 3000; ev++) {
@@ -259,13 +260,127 @@ static void test_gate(void)
              (m.family & 1u) == 0 && um_arm(&m, UM_SWIPE) == UM_A0 && um_arm(&m, UM_CONTROL) == UM_A0;
     report("runtime gate with Holm (3 classes)", ok,
            "app KEEP (z %.2f, p95 %u -> %u ms, ready %u %%, n %u/%u, at event %d); back %s (%s, z %.2f); list %s (ready %u %%); "
-           "A1 share while learning %.2f; warm-up all A0; KEEP -> A1, OFF -> A0; swipe never gated", m.k[UM_APP].v.z100 / 100.0,
+           "A1 share while learning %.2f; warm-up all A0; KEEP -> A1, OFF -> A0; swipe not gated until it registers", m.k[UM_APP].v.z100 / 100.0,
            m.k[UM_APP].v.p95_0, m.k[UM_APP].v.p95_1, m.k[UM_APP].v.ready_pm / 10, m.k[UM_APP].v.n0, m.k[UM_APP].v.n1, keep_at,
            um_state_name(m.k[UM_BACK].v.state), m.k[UM_BACK].v.reason == UM_R_SLOWER ? "slower" : m.k[UM_BACK].v.reason == UM_R_UNCERTAIN ? "unsure" : "?",
            m.k[UM_BACK].v.z100 / 100.0, um_state_name(m.k[UM_LIST].v.state), m.k[UM_LIST].v.ready_pm / 10, split);
 }
 
 /* 7. persistence */
+/* ---------- the OS feature gate: Smart swipe as a registered feature with the learner policy ---------- */
+static int g_actions_on, g_actions_off;
+static void swipe_action(bool on) { if (on) g_actions_on++; else g_actions_off++; }
+
+/* n swipe events: A1 (the learner acts) settles `gain` ms sooner, ready with probability rdy */
+static int run_swipes(um_t *m, int n, double gain, double rdy, int *a0_in_keep, int *a1_in_keep, int *keep_at, int *off_at)
+{
+    int ev;
+    for (ev = 0; ev < n; ev++) {
+        uint8_t st0 = m->k[UM_SWIPE].v.state, a = um_arm(m, UM_SWIPE);
+        if (st0 == UM_KEEP) { if (a == UM_A0) (*a0_in_keep)++; else (*a1_in_keep)++; }
+        double lat = 205 + 18 * gauss() - (a == UM_A1 ? gain : 0);
+        um_record(m, UM_SWIPE, a, (uint32_t)(lat < 100 ? 100 : lat), a == UM_A1 && ur() < rdy, 0);
+        if ((m->k[UM_SWIPE].n[0] + m->k[UM_SWIPE].n[1]) % 10u == 0) um_gate_step(m);
+        if (keep_at && *keep_at < 0 && m->k[UM_SWIPE].v.state == UM_KEEP) *keep_at = ev;
+        if (off_at && *off_at < 0 && m->k[UM_SWIPE].v.state == UM_OFF) { *off_at = ev; break; }
+    }
+    return ev;
+}
+
+static void test_feature_gate(void)
+{
+    static um_t m, l;
+    static uint8_t buf[UM_BLOB_MAX];
+    const um_feature_t sw = { "Smart swipe", UM_SWIPE, UM_POL_LEARNER, UM_MET_LIFT_SETTLE, swipe_action };
+    const um_feature_t bad1 = { "x", UM_NCLASS, UM_POL_LEARNER, UM_MET_LIFT_SETTLE, NULL };
+    const um_feature_t bad2 = { "x", UM_SWIPE, UM_POL_N, UM_MET_LIFT_SETTLE, NULL };
+    const um_feature_t bad3 = { "x", UM_SWIPE, UM_POL_LEARNER, 7, NULL };
+    char line[96];
+    um_init(&m, 4242, (1u << UM_APP) | (1u << UM_BACK), 0x1234);
+    int reg = um_register(&m, &sw) && !um_register(&m, &bad1) && !um_register(&m, &bad2) && !um_register(&m, &bad3) &&
+              (m.family >> UM_SWIPE & 1u) && m.k[UM_SWIPE].v.state == UM_WARMUP;
+    /* warm-up: 30 events, every one A0, none counted */
+    int warm_a0 = 1;
+    for (int i = 0; i < 30; i++) { warm_a0 &= um_arm(&m, UM_SWIPE) == UM_A0; um_record(&m, UM_SWIPE, UM_A0, 200, false, 0); }
+    um_line(&m, UM_SWIPE, line, sizeof line);
+    int warm = warm_a0 && m.k[UM_SWIPE].v.state == UM_LEARNING && m.k[UM_SWIPE].n[0] == 0 && !strncmp(line, "Smart swipe: learning 0/100", 27);
+    /* helpful: KEEP, then about 10 % A0 kept, re-checks pass */
+    int a0k = 0, a1k = 0, keep_at = -1;
+    g_actions_on = g_actions_off = 0;
+    run_swipes(&m, 3000, 25, 0.9, &a0k, &a1k, &keep_at, NULL);
+    double share = a0k / (double)(a0k + a1k);
+    um_line(&m, UM_SWIPE, line, sizeof line);
+    int helpful = m.k[UM_SWIPE].v.state == UM_KEEP && keep_at > 0 && share > 0.06 && share < 0.14 && g_actions_on == 1 &&
+                  g_actions_off == 0 && !strncmp(line, "Smart swipe: on, p95 ", 21);
+    printf("    learner policy, helpful: KEEP at swipe event %d, A0 share in KEEP %.1f %%; \"%s\"\n", keep_at, 100 * share, line);
+    /* the gain goes away: a re-check turns it off (reason re-check) */
+    int off_at = -1;
+    run_swipes(&m, 20000, 0, 0.9, &a0k, &a1k, NULL, &off_at);
+    um_line(&m, UM_SWIPE, line, sizeof line);
+    int recheck = off_at > 0 && m.k[UM_SWIPE].v.state == UM_OFF && m.k[UM_SWIPE].v.reason == UM_R_RECHECK_FAIL &&
+                  g_actions_off == 1 && um_arm(&m, UM_SWIPE) == UM_A0 && strstr(line, "off (re-check)");
+    printf("    learner policy, gain gone: OFF after %d more swipe events; \"%s\"\n", off_at, line);
+    /* useless from the start: OFF, the verdict persists for the same firmware and re-tests on a new one */
+    um_init(&m, 99, (1u << UM_APP) | (1u << UM_BACK), 0x1234);
+    um_register(&m, &sw);
+    for (int i = 0; i < 30; i++) um_record(&m, UM_SWIPE, UM_A0, 200, false, 0);
+    int off2 = -1;
+    run_swipes(&m, 5000, 0, 0.9, &a0k, &a1k, NULL, &off2);
+    size_t n = um_save(&m, buf, sizeof buf);
+    um_init(&l, 5, (1u << UM_APP) | (1u << UM_BACK), 0x1234);
+    um_register(&l, &sw);
+    int same = um_load(&l, buf, n) && l.k[UM_SWIPE].v.state == UM_OFF && um_arm(&l, UM_SWIPE) == UM_A0;
+    um_init(&l, 5, (1u << UM_APP) | (1u << UM_BACK), 0x5678);
+    um_register(&l, &sw);
+    int newfw = um_load(&l, buf, n) && l.k[UM_SWIPE].v.state == UM_WARMUP;
+    um_init(&l, 5, (1u << UM_APP) | (1u << UM_BACK), 0x1234);
+    int unreg = !um_load(&l, buf, n);                      /* a blob with the feature does not load without it */
+    um_reset_class(&m, UM_SWIPE);
+    int reset = m.k[UM_SWIPE].v.state == UM_WARMUP && m.k[UM_SWIPE].n[1] == 0;
+    /* Holm families: Smart swipe is tested alone (z 1.79 passes 1.645, a family of 3 would need 2.13) while two prefetch
+       classes learn the same data in their own family (theirs needs 1.96 first) */
+    um_init(&m, 7, (1u << UM_APP) | (1u << UM_BACK), 0x1);
+    um_register(&m, &sw);
+    for (int c = 0; c < 3; c++) {
+        uint8_t cls = c == 0 ? UM_SWIPE : c == 1 ? UM_APP : UM_BACK;
+        m.k[cls].v.state = UM_LEARNING;
+        for (int i = 0; i < 60; i++) {   /* A1 a bit faster: z about 1.8 */
+            um_record(&m, cls, UM_A0, (uint32_t)(200 + (i % 20) * 5), false, 0);
+            um_record(&m, cls, UM_A1, (uint32_t)(190 + (i % 20) * 5), true, 0);
+        }
+    }
+    int16_t zs = um_mw_z100(m.hist[UM_SWIPE][1], m.hist[UM_SWIPE][0], UM_NB);
+    um_gate_step(&m);
+    int fam = zs > 165 && zs < 196 && m.k[UM_SWIPE].v.state == UM_KEEP && m.k[UM_APP].v.state != UM_KEEP && m.k[UM_BACK].v.state != UM_KEEP;
+    /* the range: two arms that differ only above 475 ms are told apart (the old 96 x 5 ms bins put both in one bin) */
+    static uint16_t ha[UM_NB], hb[UM_NB];
+    for (int i = 0; i < 80; i++) { ha[um_lat_bin((uint32_t)(700 + 200 * ur()))]++; hb[um_lat_bin((uint32_t)(950 + 200 * ur()))]++; }
+    int16_t zr = um_mw_z100(ha, hb, UM_NB);
+    /* the owner's swipes (p50 about 400, p95 about 1055 ms): the gate's p95 from the bins against an exact sort */
+    double worst_pct = 0;
+    for (int rep = 0; rep < 80; rep++) {
+        static uint16_t ho[UM_NB];
+        static uint32_t v[400];
+        memset(ho, 0, sizeof ho);
+        for (int i = 0; i < 400; i++) {
+            double ms = exp(5.99 + 0.59 * gauss());
+            v[i] = (uint32_t)(ms > 3000 ? 3000 : ms);
+            ho[um_lat_bin(v[i])]++;
+        }
+        for (int i = 1; i < 400; i++) for (int j = i; j > 0 && v[j - 1] > v[j]; j--) { uint32_t t = v[j]; v[j] = v[j - 1]; v[j - 1] = t; }
+        uint32_t exact = v[(95 * 400 + 99) / 100 - 1];
+        double e = fabs((double)um_lat_pct(ho, 95) - exact), bin = exact < UM_NB1 * UM_BIN_MS ? UM_BIN_MS : UM_BIN2_MS;
+        if (e > bin && 100 * e / exact > worst_pct) worst_pct = 100 * e / exact;
+    }
+    zr = worst_pct <= 2 ? zr : 0;
+    report("feature gate: Smart swipe registered", reg && warm && helpful && recheck && off2 > 0 && same && newfw && unreg && reset && fam && zr > 164,
+           "register %s, warm-up 30 A0 %s, helpful KEEP at %d (A0 share %.1f %%, action on x%d), gain gone OFF by re-check after %d, "
+           "useless OFF at %d, reload %s, new fw warm-up %s, unregistered blob rejected %s, reset %s, own Holm family z %.2f -> %s, "
+           "arms 700-900 vs 950-1150 ms z %.2f, owner-like p95 within a bin or 2 %%",
+           reg ? "ok" : "BAD", warm ? "ok" : "BAD", keep_at, 100 * share, g_actions_on, off_at, off2, same ? "ok" : "BAD",
+           newfw ? "ok" : "BAD", unreg ? "ok" : "BAD", reset ? "ok" : "BAD", zs / 100.0, fam ? "KEEP" : "BAD", zr / 100.0);
+}
+
 static void test_persist(void)
 {
     static um_t m, l;
@@ -329,6 +444,7 @@ int main(void)
     test_settle();
     test_decide();
     test_gate();
+    test_feature_gate();
     test_persist();
     test_cost();
     printf("\n%s (%d failure%s)\n", fails ? "FAILED" : "ALL PASS", fails, fails == 1 ? "" : "s");

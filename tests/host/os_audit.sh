@@ -29,5 +29,11 @@ for f in mosaico_*.c ui_*.c board_pins_safe.c; do
 done
 m=$(grep -h -o -E 'os_(allows|refusal|refuse_sheet)\(OS_SVC_[A-Z_]+|OCM_REFUSED\(OS_SVC_[A-Z_]+' *.c *.cpp | sed 's/.*(//' | sort -u | wc -l | tr -d ' ')
 [ "$m" -ge 8 ] || { echo "FAIL only $m services are looked up"; fail=1; }
-[ $fail = 0 ] && echo "os audit: resets PASS ($n files go through sys_reset), runlevels PASS ($m services looked up, no own checks)"
+# 3. Feature gate: the thresholds exist only in ui_metrics.c, and no feature runs a test of its own.
+t=$(grep -l -E 'define UM_(MIN_PER_ARM|MAX_PER_ARM|READY_PM)|UM_POL_N\] =' *.c *.h | tr '\n' ' ')
+[ "$t" = "ui_metrics.c " ] || { echo "FAIL the gate thresholds are defined in: $t"; fail=1; }
+if grep -n -E 'um_decide|um_mw_z100|um_holm|um_gate_step|z100|MIN_PER_ARM' swipe_intent.c ui_prefetch.c >/dev/null; then
+    echo "FAIL a feature runs its own gate:"; grep -n -E 'um_decide|um_mw_z100|um_holm|um_gate_step|z100|MIN_PER_ARM' swipe_intent.c ui_prefetch.c; fail=1
+fi
+[ $fail = 0 ] && echo "os audit: resets PASS ($n files go through sys_reset), runlevels PASS ($m services looked up, no own checks), feature gate PASS (thresholds in ui_metrics.c only)"
 exit $fail

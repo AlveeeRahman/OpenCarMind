@@ -255,16 +255,17 @@ menu "OBD Logger Configuration"
             default 80
         config OCM_SWIPE_INTENT
             bool "Smart swipe: learn where launcher swipes go and start them sooner (keeps itself only if faster)"
-            depends on IDF_TARGET_ESP32S31
+            depends on IDF_TARGET_ESP32S31 && OCM_UI_METRICS
             default y
             help
-                A 1.3 KB on-device learner (main/swipe_intent.c, OS-ELM with recursive least squares) predicts
+                A 0.9 KB on-device learner (main/swipe_intent.c, OS-ELM with recursive least squares) predicts
                 40 ms after touch-down whether a launcher gesture goes to the next page, the previous page or stays.
                 It never triggers an action: on the gestures where it may act it keeps the Home picture current
-                and starts LVGL's own snap at the lift. It starts in an interleaved A/B test and, after at least
-                50 swipes per arm, keeps itself only if lift-to-settled p95 dropped and the predicted page was
-                ready at lift on more than 80 % of swipes; otherwise it turns itself off. The verdict is saved in
-                NVS (about 840 B) and re-tested after a firmware update or a settings reset. Settings shows the state.
+                and starts LVGL's own snap at the lift. It is a feature of the OS feature gate (ui_metrics.h): an
+                interleaved A/B test that, after at least 50 swipes per arm, keeps it only if lift-to-settled p95
+                dropped and the predicted page was ready at lift on more than 80 % of swipes, else turns it off.
+                The model is saved in NVS (about 840 B), the verdict with the gate's, and re-tested after a firmware
+                update or a settings reset. Settings shows the state.
         config OCM_UI_METRICS
             bool "Smart UI: measure finger-lift to page-settled for every touch, and gate any prefetch per class"
             depends on IDF_TARGET_ESP32S31

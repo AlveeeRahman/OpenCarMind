@@ -1,7 +1,19 @@
-/* ui_metrics: the Smart UI measurement surface (LOCKED: predictor code may read it, never change it or its thresholds).
+/* ui_metrics: the Smart UI measurement surface and the mossREV OS feature gate (LOCKED: a feature may read its verdict,
+ * never its thresholds, and nothing outside this file changes them).
  *
  * One event stream for every touch interaction on the Mosaico, one latency per event (finger lift -> page settled),
- * per-class rolling histograms, and the A/B gate that decides, per class, whether a prefetcher may stay.
+ * per-class rolling histograms, and the A/B gate that decides, per class, whether a feature may stay.
+ *
+ * Feature gate (mossREV 2.0.0): one OS service for every self-evaluating feature. A feature registers its class (the
+ * kind of touch it helps), its action (what the OS switches on or off) and its locked metric (always this file's
+ * lift-to-settled latency). The OS draws the arm of each event, keeps the histograms, runs the Mann-Whitney test and
+ * Holm's correction, saves the verdict per firmware tag and switches the feature. The thresholds live in
+ * ui_metrics.c only. Two policies, so the two features keep their own verdict semantics:
+ *   prefetch (the Smart UI A1 prefetch on app taps and Back): 10 warm-up events, then 50/50, KEEP = A1 on every event.
+ *   learner (Smart swipe): 30 warm-up events (the learner trains first), then 50/50, KEEP keeps 10 % of the events
+ *            as A0 and re-checks after every 50 new A0 samples (a failed re-check turns it OFF).
+ * Holm runs inside a family: the prefetch classes form one, Smart swipe its own (as each gate did before), so adding a
+ * feature to one family does not change another family's critical values.
  *
  * Classes: UM_SWIPE (launcher page swipe), UM_APP (app-icon tap -> the app screen), UM_BACK (Back chevron -> launcher),
  * UM_CONTROL (an in-app button, toggle, segment, slider, dropdown or roller), UM_LIST (a drag that scrolls a list).
@@ -46,7 +58,7 @@ extern "C" {
 enum { UM_SWIPE = 0, UM_APP, UM_BACK, UM_CONTROL, UM_LIST, UM_NCLASS, UM_NONE = 0xFF };
 enum { UM_A0 = 0, UM_A1 = 1 };
 enum { UM_LEARNING = 0, UM_KEEP = 1, UM_OFF = 2, UM_WARMUP = 3 };              /* per-class gate state */
-enum { UM_R_NONE = 0, UM_R_PASS, UM_R_SLOWER, UM_R_UNCERTAIN, UM_R_READY_LOW };
+enum { UM_R_NONE = 0, UM_R_PASS, UM_R_SLOWER, UM_R_UNCERTAIN, UM_R_READY_LOW, UM_R_RECHECK_FAIL };
 
 #define UM_READ_MS      16      /* touch read period (LV_DEF_REFR_PERIOD) */
 #define UM_REFR_MS      16      /* display refresh period */
@@ -57,11 +69,7 @@ enum { UM_R_NONE = 0, UM_R_PASS, UM_R_SLOWER, UM_R_UNCERTAIN, UM_R_READY_LOW };
 #define UM_NB2          64      /* 64 of 32 ms (1024..3071 ms); the last bin also holds anything slower */
 #define UM_BIN2_MS      32
 #define UM_NB           (UM_NB1 + UM_NB2)
-#define UM_HALVE_AT     1024    /* an arm's bins halve when it reaches this many samples (recency decay) */
-#define UM_WARMUP       10
-#define UM_MIN_PER_ARM  50
-#define UM_MAX_PER_ARM  150
-#define UM_READY_PM     800     /* ready must be ABOVE this, per mille */
+/* the gate's thresholds (warm-up, samples per arm, the ready floor) are private to ui_metrics.c (the feature gate) */
 
 /* ---------- binned histograms and the rank test (shared with swipe_intent.c) ---------- */
 uint32_t um_hist_n(const uint16_t *h, int nb);
@@ -114,18 +122,35 @@ typedef struct {
     um_verdict_t v;
 } um_cls_t;
 
+enum { UM_POL_PREFETCH = 0, UM_POL_LEARNER, UM_POL_N };
+enum { UM_MET_LIFT_SETTLE = 0 };       /* the one locked metric: finger lift -> page settled (above) */
+typedef struct {
+    const char *name;                  /* "Smart swipe": the status line's label */
+    uint8_t     cls;                   /* UM_* class whose events it acts on */
+    uint8_t     policy;                /* UM_POL_* */
+    uint8_t     metric;                /* UM_MET_* */
+    void      (*action)(bool on);      /* called by the gate when its verdict switches it on (KEEP) or off (OFF), may be NULL */
+} um_feature_t;
+
 typedef struct {
     uint16_t hist[UM_NCLASS][2][UM_NB];
     um_cls_t k[UM_NCLASS];
     uint32_t rng, fw_tag;
-    uint8_t  family;                    /* bit c: class c has a prefetch action and is gated */
-    uint8_t  pad_[3];
+    uint8_t  family;                    /* bit c: class c belongs to a registered feature and is gated */
+    uint8_t  pol[UM_NCLASS];            /* its policy */
+    uint16_t a0_since[UM_NCLASS];       /* KEEP with shadow: A0 samples since the last check */
+    const um_feature_t *feat[UM_NCLASS];
 } um_t;
 
 typedef struct { uint16_t n, p50, p95, ready_pm; } um_stats_t;
 
+/* family: classes gated with the prefetch policy and no action; um_register adds features. Then um_load. */
 void    um_init(um_t *m, uint32_t seed, uint8_t family, uint32_t fw_tag);
+bool    um_register(um_t *m, const um_feature_t *f);    /* false: bad class, policy or metric */
 void    um_reset_verdicts(um_t *m);                     /* every class back to warm-up, A/B data cleared */
+void    um_reset_class(um_t *m, uint8_t cls);           /* one class back to warm-up (Smart swipe after a settings reset) */
+/* "Smart swipe: learning 37/100, p95 212/230 ms, ready 84 %" (p95 with / without the feature, ready of the feature's arm) */
+int     um_line(const um_t *m, uint8_t cls, char *buf, size_t n);
 uint8_t um_arm(um_t *m, uint8_t cls);                   /* the arm of the next event of cls (draws the coin) */
 void    um_record(um_t *m, uint8_t cls, uint8_t arm, uint32_t lat_ms, bool ready, uint8_t flags);   /* UM_F_TIMEOUT / UM_F_INTERRUPTED */
 void    um_dropped(um_t *m, uint8_t cls);                 /* an event that cannot be measured (a tap that opened nothing) */

@@ -1,5 +1,5 @@
 /* Host tests for swipe_intent (main/swipe_intent.c). Build: make swipe
- * The module is included directly so the tests can reach the internals (RLS, histogram) without test hooks in it. */
+ * The module is included directly so the tests can reach the internals (RLS) without test hooks in it. */
 #include "swipe_intent.c"
 #include <math.h>
 #include <stdarg.h>
@@ -279,175 +279,33 @@ static void test_safety(void)
         a_ok ? "ok" : "BAD", b_ok ? "ok" : "BAD", tmax, TRACE_MAX, c_ok ? "ok" : "BAD", d_ok ? "ok" : "BAD");
 }
 
-/* ---------- quantile ---------- */
-static int cmp_u32(const void *a, const void *b) { uint32_t x = *(const uint32_t *)a, y = *(const uint32_t *)b; return x < y ? -1 : x > y; }
+/* The latency histograms, the p95 accuracy, the histogram range and the A/B gate moved with the gate into the OS
+   feature gate (main/ui_metrics.c): tests/host/test_ui_metrics.c, "feature gate: Smart swipe registered". */
 
-static void test_quantile(void)
-{
-    static si_t si;
-    struct si_impl *s = S(&si);
-    trng_t r = { 4242 };
-    static const int NS[] = { 50, 120, 400, 1000 };
-    double worst_ms = 0, worst_pct = 0;
-    int all_ok = 1, cases = 0;
-    for (int dist = 0; dist < 4; dist++)
-        for (int k = 0; k < 4; k++)
-            for (int rep = 0; rep < 20; rep++) {
-                si_init(&si, 5, 1);
-                int n = NS[k];
-                static uint32_t v[1024];
-                for (int i = 0; i < n; i++) {
-                    double ms = dist == 0 ? 180 + 25 * tr_n(&r)                              /* normal */
-                              : dist == 1 ? 150 + exp(3.5 + 0.6 * tr_n(&r))                 /* skewed tail */
-                              : dist == 2 ? (tr_u(&r) < 0.85 ? 190 + 10 * tr_n(&r) : 330 + 30 * tr_n(&r))   /* bimodal */
-                              : exp(5.99 + 0.59 * tr_n(&r));                                /* the owner's swipes: p50 ~400, p95 ~1055 ms */
-                    if (ms < 0) ms = 0;
-                    if (ms > 3000) ms = 3000;
-                    v[i] = (uint32_t)ms;
-                    hist_add(s, 0, v[i]);
-                }
-                qsort(v, (size_t)n, sizeof v[0], cmp_u32);
-                uint32_t exact = v[(95 * n + 99) / 100 - 1];
-                double e = fabs((double)hist_p95(s->hist[0]) - exact), ep = 100 * e / exact;
-                double bin = exact < UM_NB1 * UM_BIN_MS ? UM_BIN_MS : UM_BIN2_MS;
-                if (e > worst_ms) worst_ms = e;
-                if (ep > worst_pct) worst_pct = ep;
-                if (!(e <= bin || ep <= 2)) all_ok = 0;
-                cases++;
-            }
-    row("p95 histogram vs exact sort", all_ok, "%d cases (normal, skewed, bimodal, owner-like; n 50..1000, 0..3 s): worst %.1f ms = %.2f%% (limit 1 bin or 2%%)",
-        cases, worst_ms, worst_pct);
-
-    /* the range: the owner's real swipe p95 was 1,055 ms; the old 96 x 5 ms bins read anything above 475 ms as 477 */
-    si_init(&si, 5, 1);
-    for (int i = 0; i < 100; i++) hist_add(s, 0, i < 95 ? 600 : 1055);
-    uint16_t p_slow = hist_p95(s->hist[0]);
-    for (int i = 0; i < 100; i++) hist_add(s, 1, 2900);
-    uint16_t p_cap = hist_p95(s->hist[1]);
-    si_init(&si, 5, 1);
-    for (int i = 0; i < 200; i++) hist_add(s, 0, 4000);    /* past 3 s: the overflow bin */
-    uint16_t p_over = hist_p95(s->hist[0]);
-    int range_ok = p_slow > 475 && p_slow >= 600 - 4 && p_slow <= 604 + 4 && p_cap >= 2900 - 16 && p_cap <= 2900 + 16 &&
-                   p_over >= 3024 && p_over <= 3056;
-    /* two arms that differ only above 475 ms: the rank test now sees it (the old bins put both in one overflow bin, z 0) */
-    si_init(&si, 5, 1);
-    for (int i = 0; i < 80; i++) { hist_add(s, 0, 700 + (uint32_t)(200 * tr_u(&r))); hist_add(s, 1, 950 + (uint32_t)(200 * tr_u(&r))); }
-    int16_t z = mw_z100(s->hist[0], s->hist[1]);
-    range_ok = range_ok && z > 164;
-    row("histogram range 0..3 s", range_ok, "p95 %u ms (600 x95, 1055 x5), %u ms (2900), %u ms (4000 -> overflow); A 700-900 vs B 950-1150 z %+.2f",
-        p_slow, p_cap, p_over, z / 100.0);
-}
-
-/* ---------- gate ---------- */
-static double boot_p95_diff(const uint32_t *a, int na, const uint32_t *b, int nb, trng_t *r, double *lo, double *hi)
-{
-    enum { R = 2000 };
-    static double d[R];
-    static uint32_t ra[512], rb[512];
-    for (int k = 0; k < R; k++) {
-        for (int i = 0; i < na; i++) ra[i] = a[(int)(tr_u(r) * na)];
-        for (int i = 0; i < nb; i++) rb[i] = b[(int)(tr_u(r) * nb)];
-        qsort(ra, (size_t)na, 4, cmp_u32); qsort(rb, (size_t)nb, 4, cmp_u32);
-        d[k] = (double)ra[(95 * na + 99) / 100 - 1] - (double)rb[(95 * nb + 99) / 100 - 1];
-    }
-    for (int i = 1; i < R; i++) for (int j = i; j > 0 && d[j - 1] > d[j]; j--) { double t = d[j]; d[j] = d[j - 1]; d[j - 1] = t; }
-    *lo = d[R / 40]; *hi = d[R - R / 40 - 1];
-    return d[R / 2];
-}
-
-static void craft(si_t *si, trng_t *r, int na, double ma, double sa, int nb, double mb, double sb, double ready_a,
-                  uint32_t *va, uint32_t *vb)
-{
-    struct si_impl *s = S(si);
-    si_init(si, 5, 3);
-    for (int i = 0; i < na; i++) { double ms = ma + sa * tr_n(r); va[i] = (uint32_t)(ms < 0 ? 0 : ms); hist_add(s, 0, va[i]); }
-    for (int i = 0; i < nb; i++) { double ms = mb + sb * tr_n(r); vb[i] = (uint32_t)(ms < 0 ? 0 : ms); hist_add(s, 1, vb[i]); }
-    s->rdy_n[0] = (uint16_t)na; s->rdy_hit[0] = (uint16_t)(ready_a * na + 0.5);
-}
-
-static void test_gate(void)
-{
-    static si_t si;
-    static const char *ST[] = { "LEARNING", "KEEP", "OFF" };
-    static const char *RS[] = { "-", "pass", "slower", "uncertain", "ready low", "recheck fail" };
-    trng_t r = { 2024 };
-    static uint32_t va[512], vb[512];
-    struct { const char *name; int na; double ma, sa; int nb; double mb, sb, ready; uint8_t want; } C[] = {
-        { "A 25 ms faster, ready 90%", 60, 190, 15, 60, 215, 18, 0.90, SI_KEEP },
-        { "no difference, n=150/arm", 150, 205, 18, 150, 205, 18, 0.90, SI_OFF },
-        { "A faster, ready 70%", 60, 190, 15, 60, 215, 18, 0.70, SI_OFF },
-        { "only 40 A swipes", 40, 190, 15, 60, 215, 18, 0.90, SI_LEARNING },
-        { "A slower", 80, 225, 15, 80, 205, 15, 0.95, SI_OFF },
-        { "A tail shorter, centre same, 50/arm", 50, 205, 10, 50, 205, 22, 0.90, SI_LEARNING },
-    };
-    int ok_all = 1;
-    char buf[400] = "", *bp = buf;
-    for (size_t c = 0; c < sizeof C / sizeof C[0]; c++) {
-        craft(&si, &r, C[c].na, C[c].ma, C[c].sa, C[c].nb, C[c].mb, C[c].sb, C[c].ready, va, vb);
-        si_metrics_t m;
-        si_metrics_get(&si, &m);
-        uint8_t why, st = si_metrics_decide(&m, &why);
-        double lo, hi, med = boot_p95_diff(va, C[c].na, vb, C[c].nb, &r, &lo, &hi);
-        int ok = st == C[c].want;
-        ok_all &= ok;
-        printf("    gate case %-28s p95 A %3u B %3u ms, ready A %4.1f%%, MW z %+5.2f, bootstrap p95 A-B %+5.0f ms [%+4.0f, %+4.0f] -> %s (%s)%s\n",
-               C[c].name, m.p95_a_ms, m.p95_b_ms, m.ready_a_pm / 10.0, m.z100 / 100.0, med, lo, hi, ST[st], RS[why], ok ? "" : "  <-- WRONG");
-        bp += snprintf(bp, (size_t)(buf + sizeof buf - bp), "%s%s", c ? ", " : "", ST[st]);
-    }
-    row("gate decision on crafted A/B data", ok_all, "6 cases -> %s", buf);
-}
-
-/* end to end: the state machine on simulated swipes, with persistence */
-static void test_runtime_gate(void)
+/* si_warm: the learner says it may be used after 30 updates, and a saved model reloads (the verdict is not in it) */
+static void test_warm(void)
 {
     static si_t si, si2;
     static uint8_t blob[SI_BLOB_BYTES];
-    trng_t r = { 77 };
-    /* (1) the learner really helps: arm A settles 25 ms sooner */
-    si_init(&si, 5, 0x1111);
+    trng_t r = { 99 };
+    si_init(&si, 5, 0x3333);
     uint32_t clock = 1000;
-    int page = 0, n = 0, keep_at = -1, a_in_keep = 0, b_in_keep = 0;
-    for (; n < 2000; n++) {
-        bool acts = si_acts(&si);
-        uint8_t st0 = S(&si)->m.state;
-        double lat = 205 + 18 * tr_n(&r) - (acts ? 25 : 0);
-        gres_t g = sim_gesture(&si, &r, &HABIT_A, &page, 5, &clock, 0xFF, (uint32_t)(lat < 150 ? 150 : lat));
-        if (st0 == SI_KEEP && g.swipe) { if (acts) a_in_keep++; else b_in_keep++; }
-        if (keep_at < 0 && S(&si)->m.state == SI_KEEP) keep_at = n + 1;
-        if (S(&si)->m.state == SI_OFF) break;
+    int page = 0, warm_at = -1;
+    for (int n = 0; n < 60; n++) {
+        if (warm_at < 0 && si_warm(&si)) warm_at = n;
+        sim_gesture(&si, &r, &HABIT_A, &page, 5, &clock, 0xFF, 200);
     }
-    si_metrics_t m;
-    si_metrics_get(&si, &m);
-    char line[96];
-    si_metrics_line(&si, line, sizeof line);
-    double bfrac = (double)b_in_keep / (a_in_keep + b_in_keep);
-    int ok1 = m.state == SI_KEEP && keep_at > 0 && bfrac > 0.06 && bfrac < 0.14;
-    printf("    runtime, helpful learner: KEEP after %d gestures, then B share %.1f%%; \"%s\"\n", keep_at, 100 * bfrac, line);
-    /* (2) no gain: arm A same latency -> OFF, persisted, survives reload with the same firmware, re-tests on a new one */
-    si_init(&si, 5, 0x2222);
-    clock = 1000; page = 0;
-    int off_at = -1;
-    for (n = 0; n < 3000 && S(&si)->m.state != SI_OFF; n++)
-        sim_gesture(&si, &r, &HABIT_A, &page, 5, &clock, 0xFF, (uint32_t)(205 + 18 * fabs(tr_n(&r))));
-    if (S(&si)->m.state == SI_OFF) off_at = n;
-    si_metrics_line(&si, line, sizeof line);
     size_t nb = si_save(&si, blob, sizeof blob, 0xF00D);
     si_init(&si2, 5, 0);
-    bool l1 = si_load(&si2, blob, nb, 0xF00D);
-    int same = l1 && S(&si2)->m.state == SI_OFF && !si_acts(&si2);
+    bool l1 = si_load(&si2, blob, nb, 0xBEEF);          /* another firmware tag: the model still loads */
     float x[D] = { 0.1f, 0, 0.2f, 0, 0.3f, -1, 0 }, h1[H], h2[H], y1[K], y2[K];
     hidden(S(&si), x, h1); output(S(&si), h1, y1); hidden(S(&si2), x, h2); output(S(&si2), h2, y2);
-    same = same && y1[0] == y2[0] && y1[1] == y2[1] && y1[2] == y2[2];
-    si_init(&si2, 5, 0);
-    bool l2 = si_load(&si2, blob, nb, 0xBEEF);
-    int retest = l2 && S(&si2)->m.state == SI_LEARNING;
+    int same = l1 && si_warm(&si2) && y1[0] == y2[0] && y1[1] == y2[1] && y1[2] == y2[2];
     blob[100] ^= 1;
     si_init(&si2, 5, 0);
     int corrupt = !si_load(&si2, blob, nb, 0xF00D) && !si_load(&si2, blob, nb - 1, 0xF00D);
-    printf("    runtime, useless learner: OFF after %d gestures; \"%s\"; blob %zu B\n", off_at, line, nb);
-    row("runtime gate + persistence", ok1 && off_at > 0 && same && retest && corrupt,
-        "helpful: KEEP at %d, B %.1f%% after; useless: OFF at %d; reload same fw %s, new fw -> LEARNING %s, corrupt rejected %s",
-        keep_at, 100 * bfrac, off_at, same ? "ok" : "BAD", retest ? "ok" : "BAD", corrupt ? "ok" : "BAD");
+    row("warm-up + persistence", warm_at == 30 && same && corrupt, "warm after %d gestures (30 updates); reload on any firmware %s; "
+        "corrupt rejected %s", warm_at, same ? "ok" : "BAD", corrupt ? "ok" : "BAD");
 }
 
 static void test_prior(void)
@@ -499,18 +357,16 @@ static void test_cost(void)
 
 int main(void)
 {
-    printf("swipe_intent host tests: sizeof(si_t) = %zu B (limit 1792), blob %d B\n", sizeof(si_t), SI_BLOB_BYTES);
+    printf("swipe_intent host tests: sizeof(si_t) = %zu B (limit 1024), blob %d B\n", sizeof(si_t), SI_BLOB_BYTES);
     test_tanh();
     test_rls_batch();
     test_learning();
     test_drift();
     test_safety();
-    test_quantile();
-    test_gate();
-    test_runtime_gate();
+    test_warm();
     test_prior();
     test_cost();
-    row("object size", sizeof(si_t) <= 1792, "%zu B", sizeof(si_t));
+    row("object size", sizeof(si_t) <= 1024, "%zu B", sizeof(si_t));
     printf("\n%-40s %-5s %s\n", "test", "", "result");
     for (int i = 0; i < g_nrows; i++) printf("%-40s %-5s %s\n", g_rows[i].name, g_rows[i].pass ? "PASS" : "FAIL", g_rows[i].detail);
     printf("\n%s (%d failure%s)\n", g_fail ? "FAILED" : "ALL PASS", g_fail, g_fail == 1 ? "" : "s");

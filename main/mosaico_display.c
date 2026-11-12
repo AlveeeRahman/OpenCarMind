@@ -1848,7 +1848,7 @@ static void slide_attach(void) {}
 /* ---------- smart swipe: the swipe_intent learner on the launcher's tileview ----------
    Touch samples reach the learner from touch_read_cb (LVGL task, before LVGL processes them); it predicts the outcome
    (next / previous / stay) 40 ms after touch-down. Nothing here triggers an action: the tileview follows the finger 1:1
-   as before and LVGL alone picks the page. On arm-A gestures (si_acts) the firmware may only
+   as before and LVGL alone picks the page. On the gestures the OS gate puts in the feature arm (A1) the firmware may only
      (a) keep the Home picture current while the user rests on a page from which the page prior says Home comes next,
          and skip the Home card redraw after a slide when the picture is already current;
      (b) at the lift (LV_EVENT_SCROLL_THROW_BEGIN), run LVGL's own snap decision at once instead of on the next
@@ -1856,7 +1856,8 @@ static void slide_attach(void) {}
    Arm B predicts and measures only. Settled = the snap's SCROLL_END if the destination's picture was current, else the
    end of the corrective redraw (the next RENDER_READY after slide_tick re-enables invalidation). */
 EXT_RAM_BSS_ATTR static uint8_t s_si_blob[SI_BLOB_BYTES];
-static si_t s_si;                                      /* 1680 B, internal RAM: the RLS loop stays out of PSRAM */
+static si_t s_si;                                      /* 904 B, internal RAM: the RLS loop stays out of PSRAM */
+static um_t s_um;                                      /* the OS feature gate (ui_metrics.h), defined with Smart UI below */
 static bool s_si_on, s_si_gest, s_si_lifted;
 static int s_si_wait = -1;                             /* page whose corrective redraw ends the settle, -1 none */
 static uint8_t s_si_page0, s_si_state_saved = 0xFF;
@@ -1881,33 +1882,36 @@ static void si_log(const char *why)
 {
     char l[96];
     si_metrics_t m;
-    si_metrics_line(&s_si, l, sizeof l);
+    um_line(&s_um, UM_SWIPE, l, sizeof l);              /* the verdict is the OS gate's */
     si_metrics_get(&s_si, &m);
     ESP_LOGW(TAG, "%s: %s | z %.2f, acc %.1f %%, updates %lu, resets %u, early snaps %lu, warm pictures %lu, worst cycles "
-             "predict %lu settle %lu (%.1f / %.1f us)", why, l, m.z100 / 100.0, m.acc_pm / 10.0, (unsigned long)m.updates,
+             "predict %lu settle %lu (%.1f / %.1f us)", why, l, s_um.k[UM_SWIPE].v.z100 / 100.0, m.acc_pm / 10.0, (unsigned long)m.updates,
              m.resets, (unsigned long)s_si_early, (unsigned long)s_si_warm, (unsigned long)s_si_cyc_move,
              (unsigned long)s_si_cyc_settle, s_si_cyc_move / (double)CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ,
              s_si_cyc_settle / (double)CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ);
 }
 
-/* after every learned gesture: the SYS-line summary, and NVS when the gate state changed or every 32 gestures */
+/* after every learned gesture: the SYS-line summary (the OS gate's numbers: A1 = the learner acts, A0 = it only
+   watches), the model to NVS every 32 gestures, and a log line when the gate's verdict changed */
 static void si_publish(void)
 {
-    static const char *const ST[] = { "learning", "on", "off" };
-    si_metrics_t m;
+    static const char *const ST[] = { "learning", "on", "off", "warm-up" };
+    um_stats_t a1, a0;
     char b[sizeof s_si_brief];
-    si_metrics_get(&s_si, &m);
-    snprintf(b, sizeof b, "%s,%u/%ums,rdy%u,n%u/%u", ST[m.state < 3 ? m.state : 0], m.p95_a_ms, m.p95_b_ms,
-             (m.ready_a_pm + 5u) / 10u, m.n_a, m.n_b);
+    uint8_t st = s_um.k[UM_SWIPE].v.state;
+    um_stats(&s_um, UM_SWIPE, UM_A1, &a1);
+    um_stats(&s_um, UM_SWIPE, UM_A0, &a0);
+    snprintf(b, sizeof b, "%s,%u/%ums,rdy%u,n%u/%u", ST[st < 4 ? st : 0], a1.p95, a0.p95, (a1.ready_pm + 5u) / 10u, a1.n, a0.n);
     portENTER_CRITICAL(&s_si_mux);
     memcpy(s_si_brief, b, sizeof b);
     portEXIT_CRITICAL(&s_si_mux);
-    bool changed = m.state != s_si_state_saved;
-    if (changed || ++s_si_n % 32 == 0) {
+    if (++s_si_n % 32 == 0) {
         size_t n = si_save(&s_si, s_si_blob, sizeof s_si_blob, s_si_tag);
         if (n) mosaico_si_save_request(s_si_blob, n);
-        if (changed && s_si_state_saved != 0xFF) si_log("smart swipe decision");
-        s_si_state_saved = m.state;
+    }
+    if (st != s_si_state_saved) {
+        if (s_si_state_saved != 0xFF && (st == UM_KEEP || st == UM_OFF)) si_log("smart swipe decision");
+        s_si_state_saved = st;
     }
 }
 
@@ -1935,7 +1939,8 @@ static void si_touch(lv_indev_t *indev, bool pressed, int32_t x, int32_t y)
         s_si_gest = s_tv && s_cur < 0 && lv_screen_active() == s_home && !s_modal_open() && lv_obj_get_scroll_x(s_tv) % UI_W == 0;
         if (!s_si_gest) return;
         s_si_page0 = (uint8_t)lv_obj_get_index(lv_tileview_get_tile_active(s_tv));
-        s_si_act = si_acts(&s_si);
+        /* the OS gate draws the arm (and counts its warm-up); the learner acts only on A1 and once it is warm */
+        s_si_act = si_warm(&s_si) && um_arm(&s_um, UM_SWIPE) == UM_A1;
         s_si_pred.dest = -1;
         si_begin(&s_si, now, (int16_t)x, (int16_t)y, s_si_page0);
     } else if (pressed) {
@@ -1995,7 +2000,8 @@ static void si_render_ready(void) { if (s_si_wait >= 0) si_settle_at(si_now(), s
 static void si_warm_tick(void)
 {
     uint8_t pct;
-    if (!s_si_on || !s_tv || s_si_gest || s_sliding || !si_acts(&s_si) || s_cur >= 0 || lv_screen_active() != s_home) return;
+    if (!s_si_on || !s_tv || s_si_gest || s_sliding || !si_warm(&s_si) || s_um.k[UM_SWIPE].v.state != UM_KEEP || s_cur >= 0 ||
+        lv_screen_active() != s_home) return;
     int32_t sx = lv_obj_get_scroll_x(s_tv);
     if (sx % UI_W || sx == 0 || lv_anim_get(s_tv, NULL) || lv_display_get_inactive_time(s_disp) < 700 || si_fresh(0)) return;
     if (si_hint_page(&s_si, (uint8_t)(sx / UI_W), &pct) != 0 || pct < 40) return;
@@ -2020,12 +2026,11 @@ static void si_boot(void)
     memcpy(&s_si_tag, d->app_elf_sha256, sizeof s_si_tag);
     si_init(&s_si, (uint8_t)s_ntiles, 0x5EED1E55u);
     bool loaded = mosaico_si_load(s_si_blob, &n) && si_load(&s_si, s_si_blob, n, s_si_tag);
-    if (!s_set_loaded) si_retest(&s_si);
     s_si_on = true;
     si_log(loaded ? "smart swipe: model loaded" : "smart swipe: new model");
 }
 
-void ui_swipe_status(char *buf, size_t n) { si_metrics_line(&s_si, buf, n); }
+void ui_swipe_status(char *buf, size_t n) { um_line(&s_um, UM_SWIPE, buf, n); }   /* the OS gate's line */
 
 void mosaico_display_swipe_brief(char *out, size_t n)
 {
@@ -2050,13 +2055,8 @@ void mosaico_display_swipe_brief(char *out, size_t n)
    or Back counts only if LVGL then sends CLICKED (a press that slid off opened nothing). The settle is polled by a
    16 ms LVGL timer that runs only while an event waits for its settle. */
 #include "src/misc/lv_event_private.h"                /* lv_event_dsc_t.filter: which events a control listens to */
-#if CONFIG_OCM_UI_PREFETCH
-#define UM_FAMILY ((1u << UM_APP) | (1u << UM_BACK))   /* classes with a prefetch action (arm A1) */
-#else
-#define UM_FAMILY 0u                                   /* no prefetch action: every event is A0 */
-#endif
 #define UM_RING 512
-static um_t s_um;                                     /* 2.8 KB internal RAM: touched on every event */
+static um_t s_um;                                     /* 4.1 KB internal RAM: touched on every event */
 EXT_RAM_BSS_ATTR static uint8_t s_um_blob[UM_BLOB_MAX];
 static uint32_t s_um_since_save, s_um_tag;
 static uint32_t s_um_cyc_ev, s_um_cyc_ev_sum, s_um_cyc_n, s_um_cyc_gate, s_um_interrupted, s_um_cancelled;
@@ -2146,7 +2146,7 @@ static void um_touch(lv_indev_t *indev, bool pressed)
         s_ue.page0 = (uint8_t)lv_obj_get_index(lv_tileview_get_tile_active(s_tv));
         s_ue.arm = UM_A0;
 #if CONFIG_OCM_SWIPE_INTENT
-        s_ue.arm = s_si_act ? UM_A1 : UM_A0;             /* smart swipe's own A/B arm: it gates itself */
+        s_ue.arm = s_si_act ? UM_A1 : UM_A0;             /* the arm the OS gate drew at the press (si_touch) */
         s_ue.si_dest = s_si_pred.dest;
         s_ue.fresh = si_fresh_mask();
 #endif
@@ -2236,7 +2236,7 @@ static void um_finish(uint32_t lat, uint8_t why)
     if (ce > s_um_cyc_ev) s_um_cyc_ev = ce;
     s_um_cyc_ev_sum += ce;
     s_um_cyc_n++;
-    if ((UM_FAMILY >> c) & 1u) {
+    if ((s_um.family >> c) & 1u) {
         bool changed = false;
         if ((s_um.k[c].n[0] + s_um.k[c].n[1]) % 10u == 0) {   /* the gate looks every 10 samples of a gated class */
             changed = um_gate_step(&s_um);
@@ -2273,13 +2273,27 @@ static void um_boot(void)
     const esp_app_desc_t *d = esp_app_get_description();
     size_t n = sizeof s_um_blob;
     memcpy(&s_um_tag, d->app_elf_sha256, sizeof s_um_tag);
-    um_init(&s_um, (uint32_t)esp_random() | 1u, UM_FAMILY, s_um_tag);
+    um_init(&s_um, (uint32_t)esp_random() | 1u, 0, s_um_tag);
+    /* the features the OS gate runs (ui_metrics.h): each its class, policy and the locked lift-to-settled metric */
+#if CONFIG_OCM_UI_PREFETCH
+    static const um_feature_t pf_app = { "Smart UI app", UM_APP, UM_POL_PREFETCH, UM_MET_LIFT_SETTLE, NULL };
+    static const um_feature_t pf_back = { "Smart UI Back", UM_BACK, UM_POL_PREFETCH, UM_MET_LIFT_SETTLE, NULL };
+    um_register(&s_um, &pf_app);
+    um_register(&s_um, &pf_back);
+#endif
+#if CONFIG_OCM_SWIPE_INTENT
+    static const um_feature_t swipe = { "Smart swipe", UM_SWIPE, UM_POL_LEARNER, UM_MET_LIFT_SETTLE, NULL };
+    um_register(&s_um, &swipe);
+#endif
     bool loaded = mosaico_um_load(s_um_blob, &n) && um_load(&s_um, s_um_blob, n);
+#if CONFIG_OCM_SWIPE_INTENT
+    if (!s_set_loaded) um_reset_class(&s_um, UM_SWIPE);   /* a settings reset re-tests Smart swipe, as before */
+#endif
     s_um_indev = lv_indev_get_next(NULL);
     s_um_timer = lv_timer_create(um_poll_cb, UM_REFR_MS, NULL);
     lv_timer_pause(s_um_timer);
     s_um_on = true;
-    ESP_LOGI(TAG, "smart UI metrics: %s, gated classes 0x%02x", loaded ? "gate state loaded" : "new gate state", (unsigned)UM_FAMILY);
+    ESP_LOGI(TAG, "smart UI metrics: %s, OS feature gate classes 0x%02x", loaded ? "gate state loaded" : "new gate state", (unsigned)s_um.family);
 }
 
 #endif

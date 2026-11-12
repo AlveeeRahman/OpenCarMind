@@ -1,4 +1,4 @@
-/* swipe_intent.c: OS-ELM swipe predictor, page prior, latency histograms and the A/B gate. See swipe_intent.h.
+/* swipe_intent.c: OS-ELM swipe predictor and page prior (its A/B gate is the OS feature gate). See swipe_intent.h.
  *
  * ---------------------------------------------------------------------------------------------------------------
  * 1. The model (extreme learning machine, ELM)
@@ -35,22 +35,12 @@
  *      is not finite. beta is zeroed only if it is not finite itself.
  *    - Features are clipped, so no input can overflow tanh or the products.
  *
- * 4. Latency metric: fixed histograms, not P-square
- *    Two arms x 192 bins (uint16) = 768 B: the Smart UI latency bins (ui_metrics.h), 8 ms up to 1 s, then 32 ms up to
- *    3 s. The first version had 96 bins of 5 ms, which capped every swipe at 475 ms while the owner's real swipes had a
- *    p95 of 1,055 ms, so the KEEP test could never see a difference above 475 ms. P-square (Jain & Chlamtac 1985, as
- *    recalled, UNVERIFIED) would need 5 heights + 5 positions per arm (about 40 B) but it gives no error bound for small n
- *    and cannot feed a rank test. The histogram gives the p95 within half a bin (4 ms below 1 s, 16 ms above), and the
- *    Mann-Whitney U of the two arms straight from the bins (section 5). That second use decided it: the gate needs an
- *    uncertainty figure, and the histogram is the smallest structure that gives one on the device. Bins halve when an arm reaches 1024 samples (recency decay).
- *
- * 5. Gate uncertainty: Mann-Whitney U from the binned counts
- *    U = #{(a, b): a < b} + 0.5 #{a == b} over all pairs of an A and a B sample (same bin = tie). Under "no difference"
- *    E[U] = nA nB / 2 and Var[U] = nA nB (nA + nB + 1) / 12 (no tie correction; ties lower the true variance, so the
- *    test is conservative). z = (U - E) / sqrt(Var) > 1.645 is one-sided 5 %: A tends to settle sooner than B. The
- *    gate also needs p95_A < p95_B and ready_A > 80 %. */
+ * 4. The A/B gate is not here any more (mossREV 2.0.0). Smart swipe is a feature registered with the OS feature gate
+ *    (ui_metrics.h, policy "learner"): the OS draws each swipe's arm, measures lift -> settled with the locked
+ *    metric, runs the Mann-Whitney test with Holm's correction, saves the verdict per firmware and switches the
+ *    learner's action on or off. This module only learns and predicts, and says when it is warm (si_warm). The
+ *    histogram range and the rank test it used moved with the gate (tests/host/test_ui_metrics.c). */
 #include "swipe_intent.h"
-#include "ui_metrics.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -63,11 +53,7 @@
 #define DELTA  1e-2f
 #define P0     (1.0f / DELTA)
 #define TRACE_MAX ((float)H * P0)
-#define BINS   UM_NB                      /* the Smart UI latency bins: 8 ms to 1 s, then 32 ms to 3 s (ui_metrics.h) */
-#define HALVE_AT 1024
-#define WARMUP 30                         /* RLS updates before arm A may act and metrics count */
-#define MAX_PER_ARM (3 * SI_MIN_PER_ARM)  /* "A looks better but not significant": keep sampling up to this */
-#define KEEP_B_PCT 10                     /* KEEP: shadow sampling rate that keeps checking */
+#define WARMUP 30                         /* RLS updates before the learner may act (si_warm) */
 
 enum { PH_IDLE = 0, PH_DOWN, PH_LIFTED };
 
@@ -76,21 +62,19 @@ struct si_model {
     float    beta[H * K];                 /* beta[j*K + k] */
     float    P[NP];                       /* upper triangle, row-major */
     uint32_t seed, updates;
-    uint16_t v_p95a, v_p95b, v_ready, v_na, v_nb;   /* the verdict's numbers */
-    int16_t  v_z100;
+    uint16_t rsv_[5];                     /* the old gate's verdict (moved to the OS gate): kept so saved models still load */
+    int16_t  rsv_z_;
     uint8_t  prior[SI_MAX_PAGES][SI_MAX_PAGES];
-    uint8_t  state, reason, npages, pad_;
+    uint8_t  rsv_state_, rsv_reason_, npages, pad_;
 };
 
 struct si_impl {
     struct si_model m;
     float    x[D];                        /* features of the gesture in flight */
     uint32_t rng, t0, tl, tp, t_lift, t_last_swipe;
-    uint16_t hist[2][BINS];
-    uint16_t rdy_hit[2], rdy_n[2];
-    uint16_t acc_hit, acc_n, resets, b_since;
+    uint16_t acc_hit, acc_n, resets, pad16_;
     int16_t  x0, y0, xl, yl, xp, yp;
-    uint8_t  page0, arm, phase, pred_cls, pred_conf, fresh, early, have_x;
+    uint8_t  page0, phase, pred_cls, pred_conf, fresh, early, have_x, pad8_;
 };
 
 typedef char si_size_check[(sizeof(struct si_impl) == sizeof(si_t)) ? 1 : -1];   /* no pointers: same on 32/64 bit */
@@ -219,62 +203,6 @@ static si_pred_t predict(struct si_impl *s, uint32_t t)
     return p;
 }
 
-/* ---------- histograms (the binned histogram and the rank test live in ui_metrics.c, shared with the Smart UI gate) ---------- */
-static uint32_t hist_n(const uint16_t *hb) { return um_hist_n(hb, BINS); }
-
-static uint16_t hist_p95(const uint16_t *hb) { return um_lat_pct(hb, 95); }   /* bin centre: +-4 ms below 1 s, +-16 ms above */
-
-static void hist_add(struct si_impl *s, int arm, uint32_t ms)
-{
-    uint16_t *hb = s->hist[arm];
-    hb[um_lat_bin(ms)]++;                                      /* last bin = overflow (>= 3040 ms) */
-    if (hist_n(hb) >= HALVE_AT) {                              /* recency decay */
-        for (int i = 0; i < BINS; i++) hb[i] = (uint16_t)((hb[i] + 1) / 2);
-        s->rdy_hit[arm] /= 2;
-        s->rdy_n[arm] /= 2;
-    }
-}
-
-/* Mann-Whitney z x 100 (section 5), > 0 when arm A tends to settle sooner */
-static int16_t mw_z100(const uint16_t *a, const uint16_t *b) { return um_mw_z100(a, b, BINS); }
-
-/* ---------- gate ---------- */
-uint8_t si_metrics_decide(const si_metrics_t *m, uint8_t *reason)
-{
-    uint8_t r = SI_R_NONE, st = SI_LEARNING;
-    if (m->n_a >= SI_MIN_PER_ARM && m->n_b >= SI_MIN_PER_ARM) {
-        r = m->ready_a_pm <= 800 ? SI_R_READY_LOW : !(m->p95_a_ms < m->p95_b_ms) ? SI_R_SLOWER
-          : m->z100 < 165 ? SI_R_UNCERTAIN : SI_R_PASS;
-        st = r == SI_R_PASS ? SI_KEEP : SI_OFF;
-        /* A ahead on p95 and ready, but the rank test is not sure yet: one more look at MAX_PER_ARM, then decide */
-        if (r == SI_R_UNCERTAIN && (m->n_a < MAX_PER_ARM || m->n_b < MAX_PER_ARM)) st = SI_LEARNING;
-    }
-    if (reason) *reason = r;
-    return st;
-}
-
-static void coin(struct si_impl *s)
-{
-    uint32_t v = xs32(&s->rng) % 100u;
-    s->arm = (uint8_t)(s->m.state == SI_LEARNING ? v >= 50 : s->m.state == SI_KEEP ? v < KEEP_B_PCT : 1);
-}
-
-static void gate_step(struct si_impl *s)
-{
-    si_metrics_t m;
-    uint8_t r, st;
-    if (s->m.state == SI_OFF || (s->m.state == SI_KEEP && s->b_since < SI_MIN_PER_ARM)) return;   /* KEEP: re-check
-                                                                               after every 50 new shadow samples */
-    si_metrics_get((const si_t *)(void *)s, &m);
-    st = si_metrics_decide(&m, &r);
-    if (s->m.state == SI_LEARNING && st == SI_LEARNING) return;
-    if (s->m.state == SI_KEEP) { st = st == SI_OFF ? SI_OFF : SI_KEEP; r = st == SI_OFF ? SI_R_RECHECK_FAIL : SI_R_PASS; }
-    s->m.state = st; s->m.reason = r;
-    s->m.v_p95a = m.p95_a_ms; s->m.v_p95b = m.p95_b_ms; s->m.v_ready = m.ready_a_pm;
-    s->m.v_na = m.n_a; s->m.v_nb = m.n_b; s->m.v_z100 = m.z100;
-    s->b_since = 0;
-}
-
 /* ---------- public ---------- */
 void si_init(si_t *self, uint8_t n_pages, uint32_t seed)
 {
@@ -285,19 +213,6 @@ void si_init(si_t *self, uint8_t n_pages, uint32_t seed)
     s->rng = s->m.seed ^ 0xA5A5A5A5u;
     if (!s->rng) s->rng = 1;
     p_reset(s);
-    s->arm = 1;                                                 /* warm-up: shadow */
-}
-
-void si_retest(si_t *self)
-{
-    struct si_impl *s = S(self);
-    memset(s->hist, 0, sizeof s->hist);
-    memset(s->rdy_hit, 0, sizeof s->rdy_hit);
-    memset(s->rdy_n, 0, sizeof s->rdy_n);
-    memset(&s->m.v_p95a, 0, 6 * sizeof(uint16_t));             /* v_p95a .. v_z100 */
-    s->m.state = SI_LEARNING; s->m.reason = SI_R_NONE;
-    s->b_since = 0;
-    coin(s);
 }
 
 void si_begin(si_t *self, uint32_t t_ms, int16_t x, int16_t y, uint8_t page)
@@ -350,31 +265,19 @@ void si_settle(si_t *self, uint32_t t_ms, uint8_t final_page)
     float h[H], t[K] = { 0, 0, 0 };
     t[lab] = 1;
     hidden(s, s->x, h);                                        /* recomputed: cheaper than keeping 64 B of h */
-    int hit = s->pred_cls == lab, counted = s->m.updates >= WARMUP && s->m.state != SI_OFF;
+    int hit = s->pred_cls == lab;
+    (void)t_ms;
     if (s->acc_n >= 256) { s->acc_n /= 2; s->acc_hit /= 2; }
     s->acc_n++; s->acc_hit = (uint16_t)(s->acc_hit + hit);
     if (lab != SI_STAY) {
-        if (counted) {
-            int a = s->arm;
-            s->rdy_n[a]++;
-            s->rdy_hit[a] = (uint16_t)(s->rdy_hit[a] + (s->early && hit && ((s->fresh >> final_page) & 1u)));
-            hist_add(s, a, t_ms - s->t_lift);
-            if (a && s->b_since < 0xFFFF) s->b_since++;
-        }
         s->t_last_swipe = s->t_lift | 1u;
         uint8_t *row = s->m.prior[s->page0];
         if (++row[final_page] == 255) for (int j = 0; j < SI_MAX_PAGES; j++) row[j] /= 2;   /* decay */
     }
     rls_update(s, h, t);
-    if (counted) gate_step(s);
-    if (s->m.updates >= WARMUP) coin(s);
 }
 
-bool si_acts(const si_t *self)
-{
-    const struct si_impl *s = CS(self);
-    return s->m.state != SI_OFF && s->m.updates >= WARMUP && s->arm == 0;
-}
+bool si_warm(const si_t *self) { return CS(self)->m.updates >= WARMUP; }
 
 int8_t si_hint_page(const si_t *self, uint8_t page, uint8_t *pct)
 {
@@ -392,39 +295,13 @@ void si_metrics_get(const si_t *self, si_metrics_t *m)
 {
     const struct si_impl *s = CS(self);
     memset(m, 0, sizeof *m);
-    m->state = s->m.state; m->reason = s->m.reason;
     m->updates = s->m.updates; m->resets = s->resets;
     m->acc_pm = s->acc_n ? (uint16_t)(1000u * s->acc_hit / s->acc_n) : 0;
-    if (s->m.state == SI_OFF) {                                 /* frozen at the decision */
-        m->n_a = s->m.v_na; m->n_b = s->m.v_nb; m->p95_a_ms = s->m.v_p95a; m->p95_b_ms = s->m.v_p95b;
-        m->ready_a_pm = s->m.v_ready; m->z100 = s->m.v_z100;
-        return;
-    }
-    m->n_a = (uint16_t)hist_n(s->hist[0]); m->n_b = (uint16_t)hist_n(s->hist[1]);
-    m->p95_a_ms = hist_p95(s->hist[0]); m->p95_b_ms = hist_p95(s->hist[1]);
-    m->ready_a_pm = s->rdy_n[0] ? (uint16_t)(1000u * s->rdy_hit[0] / s->rdy_n[0]) : 0;
-    m->ready_b_pm = s->rdy_n[1] ? (uint16_t)(1000u * s->rdy_hit[1] / s->rdy_n[1]) : 0;
-    m->z100 = mw_z100(s->hist[0], s->hist[1]);
-}
-
-/* "Smart swipe: learning 37/100, p95 212/230 ms, ready 84 %" (p95 with / without the learner; the count only while
-   learning: warm-up gestures, then completed A/B swipes against the 2 x 50 needed) */
-int si_metrics_line(const si_t *self, char *buf, size_t n)
-{
-    static const char *const R[] = { "learning", "on", "off (slower)", "off (unsure)", "off (not ready)", "off (re-check)" };
-    si_metrics_t m;
-    char prog[24] = "";
-    si_metrics_get(self, &m);
-    unsigned k = m.state == SI_KEEP ? 1u : m.state == SI_OFF ? (m.reason >= 2 && m.reason < 6 ? m.reason : 2u) : 0u;
-    if (m.state == SI_LEARNING)
-        snprintf(prog, sizeof prog, m.updates < WARMUP ? " warm-up %u/%u" : " %u/%u",
-                 m.updates < WARMUP ? (unsigned)m.updates : (unsigned)(m.n_a + m.n_b), m.updates < WARMUP ? WARMUP : 2 * SI_MIN_PER_ARM);
-    return snprintf(buf, n, "Smart swipe: %s%s, p95 %u/%u ms, ready %u %%", R[k], prog, m.p95_a_ms, m.p95_b_ms,
-                    (m.ready_a_pm + 5u) / 10u);
 }
 
 /* ---------- persistence ----------
-   Blob: magic, dims, fw_tag (3 x u32), struct si_model (824 B), FNV-1a of all that (u32) = SI_BLOB_BYTES. Written and
+   Blob: magic, dims, fw_tag (3 x u32, the tag is no longer read: the OS gate keeps the verdict per firmware), struct
+   si_model (824 B), FNV-1a of all that (u32) = SI_BLOB_BYTES. Written and
    checked in the caller's buffer, so there is no 840 B copy on the task stack; the buffer may be unaligned. */
 #define SI_MAGIC 0x31495353u                                     /* "SSI1": bump the digit when the layout changes */
 #define SI_DIMS  ((uint32_t)(H | K << 8 | D << 16 | 1u << 24))   /* hidden, outputs, inputs, version */
@@ -452,7 +329,7 @@ size_t si_save(const si_t *self, void *buf, size_t cap, uint32_t fw_tag)
     return SI_BLOB_BYTES;
 }
 
-/* call right after si_init (the histograms are not persisted) */
+/* call right after si_init */
 bool si_load(si_t *self, const void *buf, size_t n, uint32_t fw_tag)
 {
     struct si_impl *s = S(self);
@@ -466,10 +343,9 @@ bool si_load(si_t *self, const void *buf, size_t n, uint32_t fw_tag)
         for (int r = 0; r < H && j >= 0; r++) diag |= j == pidx(r, r);
         if (!fin(v) || (diag && !(v > 0))) return false;
     }
-    uint8_t st = m[offsetof(struct si_model, state)], np = m[offsetof(struct si_model, npages)];
-    if (st > SI_OFF || np != s->m.npages) return false;
+    uint8_t np = m[offsetof(struct si_model, npages)];
+    (void)fw_tag;
+    if (np != s->m.npages) return false;
     memcpy(&s->m, m, sizeof s->m);
-    if (rd32(b + 8) != fw_tag || st == SI_LEARNING) si_retest(self);   /* new firmware: keep the model, re-test */
-    else coin(s);                                                    /* same firmware: the verdict stands */
     return true;
 }

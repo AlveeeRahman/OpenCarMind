@@ -16,8 +16,13 @@
  *    Phi^-1(1 - alpha / (m - i)). The critical values below are Phi^-1(1 - 0.05 / k) rounded up to 0.01, so an integer
  *    z x 100 (truncated) at or above them is always past the exact value.
  *
- * 4. The settle detector is a small state machine fed by LVGL's display events; see the header. */
+ * 4. The settle detector is a small state machine fed by LVGL's display events; see the header.
+ *
+ * 5. The feature gate's thresholds, here and nowhere else (the owner's rule, 2026-11-11): KEEP needs at least
+ *    UM_MIN_PER_ARM samples per arm, a lower p95 with the feature, its ready share above UM_READY_PM per mille, and
+ *    the Holm-corrected one-sided Mann-Whitney test. "Uncertain" samples on to UM_MAX_PER_ARM, then turns it off. */
 #include "ui_metrics.h"
+#include <stdio.h>
 #include <string.h>
 #ifdef ESP_PLATFORM
 #include "esp_attr.h"
@@ -25,6 +30,17 @@
 #else
 #define UM_HOT
 #endif
+
+#define UM_HALVE_AT     1024    /* an arm's bins halve when it reaches this many samples (recency decay) */
+#define UM_MIN_PER_ARM  50
+#define UM_MAX_PER_ARM  150
+#define UM_READY_PM     800     /* ready must be ABOVE this, per mille */
+/* the two policies (header): warm-up events, the A0 share kept in KEEP (per cent), the Holm family */
+static const struct { uint16_t warmup; uint8_t shadow_pct, family; } POL[UM_POL_N] = {
+    [UM_POL_PREFETCH] = { 10, 0, 0 },
+    [UM_POL_LEARNER]  = { 30, 10, 1 },
+};
+#define UM_FAMILIES 2
 
 /* ---------- histograms ---------- */
 uint32_t um_hist_n(const uint16_t *h, int nb)
@@ -150,16 +166,27 @@ static void class_clear(um_t *m, int c)
     memset(m->k[c].rdy, 0, sizeof m->k[c].rdy);
     memset(&m->k[c].v, 0, sizeof m->k[c].v);
     m->k[c].seen = 0;
+    m->a0_since[c] = 0;
     m->k[c].v.state = gated(m, (uint8_t)c) ? UM_WARMUP : UM_LEARNING;
 }
 
 void um_init(um_t *m, uint32_t seed, uint8_t family, uint32_t fw_tag)
 {
     memset(m, 0, sizeof *m);
-    m->family = (uint8_t)(family & ((1u << UM_NCLASS) - 1u) & ~(1u << UM_SWIPE));   /* smart swipe has its own gate */
+    m->family = (uint8_t)(family & ((1u << UM_NCLASS) - 1u));
     m->rng = seed ? seed : 0x2545F491u;
     m->fw_tag = fw_tag;
-    for (int c = 0; c < UM_NCLASS; c++) class_clear(m, c);
+    for (int c = 0; c < UM_NCLASS; c++) class_clear(m, c);     /* pol[] = UM_POL_PREFETCH (0) */
+}
+
+bool um_register(um_t *m, const um_feature_t *f)
+{
+    if (!f || f->cls >= UM_NCLASS || f->policy >= UM_POL_N || f->metric != UM_MET_LIFT_SETTLE) return false;
+    m->family |= (uint8_t)(1u << f->cls);
+    m->pol[f->cls] = f->policy;
+    m->feat[f->cls] = f;
+    class_clear(m, f->cls);
+    return true;
 }
 
 void um_reset_verdicts(um_t *m)
@@ -167,11 +194,13 @@ void um_reset_verdicts(um_t *m)
     for (int c = 0; c < UM_NCLASS; c++) class_clear(m, c);
 }
 
+void um_reset_class(um_t *m, uint8_t c) { if (c < UM_NCLASS) class_clear(m, c); }
+
 UM_HOT uint8_t um_arm(um_t *m, uint8_t c)
 {
     if (!gated(m, c)) return UM_A0;
     switch (m->k[c].v.state) {
-    case UM_KEEP:     return UM_A1;
+    case UM_KEEP:     return POL[m->pol[c]].shadow_pct && xs32(&m->rng) % 100u < POL[m->pol[c]].shadow_pct ? UM_A0 : UM_A1;
     case UM_LEARNING: return (uint8_t)((xs32(&m->rng) >> 7) & 1u);
     default:          return UM_A0;                       /* warm-up, OFF */
     }
@@ -184,10 +213,11 @@ UM_HOT void um_record(um_t *m, uint8_t c, uint8_t arm, uint32_t lat_ms, bool rea
     if (flags & UM_F_TIMEOUT) m->k[c].timeouts++;
     if (flags & UM_F_INTERRUPTED) m->k[c].interrupted++;
     if (gated(m, c) && m->k[c].v.state == UM_WARMUP) {           /* warm-up events are not A/B samples */
-        if (++m->k[c].seen >= UM_WARMUP) m->k[c].v.state = UM_LEARNING;
+        if (++m->k[c].seen >= POL[m->pol[c]].warmup) m->k[c].v.state = UM_LEARNING;
         return;
     }
     if (m->k[c].seen < 0xFFFF) m->k[c].seen++;
+    if (m->k[c].v.state == UM_KEEP && arm == UM_A0 && m->a0_since[c] < 0xFFFF) m->a0_since[c]++;
     uint16_t *h = m->hist[c][arm];
     h[um_lat_bin(lat_ms)]++;
     m->k[c].n[arm]++;
@@ -224,21 +254,25 @@ uint8_t um_decide(uint16_t n0, uint16_t n1, uint16_t p95_0, uint16_t p95_1, uint
     return st;
 }
 
-bool um_gate_step(um_t *m)
+/* One Holm family: the classes still learning with enough data, and KEEP classes of a shadow policy due for their
+   re-check, are tested together; decided classes keep their stored z in the ranking. */
+static bool gate_family(um_t *m, int fam)
 {
     int16_t z[UM_NCLASS] = { 0 };
-    uint8_t has[UM_NCLASS] = { 0 }, sig[UM_NCLASS], idx[UM_NCLASS], k = 0, live = 0;
+    uint8_t has[UM_NCLASS] = { 0 }, sig[UM_NCLASS], idx[UM_NCLASS], live_c[UM_NCLASS] = { 0 }, k = 0, live = 0;
     um_stats_t s0[UM_NCLASS], s1[UM_NCLASS];
     for (int c = 0; c < UM_NCLASS; c++) {
-        if (!gated(m, (uint8_t)c)) continue;
-        uint8_t i = k++;
+        if (!gated(m, (uint8_t)c) || POL[m->pol[c]].family != fam) continue;
+        uint8_t i = k++, st = m->k[c].v.state;
         idx[i] = (uint8_t)c;
-        if (m->k[c].v.state == UM_KEEP || m->k[c].v.state == UM_OFF) { z[i] = m->k[c].v.z100; has[i] = m->k[c].v.n0 >= UM_MIN_PER_ARM; continue; }
-        if (m->k[c].v.state != UM_LEARNING || m->k[c].n[0] < UM_MIN_PER_ARM || m->k[c].n[1] < UM_MIN_PER_ARM) continue;
+        bool recheck = st == UM_KEEP && POL[m->pol[c]].shadow_pct && m->a0_since[c] >= UM_MIN_PER_ARM;
+        if ((st == UM_KEEP || st == UM_OFF) && !recheck) { z[i] = m->k[c].v.z100; has[i] = m->k[c].v.n0 >= UM_MIN_PER_ARM; continue; }
+        if ((st != UM_LEARNING && !recheck) || m->k[c].n[0] < UM_MIN_PER_ARM || m->k[c].n[1] < UM_MIN_PER_ARM) continue;
         um_stats(m, (uint8_t)c, 0, &s0[c]);
         um_stats(m, (uint8_t)c, 1, &s1[c]);
         z[i] = um_mw_z100(m->hist[c][1], m->hist[c][0], UM_NB);   /* > 0: A1 settles sooner */
         has[i] = 1;
+        live_c[i] = 1;
         live++;
     }
     if (!live) return false;
@@ -246,15 +280,46 @@ bool um_gate_step(um_t *m)
     bool changed = false;
     for (int i = 0; i < k; i++) {
         int c = idx[i];
-        if (m->k[c].v.state != UM_LEARNING || !has[i]) continue;
+        if (!live_c[i]) continue;
         uint8_t r, st = um_decide(s0[c].n, s1[c].n, s0[c].p95, s1[c].p95, s1[c].ready_pm, sig[i], &r);
-        if (st == UM_LEARNING) continue;
         um_verdict_t *v = &m->k[c].v;
+        if (v->state == UM_KEEP) {                               /* the re-check: only a clear failure turns it off */
+            m->a0_since[c] = 0;
+            if (st != UM_OFF) { st = UM_KEEP; r = UM_R_PASS; } else r = UM_R_RECHECK_FAIL;
+        } else if (st == UM_LEARNING) continue;
+        bool ch = st != v->state;
+        changed |= ch;
         v->state = st; v->reason = r; v->z100 = z[i];
         v->p95_0 = s0[c].p95; v->p95_1 = s1[c].p95; v->ready_pm = s1[c].ready_pm; v->n0 = s0[c].n; v->n1 = s1[c].n;
-        changed = true;
+        if (ch && m->feat[c] && m->feat[c]->action) m->feat[c]->action(st == UM_KEEP);   /* the OS switches the feature */
     }
     return changed;
+}
+
+bool um_gate_step(um_t *m)
+{
+    bool changed = false;
+    for (int f = 0; f < UM_FAMILIES; f++) changed |= gate_family(m, f);
+    return changed;
+}
+
+int um_line(const um_t *m, uint8_t c, char *buf, size_t n)
+{
+    static const char *const R[] = { "learning", "on", "off (slower)", "off (unsure)", "off (not ready)", "off (re-check)" };
+    if (!buf || !n) return 0;
+    if (c >= UM_NCLASS) { buf[0] = 0; return 0; }
+    const um_verdict_t *v = &m->k[c].v;
+    const char *name = m->feat[c] && m->feat[c]->name ? m->feat[c]->name : um_class_name(c);
+    char prog[24] = "";
+    unsigned k = v->state == UM_KEEP ? 1u : v->state == UM_OFF ? (v->reason >= 2 && v->reason <= UM_R_RECHECK_FAIL ? v->reason : 2u) : 0u;
+    if (v->state == UM_WARMUP) snprintf(prog, sizeof prog, " warm-up %u/%u", m->k[c].seen, POL[m->pol[c]].warmup);
+    else if (v->state == UM_LEARNING) snprintf(prog, sizeof prog, " %u/%u", (unsigned)(m->k[c].n[0] + m->k[c].n[1]), 2 * UM_MIN_PER_ARM);
+    um_stats_t s0, s1;
+    um_stats(m, c, 0, &s0);
+    um_stats(m, c, 1, &s1);
+    unsigned p1 = v->state == UM_OFF ? v->p95_1 : s1.p95, p0 = v->state == UM_OFF ? v->p95_0 : s0.p95;
+    unsigned rd = v->state == UM_OFF ? v->ready_pm : s1.ready_pm;
+    return snprintf(buf, n, "%s: %s%s, p95 %u/%u ms, ready %u %%", name, R[k], prog, p1, p0, (rd + 5u) / 10u);
 }
 
 /* ---------- persistence ----------
@@ -308,7 +373,7 @@ bool um_load(um_t *m, const void *buf, size_t n)
     size_t o = 12;
     um_verdict_t v[UM_NCLASS];
     memcpy(v, b + o, sizeof v); o += sizeof v;
-    for (int c = 0; c < UM_NCLASS; c++) if (v[c].state > UM_WARMUP || v[c].reason > UM_R_READY_LOW) return false;
+    for (int c = 0; c < UM_NCLASS; c++) if (v[c].state > UM_WARMUP || v[c].reason > UM_R_RECHECK_FAIL) return false;
     for (int c = 0; c < UM_NCLASS; c++) { m->k[c].v = v[c]; memcpy(&m->k[c].seen, b + o, 2); o += 2; }
     for (int c = 0; c < UM_NCLASS; c++) {
         if (!gated(m, (uint8_t)c)) { m->k[c].v.state = UM_LEARNING; continue; }
