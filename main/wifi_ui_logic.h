@@ -73,3 +73,9 @@ void ws_state_text(int state, int n, int n_seen, char *out, size_t len);
 
 /* overwrites a buffer that held a password (the compiler may not drop it) */
 void ws_wipe(void *p, size_t n);
+
+/* On-demand radio count (wifi_sync.c, S31): a user takes the driver with wradio_get(&users, started), where started says
+   whether the driver is (or just came) up; it counts only then. wradio_put() gives it back and returns true when the
+   last user left, so the caller stops and de-initialises the driver. A put with no user is ignored. */
+bool wradio_get(int *users, bool started);
+bool wradio_put(int *users);

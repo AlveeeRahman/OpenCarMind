@@ -316,6 +316,14 @@ esp_err_t wifi_sync_start(void)
 static SemaphoreHandle_t s_hold;         /* held by the Wi-Fi task for a whole round, and by a scan */
 static volatile bool s_boot_done;        /* app_main has finished wifi_sync_start() */
 static bool s_up_failed;                 /* a start failed: esp_wifi_init() does not give back what it took, no retry */
+/* On-demand radio (the test line's design, R11b): the initialised driver holds about 40 KB of internal RAM (board:
+   127.8 KB free before the first start, 79.7 KB free and 46.5 KB lowest after a join), and the car link's BLE needs that
+   room. So the driver runs only while a round, a join or a screen search uses it (s_users, wradio_get/put), and is
+   stopped and de-initialised after; a round never starts while driving, and one that runs ends when the drive starts.
+   The station netif and the event handlers stay: the netif re-attaches the driver on the next esp_wifi_start(). */
+static SemaphoreHandle_t s_power;        /* guards s_users, radio_up() and radio_down() */
+static int s_users;
+static bool s_up;                        /* the driver is initialised and started */
 static portMUX_TYPE s_join_mux = portMUX_INITIALIZER_UNLOCKED;
 static struct {
     bool reserved;                       /* a join is queued or running */
@@ -327,7 +335,74 @@ static struct {
     void *ctx;
 } s_join;                                /* under s_join_mux */
 
-static bool join_round(void);
+static bool join_round(bool radio);
+
+static bool radio_up(void)
+{
+    if (s_up) return true;
+    if (s_up_failed) return false;
+    uint32_t free_b = (uint32_t)heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+    uint32_t block = (uint32_t)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
+    if (free_b < WIFI_NEED_FREE || block < WIFI_NEED_BLOCK) {
+        ESP_LOGW(TAG, "Wi-Fi not started: internal RAM %lu B free, block %lu B", (unsigned long)free_b, (unsigned long)block);
+        return false;                    /* nothing taken yet: a later try may find the room */
+    }
+    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    esp_err_t e = esp_wifi_init(&cfg);
+    if (e == ESP_OK) e = esp_wifi_set_mode(WIFI_MODE_STA);
+    if (e == ESP_OK) e = esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
+    if (e == ESP_OK) { s_up = true; e = esp_wifi_start(); }
+    if (e != ESP_OK) {
+        s_up_failed = true;
+        sys_event(EV_WARN, "Wi-Fi off until restart: %s", esp_err_to_name(e));
+        ESP_LOGW(TAG, "Wi-Fi start failed: internal RAM %lu B", (unsigned long)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+        return false;
+    }
+    ESP_LOGI(TAG, "Wi-Fi driver up: internal RAM %lu B free (was %lu B), largest block %lu B",
+             (unsigned long)heap_caps_get_free_size(MALLOC_CAP_INTERNAL), (unsigned long)free_b,
+             (unsigned long)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
+    set_wifi_state(WIFI_ST_IDLE);
+    return true;
+}
+
+static void radio_down(void)
+{
+    if (!s_up) return;
+    uint32_t before = (uint32_t)heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+    esp_wifi_stop();
+    esp_wifi_deinit();
+    s_up = false;
+    s_connected = false;
+    set_wifi_state(WIFI_ST_IDLE);
+    ESP_LOGI(TAG, "Wi-Fi driver down: internal RAM %lu B free (was %lu B), largest block %lu B",
+             (unsigned long)heap_caps_get_free_size(MALLOC_CAP_INTERNAL), (unsigned long)before,
+             (unsigned long)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
+}
+
+static bool radio_get(void)
+{
+    if (!s_power) return false;
+    xSemaphoreTake(s_power, portMAX_DELAY);
+    bool ok = wradio_get(&s_users, radio_up());
+    if (!ok && s_users == 0) radio_down();                     /* a half-started driver still holds its RAM */
+    xSemaphoreGive(s_power);
+    return ok;
+}
+
+static void radio_put(void)
+{
+    xSemaphoreTake(s_power, portMAX_DELAY);
+    if (wradio_put(&s_users)) radio_down();
+    xSemaphoreGive(s_power);
+}
+
+static void radio_idle_down(void)
+{
+    if (!s_power) return;
+    xSemaphoreTake(s_power, portMAX_DELAY);
+    if (s_users == 0) radio_down();
+    xSemaphoreGive(s_power);
+}
 
 static wifi_state_t wifi_state_now(void)
 {
@@ -349,13 +424,16 @@ static void s31_task(void *arg)
     (void)sync_task;                     /* the S3's loop, not used here */
     uint32_t wait_s = clock_is_set() && !uploader_wifi_enabled() ? CONFIG_SYNC_RESYNC_INTERVAL_H * 3600U : 0;
     for (;;) {
+        radio_idle_down();                                  /* the boot start, or a round's driver, is not kept between rounds */
         if (wait_s) ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(wait_s * 1000U));   /* a join or wifi_sync_connect_now() wakes it */
         while (driving()) vTaskDelay(pdMS_TO_TICKS(2000));
         xSemaphoreTake(s_hold, portMAX_DELAY);
         bool joined = join_queued(), ok;
-        if (joined) ok = join_round();
-        else ok = wifi_creds_count() ? sync_once() : false;
+        bool radio = (joined || wifi_creds_count()) && !driving() && radio_get();
+        if (joined) ok = join_round(radio);
+        else ok = radio && wifi_creds_count() ? sync_once() : false;
         if (wifi_state_now() == WIFI_ST_SCANNING) set_wifi_state(WIFI_ST_IDLE);
+        if (radio) radio_put();
         xSemaphoreGive(s_hold);
         if (uploader_wifi_enabled()) wait_s = CONFIG_SYNC_SCAN_INTERVAL_S;
         else if (ok) wait_s = CONFIG_SYNC_RESYNC_INTERVAL_H * 3600U;
@@ -377,40 +455,28 @@ static bool s31_task_up(void)
 void wifi_sync_started(void)
 {
     if (!s_hold) s_hold = xSemaphoreCreateMutex();   /* before the USB door starts: its WIFI-FORGET takes it */
+    if (!s_power) s_power = xSemaphoreCreateMutex();
+    s_up = s_ev != NULL;                             /* wifi_sync_start() started the driver; the task drops it when idle */
     if (s_ev) s31_task_up();                         /* a network was known at boot: wifi_sync_start() started the station */
     s_boot_done = true;
 }
 
 bool wifi_sync_up(void)
 {
-    if (!s_boot_done || s_up_failed || !s_hold) return false;
+    if (!s_boot_done || s_up_failed || !s_hold || !s_power) return false;
     if (s_task) return true;
-    if (!s_ev) {                         /* no network at boot: the station was never started */
-        uint32_t free_b = (uint32_t)heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
-        uint32_t block = (uint32_t)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
-        if (free_b < WIFI_NEED_FREE || block < WIFI_NEED_BLOCK) {
-            ESP_LOGW(TAG, "Wi-Fi not started: internal RAM %lu B free, block %lu B", (unsigned long)free_b, (unsigned long)block);
-            return false;                /* nothing taken yet: a later try may find the room */
-        }
+    if (!s_ev) {                         /* no network at boot: netif, event loop and handlers once; the driver on demand */
         esp_err_t e = esp_netif_init();
         if (e == ESP_OK) { e = esp_event_loop_create_default(); if (e == ESP_ERR_INVALID_STATE) e = ESP_OK; }
         if (e == ESP_OK && !esp_netif_create_default_wifi_sta()) e = ESP_FAIL;
-        wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-        if (e == ESP_OK) e = esp_wifi_init(&cfg);
         if (e == ESP_OK) e = esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, wifi_event, NULL, NULL);
         if (e == ESP_OK) e = esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, wifi_event, NULL, NULL);
         if (e == ESP_OK) { s_ev = xEventGroupCreate(); if (!s_ev) e = ESP_ERR_NO_MEM; }
-        if (e == ESP_OK) e = esp_wifi_set_mode(WIFI_MODE_STA);
-        if (e == ESP_OK) e = esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
-        if (e == ESP_OK) e = esp_wifi_start();
         if (e != ESP_OK) {
             s_up_failed = true;
             sys_event(EV_WARN, "Wi-Fi off until restart: %s", esp_err_to_name(e));
-            ESP_LOGW(TAG, "Wi-Fi start failed: internal RAM %lu B", (unsigned long)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
             return false;
         }
-        ESP_LOGI(TAG, "Wi-Fi started for the Wi-Fi app: internal RAM %lu B free (was %lu B)",
-                 (unsigned long)heap_caps_get_free_size(MALLOC_CAP_INTERNAL), (unsigned long)free_b);
         set_wifi_state(WIFI_ST_IDLE);
     }
     return s31_task_up();
@@ -420,12 +486,14 @@ int wifi_sync_scan(wifi_seen_t *out, int max)
 {
     if (driving() || !wifi_sync_up()) return -1;
     if (xSemaphoreTake(s_hold, pdMS_TO_TICKS(3000)) != pdTRUE) return -1;   /* a round is connecting or connected */
+    if (!radio_get()) { xSemaphoreGive(s_hold); return -1; }
     wifi_scan_config_t sc = { .show_hidden = false, .scan_type = WIFI_SCAN_TYPE_ACTIVE, .scan_time.active = {.min = 60, .max = 120} };
     EXT_RAM_BSS_ATTR static wifi_ap_record_t ap[40];
     uint16_t n = sizeof ap / sizeof ap[0];
     esp_err_t e = esp_wifi_scan_start(&sc, true);
     if (e == ESP_OK) e = esp_wifi_scan_get_ap_records(&n, ap);    /* sorted by signal, the strongest n kept */
     if (e != ESP_OK) esp_wifi_clear_ap_list();
+    radio_put();
     xSemaphoreGive(s_hold);
     if (e != ESP_OK) { ESP_LOGW(TAG, "app scan failed: %s", esp_err_to_name(e)); return -1; }
     int k = 0;
@@ -496,7 +564,7 @@ static wj_result_t join_connect(wifi_cred_t *c)
 }
 
 /* A join round (s_hold held): save, connect once, tell the screen, then the clock sync as sync_once() does it. */
-static bool join_round(void)
+static bool join_round(bool radio)
 {
     char ssid[33], pw[65], old_pw[65] = "";
     portENTER_CRITICAL(&s_join_mux);
@@ -513,7 +581,8 @@ static bool join_round(void)
     bool existed = c != NULL;
     if (existed) strlcpy(old_pw, c->password, sizeof old_pw);
     wj_result_t r = WJ_WAIT;
-    if (keep && !existed) r = WJ_INVALID;
+    if (!radio) r = WJ_NO_RADIO;
+    else if (keep && !existed) r = WJ_INVALID;
     else if (!keep && !existed && wifi_creds_count() >= WIFI_CREDS_MAX) r = WJ_FULL;
     else if (!keep && !harden_wifi_cred_ok(ssid, pw)) r = WJ_INVALID;
     else if (!keep && !wifi_creds_add(ssid, pw)) r = WJ_SAVE_FAILED;

@@ -244,6 +244,26 @@ int main(void)
         CHECK(nz == 0);
     }
 
+    /* ---- on-demand radio count (R11b): the driver goes down exactly when its last user leaves ---- */
+    {
+        int u = 0, downs = 0;
+        CHECK(wradio_get(&u, true) && u == 1);              /* a round takes it */
+        CHECK(wradio_get(&u, true) && u == 2);              /* a screen search while the round runs */
+        downs += wradio_put(&u); CHECK(u == 1 && downs == 0);   /* the search ends: the round still uses it */
+        downs += wradio_put(&u); CHECK(u == 0 && downs == 1);   /* the round ends: down once */
+        CHECK(!wradio_put(&u) && u == 0);                   /* a stray put: no second stop, no negative count */
+        CHECK(!wradio_get(&u, false) && u == 0);            /* the driver did not start: not counted, nothing to put */
+        /* 1000 random gets and puts, the count never goes negative and every 1 -> 0 step is one stop */
+        unsigned r = 12345; int ups = 0; downs = 0; u = 0; int model = 0;
+        for (int i = 0; i < 1000; i++) {
+            r = r * 1103515245u + 12345u;
+            if ((r >> 16) & 1) { bool st = ((r >> 17) & 3) != 0; if (wradio_get(&u, st)) model++; }
+            else { int was = model; if (wradio_put(&u)) downs++; if (was > 0) model--; ups += was == 1; }
+            if (u != model || u < 0) { CHECK(0); break; }
+        }
+        CHECK(downs == ups);
+    }
+
     printf("wifi_ui: %d checks, %d failures\n", runs, fails);
     return fails ? 1 : 0;
 }

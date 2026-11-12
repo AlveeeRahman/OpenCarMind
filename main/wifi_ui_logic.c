@@ -195,3 +195,15 @@ void ws_wipe(void *p, size_t n)
     volatile unsigned char *v = (volatile unsigned char *)p;
     while (n--) *v++ = 0;
 }
+
+bool wradio_get(int *users, bool started)
+{
+    if (started) (*users)++;
+    return started;
+}
+
+bool wradio_put(int *users)
+{
+    if (*users <= 0) return false;
+    return --*users == 0;
+}
