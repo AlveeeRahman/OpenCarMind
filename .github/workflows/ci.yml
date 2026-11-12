@@ -54,8 +54,26 @@ jobs:
         run: python tools/check_docs.py
       - name: Dashboard configuration parses
         run: |
-          pip install pyyaml==6.0.2
+          pip install --require-hashes -r tests/requirements.txt
           python -c "import yaml; [yaml.safe_load(open(f)) for f in ('dashboard/docker-compose.yml', 'dashboard/dashy/conf.yml')]"
+
+  fuzz:
+    # libFuzzer over the input parsers (tests/fuzz): a short run on every change, with AddressSanitizer and UBSan.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: make -C tests/fuzz CC=clang RUNS=50000
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: fuzz-crashes
+          path: |
+            tests/fuzz/crash-*
+            tests/fuzz/leak-*
+            tests/fuzz/timeout-*
+          if-no-files-found: ignore
 
   firmware:
     runs-on: ubuntu-24.04

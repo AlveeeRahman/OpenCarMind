@@ -4,6 +4,11 @@
 
 A new brand, a screen made for the LCD, and a visible power-off.
 
+- **Connects on its own when a car is awkward**: on cars where several computers answer at once (engine and transmission, hybrid systems), the logger now picks the engine (7E8, or 18DAF110 on 29-bit CAN), checks that it answers RPM on its own address and polls it directly, so the supported-PID list and every reading come from the engine. With no engine data for a minute it searches by itself: every protocol, each computer on its own address, RPM on each, and keeps the one that works (once per connection; read-only, nothing is written to the car or the adapter). A BOOT double-click starts the same search at any time, or shows the link when it is working. With no adapter in range it lifts the saved-adapter lock for 90 s so a different adapter can be found; only devices that look like OBD adapters are tried. The result is on screen and in the session file (`search`, `poll_ecu`).
+- The LED and CPU-monitor tasks keep their stacks in PSRAM, leaving internal RAM for Bluetooth, Wi-Fi and the search; a task that cannot start is now reported instead of failing silently.
+- Page 1 labels the coolant CAR TEMP and page 5 labels the chip's own temperature SYS TEMP.
+- Page 5 MIPS tile says which core is which: SYS (Bluetooth, Wi-Fi clock, display) and AI (car data, the model, the learner). The CPU monitor now releases on a fixed one-second period. The JOBS line shows the job load as SYS/AI in the same order, instead of "core load".
+- Light theme reworked for the LCD: pure white view with tiles drawn by their borders, brand navy text, a light blue accent, warm oranges in place of dark browns, a coral power bar, and vivid section colours on page 5. The Mosaico concept shows its three screens in the dark, light and dark themes.
 - **Brand**: a new night-drive palette (navy, warm ink, cobalt, amber) across the README, the website, the desktop app and its icons, and a sharper vector logo. Banner chips now read ESP32-S3, Bluetooth LE, TinyML, Desktop app and Active Learning.
 - **Screen colours for a backlit LCD**: the dark theme is pure black, because any tint in the background glows through the backlight. Text is 4.5:1 or more on every background in both themes. Page 5 gives each of its seven sections its own colour (classifier orange, estimator red), checked for normal and colour-blind vision.
 - **Power-off you can see**: holding BOOT shows "Turning off" while the drive is saved, then "Off, safe to unplug". The backlight fades and the LED stays dark in deep sleep.
@@ -11,8 +16,16 @@ A new brand, a screen made for the LCD, and a visible power-off.
 - **Page 5**: instructions per second on each core from the chip's hardware counters, PSRAM used out of total, the chip's own temperature (°C or °F), uptime.
 - **Page 3**: the pattern line sits above the page dots.
 - **New boards start on CarMind R.E.V** when the firmware carries it. A board that already chose a model keeps it.
+- **Supply chain**: CodeQL, a fuzz harness over the input parsers, Dependabot, hash-pinned test dependencies and release provenance.
+- **USB door opens only with a code from the desktop tools**: HELLO now answers with a random challenge and nothing else (no firmware version, board id or pairing state). The door's code is the HMAC-SHA256 of that challenge keyed with the paired app's token, which only the desktop tools hold; the board then says who it is. The 6-digit code on the board's screen now only pairs a new computer: after it, PAIR is the one command accepted.
+- **USB door**: unbiased pairing codes. The desktop app explains an expired session and can restart the board.
+- **Desktop app**: says new boards start on R.E.V, and shows the running model's mark.
+- **Report image**: `ghcr.io/alveeerahman/opencarmind-report` serves the SD card's drives as the HTML report (`dashboard/Dockerfile`).
+- **Fix: the switch to the light theme reset the board.** Re-colouring every screen created a new LVGL style on every object and part, which emptied LVGL's 64 KB pool and halted in its allocation check until the task watchdog fired 30 s later. The walk now re-colours only what each object set itself, with one style refresh per screen: 27 ms, no allocation. It had been in the firmware since 2.0.1 but only runs once the board knows the time of day.
+- **Top bar clock**: 1 px more letter spacing, so the digits of the faux-bold time no longer run together.
 - **Fixes**: the status LED no longer drops a frame when the button and the LED task update it at once ("RMT transaction is busy"). The boot log no longer lists the saved Wi-Fi networks. The model self-test log says plainly when the board differs from the PC simulation.
 - **Figures**: the seven workflow figures were redrawn with straight connectors and larger text, the three README GIFs re-rendered with the brand fonts, and the screen mock-ups and the Mosaico concept updated to the new colours.
+- **Model marks**: small variants for figures, tags and GIFs, and figures rendered at 3x, so the marks stay sharp when zoomed.
 
 ## 2.5.1
 

@@ -1,9 +1,15 @@
+#include "board.h"
+#include "status_led.h"
+#if BOARD_MOSAICO
+/* The ESP-Mosaico has no RGB LED: the LED language is on the screen instead. */
+void status_led_init(void) {}
+void status_led_set(uint8_t r, uint8_t g, uint8_t b) { (void)r; (void)g; (void)b; }
+void status_led_off_for_sleep(void) {}
+#else
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "led_strip.h"
 #include "esp_log.h"
-#include "board.h"
-#include "status_led.h"
 #include "driver/gpio.h"
 
 /* The LED task and the BOOT-button handler both set the LED. One RMT transfer must finish before the next pixel is
@@ -45,3 +51,4 @@ void status_led_off_for_sleep(void)
     gpio_set_level(BOARD_RGB_LED, 0);
     gpio_hold_en(BOARD_RGB_LED);
 }
+#endif

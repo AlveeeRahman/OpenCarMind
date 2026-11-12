@@ -87,14 +87,18 @@ static const char *TAG = "display";
  * themes, dim (an idle link) at least 3:1. Dark tiles are near-black (#050505): a grey fill reads as a lit panel
  * on this backlight, so tiles are drawn by their borders. Page 5 gives each of its seven sections its own colour,
  * placed by enumerating all arrangements: in dark, no two sections closer than 15.4 (OKLab x100) for normal vision and
- * every pair that touches at least 8.4 for colour-blind readers; in light, at least 14.7 for normal vision. Each
- * section has a caption, so colour is never the only cue. All values stay distinct after RGB565. */
+ * every pair that touches at least 8.4 for colour-blind readers. Light uses the same hues deepened to saturated mid tones
+ * on pure white (bg #FFFFFF, tiles #FCFCFC, the same on the RGB565 panel, so tiles are drawn by their borders as in
+ * dark), brand navy text, a light blue accent, light warm oranges, no near-black tints that read as mud on the LCD:
+ * body colours at least 4.5:1 on the white tile, the accent and the two oranges at least 3:1 (large numbers, bars, bold heads). The dark theme's pastels
+ * would be 1.4 to 2.6:1 on white. Each section has a caption, so colour is never the only cue. All values stay
+ * distinct after RGB565. */
 typedef struct { uint32_t bg, tile, text, muted, accent, ok, warn, bad, border, dim, violet, blue, amber, sev_high, teal, pink,
-                 orange, red, sage; } theme_t;
+                 orange, red, sage, power; } theme_t;
 static const theme_t THEME_DARK  = {0x000000, 0x050505, 0xF2ECE1, 0xB8B8B8, 0x8CC8FF, 0x56F487, 0xFCCA21, 0xE64343, 0x4A4A4A, 0x7A7A7A,
-                                    0xAD8DFD, 0x38B8F6, 0xF2A13A, 0xF08E54, 0x72ECE4, 0xFE86C2, 0xFE860F, 0xFD122E, 0x6CB35D};
-static const theme_t THEME_LIGHT = {0xF5F5F5, 0xFFFFFF, 0x101418, 0x4A4A4A, 0x1F4FC2, 0x1B6B2A, 0x6B4A00, 0xC62828, 0x8C8C8C, 0x6E6E6E,
-                                    0x5517A5, 0x196EA9, 0x8F5200, 0xA84300, 0x034239, 0x971C65, 0xA65F00, 0xD4002A, 0x40731A};
+                                    0xAD8DFD, 0x38B8F6, 0xF2A13A, 0xF08E54, 0x72ECE4, 0xFE86C2, 0xFE860F, 0xFD122E, 0x6CB35D, 0xF2A33A};
+static const theme_t THEME_LIGHT = {0xFFFFFF, 0xFCFCFC, 0x15202D, 0x4A5563, 0x3B82F6, 0x15803D, 0xB45309, 0xC62828, 0x8C8C8C, 0x6B7280,
+                                    0x7C3AED, 0x1D4ED8, 0xDD6E0E, 0xC2410C, 0x0E7490, 0xA21CAF, 0xEA6A12, 0xBE123C, 0x4D7C0F, 0xE5484D};
 static const theme_t *T = &THEME_DARK;
 #define C_BG      (T->bg)
 #define C_TILE    (T->tile)
@@ -114,6 +118,7 @@ static const theme_t *T = &THEME_DARK;
 #define C_RED     (T->red)
 #define C_SAGE    (T->sage)
 #define C_AMBER   (T->amber)      /* an estimated value (no PID behind it) */
+#define C_POWER   (T->power)      /* the power bar on page 1: amber in dark, coral red next to the blue CPU bar in light */
 #define C_SEV_HIGH (T->sev_high)  /* high-severity fault: orange, ISO 2575 caution, between C_WARN and C_BAD */
 
 static lv_display_t *s_disp;
@@ -167,20 +172,30 @@ static const p2_item_t P2_ITEMS[P2_STD] = {
 };
 
 /* Re-colour every object that carries a colour from the old theme. Dynamic labels are repainted by
- * the refresh timer anyway; this handles the static ones (captions, tiles, bars, dots, borders). */
+ * the refresh timer anyway; this handles the static ones (captions, tiles, bars, dots, borders).
+ * Only properties the object set itself (local styles) are touched: reading an inherited or default colour and
+ * writing it back would create a new local style on every object and part, which empties LVGL's memory pool
+ * (CONFIG_LV_MEM_SIZE_KILOBYTES) and halts in LV_ASSERT_MALLOC until the task watchdog resets the board. */
+static void remap_prop(lv_obj_t *o, lv_style_prop_t prop, lv_part_t part, const theme_t *from, const theme_t *to)
+{
+    lv_style_value_t v;
+    if (lv_obj_get_local_style_prop(o, prop, &v, part) != LV_STYLE_RES_FOUND) return;
+    const uint32_t *f = (const uint32_t *)from, *t = (const uint32_t *)to;
+    const uint32_t have = lv_color_to_u32(v.color);
+    for (int i = 0; i < (int)(sizeof(theme_t) / sizeof(uint32_t)); i++) {
+        if (have != lv_color_to_u32(lv_color_hex(f[i]))) continue;
+        v.color = lv_color_hex(t[i]);
+        lv_obj_set_local_style_prop(o, prop, v, part);   /* same style, same slot: no allocation */
+        return;
+    }
+}
+
 static void remap_color(lv_obj_t *o, lv_part_t part, const theme_t *from, const theme_t *to)
 {
-    const uint32_t *f = (const uint32_t *)from, *t = (const uint32_t *)to;
-    int n = sizeof(theme_t) / sizeof(uint32_t);
-    lv_color_t bg = lv_obj_get_style_bg_color(o, part), bd = lv_obj_get_style_border_color(o, part),
-               tx = lv_obj_get_style_text_color(o, part), ac = lv_obj_get_style_arc_color(o, part);
-    for (int i = 0; i < n; i++) {
-        lv_color_t c = lv_color_hex(f[i]);
-        if (lv_color_eq(bg, c)) lv_obj_set_style_bg_color(o, lv_color_hex(t[i]), part);
-        if (lv_color_eq(bd, c)) lv_obj_set_style_border_color(o, lv_color_hex(t[i]), part);
-        if (lv_color_eq(tx, c)) lv_obj_set_style_text_color(o, lv_color_hex(t[i]), part);
-        if (lv_color_eq(ac, c)) lv_obj_set_style_arc_color(o, lv_color_hex(t[i]), part);
-    }
+    remap_prop(o, LV_STYLE_BG_COLOR, part, from, to);
+    remap_prop(o, LV_STYLE_BORDER_COLOR, part, from, to);
+    remap_prop(o, LV_STYLE_TEXT_COLOR, part, from, to);
+    remap_prop(o, LV_STYLE_ARC_COLOR, part, from, to);
 }
 
 static void retheme_tree(lv_obj_t *o, const theme_t *from, const theme_t *to)
@@ -198,8 +213,20 @@ static void apply_theme(const theme_t *to)
     if (to == T) return;
     const theme_t *from = T;
     T = to;
+    int64_t t0 = esp_timer_get_time();
+    lv_mem_monitor_t before, after;
+    lv_mem_monitor(&before);
+    /* colours first with style refreshing paused, then one refresh per tree: each set would otherwise re-lay out
+       the object and its children, hundreds of times over */
+    lv_obj_enable_style_refresh(false);
     for (int i = 0; i < N_PAGES; i++) if (s_screens[i]) retheme_tree(s_screens[i], from, to);
     retheme_tree(lv_layer_top(), from, to);
+    lv_obj_enable_style_refresh(true);
+    for (int i = 0; i < N_PAGES; i++) if (s_screens[i]) lv_obj_refresh_style(s_screens[i], LV_PART_ANY, LV_STYLE_PROP_ANY);
+    lv_obj_refresh_style(lv_layer_top(), LV_PART_ANY, LV_STYLE_PROP_ANY);
+    lv_mem_monitor(&after);
+    ESP_LOGI(TAG, "theme -> %s in %lld ms, LVGL pool %u%% -> %u%% used of %u B", to == &THEME_LIGHT ? "light" : "dark",
+             (long long)((esp_timer_get_time() - t0) / 1000), (unsigned)before.used_pct, (unsigned)after.used_pct, (unsigned)after.total_size);
 }
 
 /* 0 auto (light between day_start and day_end once the clock is synced), 1 dark, 2 light */
@@ -289,6 +316,9 @@ static void build_page0(void)
     lv_obj_align_to(lbl_clock, brand, LV_ALIGN_OUT_RIGHT_MID, 8, 0);  /* the clock follows the name, well inside the panel edge */
     lbl_clock_bold = make_label(bar_top, &lv_font_montserrat_12, C_MUTED);
     lv_obj_align_to(lbl_clock_bold, lbl_clock, LV_ALIGN_TOP_LEFT, 1, 0);
+    /* the faux bold narrows the gaps between digits: open them up by 1 px on both copies (same in both themes) */
+    lv_obj_set_style_text_letter_space(lbl_clock, 1, 0);
+    lv_obj_set_style_text_letter_space(lbl_clock_bold, 1, 0);
 
     /* RPM block */
     lv_obj_t *cap = make_label(scr0, &lv_font_montserrat_12, C_MUTED);
@@ -315,7 +345,7 @@ static void build_page0(void)
     lv_obj_set_pos(lbl_speed, 6, 107);
 
     /* 2x2 tiles */
-    static const char *caps[4] = {"TEMP " "\xC2\xB0" "C", "BATTERY V", "KM/L", "FUEL %"};   /* TEMP = coolant, as car dashboards show it */
+    static const char *caps[4] = {"CAR TEMP " "\xC2\xB0" "C", "BATTERY V", "KM/L", "FUEL %"};   /* CAR TEMP = coolant, as car dashboards show it */
     for (int i = 0; i < 4; i++) {
         int x = 8 + (i % 2) * 80, y = 156 + (i / 2) * 52;
         make_tile(scr0, x, y, 76, 48, caps[i], &tile_val[i], &tile_cap[i]);
@@ -338,7 +368,7 @@ static void build_page0(void)
         lv_obj_set_pos(*bars[i], 52, y + 4);
         lv_bar_set_range(*bars[i], 0, 100);
         lv_obj_set_style_bg_color(*bars[i], lv_color_hex(C_BORDER), LV_PART_MAIN);
-        lv_obj_set_style_bg_color(*bars[i], lv_color_hex(i ? C_AMBER : C_ACCENT), LV_PART_INDICATOR);
+        lv_obj_set_style_bg_color(*bars[i], lv_color_hex(i ? C_POWER : C_ACCENT), LV_PART_INDICATOR);
         lv_obj_set_style_radius(*bars[i], 4, LV_PART_MAIN);
         lv_obj_set_style_radius(*bars[i], 4, LV_PART_INDICATOR);
         *vals[i] = make_label(scr0, &lv_font_montserrat_12, C_TEXT);
@@ -548,7 +578,7 @@ static void refresh_page3(const app_status_t *st)
 }
 
 /* page 4: four fixed tiles, three event lines coloured by level, then two live strips: the soft real-time scheduler
- * (one row per registered job) and the on-board model. Tiles: CPU violet, PSRAM aqua / TEMP green, UPTIME pink.
+ * (one row per registered job) and the on-board model. Tiles: CPU violet, PSRAM aqua / SYS TEMP green, UPTIME pink.
  * Strips: jobs sky, the classifier orange, the estimator red. Violet and sky, the closest pair for colour-blind
  * readers, never touch. */
 #define S4_JOBS  3
@@ -603,7 +633,7 @@ static void build_page4(void)
     s4_head = make_label(scr4, &lv_font_montserrat_14, C_ACCENT);
     lv_label_set_text(s4_head, "System");
     lv_obj_set_pos(s4_head, 8, 4);
-    static const char *caps[4] = {"MIPS 0 / 1", "PSRAM", "TEMP", "UPTIME / FW"};    /* CPU % and power are on page 1 */
+    static const char *caps[4] = {"MIPS", "PSRAM", "SYS TEMP", "UPTIME / FW"};    /* SYS TEMP = the chip's own sensor, page 1 CAR TEMP = coolant */
     const uint32_t cols[4] = {C_VIOLET, C_TEAL, C_SAGE, C_PINK};            /* TL TR / BL BR */
     for (int i = 0; i < 4; i++) {
         int x = 4 + (i % 2) * 83, y = 24 + (i / 2) * 46;
@@ -619,6 +649,13 @@ static void build_page4(void)
         lv_obj_t *cap = make_label(t, &lv_font_montserrat_12, cols[i]);
         lv_label_set_text(cap, caps[i]);
         lv_obj_align(cap, LV_ALIGN_TOP_LEFT, 0, -2);
+        if (i == 0) {
+            /* which core each number belongs to: SYS = core 0 (Bluetooth, Wi-Fi clock, display, scheduler),
+               AI = core 1 (car data, the model, the learner). "MIPS" 31 px + "SYS/AI" 39 px fit the 73 px inside */
+            lv_obj_t *who = make_label(t, &lv_font_montserrat_12, C_MUTED);
+            lv_label_set_text(who, "SYS/AI");
+            lv_obj_align(who, LV_ALIGN_TOP_RIGHT, 0, -2);
+        }
         s4_tile_val[i] = make_label(t, &lv_font_montserrat_12, C_TEXT);
         lv_obj_set_size(s4_tile_val[i], 75, 16);                    /* fixed size: LONG_DOT only clips with both set */
         lv_label_set_long_mode(s4_tile_val[i], LV_LABEL_LONG_DOT);
@@ -640,7 +677,7 @@ static void build_page4(void)
 
     /* scheduler strip, y 118..182 (content area 156 x 56): dot | name | time used vs. time allowed | last time or problem count */
     lv_obj_t *sch = s4_frame(118, 64, C_BLUE, "JOBS");
-    s4_load = s4_label(sch, &lv_font_montserrat_12, C_MUTED, 40, -2, 116, 15);
+    s4_load = s4_label(sch, &lv_font_montserrat_12, C_MUTED, 36, -2, 120, 15);   /* right of "JOBS" (33 px) */
     lv_obj_set_style_text_align(s4_load, LV_TEXT_ALIGN_RIGHT, 0);
     for (int i = 0; i < S4_JOBS; i++) {
         int y = 12 + i * 14;
@@ -696,7 +733,7 @@ static void refresh_sched(const sched_system_t *sys)
 {
     /* per-core CPU load of the jobs, U = sum(C_max / T); amber above the rate-monotonic bound, red if the
        response-time analysis says some job can miss its deadline */
-    lv_label_set_text_fmt(s4_load, "core load %d%% / %d%%", (int)(sys->util[0] * 100.0f + 0.5f), (int)(sys->util[1] * 100.0f + 0.5f));
+    lv_label_set_text_fmt(s4_load, "SYS/AI  %d%% / %d%%", (int)(sys->util[0] * 100.0f + 0.5f), (int)(sys->util[1] * 100.0f + 0.5f));   /* job load per core, same order as the MIPS tile; "SYS/AI  100% / 100%" is 118 of 120 px */
     bool over = sys->util[0] > sys->rm_bound[0] || sys->util[1] > sys->rm_bound[1];
     lv_obj_set_style_text_color(s4_load, lv_color_hex(!sys->schedulable ? C_BAD : over ? C_WARN : C_MUTED), 0);
 
@@ -830,9 +867,9 @@ static void refresh_est(const app_status_t *st)
 
 static void refresh_page4(const app_status_t *st)
 {
-    lv_label_set_text_fmt(s4_tile_val[0], "%.1f / %.1f", st->pmu_mips[0], st->pmu_mips[1]);   /* hardware counters, per core */
+    lv_label_set_text_fmt(s4_tile_val[0], "%.1f / %.1f", st->pmu_mips[0], st->pmu_mips[1]);   /* hardware counters: SYS (core 0) / AI (core 1) */
     uint32_t used_kb = st->psram_total_kb > st->psram_free_kb ? st->psram_total_kb - st->psram_free_kb : 0;
-    lv_label_set_text_fmt(s4_tile_val[1], "%.1f/%.1f MB", used_kb / 1024.0, st->psram_total_kb / 1024.0);
+    lv_label_set_text_fmt(s4_tile_val[1], "%.1f / %.1f MB", used_kb / 1024.0, st->psram_total_kb / 1024.0);   /* "7.8 / 7.8 MB" is 70 of 75 px */
     if (isfinite(st->chip_temp_c)) {
         bool us = (units_t)st->units == UNITS_US;
         lv_label_set_text_fmt(s4_tile_val[2], "%.0f \xC2\xB0%c", us ? st->chip_temp_c * 9.0f / 5.0f + 32.0f : st->chip_temp_c, us ? 'F' : 'C');
@@ -1069,7 +1106,7 @@ static void refresh_cb(lv_timer_t *t)
 
     /* economy: the drive's average, or the instant value until enough is counted; amber when it rests on the model */
     if (new_units) lv_label_set_text(tile_cap[2], un == UNITS_METRIC ? "KM/L" : un == UNITS_UK ? "MPG (UK)" : "MPG");
-    if (new_units) lv_label_set_text(tile_cap[0], un == UNITS_US ? "TEMP \xC2\xB0" "F" : "TEMP \xC2\xB0" "C");
+    if (new_units) lv_label_set_text(tile_cap[0], un == UNITS_US ? "CAR TEMP \xC2\xB0" "F" : "CAR TEMP \xC2\xB0" "C");
     {
         float kpl = o->econ_trip_kpl >= 0 ? o->econ_trip_kpl : o->econ_inst_kpl;
         if (live && kpl >= 0) {
@@ -1132,9 +1169,9 @@ static void refresh_cb(lv_timer_t *t)
             else snprintf(tank, sizeof tank, "Tank %.1f %s left", left, vol);
         } else snprintf(tank, sizeof tank, "Tank: learning %.1f of %.0f %s", rs.tank.band_l * rs.cal / gal, REV_TANK_READY_L / gal, vol);
         lv_label_set_text_fmt(lbl_info,
-            "Adapter: %s\n%s%s  rssi %d\n\nVIN: %s\nProto: %s\n\nMIL %s, %u DTC\nstored: %s\npending: %s\n"
+            "Adapter: %s\n" DISPLAY_ADAPTER_FMT "  rssi %d\n\nVIN: %s\nProto: %s\n\nMIL %s, %u DTC\nstored: %s\npending: %s\n"
             "Wi-Fi: %s %s\nClock: %s\nSD: %s\n\nSession s%06lu  %lu rows  up %lu min\nIntake %d\xC2\xB0  Oil %d\xC2\xB0  Amb %d\xC2\xB0\nThr %d%%  MAF %.1f g/s\n%s\n%s\n%s\n" CARMIND_SCREEN_NAME " " CARMIND_VERSION "\nBOOT: tap = page, 2 s = off, 8 s = forget",
-            st.adapter_name[0] ? st.adapter_name : "-", st.adapter_addr, st.adapter_saved ? " (saved)" : "", st.adapter_rssi,
+            st.adapter_name[0] ? st.adapter_name : "-", DISPLAY_ADAPTER_ARGS(st), st.adapter_rssi,
             o->vin[0] ? o->vin : "-", o->protocol[0] ? o->protocol : "-",
             o->mil_on ? "ON" : "off", o->dtc_count, o->dtcs[0] ? o->dtcs : "none", o->pending_dtcs[0] ? o->pending_dtcs : "none",
             wifi_txt[st.wifi], (st.wifi == WIFI_ST_CONNECTING || st.wifi == WIFI_ST_CONNECTED) ? st.wifi_ssid : "", st.time_synced ? "synced" : "not synced",

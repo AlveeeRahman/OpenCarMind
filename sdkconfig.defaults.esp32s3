@@ -1,0 +1,32 @@
+# Waveshare ESP32-S3-LCD-1.47B (the car board): target-specific defaults moved out of sdkconfig.defaults
+CONFIG_IDF_TARGET="esp32s3"
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+CONFIG_LCD_INVERT_COLORS=y
+
+# ---- Clock sync over HTTPS (S3 only; the S31 has its own Wi-Fi lines in sdkconfig.defaults.esp32s31) ----
+# www.google.com sends GTS Root R4 cross-signed by GlobalSign Root CA (R1). R1 is not in the ESP-IDF 6.1 bundle, so
+# the plain bundle check fails on the last certificate. This option lets mbedTLS stop at GTS Root R4, which is in the
+# bundle. About 700 bytes of heap during the handshake (mbedTLS heap is in PSRAM here). 6.1 already has the fix for the
+# leak in espressif/esp-idf#18512 (the callback references bundle data, no copies).
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_CROSS_SIGNED_VERIFY=y
+# Wi-Fi only sets the clock and, when paired, sends drives: 4 static TX and 2 static RX buffers, ~1.6 KB internal RAM
+# each. Dynamic TX is not allowed with SPIRAM_TRY_ALLOCATE_WIFI_LWIP. The driver runs only while in use (wifi_sync.c).
+CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=2
+CONFIG_ESP_WIFI_STATIC_TX_BUFFER_NUM=4
+# No A-MPDU aggregation (one small HEAD per sync, a few KB per drive upload): the block-ack window must not exceed twice
+# the static RX buffers, and the reorder buffers cost internal RAM. Fewer management and cached TX buffers for the same
+# reason. This is the configuration the clock fix was tested with on the board.
+# CONFIG_ESP_WIFI_AMPDU_RX_ENABLED is not set
+# CONFIG_ESP_WIFI_AMPDU_TX_ENABLED is not set
+CONFIG_ESP_WIFI_CACHE_TX_BUFFER_NUM=16
+CONFIG_ESP_WIFI_MGMT_SBUF_NUM=12
+CONFIG_ESP_WIFI_RX_MGMT_BUF_NUM_DEF=3
+# Stay on Wi-Fi 5 s after a sync (not 30): SD saves wait while the driver holds the RAM their DMA transfers need.
+CONFIG_SYNC_STAY_CONNECTED_S=5
+# Software AES: the hardware AES engine needs up to 8 KB of DMA-capable internal RAM per TLS record when buffers are in
+# PSRAM ("esp-aes: Failed to allocate memory" with Wi-Fi up, measured on the board).
+CONFIG_MBEDTLS_HARDWARE_AES=n

@@ -188,3 +188,15 @@ void remote_config_load_sd(void)
     ESP_LOGI(TAG, "config.json: %d setting(s) applied", applied);
     sys_event(EV_INFO, "config.json: %d setting(s) applied", applied);
 }
+
+#if CONFIG_IDF_TARGET_ESP32S31
+/* ESP-Mosaico Settings > Clock: the zone picked by hand, stored like a CONFIG "timezone" (a later one replaces it) */
+bool remote_config_set_timezone(const char *tz)
+{
+    if (!harden_timezone_ok(tz)) return false;
+    strlcpy(s_cfg.timezone, tz, sizeof s_cfg.timezone);
+    apply_timezone();
+    persist();
+    return true;
+}
+#endif

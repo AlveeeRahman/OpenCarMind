@@ -23,13 +23,23 @@ extern "C" {                     /* C headers without their own C++ guards, befo
 #include "sys_mode.h"
 }
 #include "sdkconfig.h"
+#include "board.h"
 #include "ml_infer.h"
+#include "cpu_monitor.h"
+#if CONFIG_IDF_TARGET_ESP32S31
+#include "ml_params_ev_s31.h"    /* generated from ml/onboard_s31/ev: the S31 export of E.V, its own hash and target */
+#else
 #include "ml_params.h"
+#endif
 #include "harden.h"
 #include "sched_mon.h"
 #include "rev_task.h"
 #if CONFIG_CARMIND_REV_ENABLE
+#if CONFIG_IDF_TARGET_ESP32S31
+#include "ml_params_rev_s31.h"   /* generated from ml/onboard_s31/rev: the S31 export has its own hash, exponents and W0 */
+#else
 #include "ml_params_rev.h"
+#endif
 /* Both models are fed by the same window builder and read by the same code: only normalisation and weights may differ. */
 static_assert(MLR_WINDOW == ML_WINDOW && MLR_BIN_S == ML_BIN_S && MLR_CHANNELS == ML_CHANNELS && MLR_IN_CHANNELS == ML_IN_CHANNELS &&
               MLR_DELTAS == ML_DELTAS && MLR_N_CLASSES == ML_N_CLASSES && MLR_N_ESTIMATES == ML_N_ESTIMATES, "E.V and R.E.V inputs differ");
@@ -48,7 +58,26 @@ static const char *TAG = "ml";
 #else
 #define ML_ROW_PREFIX ""
 #endif
+/* Both builds carry CarMind E.V and, with CONFIG_CARMIND_REV_ENABLE, R.E.V; the desktop app (MODEL SET) and, on the
+   ESP-Mosaico, Settings switch between them. The ESP-Mosaico (esp32s31) files are the same models re-quantized for that
+   chip (ml/onboard_s31). mossREV starts a new board on R.E.V (stored_model), so the S31 build needs it. */
+#define ML_EV_BUILT_IN 1
+#if CONFIG_IDF_TARGET_ESP32S31 && CONFIG_CARMIND_ML_ENABLE && !CONFIG_CARMIND_REV_ENABLE
+#error "the ESP32-S31 build (mossREV) starts on CarMind R.E.V: turn CONFIG_CARMIND_REV_ENABLE on"
+#endif
+/* The model ml_model_active() names until ml_init has read the stored choice: on the ESP-Mosaico the one a new board starts
+   on (stored_model: R.E.V), so the screens show the right model while it loads. */
+#if CONFIG_IDF_TARGET_ESP32S31 && CONFIG_CARMIND_REV_ENABLE
+#define ML_MODEL_BOOT ML_MODEL_REV
+#else
+#define ML_MODEL_BOOT (ML_EV_BUILT_IN ? ML_MODEL_EV : ML_MODEL_REV)
+#endif
+#if ML_EV_BUILT_IN
 extern const uint8_t ml_model_start[] asm("_binary_onboard_espdl_start");
+#define ML_EV_DATA ml_model_start
+#else
+#define ML_EV_DATA nullptr
+#endif
 #if CONFIG_CARMIND_REV_ENABLE
 extern const uint8_t ml_rev_model_start[] asm("_binary_onboard_rev_espdl_start");
 #endif
@@ -56,20 +85,20 @@ extern const uint8_t ml_rev_model_start[] asm("_binary_onboard_rev_espdl_start")
 /* The models built into this firmware. The window layout, classes and estimates are shared (checked above); each model has its
    own normalisation, de-standardisation and hash. */
 typedef struct {
-    const char *key, *name, *version;
+    const char *key, *name, *version, *quant, *target;   /* quant and target: what the .espdl was exported for */
     const uint8_t *data;
     const float *norm_mean, *norm_std, *est_mean, *est_std;
     const unsigned char *trained;
 } ml_model_desc_t;
 static const ml_model_desc_t MODELS[ML_MODEL_COUNT] = {
-    {"ev", "CarMind E.V", ML_MODEL_VERSION, ml_model_start, ML_NORM_MEAN, ML_NORM_STD, ML_EST_MEAN, ML_EST_STD, ML_TRAINED},
+    {"ev", "CarMind E.V", ML_MODEL_VERSION, ML_QUANT, ML_TARGET_CHIP, ML_EV_DATA, ML_NORM_MEAN, ML_NORM_STD, ML_EST_MEAN, ML_EST_STD, ML_TRAINED},
 #if CONFIG_CARMIND_REV_ENABLE
-    {"rev", "CarMind R.E.V", MLR_MODEL_VERSION, ml_rev_model_start, MLR_NORM_MEAN, MLR_NORM_STD, MLR_EST_MEAN, MLR_EST_STD, MLR_TRAINED},
+    {"rev", "CarMind R.E.V", MLR_MODEL_VERSION, MLR_QUANT, MLR_TARGET_CHIP, ml_rev_model_start, MLR_NORM_MEAN, MLR_NORM_STD, MLR_EST_MEAN, MLR_EST_STD, MLR_TRAINED},
 #else
-    {"rev", "CarMind R.E.V", "", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr},
+    {"rev", "CarMind R.E.V", "", "", "", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr},
 #endif
 };
-static volatile int s_active = ML_MODEL_EV;          /* the model that is loaded (or being loaded) */
+static volatile int s_active = ML_MODEL_BOOT;       /* the model that is loaded (or being loaded) */
 static bool s_z_ok;                                  /* the loaded model's "z" output exists and has REV_NF - 1 values */
 #define MAF_CH 3                                     /* channel index of MAF in FIELDS */
 
@@ -117,7 +146,7 @@ EXT_RAM_BSS_ATTR static float s_phi[REV_NF];
 #endif
 
 static dl::Model     *s_model;
-static ml_stats_t     s_stats = {false, 0, 0, 0, 0, 0, -1, 0.0f, {0.0f, 0.0f, 0.0f}, 0, ML_MODEL_EV, false, false, 0.0f, 0.0f, 0, 0};
+static ml_stats_t     s_stats = {false, 0, 0, 0, 0, 0, -1, 0.0f, {0.0f, 0.0f, 0.0f}, 0, ML_MODEL_BOOT, false, false, 0.0f, 0.0f, 0, 0};
 static float          s_last_p[ML_N_CLASSES];
 static SemaphoreHandle_t s_stats_lock;
 static sched_job_t    s_job = -1;
@@ -335,6 +364,9 @@ static void ml_task(void *arg)
             if (got == 0) sched_set_expected(s_job, false);   /* nothing for 5 s: no OBD link or model paused, not a stall */
             continue;
         }
+#if CONFIG_IDF_TARGET_ESP32S31
+        if (os_ml_paused()) { sched_set_expected(s_job, false); continue; }   /* the degradation ladder's last rung (os.h) */
+#endif
         sched_set_expected(s_job, true);
         if (xSemaphoreTake(s_model_lock, pdMS_TO_TICKS(1000)) != pdTRUE) continue;
         if (!s_model || s_run.model != s_active) { xSemaphoreGive(s_model_lock); continue; }   /* unloaded or switched meanwhile */
@@ -411,6 +443,7 @@ static void ml_task(void *arg)
             n += snprintf(line + n, sizeof line - n, ",,,,,,,%.4f,\n", cal);
         }
         sdlog_write_ml_line(header, line);
+        cpu_monitor_add_ai_us(us + us2);
 #if CONFIG_CARMIND_ML_SYNTH_TEST
         ESP_LOGI(TAG, "%.*s", (int)strlen(line) - 1, line);
 #endif
@@ -486,15 +519,18 @@ extern "C" int ml_get_last_probs(float *out, int max)
     return n;
 }
 
+static volatile int s_selftest_state = -1;           /* 1 exact, 0 differs, -1 not run (ml_selftest_state) */
+
 /* One timed run on the model's embedded test input. Caller holds the model lock. */
 static uint32_t selftest(void)
 {
 #if CONFIG_CARMIND_ML_SELFTEST
     /* ESP-DL compares the model's output on its embedded test input with ESP-PPQ's PC simulation, to 1 LSB of the raw
-       int16 value, and stops at the first mismatch. The S3 trunk differs from the simulation by several percent (the
-       PC side computes w8a16 layers in float32, the S3 in 40-bit integers), so a mismatch is reported, not treated as
-       a failure; the replay agreement with the desktop model is the real check. */
+       int16 value, and stops at the first mismatch. A mismatch is reported, not treated as a failure (the replay
+       agreement with the desktop model is the real check). On the S31 the old gap was the int16 lookup tables: exported
+       without them (int16_lut_step -1) both models match exactly (z 0/64, est 0/3, man 0/4). */
     esp_err_t st = s_model->test();
+    s_selftest_state = st == ESP_OK ? 1 : 0;
     int64_t t1 = esp_timer_get_time();
     s_model->run();
     uint32_t us = (uint32_t)(esp_timer_get_time() - t1);
@@ -507,6 +543,9 @@ static uint32_t selftest(void)
 #endif
 }
 
+#if CONFIG_IDF_TARGET_ESP32S31
+static_assert((int)OS_AI_EV == (int)ML_MODEL_EV && (int)OS_AI_REV == (int)ML_MODEL_REV, "the AI service contract ids are the model ids");
+#endif
 extern "C" const char *ml_model_key(int id) { return id >= 0 && id < ML_MODEL_COUNT ? MODELS[id].key : "?"; }
 extern "C" const char *ml_model_name(int id) { return id >= 0 && id < ML_MODEL_COUNT ? MODELS[id].name : "?"; }
 extern "C" bool ml_model_available(int id)
@@ -519,10 +558,13 @@ extern "C" bool ml_model_available(int id)
 #endif
 }
 extern "C" int ml_model_active(void) { return s_active; }
+extern "C" const char *ml_model_version(int id) { return id >= 0 && id < ML_MODEL_COUNT ? MODELS[id].version : ""; }
+extern "C" const char *ml_model_target(int id) { return id >= 0 && id < ML_MODEL_COUNT ? MODELS[id].target : ""; }
+extern "C" int ml_selftest_state(void) { return s_selftest_state; }
 
 extern "C" bool ml_rev_active(void)
 {
-    return s_active == ML_MODEL_REV && s_model && s_z_ok && !sched_safe_mode();
+    return s_active == ML_MODEL_REV && s_model && s_z_ok && !OCM_REFUSED(OS_SVC_LEARNER, sched_safe_mode());
 }
 
 static void announce(void)
@@ -543,7 +585,8 @@ static int stored_model(void)
     nvs_handle_t h;
     uint8_t v = ml_model_available(ML_MODEL_REV) ? ML_MODEL_REV : ML_MODEL_EV;
     if (nvs_open("ml", NVS_READONLY, &h) == ESP_OK) { nvs_get_u8(h, "model", &v); nvs_close(h); }
-    return v < ML_MODEL_COUNT && ml_model_available(v) ? (int)v : (int)ML_MODEL_EV;
+    if (v < ML_MODEL_COUNT && ml_model_available(v)) return (int)v;
+    return ml_model_available(ML_MODEL_EV) ? (int)ML_MODEL_EV : (int)ML_MODEL_REV;   /* a build without E.V: R.E.V */
 }
 
 /* Unloading and loading at run time is what ml_unload()/ml_load() were written for: the model lock is held across the swap, the
@@ -575,6 +618,18 @@ extern "C" bool ml_select_model(int id, char *why, size_t why_n)
                      (esp_timer_get_time() - t0) / 1000, (unsigned)(heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024), (unsigned)(ps0 / 1024));
             uint32_t us = selftest();
             xSemaphoreTake(s_stats_lock, portMAX_DELAY); s_stats.selftest_us = us; xSemaphoreGive(s_stats_lock);
+#if CONFIG_IDF_TARGET_ESP32S31
+            /* mossREV OS admission (os_core.h): its measured run x 2 must leave every core-1 deadline met, else the old
+               model comes back, as after a failed load */
+            if (!os_admit_model(id, us, why, why_n)) {
+                ok = false;
+                delete s_model;
+                s_active = old;
+                s_model = load_model();
+                if (s_model) { check_outputs(s_model); us = selftest(); }
+                xSemaphoreTake(s_stats_lock, portMAX_DELAY); s_stats.selftest_us = us; xSemaphoreGive(s_stats_lock);
+            }
+#endif
         }
         ml_reset_history();
     }
@@ -604,24 +659,48 @@ extern "C" void ml_init(void)
     s_active = stored_model();
     s_model = load_model();
     if (s_model && !check_outputs(s_model)) { delete s_model; s_model = nullptr; }
-    if (!s_model && s_active != ML_MODEL_EV) {                     /* the stored choice does not load: fall back to E.V */
+#if CONFIG_IDF_TARGET_ESP32S31
+    int fb = os_ai_contract(s_active)->fallback;   /* the AI service contract: R.E.V falls back to E.V, E.V to nothing */
+    if (!s_model && fb >= 0 && ml_model_available(fb)) {
+        sys_event(EV_WARN, "%s failed to load, using %s", MODELS[s_active].name, MODELS[fb].name);
+        s_active = fb;
+#else
+    if (!s_model && s_active != ML_MODEL_EV && ml_model_available(ML_MODEL_EV)) {   /* the stored choice does not load: fall back to E.V */
         sys_event(EV_WARN, "%s failed to load, using E.V", MODELS[s_active].name);
         s_active = ML_MODEL_EV;
+#endif
         s_model = load_model();
         if (s_model && !check_outputs(s_model)) { delete s_model; s_model = nullptr; }
     }
     if (!s_model) { sys_event(EV_ERROR, "ML model failed to load"); return; }
     ESP_LOGI(TAG, "model %s %s (%s, %s) loaded in %lld ms, internal RAM %u B, z output %s", MODELS[s_active].name, MODELS[s_active].version,
-             ML_QUANT, ML_TARGET_CHIP, (esp_timer_get_time() - t0) / 1000, (unsigned)(heap0 - heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
+             MODELS[s_active].quant, MODELS[s_active].target, (esp_timer_get_time() - t0) / 1000, ML_RAM_DELTA(heap0, heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
              s_z_ok ? "yes" : "no");
     s_stats.selftest_us = selftest();
+#if CONFIG_IDF_TARGET_ESP32S31
+    if (!os_admit_model(s_active, s_stats.selftest_us, NULL, 0)) {
+        sys_event(EV_ERROR, "Model refused: a deadline would fail");   /* the response-time analysis (os_core.h) */
+        delete s_model;
+        s_model = nullptr;
+        return;
+    }
+#endif
+#if CONFIG_IDF_TARGET_ESP32S31
+    s_job = os_ai_register(s_active, true);       /* the AI service contract (os_core.h): the same period, deadline, stall */
+#else
     s_job = sched_register("ml", (ML_STRIDE_S > 0 ? ML_STRIDE_S : 10) * 1000, (ML_STRIDE_S > 0 ? ML_STRIDE_S : 10) * 1000, true);
     /* The model runs once per OBD row, which the car paces: about 1.4 s on a real car with gaps over 3 s, so three 1 s
        periods is too tight. A stall is no run for a whole 10 s label window while rows are expected. */
     if (ML_STRIDE_S > 0) sched_set_stall_ms(s_job, 10000);   /* stride 0 keeps the 3-period rule of its 10 s period */
+#endif
     sched_set_expected(s_job, false);              /* runs only while windows arrive */
+#if BOARD_HAS_SD
     /* stack in PSRAM: the task only computes and never runs while the flash cache is disabled */
     if (xTaskCreatePinnedToCoreWithCaps(ml_task, "ml", 6144, NULL, 3, NULL, 1, MALLOC_CAP_SPIRAM) != pdPASS) {
+#else
+    /* internal stack: its .ml.csv lines go through stdio, which writes the NOR flash log when its buffer fills */
+    if (xTaskCreatePinnedToCore(ml_task, "ml", 6144, NULL, 3, NULL, 1) != pdPASS) {
+#endif
         sys_event(EV_ERROR, "ML task could not start (no memory)");
         return;
     }

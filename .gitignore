@@ -9,6 +9,40 @@ sdkconfig.old
 tests/host/carmind_tests
 tests/host/rev_tests
 tests/host/tank_tests
+tests/host/fat_tests
+tests/host/session_tests
+tests/host/reset_tests
+tests/host/swipe_tests
+tests/host/clock_tests
+tests/host/logstore_tests
+tests/host/nandfat_tests
+tests/host/settings_tests
+tests/host/wifi_tests
+tests/host/events_tests
+tests/host/theme_tests
+tests/host/wificreds_tests
+tests/host/wificreds_src/
+tests/host/rows_tests
+tests/host/os_tests
+tests/host/ppa_tests
+# ESP-Mosaico (esp32s31) models: CarMind R.E.V and E.V re-quantized for the S31 (the same weights as ml/onboard/rev and ml/onboard)
+ml/onboard_s31/*
+!ml/onboard_s31/rev/
+ml/onboard_s31/rev/*
+!ml/onboard_s31/rev/onboard.espdl
+!ml/onboard_s31/rev/export.json
+!ml/onboard_s31/rev/norm.json
+!ml/onboard_s31/rev/targets.json
+!ml/onboard_s31/ev/
+ml/onboard_s31/ev/*
+!ml/onboard_s31/ev/onboard.espdl
+!ml/onboard_s31/ev/export.json
+!ml/onboard_s31/ev/norm.json
+!ml/onboard_s31/ev/targets.json
+tests/host/uimetrics_tests
+tests/host/prefetch_tests
+tests/host/pair_tests
+tests/host/pair_gate_tests
 # editor / OS
 .vscode/
 .DS_Store
@@ -59,3 +93,8 @@ tmp/
 *.orig
 *.swp
 .idea/
+# host screen renderer (tests/host/uishot): binary, LVGL objects, PNG output
+tests/host/uishot_bin
+tests/host/uishot_bin.dSYM/
+tests/host/uishot/build/
+tests/host/uishot/out/

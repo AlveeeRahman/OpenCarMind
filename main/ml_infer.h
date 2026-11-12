@@ -17,6 +17,14 @@
 #include <stddef.h>
 #include "status.h"
 
+/* Internal RAM a load took, for the log: free before less free after. On the S31 it is clamped at 0 (free can grow while a
+   model loads, and the unsigned difference then wrapped to about 4 GB); the S3 keeps its old expression for now. */
+#if CONFIG_IDF_TARGET_ESP32S31
+#define ML_RAM_DELTA(before, after) ((unsigned)((before) > (after) ? (before) - (after) : 0))
+#else
+#define ML_RAM_DELTA(before, after) ((unsigned)((before) - (after)))
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -25,7 +33,12 @@ typedef enum { ML_MODEL_EV = 0, ML_MODEL_REV = 1, ML_MODEL_COUNT } ml_model_id_t
 const char *ml_model_key(int id);        /* "ev", "rev" */
 const char *ml_model_name(int id);       /* "CarMind E.V", "CarMind R.E.V" */
 bool ml_model_available(int id);         /* built into this firmware */
-int  ml_model_active(void);              /* the selected model, ML_MODEL_EV until NVS says otherwise */
+int  ml_model_active(void);              /* the selected model; before ml_init the one a new board starts on */
+const char *ml_model_version(int id);    /* first 12 hex of the model file's sha256, "" when not built in */
+const char *ml_model_target(int id);     /* the chip the model file was exported for ("esp32s3", "esp32s31") */
+/* The loaded model's self-test at load (CONFIG_CARMIND_ML_SELFTEST): 1 = its outputs on the embedded test input are within
+   1 LSB of ESP-PPQ's PC simulation, 0 = further off, -1 = not run. */
+int  ml_selftest_state(void);
 /* Switch models: unload the running one, load the other from flash, keep the choice in NVS. Writes NVS, so call it from a task
    with an internal-RAM stack (the USB door), and only while parked. If the new model does not load, the old one is loaded back
    and false is returned with the reason in why. */

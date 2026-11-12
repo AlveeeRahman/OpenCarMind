@@ -25,8 +25,35 @@ menu "OBD Logger Configuration"
             string "Write characteristic UUID (hex, empty = auto-detect)"
             default "FFE1"
         config OBD_BLE_MIN_RSSI
-            int "Minimum RSSI (dBm) to attempt a connection"
+            int "Minimum RSSI (dBm) to connect (with pairing confirm on: to the paired adapter)"
             default -90
+        config OBD_BLE_PAIR_CONFIRM
+            bool "Pair a new adapter only after the user says yes, at a strong signal"
+            default y if IDF_TARGET_ESP32S31
+            default n
+            help
+                The "ask + strong signal" pairing (EdgeOS 2.0.0). A device that is not
+                the paired adapter is only probed (serial line, ELM327 reset), then the
+                user is asked: the sheet on the ESP-Mosaico, a BOOT tap within 5 s on
+                the car board. Only the yes saves it. The automatic search never looks
+                past a saved adapter, and the car board's info page shows "paired" or
+                "not paired" instead of the address.
+                On by default for the ESP-Mosaico. Off for the ESP32-S3 car board
+                until it is tested there: off, the car board keeps its tested rule
+                (any OBD-looking device at OBD_BLE_MIN_RSSI or stronger, saved at its
+                first ELM327 prompt) and its image is the one of EdgeOS 2.0.0 (4aeff43).
+                To turn it on for the car board, add CONFIG_OBD_BLE_PAIR_CONFIRM=y to
+                sdkconfig.defaults.esp32s3.
+        config OBD_BLE_PAIR_MIN_RSSI
+            int "Minimum RSSI (dBm) to offer a new adapter for pairing"
+            depends on OBD_BLE_PAIR_CONFIRM
+            default -70
+            help
+                A device that is not the paired adapter is offered for pairing only
+                at this signal or stronger, so an adapter in a car parked nearby is
+                not offered. Nothing is saved until the user says yes on the screen
+                (ESP-Mosaico) or taps BOOT within 5 s (car board). The paired
+                adapter keeps connecting down to OBD_BLE_MIN_RSSI.
 
         config OBD_POLL_INTERVAL_MS
             int "Delay between PID polling cycles (ms)"
@@ -71,6 +98,151 @@ menu "OBD Logger Configuration"
         config SDLOG_FORMAT_IF_MOUNT_FAILED
             bool "Format the card if it cannot be mounted (DESTRUCTIVE)"
             default n
+        config OCM_STORAGE_RESET_TEST
+            bool "ESP-Mosaico test: storage reset-injection loop (DESTROYS the log storage)"
+            depends on IDF_TARGET_ESP32S31
+            default n
+            help
+                Bench test of the flash FAT against abnormal resets. Every boot checks the volume the previous cycle left,
+                then writes and appends small files and resets the board at a random moment (esp_restart, abort with a
+                core dump, the download door's ROM reset), or with the stall variant freezes the UI so the ui-stall
+                guard fires. After a volume loss it erases the storage partition. Counters are kept in NVS ("srt") and
+                printed as "SRT ..." lines. Never in a release or a car build.
+        config OCM_STORAGE_RESET_TEST_CYCLES
+            int "Reset cycles per run"
+            depends on OCM_STORAGE_RESET_TEST
+            default 200
+        config OCM_STORAGE_RESET_TEST_STALL
+            bool "Stall variant: freeze the UI so the ui-stall guard resets the board"
+            depends on OCM_STORAGE_RESET_TEST
+            default n
+        config OCM_PINS_SAFE_DUMP
+            bool "Bench: print every GPIO's configuration before and after the safe pin state"
+            depends on IDF_TARGET_ESP32S31
+            default n
+            help
+                board_pins_safe_apply prints gpio_dump_io_configuration for all 60 GPIOs before and after it runs (about
+                400 lines on the console at boot), for a diff on the bench. Never in a release.
+        config OCM_UPS
+            bool "mossREV OS: the battery as a UPS (power off cleanly after USB loss), not measured yet"
+            depends on IDF_TARGET_ESP32S31
+            default n
+            help
+                The board task watches the fuel gauge's current. Two samples below -OCM_UPS_DISCHARGE_MA in a row mean
+                USB power is gone: the logs are flushed, the screen dims and the Saving runlevel refuses every change.
+                After OCM_UPS_GRACE_S on battery (cranking drops the car's USB for a few seconds) storage is quiesced
+                and the board powers off (GPIO57 to the SAM8108, or deep sleep). At OCM_UPS_FLOOR_MV it powers off at
+                once. Off until the current sign and the draw are measured on the board (os_core.h section 6).
+        config OCM_UPS_DISCHARGE_MA
+            int "On battery when the gauge current is at or below minus this (mA)"
+            depends on OCM_UPS
+            range 5 500
+            default 20
+        config OCM_UPS_GRACE_S
+            int "Seconds on battery before the board powers off"
+            depends on OCM_UPS
+            range 2 120
+            default 15
+        config OCM_UPS_FLOOR_MV
+            int "Battery voltage at which the board powers off at once (mV)"
+            depends on OCM_UPS
+            range 3000 3800
+            default 3400
+        config OCM_BATSAFE
+            bool "mossREV OS: battery safety (gauge monitor, thermal and over-voltage policy)"
+            depends on IDF_TARGET_ESP32S31
+            default y
+            help
+                Every 2 s the board task reads the BQ27220's voltage, current, temperature (its own sensor: there is no
+                thermistor on this board), state of health, cycle count and status flags. On USB at or above
+                OCM_BATSAFE_WARN_C it sheds load (the Saving runlevel stops Wi-Fi and the learner, the screen dims). At
+                OCM_BATSAFE_CRIT_C, or with the cell at or above OCM_BATSAFE_OV_MV, it stops safely (logs flushed,
+                storage quiesced). The charger (TP4057) has no enable pin, so the firmware cannot stop charging.
+                The thresholds are placeholders until the cell's datasheet is known (os_core.h section 8).
+        config OCM_BATSAFE_WARN_C
+            int "Shed load on USB at this gauge temperature (C)"
+            depends on OCM_BATSAFE
+            range 30 70
+            default 45
+        config OCM_BATSAFE_CRIT_C
+            int "Stop safely at this gauge temperature (C)"
+            depends on OCM_BATSAFE
+            range 40 85
+            default 60
+        config OCM_BATSAFE_HYST_C
+            int "Hysteresis (C): back to normal this far below a threshold"
+            depends on OCM_BATSAFE
+            range 1 15
+            default 3
+        config OCM_BATSAFE_OV_MV
+            int "Stop safely when the cell reaches this voltage (mV)"
+            depends on OCM_BATSAFE
+            range 4150 4400
+            default 4250
+        config OCM_BATSAFE_POWER_OFF
+            bool "The safe stop powers the board off (GPIO57), not verified on the board yet"
+            depends on OCM_BATSAFE && OCM_UPS
+            default n
+        config OCM_GAUGE_CAL
+            bool "Debug: the GAUGE-CAL door command (sets the gauge's design capacity), never in a release"
+            depends on IDF_TARGET_ESP32S31
+            default n
+            help
+                Adds "GAUGE-CAL <mAh>" to the USB door (after pairing). It unseals the BQ27220 with TI's default keys,
+                writes Design Capacity and Design Energy (mAh x 3.7 V) and seals it again, only if the data-memory
+                values read first match the gauge's own DesignCapacity(). Nothing runs it automatically.
+        config OCM_APP_ROLLBACK
+            bool "mossREV OS: confirm a new app slot after the boot health verdict (A/B rollback, prepared, not in use)"
+            depends on IDF_TARGET_ESP32S31 && BOOTLOADER_APP_ROLLBACK_ENABLE
+            default n
+            help
+                With the bootloader's CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE, an image the bootloader starts in the
+                PENDING_VERIFY state gets one boot to confirm itself. The boot health verdict (about 65 s after boot)
+                confirms it with esp_ota_mark_app_valid_cancel_rollback() unless the verdict is Bad, and asks for the
+                rollback otherwise. This only helps once new images are written to the inactive slot with an otadata
+                entry in the NEW state, which today's flashing (esptool at 0x20000, otadata erased) never does. See
+                "A/B slots and rollback" in docs/MOSAICO.md. The owner decides the flashing flow first.
+        config OCM_UPS_GPIO57
+            bool "Power off through GPIO57 (SAM8108 POWER_SWITCH, open-drain low); deep sleep if it is still up"
+            depends on OCM_UPS
+            default y
+        config OCM_NAND_LOGS
+            bool "ESP-Mosaico: drive logs on the 128 MB SPI NAND"
+            depends on IDF_TARGET_ESP32S31
+            default y
+            help
+                The ESP-Mosaico core board carries a GigaDevice GD5F1GM7UEYIGR (1 Gbit, 3.3 V) SPI NAND on GPIO20-25.
+                With this option the drive logs (sNNNNNN.* and drives.csv) are written to a FAT on it (Dhara wear
+                levelling, espressif/spi_nand_flash), and the flash FAT keeps the state files. A blank NAND is formatted
+                at the first boot; drive logs found on the flash FAT are moved to it once. Without a working NAND the
+                logs stay on the flash FAT.
+        config OCM_NAND_MOUNT_POINT
+            string "NAND mount point"
+            depends on OCM_NAND_LOGS
+            default "/nand"
+        config OCM_NAND_SPI_MHZ
+            int "NAND SPI clock (MHz)"
+            depends on OCM_NAND_LOGS
+            range 1 80
+            default 20
+            help
+                SPI3 through the GPIO matrix (the NAND pins are SPI2's IO MUX set, but SPI2 drives the display).
+                Half duplex: the driver adds dummy cycles for the matrix input delay.
+        config OCM_NAND_QIO
+            bool "NAND in quad I/O (WP# and HOLD# as data lines)"
+            depends on OCM_NAND_LOGS
+            default n
+            help
+                Off: single-line SPI with WP# and HOLD# held high as GPIOs. On: quad reads and writes (the driver sets
+                the chip's QE bit). Untested on the board.
+        config OCM_NAND_SELFTEST
+            bool "Bench: NAND speed self-test at boot (writes and deletes 1 MB)"
+            depends on OCM_NAND_LOGS
+            default n
+            help
+                After the mount: 1 MB written in 16 KB chunks and synced, read back and compared, then 200 drive-like
+                1 KB appends with an fsync every 25; prints "NAND selftest: write N KB/s, read N KB/s, fsync p50/max ms".
+                Test builds only.
     endmenu
 
     menu "Wi-Fi clock sync"
@@ -94,7 +266,7 @@ menu "OBD Logger Configuration"
             depends on OCM_WIFI_CLOCK_SYNC
             default n
             help
-                Off by default in 2.5.0: Wi-Fi only sets the clock, and drives reach the desktop app over the USB cable.
+                Off by default in 2.5.x: Wi-Fi only sets the clock, and drives reach the desktop app over the USB cable.
                 The upload is being reworked into a transfer without head-of-line blocking. Pairing over USB still works
                 and still protects the USB commands.
         config SYNC_WIFI_SSID
@@ -116,7 +288,7 @@ menu "OBD Logger Configuration"
             depends on OCM_WIFI_CLOCK_SYNC
             default 20
             help
-                The board only uses Wi-Fi to set its clock over SNTP. Until the clock is set it looks for a known network
+                The board uses Wi-Fi to set its clock (the Date header of an HTTPS reply). Until the clock is set it looks for a known network
                 this often (never while the car is being logged).
         config SYNC_STAY_CONNECTED_S
             int "Seconds to stay connected after a successful clock sync"
@@ -151,6 +323,70 @@ menu "OBD Logger Configuration"
             int "Backlight brightness (0-100)"
             range 0 100
             default 80
+        config OCM_SWIPE_INTENT
+            bool "Smart swipe: learn where launcher swipes go and start them sooner (keeps itself only if faster)"
+            depends on IDF_TARGET_ESP32S31 && OCM_UI_METRICS
+            default y
+            help
+                A 0.9 KB on-device learner (main/swipe_intent.c, OS-ELM with recursive least squares) predicts
+                40 ms after touch-down whether a launcher gesture goes to the next page, the previous page or stays.
+                It never triggers an action: on the gestures where it may act it keeps the Home picture current
+                and starts LVGL's own snap at the lift. It is a feature of the OS feature gate (ui_metrics.h): an
+                interleaved A/B test that, after at least 50 swipes per arm, keeps it only if lift-to-settled p95
+                dropped and the predicted page was ready at lift on more than 80 % of swipes, else turns it off.
+                The model is saved in NVS (about 840 B), the verdict with the gate's, and re-tested after a firmware
+                update or a settings reset. Settings shows the state.
+        config OCM_UI_METRICS
+            bool "Smart UI: measure finger-lift to page-settled for every touch, and gate any prefetch per class"
+            depends on IDF_TARGET_ESP32S31
+            default y
+            help
+                main/ui_metrics.c times every launcher swipe, app-icon tap, Back, in-app control and list scroll from
+                the finger lift to the moment the page has settled (its last frame drawn and nothing left to draw for
+                two refresh periods), keeps per-class histograms, and runs the A/B gate that decides per class whether
+                a prefetcher may stay: p95 must drop, the prefetched page must be ready on more than 80 % of events and
+                a one-sided Mann-Whitney test (Holm-corrected across the classes) must pass, else it is turned off.
+                The verdicts are saved in NVS and re-tested after a firmware update. About 3 KB of PSRAM.
+        config OCM_UI_PREFETCH
+            bool "Smart UI arm A1: build the app (or refresh the launcher) at the press, keep it only if faster"
+            depends on OCM_UI_METRICS
+            default y
+            help
+                At the press on an app icon the app screen is built in a spare screen, and at the press on Back the
+                launcher behind the app is refreshed, so the click only has to show it. On half of the taps of each
+                class (after a warm-up) the gate compares it with no prefetch and keeps it only by the Smart UI rule;
+                otherwise it turns it off for that class. The click still decides where the page goes.
+        config OCM_PPA
+            bool "Use the PPA and the 2D-DMA for the screen"
+            depends on IDF_TARGET_ESP32S31 && SOC_PPA_SUPPORTED && SOC_DMA2D_SUPPORTED
+            default y
+            help
+                The launcher slide composes each frame with the 2D-DMA instead of a CPU row copy, and byte-swaps
+                each page picture with the PPA. Every call falls back to the CPU when the driver refuses it, and an
+                engine that fails 3 times in a row, or fails its boot self-test against the CPU, stays off until the
+                next boot (main/ocm_ppa.c). The 23.6 ms the QSPI link needs for a full frame is not changed by this.
+        config OCM_PPA_LVGL
+            bool "Also inside LVGL: large opaque fills and image copies"
+            depends on OCM_PPA
+            default y
+            help
+                LVGL's software renderer hands opaque RGB565 fills and opaque RGB565 image copies of at least
+                OCM_PPA_MIN_PX pixels to the PPA (LV_DRAW_SW_ASM_CUSTOM hooks, main/ppa_lv/ocm_lv_blend_hook.h).
+                Both give the same pixels as the CPU. Needs CONFIG_LV_DRAW_SW_ASM_CUSTOM (sdkconfig.defaults.esp32s31).
+        config OCM_PPA_LVGL_BLEND
+            bool "Also semi-transparent fills (not bit-exact)"
+            depends on OCM_PPA_LVGL
+            default n
+            help
+                The PPA blends at 8 bits per channel, LVGL at 5 bits of opacity, so a glass card can differ by one
+                step between its middle (PPA) and its rounded rows (CPU). Off until a board check shows no seam.
+        config OCM_PPA_MIN_PX
+            int "Smallest LVGL area handed to the PPA (pixels)"
+            depends on OCM_PPA
+            range 256 230400
+            default 4096
+            help
+                Below this the set-up cost of a PPA call is likely more than the CPU loop. To be tuned on the board.
     endmenu
     menu "Diagnostics"
         config CARMIND_TASK_STATS_S
@@ -202,7 +438,7 @@ menu "OBD Logger Configuration"
             default y
             help
                 Embeds ml/onboard/rev/onboard.espdl (about 64 KB of flash) next to CarMind E.V. The desktop app switches
-                between the two over USB; E.V stays the default until the user picks R.E.V. While R.E.V runs, the board learns
+                between the two over USB; a new board starts on R.E.V when it is built in (stored_model). While R.E.V runs, the board learns
                 this car's fuel use (a new read-out of the model's z feature, see rev_learn.h). Say n for an E.V-only firmware;
                 the app then shows R.E.V as not available.
         config CARMIND_REV_PHYS

@@ -1,16 +1,11 @@
-# ---- Target / flash / PSRAM (Waveshare ESP32-S3-LCD-1.47, N16R8) ----
+# ---- Target / flash / PSRAM: common to both boards; per-board lines in sdkconfig.defaults.esp32s3 / .esp32s31 ----
 CONFIG_IDF_TARGET="esp32s3"
 CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
-CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
 CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
 CONFIG_PARTITION_TABLE_CUSTOM=y
-CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 CONFIG_SPIRAM=y
-CONFIG_SPIRAM_MODE_OCT=y
-CONFIG_SPIRAM_SPEED_80M=y
 CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=4096
 CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y
-CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
 CONFIG_ESP_TASK_WDT_TIMEOUT_S=30
 
 # ---- Bluetooth: NimBLE, central only ----
@@ -64,8 +59,7 @@ CONFIG_LWIP_TCP_SND_BUF_DEFAULT=11520
 # (sched_kick), so it fires on a step that never returns; repeated resets put the board in safe mode (sched_mon.h).
 CONFIG_ESP_TASK_WDT_PANIC=y
 
-# ---- Waveshare 1.47B panel needs inverted colours; default timezone is UTC (set SYNC_TIMEZONE in menuconfig) ----
-CONFIG_LCD_INVERT_COLORS=y
+# ---- default timezone is UTC (set SYNC_TIMEZONE in menuconfig); the S3 panel inversion is in sdkconfig.defaults.esp32s3 ----
 CONFIG_SYNC_TIMEZONE="UTC0"
 
 # Hardening: stack protector, no soft-AP or enterprise Wi-Fi (the board is a station only).

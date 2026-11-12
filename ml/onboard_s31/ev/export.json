@@ -1,0 +1,25 @@
+{
+ "model": "CarMind E.V",
+ "target": "esp32s31",
+ "quant_type": "w8a16",
+ "outputs": [
+  "man",
+  "est"
+ ],
+ "files": {
+  "onboard.espdl": {
+   "bytes": 107760,
+   "sha256": "621f1ce3196e78a541eae402d067041cc241b125f6536aeb5cee7c23f8b03224"
+  },
+  "norm.json": {
+   "bytes": 928,
+   "sha256": "ffe967d672dc1703c35561a708b2889f45592b7f639d72ef6699341970e38415"
+  },
+  "targets.json": {
+   "bytes": 358,
+   "sha256": "5246a3c69eaedc82e2c62e01867f02303a54afc50a5fccc9bed1c7b58efff842"
+  }
+ },
+ "note": "Public E.V (the esp32s3 file dfa9af416dfb) re-quantized for the ESP32-S31 by ESP-PPQ (target esp32s31, w8a16, int16_lut_step=-1) from the same ONNX graph and calibration windows; every weight dequantises to the esp32s3 value and every bias to within one esp32s3 step. The S31 target stores one weight exponent per output channel. int16_lut_step=-1: no int16 LUT, so ESP-DL runs its native int16 Relu and the chip matches the ESP-PPQ simulation bit for bit (the default step-256 LUT is evaluated nearest-neighbour on the chip).",
+ "int16_lut_step": -1
+}

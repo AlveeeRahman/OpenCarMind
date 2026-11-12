@@ -15,10 +15,10 @@ src = open('docs/screens/screens.html').read()
 head = src[:src.index('<body>') + 6].replace('.row{display:flex;gap:24px;padding:24px}', '.row{display:block;padding:0}').replace('body{margin:0;background:#0A0A0A', 'body{margin:0;background:#000000')
 # dark -> light palette, mirrors THEME_DARK / THEME_LIGHT in main/display.c. One pass, so a light value that equals
 # another dark value (dark muted becomes #4A4A4A, which is also the dark border) is never remapped twice.
-MAP = {'#000000':'#F5F5F5', '#050505':'#FFFFFF', '#F2ECE1':'#101418', '#B8B8B8':'#4A4A4A', '#8CC8FF':'#1F4FC2',
-       '#56F487':'#1B6B2A', '#FCCA21':'#6B4A00', '#E64343':'#C62828', '#4A4A4A':'#8C8C8C', '#7A7A7A':'#6E6E6E',
-       '#AD8DFD':'#5517A5', '#72ECE4':'#034239', '#6CB35D':'#40731A', '#FE86C2':'#971C65', '#38B8F6':'#196EA9',
-       '#FE860F':'#A65F00', '#FD122E':'#D4002A', '#F2A13A':'#8F5200', '#FFF':'#101418', '#FFFFFF':'#101418'}
+MAP = {'#000000':'#FFFFFF', '#050505':'#FCFCFC', '#F2ECE1':'#15202D', '#B8B8B8':'#4A5563', '#8CC8FF':'#3B82F6',
+       '#56F487':'#15803D', '#FCCA21':'#B45309', '#E64343':'#C62828', '#4A4A4A':'#8C8C8C', '#7A7A7A':'#6B7280',
+       '#AD8DFD':'#7C3AED', '#72ECE4':'#0E7490', '#6CB35D':'#4D7C0F', '#FE86C2':'#A21CAF', '#38B8F6':'#1D4ED8',
+       '#FE860F':'#EA6A12', '#FD122E':'#BE123C', '#F2A13A':'#DD6E0E', '#F08E54':'#C2410C', '#F2A33A':'#E5484D', '#FFF':'#15202D', '#FFFFFF':'#15202D'}
 def lighten(html):
     return re.sub(r'#(?:[0-9A-Fa-f]{6}|fff)\b', lambda m: MAP.get(m.group(0).upper(), m.group(0)), html)
 for m in re.finditer(r'(<div class="scr[^"]*" id="([^"]+)"[^>]*>.*?)(?=\n<div class="scr|\n</div></body>)', src, re.S):

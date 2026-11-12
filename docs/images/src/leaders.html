@@ -14,17 +14,17 @@ h1 { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 34px
 .method { margin-left: auto; font-size: 19px; color: #2F5FD0; }
 .cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px; margin-top: 30px; }
 .card { background: #FFFFFF; border: 1.5px solid #C9C1B3; border-radius: 18px; display: flex; flex-direction: column; }
-.top { display: flex; gap: 16px; padding: 26px 28px 18px; }
-.logo { width: 60px; height: 60px; border-radius: 14px; background: #15202D; display: flex; align-items: center; justify-content: center; flex: none; }
-.logo img { width: 44px; height: 44px; }
-.name { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 25px; line-height: 1.15; }
+.top { display: flex; gap: 14px; padding: 26px 26px 18px; }
+.logo { width: 64px; height: 64px; flex: none; }
+.logo img { width: 64px; height: 64px; display: block; }
+.name { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 24px; line-height: 1.15; white-space: nowrap; }
 .badge { display: inline-block; margin-top: 8px; font-size: 13px; font-weight: 600; letter-spacing: .12em; padding: 3px 10px; border-radius: 7px; border: 1.5px solid; }
 .ship { color: #2D7A31; border-color: #8FC79A; background: #EEF7EF; }
 .repl { color: #7A5600; border-color: #E2C27A; background: #FBF4E2; }
 .fixed { color: #57616F; border-color: #C9C1B3; background: #F5F2EB; }
 .who { font-size: 16px; color: #57616F; margin-top: 8px; }
 .score { margin-left: auto; text-align: right; }
-.score .lbl { font-size: 15px; color: #57616F; }
+.score .lbl { font-size: 15px; color: #57616F; white-space: nowrap; }
 .score .big { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 54px; line-height: 1.05; }
 .score .big span { color: #8C96A3; }
 .score .big.na { font-size: 26px; color: #57616F; padding-top: 14px; }
@@ -41,7 +41,7 @@ h1 { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 34px
 .v.na { font-size: 15px; font-weight: 400; color: #57616F; line-height: 1.3; }
 .foot { border-top: 1px solid #E6E1D7; background: #FBF9F5; border-radius: 0 0 18px 18px; padding: 16px 28px; font-size: 16px; color: #2E3B4C; display: flex; align-items: center; gap: 10px; }
 .foot .d { width: 9px; height: 9px; border-radius: 5px; flex: none; }
-.foot .spec { margin-left: auto; color: #57616F; }
+.foot .spec { margin-left: auto; color: #57616F; white-space: nowrap; }
 .ctx { display: flex; gap: 28px; margin-top: 24px; font-size: 17px; color: #57616F; }
 .ctx b { color: #17212E; font-weight: 600; }
 .ctx .r { margin-left: auto; }
@@ -49,65 +49,64 @@ h1 { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 34px
 </head>
 <body>
 <div class="wrap">
-  <div class="head"><h1>CarMind model leaders</h1><span class="snap">Snapshot 5 November 2026</span><span class="method">Method: MODEL_CARD.md</span></div>
+  <div class="head"><h1>CarMind model leaders</h1><span class="snap">The models on main, tested on two drives they never saw, scored as an unknown car</span><span class="method">Method: MODEL_CARD.md</span></div>
   <div class="cards">
-
-    <div class="card">
-      <div class="top">
-        <div class="logo"><img src="../../../assets/logo/opencarmind-logo.svg" alt=""></div>
-        <div><div class="name">CarMind R.E.V</div><span class="badge ship">SHIPPED · 2.5.1</span><div class="who">6e6d698c44c5 · 01</div></div>
-        <div class="score"><div class="lbl">Held-out windows</div><div class="big">95.<span>1</span></div><div class="rng">2 drives of my car, 4 Nov</div></div>
-      </div>
-      <div class="rows">
-        <div class="row"><span class="k">Cruising</span><div class="bar"><i style="width:87.5%"></i></div><span class="v">87.5</span></div>
-        <div class="row"><span class="k">Braking</span><div class="bar"><i style="width:96.8%"></i></div><span class="v">96.8</span></div>
-        <div class="row"><span class="k">Accelerating</span><div class="bar"><i style="width:91%"></i></div><span class="v">91.0</span></div>
-        <div class="row"><span class="k">Stopped</span><div class="bar"><i style="width:98.6%"></i></div><span class="v">98.6</span></div>
-        <div class="row"><span class="k">KIA test accuracy</span><div class="bar"><i style="width:87.1%"></i></div><span class="v">87.1</span></div>
-        <div class="row"><span class="k">Fuel R², learned</span><div class="bar"><i style="width:86.7%"></i></div><span class="v">0.867</span></div>
-        <div class="row"><span class="k">Fuel R², 1 % bad labels</span><div class="bar"><i style="width:86.7%"></i></div><span class="v">0.867</span></div>
-      </div>
-      <div class="foot"><span class="d" style="background:#2D7A31"></span>Learns in the car<span class="spec">19,815 params · 66 KB · 2.9 ms</span></div>
-    </div>
-
-    <div class="card">
-      <div class="top">
-        <div class="logo"><img src="../../../assets/logo/opencarmind-logo.svg" alt=""></div>
-        <div><div class="name">CarMind R.E.V</div><span class="badge repl">FIRST · 2.5.0</span><div class="who">f70bdcd3151b · 02</div></div>
-        <div class="score"><div class="lbl">Held-out windows</div><div class="big">78.<span>3</span></div><div class="rng">same 2 drives</div></div>
-      </div>
-      <div class="rows">
-        <div class="row"><span class="k">Cruising</span><div class="bar low"><i style="width:10.7%"></i></div><span class="v">10.7<small>called braking</small></span></div>
-        <div class="row"><span class="k">Braking</span><div class="bar"><i style="width:98.9%"></i></div><span class="v">98.9</span></div>
-        <div class="row"><span class="k">Accelerating</span><div class="bar"><i style="width:88%"></i></div><span class="v">88.0</span></div>
-        <div class="row"><span class="k">Stopped</span><div class="bar"><i style="width:97.7%"></i></div><span class="v">97.7</span></div>
-        <div class="row"><span class="k">KIA test accuracy</span><div class="bar"><i style="width:88.9%"></i></div><span class="v">88.9</span></div>
-        <div class="row"><span class="k">Fuel R², learned</span><div class="bar"><i style="width:86.7%"></i></div><span class="v">0.867</span></div>
-        <div class="row"><span class="k">Fuel R², 1 % bad labels</span><div class="bar"><i style="width:69.6%"></i></div><span class="v">0.696</span></div>
-      </div>
-      <div class="foot"><span class="d" style="background:#7A5600"></span>Replaced by 2.5.1<span class="spec">19,815 params · 66 KB · 2.9 ms</span></div>
-    </div>
-
-    <div class="card">
-      <div class="top">
-        <div class="logo"><img src="../../../assets/logo/opencarmind-logo.svg" alt=""></div>
-        <div><div class="name">CarMind E.V</div><span class="badge fixed">FIXED · 2.4.0</span><div class="who">dfa9af416dfb · 03</div></div>
-        <div class="score"><div class="lbl">Held-out windows</div><div class="big na">Not measured</div><div class="rng">on these 2 drives</div></div>
-      </div>
-      <div class="rows">
-        <div class="row"><span class="k">Cruising</span><div class="dots"></div><span class="v na">79 % called braking</span></div>
-        <div class="row"><span class="k">Braking</span><div class="dots"></div><span class="v na">Not measured</span></div>
-        <div class="row"><span class="k">Accelerating</span><div class="dots"></div><span class="v na">Not measured</span></div>
-        <div class="row"><span class="k">Unseen cars, class</span><div class="bar"><i style="width:96.1%"></i></div><span class="v">96.1<small>37 VED cars</small></span></div>
-        <div class="row"><span class="k">KIA macro-F1</span><div class="bar"><i style="width:88.7%"></i></div><span class="v">0.887</span></div>
-        <div class="row"><span class="k">Fuel R², KIA</span><div class="bar"><i style="width:94.7%"></i></div><span class="v">0.947</span></div>
-        <div class="row"><span class="k">Fuel R², no airflow</span><div class="bar"><i style="width:68.8%"></i></div><span class="v">0.688<small>37 VED cars, fixed</small></span></div>
-      </div>
-      <div class="foot"><span class="d" style="background:#948D81"></span>Does not learn<span class="spec">38,679 params · 89 KB · 3.5 ms</span></div>
-    </div>
-
-  </div>
-  <div class="ctx"><span><b>Size:</b> R.E.V keeps the job with 49 % fewer parameters, 26 % less flash and 17 % less time per run.</span><span class="r">Percentages are windows right. R² of 1 is perfect.</span></div>
+<div class="card">
+<div class="top">
+<div class="logo"><img src="../../../assets/logo/carmind-rev-small.svg" alt=""></div>
+<div><div class="name">CarMind R.E.V</div><span class="badge ship">SHIPPED</span><div class="who">6e6d698c44c5 · 01</div></div>
+<div class="score"><div class="lbl">Unseen test drives</div><div class="big">94.<span>5</span></div><div class="rng">2 drives</div></div>
+</div>
+<div class="rows">
+<div class="row"><span class="k">Cruising</span><div class="bar"><i style="width:88.9%"></i></div><span class="v">88.9</span></div>
+<div class="row"><span class="k">Braking</span><div class="bar"><i style="width:98.4%"></i></div><span class="v">98.4</span></div>
+<div class="row"><span class="k">Accelerating</span><div class="bar"><i style="width:87.7%"></i></div><span class="v">87.7</span></div>
+<div class="row"><span class="k">Stopped</span><div class="bar"><i style="width:99.4%"></i></div><span class="v">99.4</span></div>
+<div class="row"><span class="k">Earlier held-out drives</span><div class="bar"><i style="width:95.1%"></i></div><span class="v">95.1</span></div>
+<div class="row"><span class="k">KIA test accuracy</span><div class="bar"><i style="width:87.1%"></i></div><span class="v">87.1</span></div>
+<div class="row"><span class="k">Fuel R², learned, 31 cars</span><div class="bar"><i style="width:86.7%"></i></div><span class="v">0.867</span></div>
+<div class="row"><span class="k">Fuel R², 1 % bad labels</span><div class="bar"><i style="width:86.7%"></i></div><span class="v">0.867</span></div>
+</div>
+<div class="foot"><span class="d" style="background:#2D7A31"></span>Learns in the car<span class="spec">19,815 params · 66 KB · 2.9 ms</span></div>
+</div>
+<div class="card">
+<div class="top">
+<div class="logo"><img src="../../../assets/logo/carmind-rev-old-small.svg" alt=""></div>
+<div><div class="name">CarMind R.E.V (old)</div><span class="badge repl">REPLACED</span><div class="who">f70bdcd3151b · 02</div></div>
+<div class="score"><div class="lbl">Unseen test drives</div><div class="big">71.<span>8</span></div><div class="rng">same 2 drives</div></div>
+</div>
+<div class="rows">
+<div class="row"><span class="k">Cruising</span><div class="bar low"><i style="width:7.9%"></i></div><span class="v">7.9<small>called braking</small></span></div>
+<div class="row"><span class="k">Braking</span><div class="bar"><i style="width:99.2%"></i></div><span class="v">99.2</span></div>
+<div class="row"><span class="k">Accelerating</span><div class="bar"><i style="width:89.4%"></i></div><span class="v">89.4</span></div>
+<div class="row"><span class="k">Stopped</span><div class="bar"><i style="width:99.2%"></i></div><span class="v">99.2</span></div>
+<div class="row"><span class="k">Earlier held-out drives</span><div class="bar"><i style="width:78.3%"></i></div><span class="v">78.3</span></div>
+<div class="row"><span class="k">KIA test accuracy</span><div class="bar"><i style="width:88.9%"></i></div><span class="v">88.9</span></div>
+<div class="row"><span class="k">Fuel R², learned, 31 cars</span><div class="bar"><i style="width:86.7%"></i></div><span class="v">0.867</span></div>
+<div class="row"><span class="k">Fuel R², 1 % bad labels</span><div class="bar"><i style="width:69.6%"></i></div><span class="v">0.696</span></div>
+</div>
+<div class="foot"><span class="d" style="background:#7A5600"></span>Replaced by R.E.V<span class="spec">19,815 params · 66 KB · 2.9 ms</span></div>
+</div>
+<div class="card">
+<div class="top">
+<div class="logo"><img src="../../../assets/logo/carmind-ev-small.svg" alt=""></div>
+<div><div class="name">CarMind E.V</div><span class="badge fixed">FIXED</span><div class="who">dfa9af416dfb · 03</div></div>
+<div class="score"><div class="lbl">Unseen test drives</div><div class="big">73.<span>5</span></div><div class="rng">same 2 drives</div></div>
+</div>
+<div class="rows">
+<div class="row"><span class="k">Cruising</span><div class="bar low"><i style="width:14.6%"></i></div><span class="v">14.6<small>called braking</small></span></div>
+<div class="row"><span class="k">Braking</span><div class="bar"><i style="width:99.2%"></i></div><span class="v">99.2</span></div>
+<div class="row"><span class="k">Accelerating</span><div class="bar"><i style="width:88.3%"></i></div><span class="v">88.3</span></div>
+<div class="row"><span class="k">Stopped</span><div class="bar"><i style="width:99.2%"></i></div><span class="v">99.2</span></div>
+<div class="row"><span class="k">Earlier held-out drives</span><div class="bar"><i style="width:78.9%"></i></div><span class="v">78.9</span></div>
+<div class="row"><span class="k">KIA test accuracy</span><div class="bar"><i style="width:89.4%"></i></div><span class="v">89.4<small>export test</small></span></div>
+<div class="row"><span class="k">Fuel R², learned, 31 cars</span><div class="dots"></div><span class="v na">Does not learn</span></div>
+<div class="row"><span class="k">Fuel R², 1 % bad labels</span><div class="dots"></div><span class="v na">Does not learn</span></div>
+</div>
+<div class="foot"><span class="d" style="background:#948D81"></span>Does not learn<span class="spec">38,679 params · 89 KB · 3.5 ms</span></div>
+</div>
+</div>
+<div class="ctx"><span><b>Size:</b> R.E.V keeps the job with 49 % fewer parameters, 26 % less flash and 17 % less time per run.</span><span class="r">Percentages are windows right. R² of 1 is perfect.</span></div>
 </div>
 </body>
 </html>

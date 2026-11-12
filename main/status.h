@@ -7,16 +7,7 @@
 #include "obd_fields.h"
 #include "fault_engine.h"
 #include "events.h"
-
-typedef enum {
-    BLE_ST_IDLE = 0,
-    BLE_ST_SCANNING,
-    BLE_ST_CONNECTING,
-    BLE_ST_DISCOVERING,
-    BLE_ST_ELM_INIT,
-    BLE_ST_LOGGING,
-    BLE_ST_LOCKED,        /* adapter answered "NA": LELink security enabled */
-} ble_state_t;
+#include "ble_state.h"
 
 typedef enum {
     WIFI_ST_DISABLED = 0,
@@ -112,6 +103,9 @@ typedef struct {
     uint8_t      hold_stage;    /* 0 none, 1 power-off armed, 2 forget armed */
     uint8_t      shutdown_stage; /* 0 running, 1 saving before power-off, 2 off: screen says so, then fades out */
     uint8_t      units;         /* units_t: display units, see units.h */
+    /* appended: model inference share of both cores over the last second, and whether pmu_mips is a real count */
+    uint8_t      ai_pct;
+    bool         mips_ok;
 } app_status_t;
 
 extern app_status_t g_status;

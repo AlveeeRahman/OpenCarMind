@@ -1,0 +1,307 @@
+<!doctype html>
+<!-- OpenCarMind EdgeOS figure: services and runlevels, hand-drawn. Render with docs/images/render.sh.
+     Facts from main/os_core.c (MASK[], ORDER[], os_rl_active, os_rl_allows, os_rl_blocker, os_rl_phrase,
+     os_wifi_may_start), main/os.c (rl_inputs, health_form) and main/os_core.h (OS_H_VERDICT_MS 65000).
+     The strokes are drawn by the script below with a fixed seed, so every render is the same. -->
+<html lang="en"><head><meta charset="utf-8"><title>Services and runlevels</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Kalam:wght@400;700&family=Patrick+Hand&display=swap">
+<style>
+html, body { margin: 0; background: #FBF4E4; }
+svg { display: block; }
+</style></head><body>
+<svg id="fig" width="1200" height="1590" viewBox="0 0 1200 1590" xmlns="http://www.w3.org/2000/svg"></svg>
+<script>
+const W = 1200, H = 1590;
+const C = {
+  page: '#FBF4E4', card: '#FFFCF4', ink: '#2B2620', soft: '#6B6158',
+  orange: '#D9780F', blue: '#2F5FD0', purple: '#7A48B5', green: '#2E8A4E', black: '#2B2620',
+  red: '#C8372D', amber: '#F59A2E'
+};
+const HAND = "'Patrick Hand', 'Comic Sans MS', 'Marker Felt', cursive";
+const TITLE = "Kalam, 'Comic Sans MS', 'Marker Felt', cursive";
+const NS = 'http://www.w3.org/2000/svg';
+const svg = document.getElementById('fig');
+
+let seed = 20261112;
+function rnd() {                       // mulberry32: the same strokes on every render
+  seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+  let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+}
+const jit = a => (rnd() * 2 - 1) * a;
+
+function el(name, attrs, parent = svg) {
+  const e = document.createElementNS(NS, name);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  parent.appendChild(e);
+  return e;
+}
+
+// A smooth path through points (Catmull-Rom turned into cubic Beziers).
+function smooth(p, closed) {
+  const n = p.length, g = i => p[closed ? (i + n) % n : Math.max(0, Math.min(n - 1, i))];
+  let d = `M${p[0][0].toFixed(1)},${p[0][1].toFixed(1)}`;
+  const last = closed ? n : n - 1;
+  for (let i = 0; i < last; i++) {
+    const a = g(i - 1), b = g(i), c = g(i + 1), e = g(i + 2);
+    d += ` C${(b[0] + (c[0] - a[0]) / 6).toFixed(1)},${(b[1] + (c[1] - a[1]) / 6).toFixed(1)}` +
+         ` ${(c[0] - (e[0] - b[0]) / 6).toFixed(1)},${(c[1] - (e[1] - b[1]) / 6).toFixed(1)} ${c[0].toFixed(1)},${c[1].toFixed(1)}`;
+  }
+  return d;
+}
+
+// Points around a rounded rectangle, nudged by a slow wobble so the edge looks drawn by hand.
+function roundRectPts(x, y, w, h, r, amp) {
+  const pts = [], step = 16;
+  const ph1 = rnd() * 6.28, ph2 = rnd() * 6.28;
+  const side = (x0, y0, x1, y1) => {
+    const L = Math.hypot(x1 - x0, y1 - y0), n = Math.max(2, Math.round(L / step));
+    const nx = -(y1 - y0) / L, ny = (x1 - x0) / L;
+    for (let i = 0; i < n; i++) {
+      const t = i / n, s = pts.length;
+      const o = amp * (0.7 * Math.sin(s * 0.35 + ph1) + 0.3 * Math.sin(s * 1.1 + ph2));
+      pts.push([x0 + (x1 - x0) * t + nx * o, y0 + (y1 - y0) * t + ny * o]);
+    }
+  };
+  const arc = (cx, cy, a0) => {
+    for (let i = 0; i < 3; i++) {
+      const a = a0 + (i / 3) * Math.PI / 2;
+      pts.push([cx + r * Math.cos(a) + jit(amp * 0.4), cy + r * Math.sin(a) + jit(amp * 0.4)]);
+    }
+  };
+  side(x + r, y, x + w - r, y);          arc(x + w - r, y + r, -Math.PI / 2);
+  side(x + w, y + r, x + w, y + h - r);  arc(x + w - r, y + h - r, 0);
+  side(x + w - r, y + h, x + r, y + h);  arc(x + r, y + h - r, Math.PI / 2);
+  side(x, y + h - r, x, y + r);          arc(x + r, y + r, Math.PI);
+  return pts;
+}
+
+function roughRect(x, y, w, h, r, color, o = {}) {
+  const sw = o.sw || 2.4, passes = o.dash ? 1 : 2;
+  if (o.fill) el('rect', { x, y, width: w, height: h, rx: r, fill: o.fill });
+  for (let k = 0; k < passes; k++) {
+    const pts = roundRectPts(x + jit(1), y + jit(1), w + jit(1.5), h + jit(1.5), r, o.amp ?? 1.3);
+    const extra = Math.round(pts.length * 0.04);   // overshoot the start a little, like a pen closing a loop
+    const open = pts.concat(pts.slice(0, extra + 1)).map(([a, b], i) => i > pts.length ? [a + jit(1.2), b + jit(1.2)] : [a, b]);
+    el('path', { d: smooth(open, false), fill: 'none', stroke: color, 'stroke-width': k ? sw * 0.7 : sw,
+      'stroke-linecap': 'round', 'stroke-linejoin': 'round', opacity: k ? 0.55 : 1,
+      ...(o.dash ? { 'stroke-dasharray': o.dash } : {}) });
+  }
+}
+
+// A hand-drawn stroke through waypoints, with an optional open arrowhead at the end.
+function roughLine(way, color, o = {}) {
+  const pts = [];
+  for (let s = 0; s < way.length - 1; s++) {
+    const [x0, y0] = way[s], [x1, y1] = way[s + 1];
+    const L = Math.hypot(x1 - x0, y1 - y0), n = Math.max(3, Math.round(L / 18));
+    const bow = (o.bow ?? 0.012) * L * (rnd() < 0.5 ? -1 : 1), nx = -(y1 - y0) / L, ny = (x1 - x0) / L;
+    for (let i = s ? 1 : 0; i <= n; i++) {
+      const t = i / n, b = bow * Math.sin(Math.PI * t), e = (i === 0 || i === n) ? 0 : 0.6;
+      pts.push([x0 + (x1 - x0) * t + nx * b + jit(e), y0 + (y1 - y0) * t + ny * b + jit(e)]);
+    }
+  }
+  const sw = o.sw || 2.4;
+  el('path', { d: smooth(pts, false), fill: 'none', stroke: color, 'stroke-width': sw, 'stroke-linecap': 'round',
+    ...(o.dash ? { 'stroke-dasharray': o.dash } : {}) });
+  if (o.arrow !== false) {
+    const [tx, ty] = pts[pts.length - 1], [px, py] = pts[pts.length - 3];
+    const a = Math.atan2(ty - py, tx - px), L = 14;
+    for (const s of [-1, 1]) {
+      const b = a + Math.PI + s * (0.48 + jit(0.06));
+      el('path', { d: `M${tx},${ty} Q${tx + Math.cos(b) * L * 0.5 + jit(1)},${ty + Math.sin(b) * L * 0.5 + jit(1)} ${tx + Math.cos(b) * L},${ty + Math.sin(b) * L}`,
+        fill: 'none', stroke: color, 'stroke-width': sw, 'stroke-linecap': 'round' });
+    }
+  }
+}
+
+function text(x, y, s, o = {}) {
+  const t = el('text', { x, y, 'font-family': o.font || HAND, 'font-size': o.size || 20, fill: o.color || C.ink,
+    'font-weight': o.weight || 400, 'text-anchor': o.anchor || 'start' }, o.parent || svg);
+  t.textContent = s;
+  return t;
+}
+
+// Word-wrap s into lines no wider than maxW. Returns the baseline after the last line.
+function wrap(x, y, s, maxW, lh, o = {}) {
+  const words = s.split(' ');
+  let line = '', t = text(x, y, '', o);
+  for (const w of words) {
+    const tryLine = line ? line + ' ' + w : w;
+    t.textContent = tryLine;
+    if (t.getComputedTextLength() > maxW && line) {
+      t.textContent = line; y += lh; line = w; t = text(x, y, w, o);
+    } else line = tryLine;
+  }
+  t.textContent = line;
+  return y;
+}
+
+function numCircle(cx, cy, n, color) {
+  el('circle', { cx, cy, r: 20, fill: C.page });
+  const pts = [];
+  for (let i = 0; i < 22; i++) {
+    const a = i / 20 * Math.PI * 2 - 1.2, r = 20 + jit(0.9);
+    pts.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]);
+  }
+  el('path', { d: smooth(pts, false), fill: 'none', stroke: color, 'stroke-width': 2.6, 'stroke-linecap': 'round' });
+  text(cx, cy + 8, String(n), { font: TITLE, weight: 700, size: 22, color, anchor: 'middle' });
+}
+
+function card(n, x, y, w, h, color, title, lane, o = {}) {
+  roughRect(x, y, w, h, 18, color, { fill: C.card, sw: 2.6 });
+  if (n) numCircle(x + 6, y + 6, n, color);
+  const ty = wrap(x + 36, y + 40, title, w - 56, 30, { font: TITLE, weight: 700, size: o.tsize || 25, color });
+  text(x + 36, ty + 24, lane, { size: 18, color, weight: 400 }).setAttribute('opacity', '0.8');
+  return ty + 24;                         // baseline of the lane line
+}
+
+function pill(x, y, label, color) {
+  const t = text(0, 0, label, { size: 19, color });
+  const w = t.getComputedTextLength() + 30;
+  t.setAttribute('x', x + 15); t.setAttribute('y', y + 22);
+  roughRect(x, y, w, 32, 16, color, { sw: 2, amp: 0.8 });
+  return x + w;
+}
+
+function star(cx, cy, R, color) {
+  const pts = [];
+  for (let i = 0; i < 10; i++) {
+    const a = -Math.PI / 2 + i * Math.PI / 5, r = (i % 2 ? R * 0.45 : R) + jit(0.8);
+    pts.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]);
+  }
+  const d = 'M' + pts.map(p => p.map(v => v.toFixed(1)).join(',')).join(' L') + ' Z';
+  el('path', { d, fill: color, stroke: '#B8650C', 'stroke-width': 2, 'stroke-linejoin': 'round' });
+}
+
+function draw() {
+  el('rect', { width: W, height: H, fill: C.page });
+
+  // ---- title, intro and legends ----
+  star(64, 62, 19, C.amber);
+  const tt = text(96, 76, 'How the OS decides what may run', { font: TITLE, weight: 700, size: 44 });
+  const tw = tt.getComputedTextLength();
+  roughLine([[94, 92], [96 + tw * 0.5, 96], [100 + tw, 91]], C.amber, { arrow: false, sw: 3.2, bow: 0.004 });
+  roughLine([[110, 99], [96 + tw * 0.6, 102], [90 + tw, 98]], C.amber, { arrow: false, sw: 2, bow: 0.004 });
+  wrap(60, 140, 'Every time a service asks to run, the OS reads what state the board is in, turns that into runlevels, ' +
+    'and lets the service run only if every active runlevel allows it.', 1080, 28, { size: 22, color: C.soft });
+
+  text(60, 204, 'Lanes:', { size: 21, weight: 400 });
+  let px = 128;
+  for (const [l, c] of [['Inputs the OS reads', C.orange], ['Runlevels', C.blue], ['The check', C.purple],
+                        ['Outcome', C.green], ['Boot health', C.black]]) px = pill(px, 181, l, c) + 14;
+  text(60, 248, 'Paths off the line:', { size: 21 });
+  roughLine([[232, 241], [292, 241]], C.red, { arrow: false, dash: '9 7', sw: 2.6, bow: 0 });
+  text(304, 248, 'red dashed = refused, or held back', { size: 19, color: C.red });
+
+  // ---- 1 inputs ----
+  const r1 = 290, h1 = 330;
+  let y = card(1, 40, r1, 350, h1, C.orange, 'The OS reads its inputs', 'Inputs the OS reads');
+  y = wrap(66, y + 34, 'Fresh on every check, from:', 300, 26, { size: 20, color: C.soft });
+  for (const s of ['start-up: has it finished?', 'the count of abnormal resets', 'the drive log and the car link',
+                   'the battery gauge and USB power', 'the reset path and the format']) {
+    text(70, y + 30, '-', { size: 20, color: C.orange });
+    y = wrap(88, y + 30, s, 286, 24, { size: 20 });
+  }
+  text(66, r1 + h1 - 18, 'read in rl_inputs(), main/os.c', { size: 18, color: C.soft });
+  roughLine([[392, r1 + 165], [446, r1 + 165]], C.ink);
+
+  // ---- 2 runlevels ----
+  y = card(2, 450, r1, 710, h1, C.blue, 'It sets the active runlevels', 'Runlevels');
+  const rl = [
+    ['Boot', 'start-up has not finished'],
+    ['Safe', '3 abnormal resets in a row'],
+    ['Driving', "a drive is recorded, or the car's computer answers"],
+    ['Saving', 'battery hot or over-voltage, or USB lost (UPS option, off)'],
+    ['Update', 'a reset, a door entry or a format is running'],
+    ['Parked', 'none of these'],
+  ];
+  const gx = 476, gy = y + 18, bw = 214, bh = 98, gap = 14;
+  rl.forEach(([name, why], i) => {
+    const bx = gx + (i % 3) * (bw + gap), by = gy + Math.floor(i / 3) * (bh + 12);
+    roughRect(bx, by, bw, bh, 12, C.blue, { sw: 1.6, amp: 0.8, fill: '#F3F6FE' });
+    text(bx + 14, by + 28, name, { font: TITLE, weight: 700, size: 21, color: C.blue });
+    wrap(bx + 14, by + 52, why, bw - 24, 21, { size: 17.5 });
+  });
+  text(476, r1 + h1 - 16, 'Several can hold at once, for example Safe while Driving.', { size: 19, color: C.soft });
+
+  // ---- 3 a service asks ----
+  const r2 = 680, h2 = 300;
+  roughLine([[805, r1 + h1 + 4], [805, r2 - 6]], C.ink);
+  text(818, r1 + h1 + 36, 'the active set', { size: 18, color: C.soft });
+  y = card(3, 40, r2, 350, h2, C.purple, 'A service asks to run', 'The check');
+  const svc = ['model switch', 'clock', 'format', 'Wi-Fi edit', 'Wi-Fi radio', 'USB door', 'model', 'R.E.V learner'];
+  svc.forEach((s, i) => {
+    const sx = 66 + (i % 2) * 160, sy = y + 40 + Math.floor(i / 2) * 32;
+    text(sx, sy, '-', { size: 20, color: C.purple });
+    text(sx + 16, sy, s, { size: 20 });
+  });
+  wrap(66, y + 40 + 4 * 32 + 6, 'Eight services, one mask each in MASK[], main/os_core.c', 300, 24, { size: 18, color: C.soft });
+  roughLine([[392, r2 + 150], [576, r2 + 150]], C.ink);
+
+  // ---- 4 the check ----
+  y = card(4, 580, r2, 330, h2, C.purple, 'os_allows(service)', 'The check');
+  y = wrap(606, y + 36, 'Every active runlevel must allow the service.', 280, 26, { size: 20 });
+  y = wrap(606, y + 32, 'Each one works like a circuit breaker: one that does not allow it is enough to stop it.', 280, 26, { size: 20 });
+  wrap(606, y + 32, 'The table below the figure lists who allows what.', 280, 24, { size: 18, color: C.soft });
+
+  // ---- 5 yes ----
+  roughLine([[912, r2 + 110], [966, r2 + 110]], C.green);
+  text(922, r2 + 98, 'yes', { size: 19, color: C.green });
+  y = card(5, 970, r2, 190, 200, C.green, 'The service runs', 'Outcome', { tsize: 24 });
+  wrap(996, y + 34, 'and does its work as usual', 150, 24, { size: 19, color: C.soft });
+
+  // ---- no: refused ----
+  const rx = 330, ry = 1040, rw = 830, rh = 250;
+  roughLine([[745, r2 + h2 + 2], [745, ry - 4]], C.red, { dash: '9 7', arrow: true });
+  text(758, r2 + h2 + 38, 'no', { size: 20, color: C.red });
+  roughRect(rx, ry, rw, rh, 16, C.red, { dash: '10 7', sw: 2.4 });
+  y = wrap(rx + 26, ry + 38, 'Refused, with the phrase of the highest blocking runlevel', rw - 50, 28,
+    { font: TITLE, weight: 700, size: 23, color: C.red });
+  const ph = [
+    ['Update', '"an update or format is running"'],
+    ['Saving', '"the board is saving power"'],
+    ['Driving', '"a drive is running", or "the car link is up" when only the link is on'],
+    ['Safe', '"safe mode is on"'],
+    ['Boot', '"the board is starting"'],
+  ];
+  ph.forEach(([n, p], i) => {
+    const ly = y + 34 + i * 29;
+    text(rx + 26, ly, `${i + 1}.`, { size: 20, color: C.red });
+    text(rx + 52, ly, n, { size: 20, weight: 400, color: C.blue });
+    text(rx + 130, ly, p, { size: 20 });
+  });
+  text(rx + 26, ry + rh - 18, 'Highest first. Parked never blocks: every service allows it.', { size: 19, color: C.soft });
+
+  // ---- boot health strip ----
+  const sy0 = 1336;
+  roughLine([[40, sy0 - 18], [1160, sy0 - 18]], '#CDBFA5', { arrow: false, sw: 1.6, bow: 0.002, dash: '3 8' });
+  text(60, sy0 + 12, 'Separately, once per boot', { font: TITLE, weight: 700, size: 22, color: C.soft });
+  const hy = 1370, hh = 190;
+  y = card(6, 40, hy, 350, hh, C.black, 'Boot health at 65 s', 'Boot health');
+  wrap(66, y + 34, 'The board rates itself good, degraded or bad.', 300, 25, { size: 20 });
+
+  roughLine([[392, hy + 50], [446, hy + 50]], C.green);
+  y = card(7, 450, hy, 710, 82, C.green, 'Good or degraded: the Wi-Fi task starts', 'Outcome', { tsize: 23 });
+
+  const by0 = hy + 104, bh0 = 86;
+  roughLine([[392, hy + 140], [446, by0 + 40]], C.red, { dash: '9 7' });
+  text(400, hy + 176, 'bad', { size: 19, color: C.red });
+  roughRect(450, by0, 710, bh0, 14, C.red, { dash: '10 7', sw: 2.4 });
+  text(476, by0 + 34, 'Bad: Wi-Fi is held until you start it', { font: TITLE, weight: 700, size: 22, color: C.red });
+  text(476, by0 + 64, 'A start you make yourself in the Wi-Fi app is never held.', { size: 19, color: C.soft });
+
+  // report text that runs past the page, for the render check
+  let over = [];
+  for (const t of svg.querySelectorAll('text')) { const b = t.getBBox(); if (b.x + b.width > W - 8 || b.y + b.height > H) over.push(t.textContent); }
+  document.body.dataset.overflow = over.join(' | ');
+}
+
+const want = ["700 25px Kalam", "400 20px 'Patrick Hand'"];
+Promise.all(want.map(f => document.fonts.load(f))).then(() => {
+  draw();
+  document.body.dataset.fonts = want.map(f => document.fonts.check(f) ? 'ok' : 'MISSING').join(',');
+});
+</script>
+</body></html>
