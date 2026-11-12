@@ -15,6 +15,7 @@ on:
       - "docs/images/**"
       - "docs/assets/**"
       - "docs/sitemap.xml"
+      - "docs/manual/**"
       - "docs/robots.txt"
       - "docs/.nojekyll"
       - ".github/workflows/pages.yml"
