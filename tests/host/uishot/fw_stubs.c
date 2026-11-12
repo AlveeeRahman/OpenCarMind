@@ -140,6 +140,7 @@ void uishot_fill(void)
     o->fuel_lph_raw = 88.8f; o->fuel_cal = 1.888f; o->trip_fuel_raw_l = 888.8f;
     o->torque_nm = -888.8f; o->torque_src = 4; o->tank_left_l = 188.8f; o->tank_range_km = 8888.8f;
     fault_engine_analyse(o->dtcs, o->pending_dtcs, o->permanent_dtcs, true, &st->faults);
+    if (uishot_case.no_faults) memset(&st->faults, 0, sizeof st->faults);
     st->fault_rev = 1;
     if (uishot_case.alarm) {
         const fault_t *f = &st->faults.faults[0];
@@ -270,6 +271,7 @@ void mosaico_drive_get_history(md_history_t *out)
 void mosaico_drive_get_summary(md_summary_t *out)
 {
     memset(out, 0, sizeof *out);
+    if (uishot_case.no_drive) return;           /* no drive saved yet: Home falls through to ECONOMY + WAITING */
     out->gen = 1; out->session = 999999; out->ok = true; out->start_epoch_ms = 1762905599000LL; out->start_up_ms = 3000000;
     out->dur_s = 359999; out->km = 8888.8f; out->fuel_l = 888.8f; out->l100 = 88.8f; out->avg_kph = 288.8f; out->max_kph = 288.8f;
     out->idle_pct = 100;

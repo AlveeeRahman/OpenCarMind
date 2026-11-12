@@ -1342,7 +1342,7 @@ static void build_home_tile(lv_obj_t *t)
     lv_obj_add_event_cb(sc, card_tap_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_t *r = flex_box(sc, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, 6);
     lv_obj_set_size(r, LV_PCT(100), LV_SIZE_CONTENT);
-    h_lab = card_label(r, "ECONOMY NOW", HM);
+    h_lab = card_label(r, "ECONOMY", HM);   /* "ECONOMY NOW" ran into the WAITING pill at 16 px (OS6 board shot) */
     h_tag = ui_pill(r, "WAITING", HD);
     r = flex_box(sc, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_END, 8);
     lv_obj_set_size(r, LV_PCT(100), LV_SIZE_CONTENT);
@@ -1358,7 +1358,7 @@ static void build_home_tile(lv_obj_t *t)
     lv_obj_set_flex_grow(h_line, 1);
     h_search = lv_obj_create(r);                          /* "Search": what the BOOT double-click does (elm_explore) */
     lv_obj_remove_style_all(h_search);
-    lv_obj_set_size(h_search, 84, 44);
+    lv_obj_set_size(h_search, 96, 44);                    /* 84 px clipped the 18 px "Search" label by 1 px */
     h_glass(h_search, LV_RADIUS_CIRCLE);
     lv_obj_add_flag(h_search, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(h_search, search_cb, LV_EVENT_CLICKED, NULL);
@@ -1522,7 +1522,7 @@ static void refresh_home(const ui_snap_t *s)
         ui_set_bg(h_dot, HC_RED);
         ui_set_text(h_line, f->desc); ui_set_color(h_line, HT);
     } else if (mode == 0) {
-        ui_set_text(h_lab, "ECONOMY NOW");
+        ui_set_text(h_lab, "ECONOMY");
         const char *u = ui_econ(o->econ_inst_kpl > 0 ? o->econ_inst_kpl : -1, v, sizeof v);
         ui_set_text(h_val, v); ui_set_color(h_val, HT); ui_set_text(h_unit, u);
         if (o->fuel_lph_calc >= 0) {
@@ -1545,11 +1545,12 @@ static void refresh_home(const ui_snap_t *s)
         } else { snprintf(v, sizeof v, "s%06lu", (unsigned long)m->session); home_tag(v, HC_SKY); }
         snprintf(v, sizeof v, "%.1f", (double)m->km);
         ui_set_text(h_val, v); ui_set_color(h_val, HC_SKY);
-        ui_set_fmt(h_unit, "km, %ld min", (long)(m->dur_s / 60));
+        ui_set_text(h_unit, "km");             /* minutes moved to the line below: "km, 5999 min" clipped beside a long distance */
         ui_set_bg(h_dot, HC_SKY);
         char e[16];
         const char *u = ui_econ(m->l100 > 0 ? 100.0f / m->l100 : -1, e, sizeof e);
-        snprintf(line, sizeof line, "%s %s, %d hard brake%s", e, u, m->hard_brakes, m->hard_brakes == 1 ? "" : "s");
+        snprintf(line, sizeof line, "%ld min, %s %s, %d hard brake%s", (long)(m->dur_s / 60), e, u, m->hard_brakes,
+                 m->hard_brakes == 1 ? "" : "s");
         ui_set_text(h_line, line); ui_set_color(h_line, HT);
     } else if (mode == 2) {
         ui_set_text(h_lab, "FUEL LOW");
@@ -1561,7 +1562,7 @@ static void refresh_home(const ui_snap_t *s)
         snprintf(line, sizeof line, "At your %.1f L/100 km average", (double)l100);
         ui_set_text(h_line, line); ui_set_color(h_line, HT);
     } else {
-        ui_set_text(h_lab, "ECONOMY NOW");
+        ui_set_text(h_lab, "ECONOMY");
         home_tag("WAITING", HD);
         ui_set_text(h_val, "--"); ui_set_color(h_val, HD);
         char e[4]; ui_set_text(h_unit, ui_econ(-1, e, sizeof e));

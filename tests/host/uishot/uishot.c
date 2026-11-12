@@ -613,6 +613,18 @@ int main(int argc, char **argv)
         uishot_case.idle = true; uishot_case.no_clock = true;
         uishot_fill();
         all_screens("_idle");
+        /* Home with no car and no faults: the economy card's title and its WAITING pill share one row (OS6 found
+           "ECONOMY NOW" running into the pill on the board; the faults state above never drew that row) */
+        uishot_case.no_faults = true;
+        for (int k = 0; k < 2; k++) {                     /* k 0: the last drive card, k 1: ECONOMY + WAITING */
+            uishot_case.no_drive = k == 1;
+            uishot_fill();
+            take_snapshot(); refresh_status_bar(&s_snap); ui_go_home();
+            lv_tileview_set_tile_by_index(s_tv, 0, 0, LV_ANIM_OFF);
+            refresh_home(&s_snap);
+            shoot(k ? "home_nocar" : "home_lastdrive");
+        }
+        uishot_case.no_faults = false; uishot_case.no_drive = false;
         uishot_case.idle = false; uishot_case.no_clock = false;
         uishot_fill();
     }

@@ -6,6 +6,8 @@
 typedef struct {
     bool idle;                 /* no car link: values show "--", the adapter searches */
     bool no_clock;             /* the clock was never set */
+    bool no_drive;             /* no drive saved yet: with no_faults, Home shows ECONOMY + WAITING */
+    bool no_faults;            /* no trouble codes: Home shows the economy card (ECONOMY + WAITING / NO SOURCE) */
     bool alarm;                /* a critical fault banner */
     const char *alarm_desc;    /* its text after the code, NULL = the fault engine's */
     bool pairing;              /* the desktop pairing code banner */
