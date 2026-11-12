@@ -59,7 +59,7 @@ The same firmware also runs on Espressif's ESP-Mosaico touch-screen board. Its n
 <li><a href="#services-and-runlevels">Services and runlevels</a></li>
 <li><a href="#model-admission-by-response-time-analysis">Model admission by response-time analysis</a></li>
 <li><a href="#scheduler-budgets-per-core">Scheduler budgets per core</a></li>
-<li><a href="#ai-services-in-edgeos">AI services in EdgeOS</a></li>
+<li><a href="#ai-services-in-opencarmind-edgeos">AI services in OpenCarMind EdgeOS</a></li>
 <li><a href="#what-it-costs">What it costs</a></li>
 <li><a href="#what-you-see-on-the-board">What you see on the board</a></li>
 <li><a href="#changes-after-the-board-check">Changes after the board check</a></li>
@@ -365,17 +365,17 @@ Not checked yet: R.E.V over many drives and other cars, the corrected R.E.V on t
 
 <p align="center"><img src="docs/images/mosaico-rev.png" width="900" alt="OpenCarMind EdgeOS 2.0.0 on the ESP-Mosaico, rendered from the 2.0.0 screen code with example values: three 480 by 480 screens in the dark, light and dark themes. Drive at 64 km/h and 2350 rpm with the AI seeing Cruising 87 % sure, brake 6.3 bar, torque 85 N m and fuel 4.1 L/h, and the tank at 46 %, about 310 km. AI with the four class bars and its estimates. Learning with 14 updates kept, the air constant, a 50 L tank from 3 fill-ups and the model card"></p>
 
-OpenCarMind also runs on Espressif's ESP-Mosaico<sup>[[12]](#ref-12)</sup>, an ESP32-S31 board with a 480 × 480 AMOLED touch screen, 32 MB of PSRAM and a 128 MB NAND for the drive logs. Up to version 1.2.0 that build was called mossREV. Version 2.0.0 is called OpenCarMind EdgeOS 2.0.0, or Edge OS for short. It is not related to Ubiquiti's EdgeOS router software.
+OpenCarMind also runs on Espressif's ESP-Mosaico<sup>[[12]](#ref-12)</sup>, an ESP32-S31 board with a 480 × 480 AMOLED touch screen, 32 MB of PSRAM and a 128 MB NAND for the drive logs. Up to version 1.2.0 that build was called mossREV. Version 2.0.0 is called OpenCarMind EdgeOS 2.0.0. It is not related to Ubiquiti's EdgeOS router software.
 
-Edge OS comes from the same source tree as the S3 version and keeps everything mossREV 1.2.0 has: both models (CarMind R.E.V, the default on a new board, and CarMind E.V, each re-quantized for the S31), the 16 apps on the touch screen with Wi-Fi search and join, a light and a dark theme, and per-drive event logs. What 2.0.0 adds is a small operating-system layer, described below. The image above is rendered on a computer from the 2.0.0 screen code (`tests/host/uishot`, the same LVGL code the board runs) with example values. It is not a photo of the board. The OS layer does not change the S3 build. Up to 4aeff43, every byte the S3 chip loads was the same as in the mossREV 1.2.0 tree. The pairing change merged after the board check is behind one switch, `CONFIG_OBD_BLE_PAIR_CONFIRM`, which is off for the S3 by default. With it off, the S3 image built from this source equals the 4aeff43 S3 image except the build time, the ELF SHA-256 and the image's checksum and hash (see [Changes after the board check](#changes-after-the-board-check)).
+OpenCarMind EdgeOS comes from the same source tree as the S3 version and keeps everything mossREV 1.2.0 has: both models (CarMind R.E.V, the default on a new board, and CarMind E.V, each re-quantized for the S31), the 16 apps on the touch screen with Wi-Fi search and join, a light and a dark theme, and per-drive event logs. What 2.0.0 adds is a small operating-system layer, described below. The image above is rendered on a computer from the 2.0.0 screen code (`tests/host/uishot`, the same LVGL code the board runs) with example values. It is not a photo of the board. The OS layer does not change the S3 build. Up to 4aeff43, every byte the S3 chip loads was the same as in the mossREV 1.2.0 tree. The pairing change merged after the board check is behind one switch, `CONFIG_OBD_BLE_PAIR_CONFIRM`, which is off for the S3 by default. With it off, the S3 image built from this source equals the 4aeff43 S3 image except the build time, the ELF SHA-256 and the image's checksum and hash (see [Changes after the board check](#changes-after-the-board-check)).
 
-Edge OS 2.0.0 has been through most of its board check, on build 4aeff43. The soak and a few parts are still open, and four changes merged after the check have not been on a board yet. Until those are done, mossREV 1.2.0 stays the Mosaico release. The [status table](#what-is-verified-on-the-board) at the end of this section says what the board showed.
+OpenCarMind EdgeOS 2.0.0 has been through most of its board check, on build 4aeff43. The soak and a few parts are still open, and four changes merged after the check have not been on a board yet. Until those are done, mossREV 1.2.0 stays the Mosaico release. The [status table](#what-is-verified-on-the-board) at the end of this section says what the board showed.
 
-The full guide is [docs/MOSAICO.md](docs/MOSAICO.md): the hardware, flashing, every app, the two models, Smart swipe and Smart UI, the storage, the NAND, the OS layer and the known limits. The [Edge OS user manual](docs/manual/edgeos-2.0.0.md) explains every screen and message for a driver.
+The full guide is [docs/MOSAICO.md](docs/MOSAICO.md): the hardware, flashing, every app, the two models, Smart swipe and Smart UI, the storage, the NAND, the OS layer and the known limits. The [OpenCarMind EdgeOS user manual](docs/manual/edgeos-2.0.0.md) explains every screen and message for a driver.
 
 ### What it is
 
-Edge OS is not a new kernel. FreeRTOS, as ESP-IDF 6.1 ships it, still schedules the tasks on the S31's two cores. Edge OS is a set of rules on top of it that decide what may run, when and how fast, and what happens when something goes wrong. It adds no task of its own. Its code runs inside the tasks that already exist: the board task every 2 s, the screen task, the USB door and the scheduler monitor.
+OpenCarMind EdgeOS is not a new kernel. FreeRTOS, as ESP-IDF 6.1 ships it, still schedules the tasks on the S31's two cores. The OS is a set of rules on top of it that decide what may run, when and how fast, and what happens when something goes wrong. It adds no task of its own. Its code runs inside the tasks that already exist: the board task every 2 s, the screen task, the USB door and the scheduler monitor.
 
 The rules live in one plain C file, `main/os_core.c`, with no ESP-IDF calls in it, so the host tests on a computer check every rule. `main/os.c` connects the rules to the firmware. Files that the S3 build shares call the OS through macros in `main/os_hooks.h`, which turn back into the old S3 statement on the same line. That is how the OS layer leaves the S3 image as it was.
 
@@ -388,7 +388,7 @@ The rules live in one plain C file, `main/os_core.c`, with no ESP-IDF calls in i
 | Boot health check | About 65 s after a start the board rates itself good, degraded or bad from the model self-test, the flash FAT check, the NAND, the first screen update, the touch controller and the scheduler's misses, stalls and response times. | It gives you one line to read on the Board page. It is also the signal an A/B rollback needs to keep or reject a new image. |
 | Model admission | A model loads only if response-time analysis says every job on its core still meets its deadline (see [below](#model-admission-by-response-time-analysis)). | A model that is too slow would make the OBD poll or the learner miss deadlines. The check refuses it before it loads, and the old model stays. |
 | Degradation ladder | When the model misses deadlines, the board steps down: first the AI services slow to a tenth of their rate with their learned heads off (new, being checked on the board), then the screen refreshes every 33 ms instead of 16 ms and the AI services pause, then the R.E.V learner pauses, then the model's inference pauses. A minute without misses steps back up, in reverse order. Misses of the screen or the AI services alone reach the first rung only. | Estimates such as the battery SoC, screen frames and learning are worth less than the log and the model during a drive, so they go first. The ladder never swaps models. |
-| AI services | Small periodic AI jobs, the battery SoC and SoH estimator first, in one worker task below the screen and the models, admitted by the same response-time analysis (see [below](#ai-services-in-edgeos)). On build 13757fd the board admitted the worker on core 1 with R 2.00 ms. The estimates are being checked. | More small models are coming, a Bluetooth and Wi-Fi intrusion detector next. Each one gets a deadline, a CPU budget and a place on the ladder, instead of its own task and its own rules. |
+| AI services | Small periodic AI jobs, the battery SoC and SoH estimator first, in one worker task below the screen and the models, admitted by the same response-time analysis (see [below](#ai-services-in-opencarmind-edgeos)). On build 13757fd the board admitted the worker on core 1 with R 2.00 ms. The estimates are being checked. | More small models are coming, a Bluetooth and Wi-Fi intrusion detector next. Each one gets a deadline, a CPU budget and a place on the ladder, instead of its own task and its own rules. |
 | Battery protection | Every 2 s it reads the gauge's voltage, current and temperature. At 45 °C on USB it sheds load, at 60 °C it stops safely, and at 4.25 V or more it reports a charger fault and stops. | The TP4057 charger has no enable pin and no thermistor input, and its supply comes from USB through diodes. The firmware cannot stop charging, so it watches and stops cleanly instead. The thresholds are placeholders until the cell's datasheet is known. |
 | Wi-Fi boot hold | No Wi-Fi starts at boot. The automatic start waits for the health verdict and goes ahead on good or degraded. Your own start in the Wi-Fi app is never held. | On mossREV 1.2.0 rc3 the boot window was the internal-RAM low point, 57.7 KB free while the Wi-Fi driver started (measured on the board). |
 | One reset path | Every reset the firmware asks for goes through `sys_reset(reason)`: mark it as asked for, flush and lock the flash FAT and the NAND, then reset. The screen stall guard and the hung-job restart skip the mark, so three of them in a row still start safe mode. | A reset between a sector's erase and its write had torn the FAT and lost the whole volume twice on the bench, before the storage fixes. Now no asked-for reset skips the flush. |
@@ -444,9 +444,9 @@ The screen job's 7.8 ms is wall time from the start of a run to its end, and 4.9
 
 <a id="ai-services-and-the-battery-estimator"></a>
 
-### AI services in EdgeOS
+### AI services in OpenCarMind EdgeOS
 
-Edge OS runs its small AI models as services. The first is a battery estimator that gives the cell's state of charge (SoC) and state of health (SoH). A network intrusion detector for Bluetooth and Wi-Fi comes next. All services share one worker task at FreeRTOS priority 1, below the screen, the R.E.V learner, the model and the OBD poll, so any of those can preempt a service at any instruction. The worker is admitted by the same response-time analysis as the models. On build 13757fd the board admitted it on core 1 with a worst-case response of 2.00 ms against a 1,000 ms deadline, and the battery estimator's self-test took 570 µs of its 2 ms budget.
+OpenCarMind EdgeOS runs its small AI models as services. Since 2.1.0 there are three: the battery estimator, which gives the cell's state of charge (SoC) and state of health (SoH, now with the partial-charge regressor), the battery anomaly detector, and a network guard for Bluetooth and Wi-Fi. The Health app shows all three. All services share one worker task at FreeRTOS priority 1, below the screen, the R.E.V learner, the model and the OBD poll, so any of those can preempt a service at any instruction. The worker is admitted by the same response-time analysis as the models. On build 13757fd the board admitted it on core 1 with a worst-case response of 2.00 ms against a 1,000 ms deadline, and the battery estimator's self-test took 570 µs of its 2 ms budget.
 
 A service reads copies of its inputs and writes its results without a lock, so it cannot hold up the jobs above it. No service acts on power, and none cuts the car link during a drive. When the model misses deadlines, the AI services are the first thing the board slows. On 13757fd the boot health check rated the board good at 68.9 s and released Wi-Fi with 130,623 B of internal RAM free. The estimates themselves, the new ladder rung and the pairing rules are built and being checked on the board now.
 
@@ -456,9 +456,9 @@ A service reads copies of its inputs and writes its results without a lock, so i
 |---|---|---|---|
 | Battery charge (SoC): extended Kalman filter on a one-RC cell model | counts the charge and corrects it with the voltage, once a second | 111 flops and 1 exp, 324 B | on the board with placeholder parameters. Self-test checked on 13757fd, estimates being checked |
 | Battery health (SoH): counted capacity and resistance trend | capacity between two charge anchors, and a DC resistance flag | a few ops, inside the charge estimator | on the board, being checked |
-| Battery health: partial-charge regressor | SoH from an ordinary charge, with no full cycle | 8 multiply-adds and 16 ops, 100 B | validated on the Mac, not in the firmware yet |
-| Battery anomaly detector | an alarm when 60 s windows stop looking normal for this cell | under 400 ops a window, 920 B | validated on the Mac, not in the firmware yet |
-| Network intrusion detector: rotation detector | scores each 5 s of Bluetooth and Wi-Fi traffic for address-rotation floods | about 60 integer ops, 552 B per head | validated on the Mac, firmware service next |
+| Battery health: partial-charge regressor | SoH from the shape of a deep charge, with no full count | 8 multiply-adds and 16 ops, 100 B | in the firmware since 2.1.0 (C matches the Mac to 1.3e-7). Needs 10 deep charges of this cell to learn its reference, so not yet seen working on the board |
+| Battery anomaly detector | an alarm when 60 s windows stop looking normal for this cell | under 400 ops a window, 920 B | in the firmware since 2.1.0 (1.05e-6 against the Mac). Admitted on the board, in its 24 h warm-up |
+| Network intrusion detector: rotation detector | scores each 5 s of Bluetooth and Wi-Fi traffic for address-rotation floods | about 60 integer ops, 552 B per head | in the firmware since 2.1.0 as the network guard (bit-exact against the Mac). Admitted on the board, in its 2 h shadow |
 | Pairing rules R1, R2 and R6 | adapter fingerprint, no silent re-pair, clock jump guard ([Pairing safety](#pairing-safety-built-not-yet-checked-on-the-board)) | one compare per link or clock sync, 48 B in NVS | on the board, being checked |
 | Residual MLP, 3-state EKF, neural ECM, KalmanNet-lite, pure MLP, general IDS learners | learned replacements or corrections | | tested, not shipped (see the last dropdown) |
 
@@ -623,7 +623,7 @@ The two studies came out opposite ways. For the intrusion detector, the general 
 
 Measured with `idf.py size` on the S31 build of the release (920318e, the firmware in main), against mossREV 1.2.0 rc3 (8b0b96f):
 
-| | Edge OS 2.0.0 | mossREV 1.2.0 rc3 | Change |
+| | OpenCarMind EdgeOS 2.0.0 | mossREV 1.2.0 rc3 | Change |
 |---|---|---|---|
 | App image | 4,778,560 B, 76.0 % of the 6 MB app slot (24 % free) | 4,752,720 B | +25,840 B |
 | Static internal RAM (DIRAM) | 194,198 B of 503,744 B (38.6 %) | 192,124 B | +2,074 B: PPA and 2D-DMA +2,380 B (mostly IRAM code), the pairing change +184 B, the OS parts and fixes +100 B, the feature gate −590 B |
@@ -632,7 +632,7 @@ Measured with `idf.py size` on the S31 build of the release (920318e, the firmwa
 
 At 09ec8f5 the graphics work had added 37,312 B to the app image and the OS parts together about 9 KB. The 16 px text floor later saved 24,304 B by dropping the 12 and 14 px fonts, so the release is 25,840 B larger overall. With the UPS option switched on, the deep-sleep path alone would add about 12 KB of IRAM, which is one reason that option stays off.
 
-The target for internal RAM at run time is more than 60 KB free in every phase. This was measured on the board, EdgeOS 2.0.0 4aeff43, with a debug build of that code that adds a RAM monitor. Each figure is the lowest free internal RAM in that phase, all internal heaps added up:
+The target for internal RAM at run time is more than 60 KB free in every phase. This was measured on the board, OpenCarMind EdgeOS 2.0.0 4aeff43, with a debug build of that code that adds a RAM monitor. Each figure is the lowest free internal RAM in that phase, all internal heaps added up:
 
 | Phase | Lowest free internal RAM |
 |---|---|
@@ -697,7 +697,7 @@ Two parts are built into 2.0.0 and switched off by default.
 
 ### What is verified on the board
 
-Two board passes ran. The first on EdgeOS 2.0.0 4aeff43 (SHA-256 `a225125d27f3906c...`), the second on 06ddf1d, which adds the pairing change, the 16 px text and the model names (merged image SHA-256 `4cc402a76a53edc2...`). The release image in this branch is rebuilt from its tip, whose Mosaico code equals 06ddf1d apart from the Home card fix in ce58ca7. VERIFIED means a board log line shows it. Some rows ran on a scratch build of the 2.0.0 code with one test switch on, and the row says so. A scratch build is never shipped. Host tests pass for every part: `make os` (41,635 checks at 4aeff43, 41,719 with the pairing change), `make pair`, `make ppa`, `make uimetrics` and the source audits in `tests/host/os_audit.sh`.
+Two board passes ran. The first on OpenCarMind EdgeOS 2.0.0 4aeff43 (SHA-256 `a225125d27f3906c...`), the second on 06ddf1d, which adds the pairing change, the 16 px text and the model names (merged image SHA-256 `4cc402a76a53edc2...`). The release image in this branch is rebuilt from its tip, whose Mosaico code equals 06ddf1d apart from the Home card fix in ce58ca7. VERIFIED means a board log line shows it. Some rows ran on a scratch build of the 2.0.0 code with one test switch on, and the row says so. A scratch build is never shipped. Host tests pass for every part: `make os` (41,635 checks at 4aeff43, 41,719 with the pairing change), `make pair`, `make ppa`, `make uimetrics` and the source audits in `tests/host/os_audit.sh`.
 
 Of the 28 rows from those two passes, 21 are VERIFIED (6 of those on a scratch build), 3 PARTLY and 4 NOT: not run yet, or switched off in this release. The three figures below show the main results. A third pass is running on build 13757fd, which adds the AI services and pairing safety. Its 8 rows are at the end of the table: 4 VERIFIED so far, 3 being checked, and 1 for the intrusion detector, which is not in the firmware yet. The full table is folded under the figures.
 
@@ -752,7 +752,14 @@ Every phase stays above the 60 KB target. The lowest is 80.9 KB, with an adapter
 | Battery SoC and SoH on the Board page | BEING CHECKED | built, being checked on the board. The parameters are placeholders until the cell's curve is fitted | 13757fd |
 | Ladder rung "AI services slowed" | BEING CHECKED | built, being checked on the board | 13757fd |
 | Pairing safety: fingerprint, no silent re-pair, clock jump guard | BEING CHECKED | built, being checked on the board | 13757fd |
-| Network intrusion detector | NOT | not in the firmware yet. Validated on the Mac (see [AI services in EdgeOS](#ai-services-in-edgeos)) | |
+| Network intrusion detector | BEING CHECKED | in the firmware since 2.1.0 as the network guard, see the 2.1.0 rows | 73db232 |
+| 2.1.0: boot health and AI admission | VERIFIED | health good at 68.8 s; bat, banom and ids admitted on core 1, R 5.00 ms against 1,000 ms, margin 995 ms; self-tests (fastest of 5) 229, 19 and 58 µs, the IDS self-test replays 64 vectors | 73db232 |
+| 2.1.0: 10-minute soak | VERIFIED | 640 s, 0 restarts, 0 USB drops, 0 UI misses in 64 windows, 0 scheduler misses; bat 536, banom 537 and ids 108 runs, 0 deadline misses, worst response 12.9, 13.0 and 11.9 ms | 73db232 |
+| 2.1.0: network guard in its shadow | VERIFIED | scan score 0 to 34 of 256 over 112 windows (22,585 adverts), 0 blocks, 0 "would block"; the first Wi-Fi scan (15 networks) scored 256, at the threshold, not over it; no pairing prompt; the clock sync was accepted | 73db232 |
+| 2.1.0: internal RAM, lowest per phase | VERIFIED | debug build of 73db232 with the RAM monitor: 122,795 B at the boot verdict, 109,643 B as the AI services and the guard start, 78,227 B over a Wi-Fi round with the Health app open (13757fd round: 81,531 B), 108,327 B on Board and Settings; all above 60 KB. The AI worker's stack never used 2,648 of its 4,096 B | 73db232 |
+| 2.1.0: Health app on the board | VERIFIED | 3 pages in both themes captured from the board, no overlap, 16 px text | 73db232 |
+| 2.1.0: battery anomaly detector | BEING CHECKED | admitted, in its 24 h warm-up | 73db232 |
+| 2.1.0: SoH regressor, counted SoH and DCIR | NOT | the cell stayed full at 0 mA, so no charge cycle, no capacity sample and no DCIR sample yet (0 of 10 reference cycles) | 73db232 |
 
 </details>
 
