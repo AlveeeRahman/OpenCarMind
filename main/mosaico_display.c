@@ -96,8 +96,8 @@ lv_result_t lv_mem_test_core(void) { return LV_RESULT_OK; }
 #define THEME_FONTS \
     .f_speed = &lv_font_montserrat_48, .f_num_b = &lv_font_montserrat_48, .f_hero = &lv_font_montserrat_48, \
     .f_big = &lv_font_montserrat_32, .f_large = &lv_font_montserrat_28, .f_title = &lv_font_montserrat_24, \
-    .f_value = &lv_font_montserrat_20, .f_status = &lv_font_montserrat_18, .f_body = &lv_font_montserrat_16, \
-    .f_label = &lv_font_montserrat_14, .f_small = &lv_font_montserrat_12
+    .f_value = &lv_font_montserrat_20, .f_status = &lv_font_montserrat_18, .f_body = &lv_font_montserrat_18, \
+    .f_label = &lv_font_montserrat_18, .f_small = &lv_font_montserrat_16
 #define THEME_SHAPES \
     .radius_card = 24, .radius_row = 16, .radius_button = 14, .radius_tile_b = 10, .border_card = 1, .border_accent = 2, \
     .pad_card = 14, .shadow_b = 5
@@ -833,7 +833,7 @@ static lv_obj_t *grow(lv_obj_t *p) { lv_obj_t *g = flex_box(p, LV_FLEX_FLOW_ROW,
    on Drive, where the SYSTEM card and row 1 show the same numbers). Nothing is placed by pixel offsets next to text. ---------- */
 extern const lv_image_dsc_t ocm_logo_28, ocm_logo_160;
 static lv_obj_t *s_sb, *sb_row1, *sb_time, *sb_dcpu, *sb_dpwr, *sb_bt, *sb_wifi, *sb_batt_i, *sb_batt, *sb_pill, *sb_grp[4], *sb_val[4],
-                *s_banner, *s_banner_txt;
+                *s_banner, *s_banner_head, *s_banner_txt;
 enum { SB_HOME = 0, SB_DRIVE, SB_APP };
 static int s_sb_mode = -1;
 
@@ -866,7 +866,7 @@ static void build_status_bar(void)
     sb_row1 = flex_box(s_sb, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, 10);
     lv_obj_set_size(sb_row1, LV_PCT(100), 32);
     lv_obj_set_style_pad_left(sb_row1, 10, 0);
-    lv_obj_set_style_pad_right(sb_row1, 22, 0);             /* the panel's rounded corner */
+    lv_obj_set_style_pad_right(sb_row1, 26, 0);             /* the panel's rounded corner (18 px battery text) */
     lv_obj_t *logo = lv_image_create(sb_row1);
     lv_image_set_src(logo, &ocm_logo_28);
     sb_time = ui_label(sb_row1, UI_THEME.f_title, UI_TEXT, "--:--");
@@ -913,7 +913,16 @@ static void build_status_bar(void)
     lv_obj_remove_flag(s_banner, LV_OBJ_FLAG_GESTURE_BUBBLE);
     lv_obj_add_event_cb(s_banner, banner_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(s_banner, banner_cb, LV_EVENT_GESTURE, NULL);
-    s_banner_txt = ui_label(s_banner, UI_THEME.f_body, UI_TEXT, "");
+    /* time-critical text (NHTSA DOT HS 812 360 / ISO 15008: 16 arcmin and up): a 32 px headline (the fault code, or the
+       pairing code) over the detail at 20 px, both centred; banner_split() makes the two from the one status text */
+    lv_obj_set_flex_flow(s_banner, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(s_banner, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_row(s_banner, 4, 0);
+    s_banner_head = ui_label(s_banner, UI_THEME.f_big, UI_TEXT, "");
+    lv_obj_set_size(s_banner_head, 372, lv_font_get_line_height(UI_THEME.f_big));   /* one line */
+    lv_label_set_long_mode(s_banner_head, LV_LABEL_LONG_DOT);
+    lv_obj_set_style_text_align(s_banner_head, LV_TEXT_ALIGN_CENTER, 0);
+    s_banner_txt = ui_label(s_banner, UI_THEME.f_value, UI_TEXT, "");
     lv_obj_set_width(s_banner_txt, 372);
     lv_label_set_long_mode(s_banner_txt, LV_LABEL_LONG_WRAP);
     lv_obj_set_style_text_align(s_banner_txt, LV_TEXT_ALIGN_CENTER, 0);
@@ -941,6 +950,28 @@ static void batt_text(const ui_snap_t *s, char *b, size_t n)
     /* the BQ27220 still has its 3000 mAh design capacity (the cell is 65 mAh), so its % is meaningless: volts until it is set */
     if (mosaico_gauge_uncalibrated(&s->gauge)) snprintf(b, n, "%.2f V", s->gauge.mv / 1000.0);
     else snprintf(b, n, "%d%%", s->gauge.soc);
+}
+
+/* the banner's headline and detail from its one text. A critical fault reads "<code> <description>" (elm327.c): the code
+   is the headline. The pairing popup reads "Desktop pairing code  <code>" (usb_door.c): the code is the headline, the
+   words the detail. Anything else: a generic headline over the whole text. */
+static void banner_split(const char *txt, bool alarm, char *head, size_t hn, const char **detail)
+{
+    const char *sp = strchr(txt, ' ');
+    if (!alarm) {
+        const char *two = strstr(txt, "  ");
+        if (two && two[2]) {
+            snprintf(head, hn, "%s", two + 2);
+            EXT_RAM_BSS_ATTR static char words[EVENT_TEXT];      /* PSRAM: no internal RAM for the banner */
+            snprintf(words, sizeof words, "%.*s", (int)(two - txt), txt);
+            *detail = words;
+        } else { snprintf(head, hn, "%s", txt); *detail = ""; }
+        return;
+    }
+    bool code = sp && sp - txt == 5 && isalpha((unsigned char)txt[0]);
+    for (int i = 1; code && i < 5; i++) code = isalnum((unsigned char)txt[i]) != 0;
+    if (code) { snprintf(head, hn, LV_SYMBOL_WARNING " %.5s", txt); *detail = sp + 1; }
+    else { snprintf(head, hn, LV_SYMBOL_WARNING " Alarm"); *detail = txt; }
 }
 
 static void refresh_status_bar(const ui_snap_t *s)
@@ -988,7 +1019,13 @@ static void refresh_status_bar(const ui_snap_t *s)
     if (st->alarm_text[0] && st->alarm_critical && strcmp(st->alarm_text, s_banner_gone)) { txt = st->alarm_text; col = UI_RED; }
     else if (st->sys_popup[0] && s->now_ms < st->sys_popup_until_ms && !strncmp(st->sys_popup, "Desktop pairing code", 20)) { txt = st->sys_popup; col = UI_GREEN; }
     if (txt) {
-        ui_set_text(s_banner_txt, txt);
+        char head[EVENT_TEXT + 8];                         /* a popup text can be the whole headline */
+        const char *detail;
+        banner_split(txt, txt == st->alarm_text, head, sizeof head, &detail);
+        ui_set_text(s_banner_head, head);
+        ui_set_color(s_banner_head, col);
+        ui_set_text(s_banner_txt, detail);
+        show(s_banner_txt, detail[0] != 0);
         if (lv_color_to_u32(lv_obj_get_style_border_color(s_banner, 0)) != lv_color_to_u32(lv_color_hex(col)))
             lv_obj_set_style_border_color(s_banner, lv_color_hex(col), 0);
     }
@@ -1062,7 +1099,7 @@ static void wall_task(void *arg)
 static lv_obj_t *s_tv, *s_tiles[1 + N_APP_PAGES];
 static int s_ntiles, s_return_tile;
 static lv_obj_t *h_ctl, *h_lab, *h_tag, *h_val, *h_unit, *h_dot, *h_line, *h_ind[3], *h_noclock, *w_hand_h, *w_hand_m;
-static lv_obj_t *h_sub[4], *h_bar[3], *h_rv[4], *h_pw_note, *h_search, *h_pw_vi, *h_pw_chart, *h_pw_area, *h_pw_dot, *h_card;
+static lv_obj_t *h_sub[4], *h_bar[3], *h_rv[4], *h_pw_note, *h_search, *h_pw_chart, *h_pw_area, *h_pw_dot, *h_card;
 static lv_chart_series_t *h_pw_ser, *h_pw_sera;
 static lv_obj_t *h_sys;                                  /* the SYSTEM card (swipe step e4: redrawn after a slide) */
 static int s_home_mode;
@@ -1175,7 +1212,9 @@ static void power_sheet_cb(lv_event_t *e)
     if (g->ok && g->tte_min > 0 && g->tte_min < 65535)
         snprintf(b, sizeof b, "gauge time to empty %d min%s", g->tte_min, mosaico_gauge_uncalibrated(g) ? " (gauge not configured for the cell)" : "");
     else snprintf(b, sizeof b, "gauge time to empty: not reported");
-    ui_label(c, UI_THEME.f_small, UI_MUTED, b);
+    lv_obj_t *tte = ui_label(c, UI_THEME.f_small, UI_MUTED, b);
+    lv_obj_set_width(tte, LV_PCT(100));
+    lv_label_set_long_mode(tte, LV_LABEL_LONG_WRAP);
 }
 
 static void card_tap_cb(lv_event_t *e)
@@ -1236,12 +1275,13 @@ static void search_cb(lv_event_t *e) { (void)e; mosaico_board_request(MB_BLE_SEA
 
 static void build_home_tile(lv_obj_t *t)
 {
-    lv_obj_t *col = page_col(t, 56, 10);
+    /* 16 px text floor (OS2b): top row 152 px and 8 px gaps leave the SYSTEM card four 40 px rows */
+    lv_obj_t *col = page_col(t, 56, 8);
     /* top row: smart card + clock tile */
     lv_obj_t *top = flex_box(col, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, 10);
-    lv_obj_set_size(top, LV_PCT(100), 160);
+    lv_obj_set_size(top, LV_PCT(100), 152);
     lv_obj_t *sc = flex_box(top, LV_FLEX_FLOW_COLUMN, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_START, 0);
-    lv_obj_set_height(sc, 160);
+    lv_obj_set_height(sc, 152);
     lv_obj_set_flex_grow(sc, 1);
     h_glass(sc, 22);
     lv_obj_set_style_pad_hor(sc, 16, 0);
@@ -1276,9 +1316,9 @@ static void build_home_tile(lv_obj_t *t)
     lv_obj_set_size(r, LV_SIZE_CONTENT, 4);
     for (int k = 0; k < 3; k++) h_ind[k] = ui_rect(r, 0, 0, k ? 4 : 16, 4, k ? HD : HT, LV_RADIUS_CIRCLE);
     /* dark clock tile: ring, amber bars, grey dots, light hands, amber centre */
-    lv_obj_t *ct = ui_rect(top, 0, 0, 160, 160, 0, 22);
+    lv_obj_t *ct = ui_rect(top, 0, 0, 152, 152, 0, 22);
     h_glass(ct, 22);
-    lv_obj_t *face = ui_rect(ct, 16, 16, 128, 128, 0, LV_RADIUS_CIRCLE);
+    lv_obj_t *face = ui_rect(ct, 12, 12, 128, 128, 0, LV_RADIUS_CIRCLE);
     lv_obj_set_style_bg_opa(face, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(face, 2, 0);
     lv_obj_set_style_border_color(face, lv_color_hex(s_light ? 0xC7C7CC : 0x2A2A2E), 0);   /* Row I ring */
@@ -1297,7 +1337,7 @@ static void build_home_tile(lv_obj_t *t)
     lv_obj_set_style_line_width(w_hand_h, 5, 0);
     lv_obj_set_style_line_rounded(w_hand_h, true, 0);
     ui_rect(face, 59, 59, 10, 10, 0xF59A2E, LV_RADIUS_CIRCLE);
-    h_noclock = ui_label(face, UI_THEME.f_small, HM, "no clock yet");
+    h_noclock = ui_label(face, UI_THEME.f_small, HM, "no clock");    /* 16 px: "no clock yet" ran into the 4 and 8 dots */
     lv_obj_align(h_noclock, LV_ALIGN_CENTER, 0, 28);
     /* SYSTEM card: a header row, then one lv grid: label 78 px | bar (fr) | value 84 px right-aligned, rows centred */
     lv_obj_t *sy = h_sys = flex_box(col, LV_FLEX_FLOW_COLUMN, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_START, 0);
@@ -1310,12 +1350,13 @@ static void build_home_tile(lv_obj_t *t)
     lv_obj_set_size(r, LV_PCT(100), LV_SIZE_CONTENT);
     card_label(r, "SYSTEM", HC_CPU);
     ui_label(r, UI_THEME.f_small, HM, "ESP32-S31, 2 cores");
-    /* one lv grid: label 106 px | bar (fr) | value 70 px right-aligned, column gap 16, rows at least 34 px, all centred */
+    /* one lv grid: label 150 px | bar (fr) | value 78 px right-aligned, column gap 16, 40 px rows (an 18 px name over a
+       16 px note), all centred */
     lv_obj_t *g = lv_obj_create(sy);
     lv_obj_remove_style_all(g);
     lv_obj_set_size(g, LV_PCT(100), LV_SIZE_CONTENT);
-    static const int32_t gc[] = {106, LV_GRID_FR(1), 70, LV_GRID_TEMPLATE_LAST};
-    static const int32_t gr[] = {34, 34, 34, 34, LV_GRID_TEMPLATE_LAST};
+    static const int32_t gc[] = {150, LV_GRID_FR(1), 78, LV_GRID_TEMPLATE_LAST};
+    static const int32_t gr[] = {40, 40, 40, 40, LV_GRID_TEMPLATE_LAST};
     lv_obj_set_grid_dsc_array(g, gc, gr);
     lv_obj_set_style_pad_column(g, 16, 0);
     lv_obj_set_style_pad_row(g, 0, 0);
@@ -1324,13 +1365,12 @@ static void build_home_tile(lv_obj_t *t)
     const uint32_t RC[4] = {HC_CPU, HC_C0, HC_C1, HC_PW};
     for (int k = 0; k < 4; k++) {
         lv_obj_t *lc = flex_box(g, LV_FLEX_FLOW_COLUMN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START, 1);
-        lv_obj_set_size(lc, 106, LV_SIZE_CONTENT);
+        lv_obj_set_size(lc, 150, LV_SIZE_CONTENT);
         lv_obj_set_grid_cell(lc, LV_GRID_ALIGN_START, 0, 1, LV_GRID_ALIGN_CENTER, k, 1);
         ui_label(lc, UI_THEME.f_label, HT, RN[k]);
         h_sub[k] = ui_label(lc, UI_THEME.f_small, k == 3 ? HC_PW : HM, k == 0 ? "BOTH CORES" : "");
-        lv_label_set_long_mode(h_sub[k], LV_LABEL_LONG_CLIP);              /* nowrap: "SYS 5.4 MIPS" is the widest */
+        lv_label_set_long_mode(h_sub[k], LV_LABEL_LONG_CLIP);              /* nowrap: "SYS  320.0 MIPS" 141 px is the widest */
         lv_obj_set_style_text_letter_space(h_sub[k], 1, 0);
-        if (k == 3) { h_pw_vi = ui_label(lc, UI_THEME.f_small, HM, ""); lv_label_set_long_mode(h_pw_vi, LV_LABEL_LONG_CLIP); }
         if (k < 3) {
             lv_obj_t *bb = lv_bar_create(g);
             lv_obj_set_height(bb, 6);
@@ -1344,6 +1384,7 @@ static void build_home_tile(lv_obj_t *t)
         } else {
             h_pw_note = ui_label(g, UI_THEME.f_small, HM, "");
             lv_label_set_long_mode(h_pw_note, LV_LABEL_LONG_DOT);
+            lv_obj_set_height(h_pw_note, lv_font_get_line_height(UI_THEME.f_small));   /* one line: LVGL wraps a dots label of content height */
             lv_obj_set_grid_cell(h_pw_note, LV_GRID_ALIGN_STRETCH, 1, 1, LV_GRID_ALIGN_CENTER, k, 1);
             h_pw_chart = pw_chart(g, &h_pw_ser, &h_pw_area, &h_pw_sera, 30);
             lv_obj_set_grid_cell(h_pw_area, LV_GRID_ALIGN_STRETCH, 1, 1, LV_GRID_ALIGN_CENTER, k, 1);
@@ -1372,7 +1413,7 @@ static void build_home_tile(lv_obj_t *t)
     lv_obj_add_event_cb(aa, all_apps_cb, LV_EVENT_CLICKED, NULL);
     ui_label(aa, UI_THEME.f_label, HT, LV_SYMBOL_LIST "  All apps");
     page_dots(r, 0, s_ntiles);
-    h_ctl = ui_drive_pill(r, 0, 0, 168, 44);
+    h_ctl = ui_drive_pill(r, 0, 0, 188, 44);
 }
 
 static void refresh_clock(const ui_snap_t *s)
@@ -1497,12 +1538,11 @@ static void refresh_home(const ui_snap_t *s)
     power_text(s, pw, sizeof pw, &meas);
     ui_set_text(h_rv[3], pw);
     show(h_pw_note, !meas);
-    show(h_pw_chart, meas); show(h_pw_area, meas); show(h_pw_vi, meas); show(h_pw_dot, meas && s_pw_n > 0);
+    show(h_pw_chart, meas); show(h_pw_area, meas); show(h_pw_dot, meas && s_pw_n > 0);
     if (!s->gauge.ok) { ui_set_text(h_sub[3], ""); ui_set_text(h_pw_note, "gauge not read"); }
-    else if (!meas) { ui_set_text(h_sub[3], "ON USB"); ui_set_text(h_pw_note, "USB current is not measured"); }
+    else if (!meas) { ui_set_text(h_sub[3], "ON USB"); ui_set_text(h_pw_note, "not measured"); }
     else {
-        ui_set_text(h_sub[3], UI_SIM_BATT ? "BATTERY (SIM)" : "BATTERY");
-        ui_set_fmt(h_pw_vi, "%.2f V x %d mA", s->gauge.mv / 1000.0, abs(s->gauge.ma));
+        ui_set_fmt(h_sub[3], "%.2f V x %d mA", s->gauge.mv / 1000.0, abs(s->gauge.ma));   /* on the battery: volts and amps */
         pw_fill(h_pw_chart, h_pw_ser, h_pw_area, h_pw_sera, NULL);
         SI_MUT();
         if (s_pw_n) {                                      /* the dot on the newest point */

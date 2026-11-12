@@ -11,7 +11,11 @@ CONFIG_TINYUSB_CDC_COUNT=1
 CONFIG_TINYUSB_MSC_ENABLED=n
 # app is the car firmware, CarMind R.E.V and the launcher: -Os keeps it inside the 6 MB slot
 CONFIG_COMPILER_OPTIMIZATION_SIZE=y
-# launcher fonts (480x480) and the LVGL heap in PSRAM (lv_*_core in main/mosaico_display.c)
+# launcher fonts (480x480) and the LVGL heap in PSRAM (lv_*_core in main/mosaico_display.c). No text under 16 px on this
+# screen (NHTSA DOT HS 812 360 / ISO 15008 legibility, 0.0808 mm pixels): LVGL's default font (widgets without a font of
+# their own) is the 16 px one, and nothing on the S31 uses the 12 and 14 px sizes the S3 dashboard keeps. They stay
+# compiled (LVGL's examples name them) but the linker drops them: 11,488 + 13,649 bytes of flash saved.
+CONFIG_LV_FONT_DEFAULT_MONTSERRAT_16=y
 CONFIG_LV_FONT_MONTSERRAT_20=y
 CONFIG_LV_FONT_MONTSERRAT_28=y
 CONFIG_LV_FONT_MONTSERRAT_32=y

@@ -237,30 +237,32 @@ static void ai_create(lv_obj_t *p)
     a_mark = d_after(t, lv_image_create(p));
     lv_image_set_src(a_mark, rev ? &ocm_mark_rev_34 : &ocm_mark_ev_34);
     a_right = d_right(p, "", UI_MUTED);
-    lv_obj_t *c = a_hero = d_card(p, DX, DY, DW, 168, UI_ORANGE, true);
+    /* 16 px text floor (OS2b): class rows 26 px apart (18 px names), a one-line note, then the estimates card in the
+       remaining 146 px with 34 px rows */
+    lv_obj_t *c = a_hero = d_card(p, DX, DY, DW, 188, UI_ORANGE, true);
     d_lab(c, "AI SEES", 0, 10, UI_ORANGE);
-    a_cls = d_txt(c, UI_THEME.f_large, UI_TEXT, "--", 80, 0);
+    a_cls = d_txt(c, UI_THEME.f_large, UI_TEXT, "--", 88, 0);
     a_sure = ui_label(c, UI_THEME.f_body, UI_TEXT, "");
     lv_obj_align(a_sure, LV_ALIGN_TOP_RIGHT, 0, 6);
     static const char *const L[4] = {"Stopped", "Braking", "Accelerating", "Cruising"};
     for (int k = 0; k < 4; k++) {
-        d_txt(c, UI_THEME.f_label, UI_MUTED, L[k], 0, 38 + k * 23);
-        a_pb[k] = d_bar(c, 100, 44 + k * 23, 250, 8, UI_THEME.dim, 100);
+        d_txt(c, UI_THEME.f_label, UI_MUTED, L[k], 0, 40 + k * 26);
+        a_pb[k] = d_bar(c, 128, 47 + k * 26, 206, 8, UI_THEME.dim, 100);
         a_pp[k] = ui_label(c, UI_THEME.f_label, UI_TEXT, "");
-        lv_obj_align(a_pp[k], LV_ALIGN_TOP_RIGHT, 0, 38 + k * 23);
+        lv_obj_align(a_pp[k], LV_ALIGN_TOP_RIGHT, 0, 40 + k * 26);
     }
-    a_note = d_txt(c, UI_THEME.f_small, UI_MUTED, "", 0, 128);
-    c = d_card(p, DX, DY + 176, DW, 166, UI_CRIMSON, true);
+    a_note = d_txt(c, UI_THEME.f_small, UI_MUTED, "", 0, 146);
+    c = d_card(p, DX, DY + 196, DW, 146, UI_CRIMSON, true);
     d_lab(c, "AI ESTIMATES", 0, 0, UI_CRIMSON);
-    d_txt(c, UI_THEME.f_body, UI_TEXT, "Brake pressure", 0, 30);
-    a_brk_bar = d_bar(c, 130, 37, 150, 6, UI_CRIMSON, 100);
-    a_brk = d_value(c, UI_THEME.f_title, "bar", 300, 22);
-    d_txt(c, UI_THEME.f_body, UI_TEXT, "Engine torque", 0, 74);
-    a_tq_tag = at(ui_pill(c, "MODEL", UI_CRIMSON), 130, 76);
-    a_tq = d_value(c, UI_THEME.f_title, "N m", 300, 66);
-    d_txt(c, UI_THEME.f_body, UI_TEXT, "Fuel rate", 0, 118);
-    a_fu_tag = at(ui_pill(c, "LEARNED", UI_GREEN), 130, 120);
-    a_fu = d_value(c, UI_THEME.f_title, "L/h", 300, 110);
+    d_txt(c, UI_THEME.f_body, UI_TEXT, "Brake pressure", 0, 26);
+    a_brk_bar = d_bar(c, 146, 34, 130, 6, UI_CRIMSON, 100);
+    a_brk = d_value(c, UI_THEME.f_title, "bar", 292, 22);
+    d_txt(c, UI_THEME.f_body, UI_TEXT, "Engine torque", 0, 60);
+    a_tq_tag = at(ui_pill(c, "MODEL", UI_CRIMSON), 146, 60);
+    a_tq = d_value(c, UI_THEME.f_title, "N m", 292, 56);
+    d_txt(c, UI_THEME.f_body, UI_TEXT, "Fuel rate", 0, 94);
+    a_fu_tag = at(ui_pill(c, "LEARNED", UI_GREEN), 146, 94);
+    a_fu = d_value(c, UI_THEME.f_title, "L/h", 292, 90);
 }
 
 static void ai_update(const ui_snap_t *s)
@@ -268,7 +270,8 @@ static void ai_update(const ui_snap_t *s)
     const ml_stats_t *m = &s->ml;
     pill_set(a_tag, model_tag(s), UI_ORANGE);
     mark_set(a_mark, model_mark_34(s));
-    if (m->windows) ui_set_fmt(a_right, "%lu windows, %.1f ms", (unsigned long)m->windows, m->last_us / 1000.0);
+    /* the run time per window is on the model's own page and in Board's deadline table */
+    if (m->windows) ui_set_fmt(a_right, "%lu windows", (unsigned long)m->windows);
     else ui_set_text(a_right, m->ready ? "no windows yet" : "model not loaded");
     bool have = m->last_class >= 0;
     ui_set_text(a_cls, have ? ui_class_name(m->last_class) : "--");
@@ -285,8 +288,8 @@ static void ai_update(const ui_snap_t *s)
         lv_obj_set_style_bg_color(a_pb[k], lv_color_hex(have && k == m->last_class ? d_cls_color(k) : UI_THEME.dim), LV_PART_INDICATOR);
         if (s->nprobs > k) ui_set_fmt(a_pp[k], "%d %%", v); else ui_set_text(a_pp[k], "--");
     }
-    if (have && m->last_at_ms) ui_set_fmt(a_note, rev_in_use(s) ? "Last window %lld s ago. The network is frozen, learning runs beside it."
-                                                                : "Last window %lld s ago. E.V runs as shipped, nothing learns.",
+    if (have && m->last_at_ms) ui_set_fmt(a_note, rev_in_use(s) ? "Last window %lld s ago. R.E.V learns beside it."
+                                                                : "Last window %lld s ago. E.V does not learn.",
                                           (long long)((s->now_ms - m->last_at_ms) / 1000));
     else ui_set_text(a_note, "Waits for a drive: one answer per window.");
     char b[16];
@@ -327,24 +330,26 @@ static void learn_create(lv_obj_t *p)
     d_header(p, "Learning");
     l_saved = d_right(p, "", UI_GREEN);
     l_saved_dot = d_before(l_saved, d_dot(p, UI_GREEN));
+    /* 16 px text floor (OS2b): cards 112 + 82 + 130 px (inner 86, 56, 104) with 8 px gaps fill y 122-464; the half
+       cards leave 186 px for a line */
     int hw = (DW - 8) / 2;
-    lv_obj_t *c = l_card[0] = d_card(p, DX, DY, hw, 96, UI_BORDER, false);
+    lv_obj_t *c = l_card[0] = d_card(p, DX, DY, hw, 112, UI_BORDER, false);
     d_lab(c, "FUEL READ-OUT", 0, 0, UI_MUTED);
-    l_f1 = d_value(c, UI_THEME.f_large, "updates kept", 0, 14);
-    l_f2 = d_txt(c, UI_THEME.f_label, UI_GREEN, "", 0, 46);
-    l_f3 = d_txt(c, UI_THEME.f_small, UI_MUTED, "", 0, 62);
-    c = l_card[1] = d_card(p, DX + hw + 8, DY, hw, 96, UI_BORDER, false);
-    d_lab(c, "AIRFLOW CONSTANT", 0, 0, UI_MUTED);
-    l_k1 = d_value(c, UI_THEME.f_large, "", 0, 14);
-    l_k2 = d_txt(c, UI_THEME.f_label, UI_TEXT, "", 0, 46);
-    l_k3 = d_txt(c, UI_THEME.f_small, UI_MUTED, "", 0, 62);
-    c = l_card[2] = d_card(p, DX, DY + 104, DW, 80, UI_BORDER, false);
-    d_lab(c, "FUEL TANK", 0, 4, UI_MUTED);
-    l_t1 = d_value(c, UI_THEME.f_value, "", 150, 0);
+    l_f1 = d_value(c, UI_THEME.f_large, "kept", 0, 17);
+    l_f2 = d_txt(c, UI_THEME.f_small, UI_GREEN, "", 0, 49);
+    l_f3 = d_txt(c, UI_THEME.f_small, UI_MUTED, "", 0, 67);
+    c = l_card[1] = d_card(p, DX + hw + 8, DY, hw, 112, UI_BORDER, false);
+    d_lab(c, "AIR CONSTANT", 0, 0, UI_MUTED);
+    l_k1 = d_value(c, UI_THEME.f_large, "", 0, 17);
+    l_k2 = d_txt(c, UI_THEME.f_small, UI_TEXT, "", 0, 49);
+    l_k3 = d_txt(c, UI_THEME.f_small, UI_MUTED, "", 0, 67);
+    c = l_card[2] = d_card(p, DX, DY + 120, DW, 82, UI_BORDER, false);
+    d_lab(c, "FUEL TANK", 0, 3, UI_MUTED);
+    l_t1 = d_value(c, UI_THEME.f_value, "", 130, 0);
     l_tank_u = l_t1.u;
-    l_tbar = d_bar(c, 0, 28, DW - 28, 8, UI_GREEN, 100);
-    l_tnote = d_txt(c, UI_THEME.f_small, UI_MUTED, "", 0, 42);
-    c = d_card(p, DX, DY + 192, DW, 150, UI_GREEN, false);
+    l_tbar = d_bar(c, 0, 27, DW - 28, 8, UI_GREEN, 100);
+    l_tnote = d_txt(c, UI_THEME.f_small, UI_MUTED, "", 0, 38);
+    c = d_card(p, DX, DY + 210, DW, 132, UI_GREEN, false);
     lv_obj_t *mk = l_mark = lv_image_create(c);           /* the mark of the model in use next to its figures */
     lv_image_set_src(mk, ml_model_active() == ML_MODEL_REV ? &ocm_mark_rev_24 : &ocm_mark_ev_24);
     lv_obj_set_pos(mk, 0, -4);
@@ -353,10 +358,10 @@ static void learn_create(lv_obj_t *p)
     lv_obj_align(l_state, LV_ALIGN_TOP_RIGHT, 0, 0);
     static const char *const N[3] = {"windows read", "self-test", "one run"};
     for (int k = 0; k < 3; k++) {
-        l_n[k] = d_txt(c, UI_THEME.f_title, UI_TEXT, "--", k * 140, 26);
-        d_txt(c, UI_THEME.f_small, UI_MUTED, N[k], k * 140, 58);
+        l_n[k] = d_txt(c, UI_THEME.f_title, UI_TEXT, "--", k * 140, 20);
+        d_txt(c, UI_THEME.f_small, UI_MUTED, N[k], k * 140, 48);
     }
-    lv_obj_t *n = l_note = d_txt(c, UI_THEME.f_label, UI_MUTED, "", 0, 86);
+    lv_obj_t *n = l_note = d_txt(c, UI_THEME.f_small, UI_MUTED, "", 0, 68);
     lv_obj_set_width(n, DW - 28);
     lv_label_set_long_mode(n, LV_LABEL_LONG_WRAP);
 }
@@ -374,9 +379,9 @@ static void learn_update(const ui_snap_t *s)
     char b[24];
     snprintf(b, sizeof b, "%lu", (unsigned long)r->kept);
     d_value_set(&l_f1, b);
-    if (r->n_err[0] && r->n_err[1]) ui_set_fmt(l_f2, "%.2f vs %.2f L/h error", sqrt(r->err[1] / r->n_err[1]), sqrt(r->err[0] / r->n_err[0]));
-    else ui_set_text(l_f2, "error: needs labelled rows");
-    ui_set_fmt(l_f3, "learned vs factory, %lu pairs", (unsigned long)r->pairs);
+    if (r->n_err[0] && r->n_err[1]) ui_set_fmt(l_f2, "error %.2f vs %.2f L/h", sqrt(r->err[1] / r->n_err[1]), sqrt(r->err[0] / r->n_err[0]));
+    else ui_set_text(l_f2, "error: needs labels");
+    ui_set_text(l_f3, "learned vs factory");                /* the pair count is on the R.E.V page */
     if (r->k_ready) { if (r->k < 0.01f) snprintf(b, sizeof b, "%.2f", (double)(r->k * 1e4f)); else snprintf(b, sizeof b, "%.3f", (double)r->k); }
     else snprintf(b, sizeof b, "--");
     d_value_set(&l_k1, b);
@@ -385,9 +390,9 @@ static void learn_update(const ui_snap_t *s)
     ui_set_fmt(l_k3, "from %lu rows", (unsigned long)r->k_rows);
     if (r->tank.have) snprintf(b, sizeof b, "%.0f L", (double)(r->tank.cap_raw_l * r->cal)); else snprintf(b, sizeof b, "--");
     d_value_set(&l_t1, b);
-    ui_set_fmt(l_tank_u, " learned from %lu fill-up%s", (unsigned long)r->tank_fills, r->tank_fills == 1 ? "" : "s");
+    ui_set_fmt(l_tank_u, " from %lu fill-up%s", (unsigned long)r->tank_fills, r->tank_fills == 1 ? "" : "s");
     bar_set(l_tbar, (int)fminf(fmaxf(r->tank.span_pct, 0), 100));
-    ui_set_fmt(l_tnote, "Gauge span seen: %.0f %%. More fill-ups make it sharper.", (double)r->tank.span_pct);
+    ui_set_fmt(l_tnote, "Gauge span seen: %.0f %%. More fill-ups sharpen it.", (double)r->tank.span_pct);
     const ml_stats_t *m = &s->ml;
     mark_set(l_mark, rev_in_use(s) ? &ocm_mark_rev_24 : &ocm_mark_ev_24);
     if (m->ready) ui_set_fmt(l_state, "%s %s", model_tag(s), ml_model_version(s->model)); else ui_set_fmt(l_state, "%s not loaded", model_tag(s));
@@ -456,12 +461,12 @@ static void model_poll(bool dialog)
 }
 
 /* page grid under the header: the MODEL and SELF-TEST cards, a status line, the model's own card, the Use button */
-#define MP_CARDS_H 100
-#define MP_LINE_Y  (DY + MP_CARDS_H + 6)
+#define MP_CARDS_H 106                                     /* 16 px floor (OS2b): inner 82 px for 18 + 27 + 18 + 18 */
+#define MP_LINE_Y  (DY + MP_CARDS_H + 5)
 #define MP_LINE_H  40
-#define MP_CARD_Y  (MP_LINE_Y + MP_LINE_H + 6)
-#define MP_CARD_H  118
-#define MP_USE_Y   (MP_CARD_Y + MP_CARD_H + 8)
+#define MP_CARD_Y  (MP_LINE_Y + MP_LINE_H + 5)
+#define MP_CARD_H  116
+#define MP_USE_Y   (MP_CARD_Y + MP_CARD_H + 6)
 #define MP_USE_H   64
 _Static_assert(MP_USE_Y + MP_USE_H <= UI_H - UI_MARGIN, "the Use button runs off the page");
 
@@ -515,9 +520,9 @@ static void mp_create(lv_obj_t *p, int id, const char *card_title, const char *c
         lv_obj_set_style_radius(c, 20, 0);
         lv_obj_set_style_pad_ver(c, 10, 0);
         d_lab(c, R[k], 0, 0, UI_MUTED);
-        v->big[k] = d_txt(c, UI_THEME.f_title, UI_TEXT, "--", 0, 15);
-        v->l1[k] = d_txt(c, UI_THEME.f_label, UI_TEXT, "", 0, 42);
-        v->l2[k] = d_txt(c, UI_THEME.f_label, UI_MUTED, "", 0, 59);
+        v->big[k] = d_txt(c, UI_THEME.f_title, UI_TEXT, "--", 0, 17);
+        v->l1[k] = d_txt(c, UI_THEME.f_small, UI_TEXT, "", 0, 45);
+        v->l2[k] = d_txt(c, UI_THEME.f_small, UI_MUTED, "", 0, 63);
     }
     lv_obj_t *c = d_card(p, DX, MP_LINE_Y, DW, MP_LINE_H, UI_BORDER, false);
     lv_obj_set_style_radius(c, 16, 0);
@@ -530,13 +535,14 @@ static void mp_create(lv_obj_t *p, int id, const char *card_title, const char *c
     lv_obj_align(v->right, LV_ALIGN_RIGHT_MID, 0, 0);
     c = d_card(p, DX, MP_CARD_Y, DW, MP_CARD_H, UI_BORDER, false);
     d_lab(c, card_title, 0, 0, UI_ORANGE);
+    static const int NX[3] = {0, 136, 290};                /* "since last window" 143 px, the widest caption */
     for (int k = 0; k < 3; k++) {
-        v->n[k] = d_txt(c, UI_THEME.f_large, UI_TEXT, "--", k * 140, 20);
-        d_txt(c, UI_THEME.f_small, UI_MUTED, n[k], k * 140, 52);
+        v->n[k] = d_txt(c, UI_THEME.f_large, UI_TEXT, "--", NX[k], 20);
+        d_txt(c, UI_THEME.f_small, UI_MUTED, n[k], NX[k], 52);
     }
-    v->note = d_txt(c, UI_THEME.f_small, UI_MUTED, "", 0, 74);
+    v->note = d_txt(c, UI_THEME.f_small, UI_MUTED, "", 0, 72);
     v->note_r = ui_label(c, UI_THEME.f_small, UI_MUTED, "");
-    lv_obj_align(v->note_r, LV_ALIGN_TOP_RIGHT, 0, 74);
+    lv_obj_align(v->note_r, LV_ALIGN_TOP_RIGHT, 0, 72);
     lv_obj_t *b = v->use = lv_button_create(p);
     lv_obj_set_pos(b, DX, MP_USE_Y);
     lv_obj_set_size(b, DW, MP_USE_H);
@@ -560,7 +566,7 @@ static bool mp_update(const ui_snap_t *s, int id)
     ui_set_text(v->sub, on ? "in use" : "not active");
     ui_set_color(v->sub, on ? UI_MUTED : UI_WARN);
     if (!on) ui_set_fmt(v->step, "%s in use", other);
-    else if (m->windows) ui_set_fmt(v->step, "%lu windows, %.1f ms", (unsigned long)m->windows, m->last_us / 1000.0);
+    else if (m->windows) ui_set_fmt(v->step, "%lu windows", (unsigned long)m->windows);   /* the run time: Board's deadline table */
     else ui_set_text(v->step, m->ready ? "no windows yet" : "not loaded");
     int t = ready ? ml_selftest_state() : -1;
     uint32_t edge[2] = {ready ? UI_GREEN : on ? UI_THEME.dim : UI_WARN, t > 0 ? UI_GREEN : t == 0 ? UI_WARN : UI_THEME.dim};
@@ -570,11 +576,11 @@ static bool mp_update(const ui_snap_t *s, int id)
     ui_set_text(v->big[0], ready ? ml_model_name(id) : on ? "--" : "Not active");
     ui_set_color(v->big[0], on ? UI_TEXT : UI_WARN);
     ui_set_fmt(v->l1[0], "model %s", ml_model_version(id));
-    if (on) ui_set_fmt(v->l2[0], "for %s, %s", ml_model_target(id), m->ready ? "loaded" : "not loaded");
+    if (on) ui_set_fmt(v->l2[0], "%s, %s", ml_model_target(id), m->ready ? "loaded" : "not loaded");
     else ui_set_fmt(v->l2[0], "%s runs now", other);
     ui_set_text(v->big[1], ready ? selftest_word() : "--");
     if (ready && m->selftest_us) ui_set_fmt(v->l1[1], "one run %.1f ms", m->selftest_us / 1000.0); else ui_set_text(v->l1[1], "");
-    if (t >= 0) ui_set_text(v->l2[1], "vs PC simulation, 1 LSB");
+    if (t >= 0) ui_set_text(v->l2[1], "= PC simulation, 1 LSB");    /* the card leaves 180 px at 16 */
     else if (on) ui_set_text(v->l2[1], "");
     else ui_set_fmt(v->l2[1], "runs when %s loads", mp_tag(id));
     ui_set_text(v->ok, on ? LV_SYMBOL_OK : LV_SYMBOL_PAUSE);
@@ -624,7 +630,7 @@ static void ev_update(const ui_snap_t *s)
     if (on && m->last_class >= 0 && m->last_at_ms) ui_set_fmt(v->n[1], "%lld s", (long long)((s->now_ms - m->last_at_ms) / 1000));
     else ui_set_text(v->n[1], "--");
     if (on && m->windows) ui_set_fmt(v->n[2], "%.1f ms", m->last_us / 1000.0); else ui_set_text(v->n[2], "--");
-    ui_set_text(v->note, on ? "R.E.V's learning pauses, its learned values stay saved." : "R.E.V runs now. These figures start when E.V loads.");
+    ui_set_text(v->note, on ? "R.E.V pauses, its learned values stay saved." : "R.E.V runs now. These start when E.V loads.");
     ui_set_text(v->note_r, "");
 }
 
@@ -744,7 +750,7 @@ static void fuel_update(const ui_snap_t *s)
     const char *u = ui_econ(o->econ_trip_kpl, b, sizeof b);
     d_value_set(&f_drive, b);
     ui_set_text(f_drive.u, u);
-    if (o->trip_km > 0.01) ui_set_fmt(f_drive_note, "%.2f L over %.1f km", (double)o->trip_fuel_l, o->trip_km); else ui_set_text(f_drive_note, "no distance yet");
+    if (o->trip_km > 0.01) ui_set_fmt(f_drive_note, "%.1f L over %.0f km", (double)o->trip_fuel_l, o->trip_km); else ui_set_text(f_drive_note, "no distance yet");
     snprintf(b, sizeof b, "%.2f", (double)s->rs.cal);
     d_value_set(&f_cal, b);
     ui_set_fmt(f_cal_note, "from %d fill-up%s", s->rs.used, s->rs.used == 1 ? "" : "s");
@@ -775,9 +781,10 @@ static int br_n;
 static void br_card(lv_obj_t *p, int k, int y, const char *label, const char *tag, const char *unit, uint32_t color, int max)
 {
     lv_obj_t *c = d_card(p, DX, y, DW, 167, color, true);
-    d_lab(c, label, 0, 8, color);
-    br_tag[k] = at(ui_pill(c, tag, UI_THEME.estimate), k ? 140 : 156, 4);
-    br_v[k] = d_value(c, UI_THEME.f_big, unit, 290, 0);
+    lv_obj_t *lab = d_lab(c, label, 0, 8, color);
+    br_tag[k] = ui_pill(c, tag, UI_THEME.estimate);
+    lv_obj_align_to(br_tag[k], lab, LV_ALIGN_OUT_RIGHT_MID, 8, 0);   /* after the 16 px label, whatever its width */
+    br_v[k] = d_value(c, UI_THEME.f_big, unit, 280, 0);
     for (int j = 0; j < 2; j++) {                        /* j 0: the area (bars, translucent), j 1: the line on top */
         lv_obj_t *ch = lv_chart_create(c);
         lv_obj_set_pos(ch, 0, 42);
@@ -844,7 +851,7 @@ static void brakes_update(const ui_snap_t *s)
     if (peak[1] >= 0) ui_set_fmt(br_peak[1], "peak %.0f N m", (double)peak[1]); else ui_set_text(br_peak[1], "");
     int be = 0, hb = 0;
     mosaico_drive_live(&be, &hb);
-    ui_set_fmt(br_note[0], "%d braking%s, %d hard this drive", be, be == 1 ? "" : "s", hb);
+    ui_set_fmt(br_note[0], "%d braking%s, %d hard", be, be == 1 ? "" : "s", hb);   /* this drive's */
     if (tq) ui_set_text(br_note[1], "5 s mean, from fuel and rpm");
     else ui_set_fmt(br_note[1], "%s estimate (no physics torque yet)", model_tag(s));
 }
@@ -923,27 +930,29 @@ static void engine_create(lv_obj_t *p)
 {
     d_header(p, "Engine");
     e_mil = d_right(p, "", UI_MUTED);
-    lv_obj_t *c = e_card = d_card(p, DX, DY, DW, 162, UI_THEME.dim, true);
+    /* 16 px text floor (OS2b): the code card 170 px (the cause in two lines, cut with dots), sensor cards 78 px */
+    lv_obj_t *c = e_card = d_card(p, DX, DY, DW, 170, UI_THEME.dim, true);
     e_lab = d_lab(c, "TROUBLE CODES", 0, 0, UI_MUTED);
     e_code = d_txt(c, UI_THEME.f_big, UI_TEXT, "", 0, 16);
     e_desc = d_txt(c, UI_THEME.f_body, UI_TEXT, "", 0, 56);
     lv_obj_set_width(e_desc, DW - 32);
     lv_label_set_long_mode(e_desc, LV_LABEL_LONG_DOT);
+    lv_obj_set_height(e_desc, lv_font_get_line_height(UI_THEME.f_body));   /* one line: LVGL wraps a dots label of content height */
     e_cause = d_txt(c, UI_THEME.f_small, UI_MUTED, "", 0, 78);
-    lv_obj_set_width(e_cause, DW - 32);
-    lv_label_set_long_mode(e_cause, LV_LABEL_LONG_WRAP);
+    lv_obj_set_size(e_cause, DW - 36, 2 * lv_font_get_line_height(UI_THEME.f_small));
+    lv_label_set_long_mode(e_cause, LV_LABEL_LONG_DOT);
     for (int k = 0; k < 3; k++) {
-        e_chip[k] = at(ui_pill(c, "", UI_THEME.dim), k * 120, 114);
+        e_chip[k] = at(ui_pill(c, "", UI_THEME.dim), k * 128, 116);
         ui_set_color(e_chip[k], UI_TEXT);
     }
     int w3 = (DW - 16) / 3;
     static const char *const L[6] = {"BATTERY", "INTAKE AIR", "AIRFLOW", "MANIFOLD", "SHORT TRIM", "LONG TRIM"};
     static const char *const U[6] = {"V", "C", "g/s", "kPa", "%", "%"};
     for (int k = 0; k < 6; k++) {
-        c = d_card(p, DX + (k % 3) * (w3 + 8), DY + 170 + (k / 3) * 90, w3, 82, UI_BORDER, false);
+        c = d_card(p, DX + (k % 3) * (w3 + 8), DY + 178 + (k / 3) * 86, w3, 78, UI_BORDER, false);
         lv_obj_set_style_radius(c, 16, 0);
-        d_lab(c, L[k], 0, 0, UI_MUTED);
-        e_sv[k] = d_txt(c, UI_THEME.f_title, UI_TEXT, "--", 0, 24);
+        lv_obj_set_style_text_letter_space(d_lab(c, L[k], 0, 0, UI_MUTED), 1, 0);   /* "SHORT TRIM" in the 111 px card */
+        e_sv[k] = d_txt(c, UI_THEME.f_title, UI_TEXT, "--", 0, 22);
         e_su[k] = ui_label(c, UI_THEME.f_small, UI_MUTED, U[k]);
         lv_obj_align_to(e_su[k], e_sv[k], LV_ALIGN_OUT_RIGHT_BOTTOM, 4, -3);
     }
@@ -995,7 +1004,7 @@ static void engine_update(const ui_snap_t *s)
 
 /* ======================= Board: flex columns and rows; the deadline table is an lv grid sized to its texts ======= */
 static lv_obj_t *o_dot, *o_jobs_ok, *o_touch, *o_ram_v, *o_ram_note, *o_psram, *o_bat_v, *o_bat_note, *o_cal, *o_store,
-                *o_sbar, *o_fw, *o_chip, *o_health;
+                *o_sbar, *o_flash, *o_fw, *o_health;
 #define O_ROWS 6
 static lv_obj_t *o_rn[O_ROWS], *o_rr[O_ROWS], *o_rw[O_ROWS], *o_rb[O_ROWS], *o_rm[O_ROWS];
 
@@ -1026,28 +1035,36 @@ static lv_obj_t *fcard(lv_obj_t *p, int h)
     return c;
 }
 
+/* Board at the 16 px text floor (OS2b, owner 2026-11-11: "the Board app page ... still have all small fonts"). The
+   page scrolls: the RAM and battery cards, log storage and the first deadline rows fill the screen, the rest of the
+   table (up to O_ROWS jobs) and the footer follow. Header right: runlevel and boot health; the jobs verdict heads the
+   deadline table; the footer is centred, inside the rounded corners. */
 static void board_create(lv_obj_t *p)
 {
-    lv_obj_t *t = d_header(p, "Board");
-    o_dot = d_after(t, d_dot(p, UI_GREEN));
-    o_jobs_ok = d_after(t, ui_label(p, UI_THEME.f_label, UI_GREEN, ""));
-    o_touch = d_right(p, "", UI_MUTED);
+    d_header(p, "Board");
+    o_health = d_right(p, "", UI_MUTED);                  /* mossREV OS: runlevel and boot health (os.h) */
     lv_obj_t *col = fbox(p, LV_FLEX_FLOW_COLUMN, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, 8);
     lv_obj_set_pos(col, DX, DY);
     lv_obj_set_size(col, DW, UI_H - 16 - DY);
+    lv_obj_add_flag(col, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scroll_dir(col, LV_DIR_VER);
+    lv_obj_set_style_pad_bottom(col, 20, 0);              /* at the end of the scroll the last row clears the rounded corners */
+    lv_obj_set_scrollbar_mode(col, LV_SCROLLBAR_MODE_ACTIVE);
     lv_obj_t *top = fbox(col, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, 8);
-    lv_obj_set_size(top, LV_PCT(100), 88);
+    lv_obj_set_size(top, LV_PCT(100), LV_SIZE_CONTENT);
     lv_obj_t *c;
-    c = fcard(top, 88);
+    c = fcard(top, 0);
+    lv_obj_set_style_pad_hor(c, 10, 0);                   /* 194 px for a note */
     lv_obj_set_flex_grow(c, 1);
     d_lab(c, "RAM FREE", 0, 0, UI_MUTED);
-    o_ram_v = ui_label(c, UI_THEME.f_value, UI_TEXT, "--");
+    o_ram_v = ui_label(c, UI_THEME.f_title, UI_TEXT, "--");
     o_ram_note = ui_label(c, UI_THEME.f_small, UI_MUTED, "");
     o_psram = ui_label(c, UI_THEME.f_small, UI_MUTED, "");
-    c = fcard(top, 88);
+    c = fcard(top, 0);
+    lv_obj_set_style_pad_hor(c, 10, 0);
     lv_obj_set_flex_grow(c, 1);
     d_lab(c, "BATTERY", 0, 0, UI_MUTED);
-    o_bat_v = ui_label(c, UI_THEME.f_value, UI_TEXT, "--");
+    o_bat_v = ui_label(c, UI_THEME.f_title, UI_TEXT, "--");
     o_bat_note = ui_label(c, UI_THEME.f_small, UI_MUTED, "");
     o_cal = ui_label(c, UI_THEME.f_small, UI_WARN, "");
     c = fcard(col, 0);
@@ -1055,20 +1072,25 @@ static void board_create(lv_obj_t *p)
     lv_obj_t *r = frow(c);
     d_lab(r, "LOG STORAGE", 0, 0, UI_MUTED);
     o_store = ui_label(r, UI_THEME.f_label, UI_TEXT, "--");
-    o_sbar = lv_bar_create(c);
-    lv_obj_set_size(o_sbar, LV_PCT(100), 8);
+    r = frow(c);
+    o_sbar = lv_bar_create(r);
+    lv_obj_set_height(o_sbar, 8);
+    lv_obj_set_flex_grow(o_sbar, 1);
     lv_bar_set_range(o_sbar, 0, 1000);
     lv_obj_set_style_bg_color(o_sbar, lv_color_hex(UI_THEME.track), 0);
     lv_obj_set_style_bg_opa(o_sbar, LV_OPA_COVER, 0);
     lv_obj_set_style_bg_color(o_sbar, lv_color_hex(UI_ORANGE), LV_PART_INDICATOR);
     lv_obj_remove_flag(o_sbar, LV_OBJ_FLAG_CLICKABLE);
+    o_flash = ui_label(r, UI_THEME.f_small, UI_MUTED, "");
     /* the deadline table: column widths from the widest text each one holds */
     c = fcard(col, 0);
     lv_obj_set_width(c, LV_PCT(100));
-    lv_obj_set_flex_grow(c, 1);
     r = frow(c);
     d_lab(r, "SOFT DEADLINES", 0, 0, UI_MUTED);
-    ui_label(r, UI_THEME.f_small, UI_MUTED, "bar: worst run of 50 ms");
+    lv_obj_t *v = fbox(r, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER, 8);
+    lv_obj_set_size(v, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    o_dot = d_dot(v, UI_GREEN);
+    o_jobs_ok = ui_label(v, UI_THEME.f_label, UI_GREEN, "");
     lv_obj_t *g = lv_obj_create(c);
     lv_obj_remove_style_all(g);
     lv_obj_set_width(g, LV_PCT(100));
@@ -1079,9 +1101,11 @@ static void board_create(lv_obj_t *p)
     rows[O_ROWS + 1] = LV_GRID_TEMPLATE_LAST;
     lv_obj_set_grid_dsc_array(g, cols, rows);
     lv_obj_set_style_pad_column(g, 12, 0);
-    lv_obj_set_style_pad_row(g, 3, 0);
+    lv_obj_set_style_pad_row(g, 2, 0);
     lv_obj_remove_flag(g, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
-    static const char *const H[5] = {"JOB", "RUNS", "WORST", "", "MISSED"};
+    lv_obj_add_flag(g, LV_OBJ_FLAG_GESTURE_BUBBLE);
+    /* the bar column says what the bar measures (it was a separate "bar: worst run of 50 ms" line) */
+    static const char *const H[5] = {"JOB", "RUNS", "WORST", "/ 50 ms", "MISSED"};
     for (int k = 0; k < 5; k++) {
         lv_obj_t *l = ui_label(g, UI_THEME.f_small, UI_MUTED, H[k]);
         lv_obj_set_grid_cell(l, k == 0 || k == 3 ? LV_GRID_ALIGN_START : LV_GRID_ALIGN_END, k, 1, LV_GRID_ALIGN_CENTER, 0, 1);
@@ -1089,6 +1113,7 @@ static void board_create(lv_obj_t *p)
     for (int i = 0; i < O_ROWS; i++) {
         o_rn[i] = ui_label(g, UI_THEME.f_small, UI_TEXT, "");
         lv_label_set_long_mode(o_rn[i], LV_LABEL_LONG_DOT);
+        lv_obj_set_height(o_rn[i], lv_font_get_line_height(UI_THEME.f_small));   /* one line: a long name ends in dots */
         lv_obj_set_grid_cell(o_rn[i], LV_GRID_ALIGN_STRETCH, 0, 1, LV_GRID_ALIGN_CENTER, i + 1, 1);
         o_rr[i] = ui_label(g, UI_THEME.f_small, UI_MUTED, "");
         lv_obj_set_grid_cell(o_rr[i], LV_GRID_ALIGN_END, 1, 1, LV_GRID_ALIGN_CENTER, i + 1, 1);
@@ -1104,10 +1129,11 @@ static void board_create(lv_obj_t *p)
         o_rm[i] = ui_label(g, UI_THEME.f_small, UI_GREEN, "");
         lv_obj_set_grid_cell(o_rm[i], LV_GRID_ALIGN_END, 4, 1, LV_GRID_ALIGN_CENTER, i + 1, 1);
     }
-    r = frow(col);
-    o_fw = ui_label(r, UI_THEME.f_small, UI_MUTED, CARMIND_FW_STRING);
-    o_health = ui_label(r, UI_THEME.f_small, UI_MUTED, "");   /* mossREV OS: runlevel and boot health (os.h) */
-    o_chip = ui_label(r, UI_THEME.f_small, UI_MUTED, "");
+    /* footer: two centred lines, clear of the rounded corners at the bottom of the page */
+    lv_obj_t *f = fbox(col, LV_FLEX_FLOW_COLUMN, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, 2);
+    lv_obj_set_size(f, LV_PCT(100), LV_SIZE_CONTENT);
+    o_fw = ui_label(f, UI_THEME.f_small, UI_MUTED, CARMIND_FW_STRING);
+    o_touch = ui_label(f, UI_THEME.f_small, UI_MUTED, "");
 }
 
 static void board_update(const ui_snap_t *s)
@@ -1119,27 +1145,30 @@ static void board_update(const ui_snap_t *s)
     ui_set_bg(o_dot, miss ? UI_WARN : UI_GREEN);
     if (miss) ui_set_fmt(o_jobs_ok, "%lu missed", (unsigned long)miss); else ui_set_text(o_jobs_ok, "All jobs on time");
     ui_set_color(o_jobs_ok, miss ? UI_WARN : UI_GREEN);
-    ui_set_fmt(o_touch, "touch errors %lu", (unsigned long)mosaico_touch_errors());
+    esp_chip_info_t ci;
+    esp_chip_info(&ci);                                   /* the IDF version is in the boot log */
+    ui_set_fmt(o_touch, "S31 rev %d.%d, touch errors %lu", ci.revision / 100, ci.revision % 100, (unsigned long)mosaico_touch_errors());
     ui_set_fmt(o_ram_v, "%u KB", (unsigned)(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024));
     ui_set_fmt(o_ram_note, "internal, lowest %u", (unsigned)(heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL) / 1024));
     ui_set_fmt(o_psram, "PSRAM %.1f MB", heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1048576.0);
     if (s->gauge.ok) {
-        ui_set_fmt(o_bat_v, "%.2f V", s->gauge.mv / 1000.0);
-        /* widest texts (Montserrat 12): "-999 mA, on battery, -10.0 C" 167 px, "100 %, SOH 100 %, 9999 cyc" 163 px, in the
-           card's 190 px */
-        ui_set_fmt(o_bat_note, "%d mA, %s, %.1f C", s->gauge.ma, s->gauge.ma > -5 ? "on USB" : "on battery", s->gauge.temp_dc / 10.0);
+        /* widest texts: "4.89 V, -10.0 C" 165 px (Montserrat 24), "-999 mA, on battery" 171 px and "uncalibrated, 9999 cyc"
+           (Montserrat 16), in the card's 194 px */
+        ui_set_fmt(o_bat_v, "%.2f V, %.1f C", s->gauge.mv / 1000.0, s->gauge.temp_dc / 10.0);
+        ui_set_fmt(o_bat_note, "%d mA, %s", s->gauge.ma, s->gauge.ma > -5 ? "on USB" : "on battery");
         uint8_t bs = os_battery_state();                   /* battery safety (os_core.h section 8) first */
         if (bs != OS_BAT_OK) { ui_set_text(o_cal, os_bat_name(bs)); ui_set_color(o_cal, bs == OS_BAT_HOT ? UI_WARN : UI_RED); }
-        else if (mosaico_gauge_uncalibrated(&s->gauge)) { ui_set_fmt(o_cal, "uncalibrated, %d cycles", s->gauge.cycles); ui_set_color(o_cal, UI_WARN); }
-        else { ui_set_fmt(o_cal, "%d %%, SOH %d %%, %d cyc", s->gauge.soc, s->gauge.soh, s->gauge.cycles); ui_set_color(o_cal, UI_MUTED); }
+        else if (mosaico_gauge_uncalibrated(&s->gauge)) { ui_set_fmt(o_cal, "uncalibrated, %d cyc", s->gauge.cycles); ui_set_color(o_cal, UI_WARN); }
+        else { ui_set_fmt(o_cal, "SOH %d %%, %d cyc", s->gauge.soh, s->gauge.cycles); ui_set_color(o_cal, UI_MUTED); }   /* the % is in the status bar */
     } else { ui_set_text(o_bat_v, "--"); ui_set_text(o_bat_note, "gauge not read"); ui_set_text(o_cal, ""); }
     if (s->fat.ok && s->fat.total_kb) {
 #if CONFIG_OCM_NAND_LOGS
-        if (s->fat.nand) ui_set_fmt(o_store, "NAND %.1f of %.1f MB free, flash %lu KB", s->fat.free_kb / 1024.0,
-                                    s->fat.total_kb / 1024.0, (unsigned long)s->fat.flash_free_kb);
-        else
+        if (s->fat.nand) {
+            ui_set_fmt(o_store, "NAND %.1f of %.1f MB free", s->fat.free_kb / 1024.0, s->fat.total_kb / 1024.0);
+            ui_set_fmt(o_flash, "flash %lu KB free", (unsigned long)s->fat.flash_free_kb);
+        } else
 #endif
-        ui_set_fmt(o_store, "%lu of %lu KB free", (unsigned long)s->fat.free_kb, (unsigned long)s->fat.total_kb);
+        { ui_set_fmt(o_store, "%lu of %lu KB free", (unsigned long)s->fat.free_kb, (unsigned long)s->fat.total_kb); ui_set_text(o_flash, ""); }
         bar_set(o_sbar, (int)((uint64_t)(s->fat.total_kb - s->fat.free_kb) * 1000 / s->fat.total_kb));
         lv_obj_set_style_bg_color(o_sbar, lv_color_hex(s->fat.free_kb * 10 < s->fat.total_kb ? UI_RED : UI_ORANGE), LV_PART_INDICATOR);
     } else ui_set_text(o_store, s->st->sd_mounted ? "measuring" : "not mounted");
@@ -1157,10 +1186,7 @@ static void board_update(const ui_snap_t *s)
         ui_set_fmt(o_rm[i], "%lu", (unsigned long)js[i].misses);
         ui_set_color(o_rm[i], js[i].misses ? UI_RED : UI_GREEN);
     }
-    esp_chip_info_t ci;
-    esp_chip_info(&ci);
-    ui_set_fmt(o_chip, "S31 rev %d.%d", ci.revision / 100, ci.revision % 100);   /* the IDF version is in the boot log */
-    uint8_t hv = os_health(NULL);                  /* widest "Update, health degraded" 160 px: the row fits 440 px */
+    uint8_t hv = os_health(NULL);                  /* widest "Update, health degraded" 207 px: the header leaves 270 */
     ui_set_fmt(o_health, "%s, health %s", os_rl_name(os_runlevel()), os_health_name(hv));
     ui_set_color(o_health, hv == OS_H_GOOD ? UI_GREEN : hv == OS_H_DEGRADED ? UI_WARN : hv == OS_H_BAD ? UI_RED : UI_MUTED);
 }
@@ -1225,7 +1251,7 @@ static void drive_create(lv_obj_t *p)
     lv_obj_t *sp = fbox(hr, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, 0);
     lv_obj_set_size(sp, 1, 1);
     lv_obj_set_flex_grow(sp, 1);
-    d_ctl = ui_drive_pill(hr, 0, 0, 168, 38);
+    d_ctl = ui_drive_pill(hr, 0, 0, 188, 38);
     /* speed and rpm */
     lv_obj_t *r = fbox(col, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, 8);
     lv_obj_set_size(r, LV_PCT(100), 112);
@@ -1265,17 +1291,16 @@ static void drive_create(lv_obj_t *p)
     lv_obj_set_height(tc, LV_SIZE_CONTENT);
     lv_obj_set_flex_grow(tc, 1);
     dk_lab(tc, "AI SEES");
-    lv_obj_t *cr = fbox(tc, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_END, 8);
-    lv_obj_set_size(cr, LV_PCT(100), LV_SIZE_CONTENT);
-    d_cls = ui_label(cr, UI_THEME.f_title, DCLS[3], "--");
-    d_sure = ui_label(cr, UI_THEME.f_label, UI_MUTED, "");
-    lv_obj_set_style_pad_bottom(d_sure, 3, 0);
+    /* the class (24 px) over its confidence (18 px): "Accelerating" 156 px and "model not loaded" 160 px fit the 214 px
+       column, side by side they did not */
+    d_cls = ui_label(tc, UI_THEME.f_title, DCLS[3], "--");
+    d_sure = ui_label(tc, UI_THEME.f_label, UI_MUTED, "");
     lv_obj_t *pr = fbox(d_ai, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_END, 4);
-    lv_obj_set_size(pr, LV_SIZE_CONTENT, 56);
+    lv_obj_set_size(pr, LV_SIZE_CONTENT, 60);
     static const char *const K[4] = {"S", "B", "A", "C"};
     for (int k = 0; k < 4; k++) {
         lv_obj_t *pc = fbox(pr, LV_FLEX_FLOW_COLUMN, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER, 2);
-        lv_obj_set_size(pc, 14, 56);
+        lv_obj_set_size(pc, 14, 60);
         d_pb[k] = lv_bar_create(pc);
         lv_obj_set_size(d_pb[k], 12, 38);
         lv_bar_set_range(d_pb[k], 0, 100);
@@ -1288,25 +1313,24 @@ static void drive_create(lv_obj_t *p)
     }
     d_mark = lv_image_create(d_ai);
     lv_image_set_src(d_mark, ml_model_active() == ML_MODEL_REV ? &ocm_mark_rev_34 : &ocm_mark_ev_34);
-    /* three estimate tiles: label + outlined tag, value + unit */
+    /* three estimate tiles: label, value (24 px) + unit, outlined source tag under it. At the 16 px floor the label and
+       the tag no longer share a row ("TORQUE" 76 + "PHYSICS" 71 px); the 100 px tiles use the column's spare height */
     r = fbox(col, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, 8);
-    lv_obj_set_size(r, LV_PCT(100), 78);
+    lv_obj_set_size(r, LV_PCT(100), 100);
     static const char *const EL[3] = {"BRAKE", "TORQUE", "FUEL"}, *const ET[3] = {"MODEL", "MODEL", "LEARNED"};
-    /* fixed widths, 420 px with the two 8 px gaps. With 1 px letter spacing and 4 px pill padding the label row needs
-       128 px for "TORQUE" + "PHYSICS", 110 for "BRAKE" + "MODEL" and 112 for "FUEL" + "LEARNED" (Montserrat 12 advance
-       widths); each tile leaves width - 2 x 8 padding - 2 x 1 border for it */
+    /* fixed widths, 420 px with the two 8 px gaps; each tile leaves width - 2 x 8 padding - 2 x 1 border: 116, 134, 116 px
+       for "188.8 bar" 107, "-889 N m" 111 and "88.9 L/h" 96 px (Montserrat 24) and the "LEARNED" tag 92 px */
     static const int EW[3] = {134, 152, 134};
     const uint32_t EC[3] = {DCLS[1], UI_THEME.section[SEC_AMBER], UI_THEME.section[SEC_GREEN]},
                    TC[3] = {UI_THEME.section[SEC_AMBER], UI_THEME.section[SEC_AMBER], UI_THEME.section[SEC_GREEN]};
     for (int k = 0; k < 3; k++) {
         c = dk_card(r, 18);
-        lv_obj_set_size(c, EW[k], 78);
+        lv_obj_set_size(c, EW[k], 100);
         lv_obj_set_style_pad_hor(c, 8, 0);
-        lv_obj_t *hrow = frow(c);
-        lv_obj_set_style_text_letter_space(dk_lab(hrow, EL[k]), 1, 0);
-        d_tag[k] = dk_tag(hrow, ET[k], TC[k]);
+        lv_obj_set_style_text_letter_space(dk_lab(c, EL[k]), 1, 0);
+        d_ev[k] = ui_label(c, UI_THEME.f_title, EC[k], "--");
+        d_tag[k] = dk_tag(c, ET[k], TC[k]);
         lv_obj_set_style_pad_hor(d_tag[k], 4, 0);
-        d_ev[k] = ui_label(c, UI_THEME.f_value, EC[k], "--");
     }
     /* tank */
     c = fbox(col, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, 10);
@@ -1412,6 +1436,7 @@ static void faults_create(lv_obj_t *p)
     lv_obj_set_style_pad_row(q_list, 8, 0);
     lv_obj_set_style_pad_right(q_list, 8, 0);
     lv_obj_set_scroll_dir(q_list, LV_DIR_VER);
+    lv_obj_set_style_pad_bottom(q_list, 20, 0);              /* at the end of the scroll the last row clears the rounded corners */
     lv_obj_set_scrollbar_mode(q_list, LV_SCROLLBAR_MODE_ON);
     lv_obj_add_flag(q_list, LV_OBJ_FLAG_SCROLL_MOMENTUM);
     lv_obj_set_style_bg_color(q_list, lv_color_hex(UI_MUTED), LV_PART_SCROLLBAR);
@@ -1573,8 +1598,7 @@ static void ev_card_build(lv_obj_t *pg, int y, int h)
     lv_obj_set_style_bg_color(c, st_pressed(), LV_STATE_PRESSED);
     lv_obj_add_event_cb(c, ev_open, LV_EVENT_CLICKED, NULL);
     d_lab(c, "RECENT EVENTS", 0, 0, UI_MUTED);
-    ev_foot = ui_label(c, UI_THEME.f_small, UI_MUTED, "");
-    lv_obj_align(ev_foot, LV_ALIGN_TOP_RIGHT, 0, 0);
+    lv_obj_align(ui_label(c, UI_THEME.f_small, UI_MUTED, LV_SYMBOL_RIGHT), LV_ALIGN_TOP_RIGHT, 0, 0);   /* the pattern line: page 2 */
     int lh = lv_font_get_line_height(UI_THEME.f_label) + 1;
     ev_card_n = (h - 16 - 17 + 1) / lh;                   /* lines from y 17 inside the padding (66 px card: 2) */
     if (ev_card_n > EVENT_MAX) ev_card_n = EVENT_MAX;
@@ -1582,7 +1606,7 @@ static void ev_card_build(lv_obj_t *pg, int y, int h)
     memset(ev_line, 0, sizeof ev_line);
     for (int i = 0; i < ev_card_n; i++) {
         ev_line[i] = d_txt(c, UI_THEME.f_label, UI_TEXT, "", 0, 17 + i * lh);
-        lv_obj_set_width(ev_line[i], DW - 28);
+        lv_obj_set_size(ev_line[i], DW - 28, lh - 1);
         lv_label_set_long_mode(ev_line[i], LV_LABEL_LONG_DOT);   /* one line each, cut with dots; the list shows it all */
     }
     ev_card_sig = 0;
@@ -1604,7 +1628,7 @@ static void ev_card_refresh(const ui_snap_t *s)
     }
     char f[64];
     uev_pattern(f, sizeof f, st->pattern_windows, st->pattern_id, st->pattern_novelty, st->pattern_used);
-    ui_set_fmt(ev_foot, "%s  " LV_SYMBOL_RIGHT, f);
+    if (ev_foot) ui_set_text(ev_foot, f);
 }
 
 /* the list's and the detail's header: a Back (ui_back, the same place and touch area as the app pages' Back) that closes
@@ -1736,11 +1760,12 @@ static void ev_open(lv_event_t *e)
         lv_obj_add_flag(b, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_remove_flag(b, LV_OBJ_FLAG_SCROLLABLE);
         lv_obj_add_event_cb(b, ev_chip_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
-        lv_obj_center(ui_label(b, UI_THEME.f_label, UI_TEXT, uev_filter_name((uev_filter_t)i)));
+        lv_obj_center(ui_label(b, UI_THEME.f_small, UI_TEXT, uev_filter_name((uev_filter_t)i)));   /* "Warnings" 78 px in an 83 px chip */
     }
     ev_note = d_txt(ev_page, UI_THEME.f_small, UI_MUTED, "", DX, DY + EV_ROW_H + 6);
     lv_obj_set_width(ev_note, DW);
     lv_label_set_long_mode(ev_note, LV_LABEL_LONG_DOT);
+    lv_obj_set_height(ev_note, lv_font_get_line_height(UI_THEME.f_small));   /* one line: LVGL wraps a dots label of content height */
     ev_list = lv_obj_create(ev_page);                     /* plain rows: no shadow, border or opacity layer, scrolls cheaply */
     lv_obj_remove_style_all(ev_list);
     int ly = DY + EV_ROW_H + 26;
@@ -1750,6 +1775,7 @@ static void ev_open(lv_event_t *e)
     lv_obj_set_style_pad_row(ev_list, EV_GAP, 0);
     lv_obj_set_style_pad_right(ev_list, 8, 0);
     lv_obj_set_scroll_dir(ev_list, LV_DIR_VER);
+    lv_obj_set_style_pad_bottom(ev_list, 20, 0);              /* at the end of the scroll the last row clears the rounded corners */
     lv_obj_set_scrollbar_mode(ev_list, LV_SCROLLBAR_MODE_ACTIVE);
     lv_obj_add_flag(ev_list, LV_OBJ_FLAG_SCROLL_MOMENTUM);
     lv_obj_set_style_bg_color(ev_list, lv_color_hex(UI_MUTED), LV_PART_SCROLLBAR);
@@ -1773,6 +1799,7 @@ static void ev_open(lv_event_t *e)
         ev_row_text[i] = d_txt(r, UI_THEME.f_body, UI_TEXT, "", 14, 30);
         lv_obj_set_width(ev_row_text[i], DW - 28 - 24);
         lv_label_set_long_mode(ev_row_text[i], LV_LABEL_LONG_DOT);
+        lv_obj_set_height(ev_row_text[i], lv_font_get_line_height(UI_THEME.f_body));   /* one line: LVGL wraps a dots label of content height */
         lv_obj_align(ui_label(r, UI_THEME.f_body, UI_MUTED, LV_SYMBOL_RIGHT), LV_ALIGN_RIGHT_MID, -12, 0);
         lv_obj_add_flag(r, LV_OBJ_FLAG_HIDDEN);
     }
@@ -1842,6 +1869,7 @@ static void sm_fill(void)
 {
     lv_obj_clean(sm_p1);
     lv_obj_clean(sm_p2);
+    ev_foot = NULL;
     char b[48];
     if (!sm.ok) {
         ui_set_text(sm_hdr, "no drive yet");
@@ -1858,35 +1886,33 @@ static void sm_fill(void)
             localtime_r(&t1, &z);
             ui_set_fmt(sm_hdr, "s%06lu, %02d:%02d to %02d:%02d", (unsigned long)sm.session, a.tm_hour, a.tm_min, z.tm_hour, z.tm_min);
         } else ui_set_fmt(sm_hdr, "s%06lu, %ld min", (unsigned long)sm.session, (long)(sm.dur_s / 60));
-        /* KPI tiles */
-        int w4 = (DW - 24) / 4;
+        /* KPI tiles. 16 px text floor (OS2b): three tiles of 123 px inside (the hard brakes moved to the AI card's header);
+           the page is 58 + 94 + 92 + 62 px with 8 px gaps from y 122 to the page dots at 452 */
+        int w3 = (DW - 16) / 3;
         char e[16];
         const char *eu = ui_econ(sm.l100 > 0 ? 100.0f / sm.l100 : -1, e, sizeof e);
-        /* "HARD BRAKES" (111 px at 12 px, letter space 2) did not fit the 88 px inside a tile: the caption is "BRAKES" (61 px)
-           and the value says "hard" */
-        const char *K[4] = {"DISTANCE", "TIME", "ECONOMY", "BRAKES"};
-        char V[4][16], U[4][12];
+        const char *K[3] = {"DISTANCE", "TIME", "ECONOMY"};
+        char V[3][16], U[3][12];
         snprintf(V[0], 16, "%.1f", (double)sm.km); snprintf(U[0], 12, "km");
         snprintf(V[1], 16, "%ld", (long)(sm.dur_s / 60)); snprintf(U[1], 12, "min");
         snprintf(V[2], 16, "%s", e); snprintf(U[2], 12, "%s", strcmp(eu, "L/100 km") ? eu : "L/100");
-        snprintf(V[3], 16, "%d", sm.hard_brakes); snprintf(U[3], 12, "hard");
-        for (int k = 0; k < 4; k++) {
-            lv_obj_t *c = d_card(sm_p1, DX + k * (w4 + 8), DY, w4, 54, UI_BORDER, false);
+        for (int k = 0; k < 3; k++) {
+            lv_obj_t *c = d_card(sm_p1, DX + k * (w3 + 8), DY, w3, 58, UI_BORDER, false);
             lv_obj_set_style_radius(c, 14, 0);
             lv_obj_set_style_pad_all(c, 8, 0);
             d_lab(c, K[k], 0, 0, UI_MUTED);
-            d_val_t v = d_value(c, UI_THEME.f_value, U[k], 0, 16);
+            d_val_t v = d_value(c, UI_THEME.f_value, U[k], 0, 18);
             d_value_set(&v, V[k]);
         }
         /* speed and fuel rate over the drive, one chart, fuel on the secondary axis (T1: 36 px shorter, for the events) */
-        lv_obj_t *c = d_card(sm_p1, DX, DY + 62, DW, 114, UI_BORDER, false);
+        lv_obj_t *c = d_card(sm_p1, DX, DY + 66, DW, 94, UI_BORDER, false);
         lv_obj_set_style_pad_ver(c, 8, 0);
         d_lab(c, "SPEED KM/H", 0, 0, UI_THEME.section[SEC_SKY]);
         lv_obj_t *fl = d_lab(c, "FUEL L/H", 0, 0, UI_GREEN);
         lv_obj_align(fl, LV_ALIGN_TOP_RIGHT, 0, 0);
         float vmax = 10, fmax = 1;
         for (int i = 0; i < sm.n; i++) { vmax = fmaxf(vmax, sm.spd[i]); fmax = fmaxf(fmax, sm.fuel[i]); }
-        lv_obj_t *ch = sm_chart(c, 0, 18, DW - 28, 62, LV_CHART_TYPE_LINE, sm.n, (int)vmax + 5);
+        lv_obj_t *ch = sm_chart(c, 0, 19, DW - 28, 38, LV_CHART_TYPE_LINE, sm.n, (int)vmax + 5);
         lv_chart_set_axis_range(ch, LV_CHART_AXIS_SECONDARY_Y, 0, (int)(fmax * 10) + 5);
         lv_chart_series_t *ss = lv_chart_add_series(ch, lv_color_hex(UI_THEME.section[SEC_SKY]), LV_CHART_AXIS_PRIMARY_Y);
         lv_chart_series_t *sf = lv_chart_add_series(ch, lv_color_hex(UI_GREEN), LV_CHART_AXIS_SECONDARY_Y);
@@ -1894,20 +1920,20 @@ static void sm_fill(void)
             lv_chart_set_next_value(ch, ss, (int32_t)lroundf(sm.spd[i]));
             lv_chart_set_next_value(ch, sf, (int32_t)lroundf(sm.fuel[i] * 10));
         }
-        d_txt(c, UI_THEME.f_small, UI_MUTED, "0 min", 0, 82);
+        d_txt(c, UI_THEME.f_small, UI_MUTED, "0 min", 0, 58);
         lv_obj_t *mid = ui_label(c, UI_THEME.f_small, UI_MUTED, "");
         ui_set_fmt(mid, "%ld", (long)(sm.dur_s / 120));
-        lv_obj_align(mid, LV_ALIGN_TOP_MID, 0, 82);
+        lv_obj_align(mid, LV_ALIGN_TOP_MID, 0, 58);
         lv_obj_t *end = ui_label(c, UI_THEME.f_small, UI_MUTED, "");
         ui_set_fmt(end, "%ld min", (long)(sm.dur_s / 60));
-        lv_obj_align(end, LV_ALIGN_TOP_RIGHT, 0, 82);
+        lv_obj_align(end, LV_ALIGN_TOP_RIGHT, 0, 58);
         if (sm.past) lv_obj_center(ui_label(c, UI_THEME.f_small, UI_MUTED, "Read back after a restart: the curves are not kept"));
         /* what the AI saw, one block per 10 s (at most 40 blocks), and the class shares */
-        c = d_card(sm_p1, DX, DY + 184, DW, 72, UI_BORDER, false);
+        c = d_card(sm_p1, DX, DY + 168, DW, 92, UI_BORDER, false);
         lv_obj_set_style_pad_ver(c, 8, 0);
-        d_lab(c, "WHAT THE AI SAW, EVERY 10 S", 0, 0, UI_MUTED);
+        d_lab(c, "WHAT THE AI SAW", 0, 0, UI_MUTED);           /* one block per 10 s */
         lv_obj_t *a = ui_label(c, UI_THEME.f_small, UI_MUTED, "");
-        ui_set_fmt(a, "%d brakings", sm.brake_events);
+        ui_set_fmt(a, "%d brakings, %d hard", sm.brake_events, sm.hard_brakes);
         lv_obj_align(a, LV_ALIGN_TOP_RIGHT, 0, 0);
         int nb = sm.dur_s / 10;
         if (nb > 40) nb = 40;
@@ -1915,23 +1941,23 @@ static void sm_fill(void)
         int W = DW - 28, bw = W / nb;
         for (int k = 0; k < nb && sm.n > 0; k++) {
             int cls = sm.cls[(int)((long)k * sm.n / nb)];
-            ui_rect(c, k * bw, 20, bw > 1 ? bw - 1 : 1, 14, cls >= 0 && cls < 4 ? UI_THEME.cls[cls] : UI_THEME.track, 0);
+            ui_rect(c, k * bw, 21, bw > 1 ? bw - 1 : 1, 14, cls >= 0 && cls < 4 ? UI_THEME.cls[cls] : UI_THEME.track, 0);
         }
         static const char *const CN[4] = {"Stopped", "Braking", "Accelerating", "Cruising"};
         int order[4] = {0, 1, 2, 3};
         for (int i = 0; i < 4; i++) for (int j = i + 1; j < 4; j++) if (sm.cls_share[order[j]] > sm.cls_share[order[i]]) { int t = order[i]; order[i] = order[j]; order[j] = t; }
-        int x = 0;
-        for (int i = 0; i < 4; i++) {
-            int k = order[i];
-            ui_rect(c, x, 44, 9, 9, UI_THEME.cls[k], 2);
-            lv_obj_t *l = d_txt(c, UI_THEME.f_small, UI_TEXT, "", x + 14, 40);
+        for (int i = 0; i < 4; i++) {                       /* two rows of two: "Accelerating 100 %" 160 px at 16 */
+            int k = order[i], x = (i % 2) * 206, y = 38 + (i / 2) * 18;
+            ui_rect(c, x, y + 5, 9, 9, UI_THEME.cls[k], 2);
+            lv_obj_t *l = d_txt(c, UI_THEME.f_small, UI_TEXT, "", x + 14, y);
             ui_set_fmt(l, "%s %.0f %%", CN[k], sm.cls_share[k] * 100.0);
-            lv_obj_update_layout(l);
-            x += 14 + lv_obj_get_width(l) + 12;
         }
-        ev_card_build(sm_p1, DY + 264, 452 - (DY + 264));
+        ev_card_build(sm_p1, DY + 268, 452 - (DY + 268));
     }
-    /* page 2: history from drives.csv */
+    /* page 2: the pattern learner's line (it no longer fits the events card's header at 16 px), history from drives.csv */
+    lv_obj_t *pc = d_card(sm_p2, DX, DY + 232, DW, 64, UI_BORDER, false);
+    d_lab(pc, "PATTERN LEARNER", 0, 0, UI_MUTED);
+    ev_foot = d_txt(pc, UI_THEME.f_small, UI_TEXT, "", 0, 20);
     d_lab(sm_p2, "HISTORY, LAST DRIVES (OLDEST LEFT)", DX, DY, UI_MUTED);
     if (!sm_h.n) { d_txt(sm_p2, UI_THEME.f_label, UI_MUTED, "No drives in drives.csv yet.", DX, DY + 24); return; }
     float emax = 1, dmax = 1, amax = 1;
@@ -2128,8 +2154,8 @@ static void fl_row_create(int i)
     lv_obj_set_pos(w->t, 14, 10);
     w->z = ui_label(r, F14, UI_MUTED, "");
     lv_obj_set_pos(w->z, 130, 14);
-    w->d = ui_label(r, F14, UI_MUTED, "");
-    lv_obj_set_pos(w->d, 14, 42);
+    w->d = ui_label(r, UI_THEME.f_small, UI_MUTED, "");    /* "2025-11-11 17:59  9999999 rows  MY 2088" clears the trash button */
+    lv_obj_set_pos(w->d, 14, 44);
     w->pill = ui_pill(r, "WRITING", UI_GREEN);
     lv_obj_align(w->pill, LV_ALIGN_RIGHT_MID, -12, 0);
     lv_obj_t *b = w->trash = lv_obj_create(r);           /* 44 px trash button: opens the confirm sheet, never deletes */
@@ -2172,13 +2198,15 @@ static void fl_build_list(void)
     lv_obj_t *sc = ui_card(fl_body, 0, 0, CW - 16, 70, UI_BORDER);
     ui_caption(sc, "STORAGE");
     fl_flash_l = ui_label(sc, F14, UI_MUTED, "");
-    lv_obj_set_pos(fl_flash_l, 0, 42);
+    lv_obj_set_pos(fl_flash_l, 0, 62);
     lv_obj_add_flag(fl_flash_l, LV_OBJ_FLAG_HIDDEN);
     fl_sl = ui_label(sc, F14, UI_TEXT, "--");
-    lv_obj_align(fl_sl, LV_ALIGN_TOP_RIGHT, 0, -2);
-    fl_sb = bar(sc, 0, 26, CW - 16 - 2 * UI_THEME.pad_card, 10, UI_ORANGE, 1000);
+    lv_obj_set_pos(fl_sl, 0, 40);
+    fl_sb = bar(sc, 0, 24, CW - 16 - 2 * UI_THEME.pad_card, 10, UI_ORANGE, 1000);
     fl_msg = ui_label(fl_body, F16, UI_MUTED, "Reading the log storage...");
     fl_note = ui_label(fl_body, F14, UI_GREEN, "");
+    lv_obj_set_width(fl_note, CW - 24);
+    lv_label_set_long_mode(fl_note, LV_LABEL_LONG_WRAP);  /* "Not deleted: ... (end the drive first)" in two lines */
     fl_empty = ui_label(fl_body, F16, UI_MUTED, "No drive logs yet.");
     fl_more = ui_label(fl_body, F14, UI_MUTED, "");
     fl_delall = wide_button(fl_body, LV_SYMBOL_TRASH "  Delete all drive logs", UI_RED, fl_all_cb, NULL);
@@ -2195,7 +2223,7 @@ static void fl_fill_list(void)
     /* storage: used bar and free of total */
     lv_obj_t *sc = lv_obj_get_parent(fl_sl);
 #if CONFIG_OCM_NAND_LOGS
-    lv_obj_set_height(sc, L->nand ? 92 : 70);
+    lv_obj_set_height(sc, L->nand ? 114 : 92);             /* 16 px floor (OS2b): free space on its own line under the bar */
     ui_set_text(lv_obj_get_child(sc, 0), L->nand ? "DRIVE LOGS: 128 MB NAND" : "STORAGE");
     if (L->nand && L->flash_total_kb) {
         char a[16], b[16];
@@ -2313,6 +2341,7 @@ static void files_create(lv_obj_t *p)
     lv_obj_set_flex_flow(fl_body, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_style_pad_row(fl_body, 10, 0);
     lv_obj_set_scroll_dir(fl_body, LV_DIR_VER);
+    lv_obj_set_style_pad_bottom(fl_body, 20, 0);              /* at the end of the scroll the last row clears the rounded corners */
     lv_obj_set_scrollbar_mode(fl_body, LV_SCROLLBAR_MODE_ACTIVE);
     lv_obj_add_flag(fl_body, LV_OBJ_FLAG_GESTURE_BUBBLE);
     memset(&fl_list, 0, sizeof fl_list);
@@ -2439,6 +2468,7 @@ static int ord_rows(lv_obj_t *p, int y, const ui_settings_t *s)
         g_ord_name[i] = ui_label(r, F20, UI_TEXT, "");
         lv_obj_set_width(g_ord_name[i], ST_W - 98 - 2 * ST_H - 2 * ST_GAP);
         lv_label_set_long_mode(g_ord_name[i], LV_LABEL_LONG_DOT);
+        lv_obj_set_height(g_ord_name[i], lv_font_get_line_height(F20));   /* one line: LVGL wraps a dots label of content height */
         lv_obj_align(g_ord_name[i], LV_ALIGN_LEFT_MID, 96, 0);
         ord_paint(i, s->order[i]);
         ord_btn(r, ST_W - 2 * ST_H - ST_GAP, LV_SYMBOL_UP, i * 2, i > 0);
@@ -2764,6 +2794,7 @@ static lv_obj_t *text_btn(lv_obj_t *p, const char *t, int x, int y, int w, uint3
     lv_obj_set_style_border_color(b, lv_color_hex(c), 0);
     lv_obj_set_style_radius(b, UI_THEME.radius_row, 0);
     lv_obj_set_style_shadow_width(b, 0, 0);
+    lv_obj_set_style_pad_hor(b, 8, 0);                    /* " Find OBD adapter" at 18 px in a half-width button */
     lv_obj_add_event_cb(b, cb, LV_EVENT_CLICKED, NULL);
     lv_obj_center(ui_label(b, F16, c, t));
     return b;
@@ -2808,6 +2839,8 @@ static lv_obj_t *st_note(lv_obj_t *p, int y, const char *t)        /* a muted, w
     lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
     return l;
 }
+/* the height a wrapped label takes: the rows below it follow the text at whatever font size (16 px floor, OS2b) */
+static int st_h(lv_obj_t *o) { lv_obj_update_layout(o); return (int)lv_obj_get_height(o); }
 
 static void settings_fill(void)
 {
@@ -2844,7 +2877,7 @@ static void settings_fill(void)
     static const char *const TH[] = {"Auto", "Light", "Dark"};
     at(ui_caption(g_list, "THEME (HOME AND APPS)"), 0, y); y += 22;
     segmented(g_list, y, TH, 3, s.theme, SEG_THEME, NULL); y += ST_H + 6;
-    st_note(g_list, y, "Auto: Light 06:00 to 17:00 once the clock is set, else Dark."); y += 28;
+    y += st_h(st_note(g_list, y, "Auto: Light 06:00 to 17:00 once the clock is set, else Dark.")) + 10;
     static const char *const MD[2] = {"R.E.V", "E.V"};    /* MODEL_SEG order */
     at(ui_caption(g_list, "MODEL"), 0, y); y += 22;
     int act = ml_model_active(), msel = g_model_req >= 0 ? g_model_req : act;
@@ -2854,12 +2887,13 @@ static void settings_fill(void)
     ml_stats_t mst;
     ml_get_stats(&mst);
     model_show(act, mst.ready);
-    y += 46;
+    y += 3 * lv_font_get_line_height(F14) + 8;              /* room for the longest answer, "Not switched: ..." */
     at(ui_caption(g_list, "CLOCK"), 0, y); y += 22;
     g_clk_time = at(ui_label(g_list, F20, UI_TEXT, "--"), 0, y); y += 30;
     g_clk_src = at(ui_label(g_list, F14, UI_MUTED, ""), 0, y);
     lv_obj_set_width(g_clk_src, ST_W);
     lv_label_set_long_mode(g_clk_src, LV_LABEL_LONG_DOT);
+    lv_obj_set_height(g_clk_src, lv_font_get_line_height(F14));   /* one line: LVGL wraps a dots label of content height */
     y += 26;
     text_btn(g_list, LV_SYMBOL_EDIT " Set clock", 0, y, ST_W, UI_ORANGE, clock_cb);
     y += ST_H + ST_GAP + 6;
@@ -2874,7 +2908,7 @@ static void settings_fill(void)
     at(ui_caption(g_list, "SCREEN OFF AFTER"), 0, y); y += 22;
     segmented(g_list, y, OFF, 4, sel, SEG_OFF, NULL); y += ST_H + ST_GAP + 6;
     at(ui_caption(g_list, "HOME APPS ORDER"), 0, y); y += 22;
-    st_note(g_list, y, "Up and Down move an app one place on Home. The list follows the app."); y += 40;
+    y += st_h(st_note(g_list, y, "Up and Down move an app one place on Home. The list follows the app.")) + 10;
     y = ord_rows(g_list, y, &s) + 6;
     at(ui_caption(g_list, "OBD ADAPTER (BLUETOOTH)"), 0, y); y += 22;
     g_ble = at(ui_label(g_list, F16, UI_TEXT, "--"), 0, y); y += 28;
@@ -2892,21 +2926,19 @@ static void settings_fill(void)
     g_store = at(ui_label(g_list, F16, UI_TEXT, "--"), 0, y); y += 28;
 #if CONFIG_OCM_NAND_LOGS
     bool nand = nand_store_state() != NAND_ABSENT;
-    if (nand) { lv_obj_set_width(g_store, ST_W); lv_label_set_long_mode(g_store, LV_LABEL_LONG_WRAP); y += 22; }
+    if (nand) { lv_obj_set_width(g_store, ST_W); lv_label_set_long_mode(g_store, LV_LABEL_LONG_WRAP); y += lv_font_get_line_height(F16) + 2; }
 #endif
     text_btn(g_list, LV_SYMBOL_WARNING " Format storage", 0, y, ST_W, UI_RED, format_cb);
     y += ST_H + 6;
 #if CONFIG_OCM_NAND_LOGS
-    st_note(g_list, y, nand ? "Formats the drive store, the 128 MB NAND: drive logs, summaries and drives.csv (about 15 s). "
-                              "Learned " LEARNED_STATE " state, clock and config files are on the flash and are not touched." :
-                              "Erases drive logs, summaries and drives.csv. Learned " LEARNED_STATE " state, "
-                              "clock and config files are copied to RAM and written back.");
-    if (nand) y += 20;
+    y += st_h(st_note(g_list, y, nand ? "Formats the drive store, the 128 MB NAND: drive logs, summaries and drives.csv (about 15 s). "
+                                        "Learned " LEARNED_STATE " state, clock and config files are on the flash and are not touched." :
+                                        "Erases drive logs, summaries and drives.csv. Learned " LEARNED_STATE " state, "
+                                        "clock and config files are copied to RAM and written back.")) + 10;
 #else
-    st_note(g_list, y, "Erases drive logs, summaries and drives.csv. Learned " LEARNED_STATE " state, "
-                       "clock and config files are copied to RAM and written back.");
+    y += st_h(st_note(g_list, y, "Erases drive logs, summaries and drives.csv. Learned " LEARNED_STATE " state, "
+                                 "clock and config files are copied to RAM and written back.")) + 10;
 #endif
-    y += 64;
     at(ui_caption(g_list, "FIRMWARE AND BOARD"), 0, y); y += 22;
     esp_chip_info_t ci;
     esp_chip_info(&ci);
@@ -2916,7 +2948,7 @@ static void settings_fill(void)
     ui_set_fmt(info, "%s\nESP-IDF %s\nESP32-S31 rev %d.%d, %d cores\nFlash %lu MB, PSRAM %u MB\nESP-Mosaico V1.2", CARMIND_FW_STRING,
                esp_get_idf_version(), ci.revision / 100, ci.revision % 100, ci.cores, (unsigned long)(flash >> 20),
                (unsigned)(esp_psram_get_size() >> 20));
-    y += 104;
+    y += st_h(info) + 10;
     st_note(g_list, y, "Saved on the board (NVS). Wi-Fi networks: the Wi-Fi app. Function key: home.");
 }
 
@@ -2929,6 +2961,7 @@ static void settings_create(lv_obj_t *p)
     lv_obj_set_pos(g_list, UI_MARGIN + 8, Y0);
     lv_obj_set_size(g_list, CW - 16, UI_H - Y0 - UI_MARGIN);
     lv_obj_set_scroll_dir(g_list, LV_DIR_VER);
+    lv_obj_set_style_pad_bottom(g_list, 20, 0);              /* at the end of the scroll the last row clears the rounded corners */
     lv_obj_set_scrollbar_mode(g_list, LV_SCROLLBAR_MODE_ACTIVE);
     settings_fill();
     if (ui_theme_reopening() && g_keep_y > 0) {            /* the Theme tap rebuilt the page: stay where the finger was */
@@ -3065,6 +3098,7 @@ static void w_fill_rows(void)
         lv_obj_t *n = ui_label(r, F16, UI_TEXT, name);
         lv_obj_set_width(n, ST_W - 140 - 28);
         lv_label_set_long_mode(n, LV_LABEL_LONG_DOT);
+        lv_obj_set_height(n, lv_font_get_line_height(F16));   /* one line: LVGL wraps a dots label of content height */
         lv_obj_set_pos(n, 14, 10);
         w_det[i] = ui_label(r, F14, UI_MUTED, "");
         w_detail(i);
@@ -3260,9 +3294,10 @@ static void pw_open(const ws_row_t *row)
     ws_display_name(row->ssid, name, sizeof name);
     lv_obj_t *t = ui_label(pw_page, F20, UI_TEXT, "");
     ui_set_fmt(t, LV_SYMBOL_WIFI " Join %s", name);
-    lv_obj_set_pos(t, 8, 10);
-    lv_obj_set_width(t, UI_W - 16);
+    lv_obj_set_pos(t, 36, 10);                           /* inside the rounded top corners */
+    lv_obj_set_width(t, UI_W - 72);
     lv_label_set_long_mode(t, LV_LABEL_LONG_DOT);
+    lv_obj_set_height(t, lv_font_get_line_height(F20));   /* one line: LVGL wraps a dots label of content height */
 
     pw_ta = lv_textarea_create(pw_page);
     lv_obj_set_pos(pw_ta, 8 + UI_BACK_D + 8, 42);
@@ -3416,8 +3451,9 @@ static void w_fill_found(void)
         lv_obj_t *n = ui_label(r, F16, UI_TEXT, name);
         lv_obj_set_width(n, ST_W - 14 - 96);
         lv_label_set_long_mode(n, LV_LABEL_LONG_DOT);
+        lv_obj_set_height(n, lv_font_get_line_height(F16));   /* one line: LVGL wraps a dots label of content height */
         lv_obj_set_pos(n, 14, 10);
-        const char *sub = !w->joinable ? "Can't join: control characters in the name"
+        const char *sub = !w->joinable ? "Can't join: control characters"   /* 257 px: clear of the lock at 342 */
                         : w->saved ? (w->secure ? "Saved, secured" : "Saved, open")
                         : w->secure ? "Secured: tap to type the password" : "Open: no password";
         lv_obj_t *d = ui_label(r, F14, !w->joinable ? UI_WARN : w->saved ? UI_GREEN : UI_MUTED, sub);
@@ -3496,6 +3532,7 @@ static void wifi_create(lv_obj_t *p)
     lv_obj_set_pos(w_list, UI_MARGIN + 8, Y0);
     lv_obj_set_size(w_list, CW - 16, UI_H - Y0 - UI_MARGIN);
     lv_obj_set_scroll_dir(w_list, LV_DIR_VER);
+    lv_obj_set_style_pad_bottom(w_list, 20, 0);              /* at the end of the scroll the last row clears the rounded corners */
     lv_obj_set_scrollbar_mode(w_list, LV_SCROLLBAR_MODE_ACTIVE);
     lv_obj_set_flex_flow(w_list, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_style_pad_row(w_list, 8, 0);
