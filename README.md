@@ -57,6 +57,7 @@ The same firmware also runs on Espressif's ESP-Mosaico touch-screen board. Its n
 <li><a href="#the-parts-and-why-each-exists">The parts and why each exists</a></li>
 <li><a href="#services-and-runlevels">Services and runlevels</a></li>
 <li><a href="#model-admission-by-response-time-analysis">Model admission by response-time analysis</a></li>
+<li><a href="#scheduler-budgets-per-core">Scheduler budgets per core</a></li>
 <li><a href="#what-it-costs">What it costs</a></li>
 <li><a href="#what-you-see-on-the-board">What you see on the board</a></li>
 <li><a href="#changes-after-the-board-check">Changes after the board check</a></li>
@@ -406,6 +407,22 @@ R<sub>i</sub> is job i's worst-case response time, the longest it can take from 
 
 On the board, the first boot of a 2.0.0 build before the rename (09ec8f5) logged `admission CarMind R.E.V: C 4472 us (self-test 2236 us x 2.0) on core 1, R: ml 4.5/1000 ms, margin 995.5 ms (ml): admitted`. The log lists only the `ml` job: the other jobs on core 1 had no measured run yet at 4.3 s, so this first check held the model alone. Host tests pass for the textbook three-job set (C 3, 3, 5 and T 7, 12, 20 give R 3, 6, 20) and for 90,013 random job sets compared with the scheduler monitor's own loop.
 
+### Scheduler budgets per core
+
+<p align="center"><img src="docs/images/edgeos-scheduler.png" width="900" alt="Scheduler budgets per core, drawn as Gantt lanes. Core 1, one 1,000 ms window on an axis broken at 40 ms: obd_poll, priority 5, period 1,000 ms, deadline 30,000 ms, not run on the bench. The ml job, priority 3, period and deadline 1,000 ms, self-test 2.1 ms doubled to a budget of 4.2 ms, admitted with R 4.2 ms on 4aeff43. The rev job, the R.E.V learner, priority 2, period 1,000 ms, deadline 30,000 ms, a 2 % share of 20 ms per second with bursts of at most 30 ms, no run on the bench. Core 0, one 100 ms window: the ui screen job, priority 2, period and deadline 50 ms, worst response 7.8 ms and worst CPU 4.98 ms over 9,597 runs in the 10-minute soak on 06ddf1d, 0 misses. The LVGL refresh every 16 ms. Slow jobs over the first 120 s: boot on 4aeff43 with Wi-Fi held from 4.3 s, the health verdict due at 65 s and good at 68.0 s, the Wi-Fi driver up from 88.1 to 106.5 s and the clock synced at 98.0 s. The learner's 30 s deadline windows and 60 s stall limit. The model's 10 s stall limit. The link_search, obd_poll and ecu_pick deadlines are of 90, 30 and 10 s. The board task every 2 s and the scheduler summary every 60 s."></p>
+
+Every timed job registers a period T and a deadline D with the scheduler monitor. The task it runs in sets its core and priority. The chart takes those from the code and puts the board's measurements inside them. The model gets 1,000 ms and its admission budget is 4.2 ms, so the first 40 ms of the core 1 axis are drawn 23 times wider, or the bar would be thinner than a pixel. No car was connected on the bench, so the OBD jobs, the model and the learner never ran as periodic jobs there. Their bars are the code's budgets. The measured ones are the model's self-test at admission and the screen job over the soak.
+
+| Job | Task, core, priority | T | D | Budget in the code | On the board |
+|---|---|---|---|---|---|
+| `obd_poll` | OBD, core 1, 5 | 1,000 ms | 30,000 ms | none | not run, no car |
+| `link_search`, `ecu_pick` | OBD, core 1, 5 | 90 s, 10 s | 90 s, 10 s | one run per search or connect | not run |
+| `ml` | model, core 1, 3 | 1,000 ms | 1,000 ms | C = 2 × self-test, stall 10 s | self-test 2.1 ms, C 4.2 ms, R 4.2 ms, admitted (4aeff43) |
+| `rev` | learner, core 1, 2 | 1,000 ms | 30,000 ms | 20 per mille of a core in 30 ms bursts, stall 60 s | contract logged, no runs (4aeff43) |
+| `ui` | screen, core 0, 2 | 50 ms | 50 ms | none | 9,597 runs, worst response 7.8 ms, worst CPU 4.98 ms, 0 misses (06ddf1d) |
+
+The screen job's 7.8 ms is wall time from the start of a run to its end, and 4.98 ms is the CPU the screen task used in it. The difference is time the task waited for other tasks on core 0. The response-time analysis counts only registered jobs, so it reports 4.98 ms for `ui`. The board task (every 2 s), the Wi-Fi task and the scheduler monitor run on core 0 outside the job table.
+
 ### What it costs
 
 Measured with `idf.py size` against mossREV 1.2.0 rc3 (8b0b96f), on the S31 build at 09ec8f5:
@@ -476,6 +493,22 @@ Two parts are built into 2.0.0 and switched off by default.
 
 Two board passes ran. The first on EdgeOS 2.0.0 4aeff43 (SHA-256 `a225125d27f3906c...`), the second on 06ddf1d, which adds the pairing change, the 16 px text and the model names (merged image SHA-256 `4cc402a76a53edc2...`). The release image in this branch is rebuilt from its tip, whose Mosaico code equals 06ddf1d apart from the Home card fix in ce58ca7. VERIFIED means a board log line shows it. Some rows ran on a scratch build of the 2.0.0 code with one test switch on, and the row says so. A scratch build is never shipped. Host tests pass for every part: `make os` (41,635 checks at 4aeff43, 41,719 with the pairing change), `make pair`, `make ppa`, `make uimetrics` and the source audits in `tests/host/os_audit.sh`.
 
+Of the 28 rows in the table, 21 are VERIFIED (6 of those on a scratch build), 3 PARTLY and 4 NOT: not run yet, or switched off in this release. The three figures below show the main results. The full table is folded under them.
+
+<p align="center"><img src="docs/images/edgeos-boot.png" width="900" alt="Boot and runlevels on the board. The release boot on 4aeff43, in seconds after power-on: running at 4.3 s with Wi-Fi held, boot health good at 68.0 s with Wi-Fi released and 128.9 KB of internal RAM free, the Wi-Fi driver up at 88.1 s, the clock synced at 98.0 s, the driver down at 106.5 s. If health is bad, on a scratch build forced bad: safe mode, Wi-Fi held, and Sync clock now still starts it by hand. The runlevels seen in the tests: Parked. Driving on a forced drive. Saving when the battery was hot at 34.2 °C, back to Parked when it cooled to 33.7 °C. Safe mode on a forced bad health check. Refused while Driving: the USB door answered ERR busy, and the screen said Not now: a drive is running for the clock sync and Format."></p>
+
+The release boot holds Wi-Fi until the health check says the board is good, then joins, syncs the clock and stops the radio again. The runlevels in the lower half come from forced tests on scratch builds.
+
+<p align="center"><img src="docs/images/edgeos-ladder-battery.png" width="900" alt="Degradation ladder and battery protection, both forced tests on scratch builds. Ladder with extra model load, in seconds after power-on: UI slowed at 110.6 s after 2 misses, learner paused at 122.6 s after 6, model paused at 134.6 s after 10, then one rung back at a time: model back at 214.6 s, learner back at 278.6 s, normal at 348.6 s. Battery protection at test limits: at boot on USB, 34.2 °C sheds load into Saving with Wi-Fi off, the learner paused and the screen dimmed, and 33.7 °C returns to Parked. 4,188 mV from Parked stops the board as a charger fault with the logs flushed and the storage stopped. With the limit lowered to 26 °C, 28 °C stops it as critical, with no power-off. The real limits of 45 °C, 60 °C and 4.25 V were not reached."></p>
+
+The ladder drops the screen rate first and the model last, and climbs back one rung per minute without misses. The battery figures are test limits. The real 45 °C, 60 °C and 4.25 V were not reached.
+
+<p align="center"><img src="docs/images/edgeos-ram.png" width="900" alt="Internal RAM per phase, the lowest free internal RAM in each of 9 phases on a debug build of 4aeff43, in KB: first minute before Wi-Fi 124.4, first Wi-Fi round with the adapter search 81.0, adapter search alone 110.3, adapter search and Sync clock now together 80.9, Sync clock now alone 81.0, Wi-Fi search 86.7, theme switch 110.2, switch to E.V 100.0, launcher slide 110.0, all above the 60 KB target. Below it, the 28 rows of the board table: 21 verified, 3 partly, 4 not run or off in this release."></p>
+
+Every phase stays above the 60 KB target. The lowest is 80.9 KB, with an adapter search and a clock sync running at once.
+
+<details><summary>Full board results table</summary>
+
 | Part | Result | What the board showed | Build |
 |---|---|---|---|
 | Boot and name | VERIFIED | `OpenCarMind EdgeOS 2.0.0 running` at 4.3 s after a power-on, 0 USB drops in 185 s | 4aeff43 |
@@ -506,6 +539,8 @@ Two board passes ran. The first on EdgeOS 2.0.0 4aeff43 (SHA-256 `a225125d27f390
 | Pairing: offering and saving your adapter | NOT | needs the owner's adapter next to the board | |
 | Model names and 16 px text on screen | VERIFIED | 37 board captures: "active-estimator" and "ev-frozen" on the model pages, no text under 16 px, nothing in a 60 px corner. One overlap on Home (fixed in ce58ca7, host-checked) | 06ddf1d |
 | The download door in every state | VERIFIED | the 1200-baud door entered the ROM download mode on the release, in Saving, during a forced drive and after a battery safety stop | 4aeff43, 06ddf1d, scratch |
+
+</details>
 
 ## Limitations and future work
 

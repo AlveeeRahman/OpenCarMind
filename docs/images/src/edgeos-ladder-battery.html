@@ -1,0 +1,99 @@
+<!doctype html>
+<!-- OpenCarMind EdgeOS figure. Render with docs/images/render.sh. Numbers: code for budgets, board logs for measurements. -->
+<html lang="en"><head><meta charset="utf-8"><title>Ladder and battery</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+html, body { margin: 0; background: #F5F2EB; }
+svg { display: block; font-family: 'IBM Plex Sans', system-ui, sans-serif; }
+.t { font-family: 'Space Grotesk', system-ui, sans-serif; font-weight: 700; }
+.m { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-weight: 500; }
+</style></head><body>
+<svg width="1200" height="920" viewBox="0 0 1200 920" xmlns="http://www.w3.org/2000/svg">
+<rect width="1200" height="920" fill="#F5F2EB"/>
+<defs><marker id="ah" orient="auto" markerWidth="8" markerHeight="8" refX="6" refY="4" markerUnits="userSpaceOnUse"><path d="M0,0 L8,4 L0,8 Z" fill="#57616F"/></marker></defs>
+<text x="64.0" y="70.0" font-size="40" fill="#17212E" font-weight="700" text-anchor="start" class="t">Degradation ladder and battery protection</text>
+<text x="64.0" y="108.0" font-size="19" fill="#57616F" font-weight="400" text-anchor="start">Both are forced tests on scratch builds of the 2.0.0 code. A scratch build is never shipped.</text>
+<text x="64.0" y="150.0" font-size="15" fill="#57616F" font-weight="600" text-anchor="start" letter-spacing="0.08em">LADDER, EXTRA MODEL LOAD, SECONDS AFTER POWER-ON</text>
+<line x1="300.0" y1="200.0" x2="1120.0" y2="200.0" stroke="#E6E1D7" stroke-width="1" />
+<text x="286.0" y="205.0" font-size="16" fill="#17212E" font-weight="500" text-anchor="end">normal</text>
+<line x1="300.0" y1="248.0" x2="1120.0" y2="248.0" stroke="#E6E1D7" stroke-width="1" />
+<text x="286.0" y="253.0" font-size="16" fill="#17212E" font-weight="500" text-anchor="end">UI slowed</text>
+<line x1="300.0" y1="296.0" x2="1120.0" y2="296.0" stroke="#E6E1D7" stroke-width="1" />
+<text x="286.0" y="301.0" font-size="16" fill="#17212E" font-weight="500" text-anchor="end">learner paused</text>
+<line x1="300.0" y1="344.0" x2="1120.0" y2="344.0" stroke="#E6E1D7" stroke-width="1" />
+<text x="286.0" y="349.0" font-size="16" fill="#17212E" font-weight="500" text-anchor="end">model paused</text>
+<text x="64.0" y="205.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="start">step</text>
+<text x="64.0" y="225.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="start">(one rung</text>
+<text x="64.0" y="245.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="start">per step)</text>
+<path d="M300.0,200 V200 H333.4 V248 H371.3 V296 H409.1 V344 H661.4 V296 H863.3 V248 H1084.0 V200 H1120.0" fill="none" stroke="#2F5FD0" stroke-width="2.5" stroke-linejoin="round"/>
+<circle cx="333.4" cy="248" r="5" fill="#2F5FD0" stroke="#F5F2EB" stroke-width="2"/>
+<text x="341.4" y="222.0" font-size="15" fill="#17212E" font-weight="600" text-anchor="start" class="m">110.6 s</text>
+<text x="341.4" y="240.0" font-size="14" fill="#57616F" font-weight="400" text-anchor="start">2 misses</text>
+<circle cx="371.3" cy="296" r="5" fill="#2F5FD0" stroke="#F5F2EB" stroke-width="2"/>
+<text x="379.3" y="270.0" font-size="15" fill="#17212E" font-weight="600" text-anchor="start" class="m">122.6 s</text>
+<text x="379.3" y="288.0" font-size="14" fill="#57616F" font-weight="400" text-anchor="start">6 misses</text>
+<circle cx="409.1" cy="344" r="5" fill="#2F5FD0" stroke="#F5F2EB" stroke-width="2"/>
+<text x="417.1" y="368.0" font-size="15" fill="#17212E" font-weight="600" text-anchor="start" class="m">134.6 s</text>
+<text x="417.1" y="386.0" font-size="14" fill="#57616F" font-weight="400" text-anchor="start">10 misses</text>
+<circle cx="661.4" cy="296" r="5" fill="#2F5FD0" stroke="#F5F2EB" stroke-width="2"/>
+<text x="669.4" y="320.0" font-size="15" fill="#17212E" font-weight="600" text-anchor="start" class="m">214.6 s</text>
+<text x="669.4" y="338.0" font-size="14" fill="#57616F" font-weight="400" text-anchor="start">model back</text>
+<circle cx="863.3" cy="248" r="5" fill="#2F5FD0" stroke="#F5F2EB" stroke-width="2"/>
+<text x="871.3" y="222.0" font-size="15" fill="#17212E" font-weight="600" text-anchor="start" class="m">278.6 s</text>
+<text x="871.3" y="240.0" font-size="14" fill="#57616F" font-weight="400" text-anchor="start">learner back</text>
+<circle cx="1084.0" cy="200" r="5" fill="#2F5FD0" stroke="#F5F2EB" stroke-width="2"/>
+<text x="1092.0" y="174.0" font-size="15" fill="#17212E" font-weight="600" text-anchor="start" class="m">348.6 s</text>
+<text x="1092.0" y="192.0" font-size="14" fill="#57616F" font-weight="400" text-anchor="start">normal</text>
+<line x1="300.0" y1="406.0" x2="1120.0" y2="406.0" stroke="#57616F" stroke-width="1" />
+<line x1="300.0" y1="406.0" x2="300.0" y2="412.0" stroke="#57616F" stroke-width="1" />
+<text x="300.0" y="430.0" font-size="14" fill="#57616F" font-weight="400" text-anchor="middle">100</text>
+<line x1="363.1" y1="406.0" x2="363.1" y2="412.0" stroke="#57616F" stroke-width="1" />
+<text x="363.1" y="430.0" font-size="14" fill="#57616F" font-weight="400" text-anchor="middle">120</text>
+<line x1="426.2" y1="406.0" x2="426.2" y2="412.0" stroke="#57616F" stroke-width="1" />
+<text x="426.2" y="430.0" font-size="14" fill="#57616F" font-weight="400" text-anchor="middle">140</text>
+<line x1="489.2" y1="406.0" x2="489.2" y2="412.0" stroke="#57616F" stroke-width="1" />
+<text x="489.2" y="430.0" font-size="14" fill="#57616F" font-weight="400" text-anchor="middle">160</text>
+<line x1="552.3" y1="406.0" x2="552.3" y2="412.0" stroke="#57616F" stroke-width="1" />
+<text x="552.3" y="430.0" font-size="14" fill="#57616F" font-weight="400" text-anchor="middle">180</text>
+<line x1="615.4" y1="406.0" x2="615.4" y2="412.0" stroke="#57616F" stroke-width="1" />
+<text x="615.4" y="430.0" font-size="14" fill="#57616F" font-weight="400" text-anchor="middle">200</text>
+<line x1="678.5" y1="406.0" x2="678.5" y2="412.0" stroke="#57616F" stroke-width="1" />
+<text x="678.5" y="430.0" font-size="14" fill="#57616F" font-weight="400" text-anchor="middle">220</text>
+<line x1="741.5" y1="406.0" x2="741.5" y2="412.0" stroke="#57616F" stroke-width="1" />
+<text x="741.5" y="430.0" font-size="14" fill="#57616F" font-weight="400" text-anchor="middle">240</text>
+<line x1="804.6" y1="406.0" x2="804.6" y2="412.0" stroke="#57616F" stroke-width="1" />
+<text x="804.6" y="430.0" font-size="14" fill="#57616F" font-weight="400" text-anchor="middle">260</text>
+<line x1="867.7" y1="406.0" x2="867.7" y2="412.0" stroke="#57616F" stroke-width="1" />
+<text x="867.7" y="430.0" font-size="14" fill="#57616F" font-weight="400" text-anchor="middle">280</text>
+<line x1="930.8" y1="406.0" x2="930.8" y2="412.0" stroke="#57616F" stroke-width="1" />
+<text x="930.8" y="430.0" font-size="14" fill="#57616F" font-weight="400" text-anchor="middle">300</text>
+<line x1="993.8" y1="406.0" x2="993.8" y2="412.0" stroke="#57616F" stroke-width="1" />
+<text x="993.8" y="430.0" font-size="14" fill="#57616F" font-weight="400" text-anchor="middle">320</text>
+<line x1="1056.9" y1="406.0" x2="1056.9" y2="412.0" stroke="#57616F" stroke-width="1" />
+<text x="1056.9" y="430.0" font-size="14" fill="#57616F" font-weight="400" text-anchor="middle">340</text>
+<line x1="1120.0" y1="406.0" x2="1120.0" y2="412.0" stroke="#57616F" stroke-width="1" />
+<text x="1120.0" y="430.0" font-size="14" fill="#57616F" font-weight="400" text-anchor="middle">360</text>
+<text x="300.0" y="456.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="start">A minute without misses steps back up one rung. One model load in the whole run, no model swap.</text>
+<text x="64.0" y="496.0" font-size="15" fill="#57616F" font-weight="600" text-anchor="start" letter-spacing="0.08em">BATTERY PROTECTION, TEST LIMITS</text>
+<rect x="64.0" y="526.0" width="220.0" height="84.0" rx="12" fill="#FFFFFF" stroke="#57616F" stroke-width="2"/><circle cx="84" cy="552" r="6" fill="#57616F"/><text x="98.0" y="558.0" font-size="19" fill="#17212E" font-weight="700" text-anchor="start" class="t">Start</text><text x="80.0" y="586.0" font-size="14" fill="#57616F" font-weight="400" text-anchor="start">on USB, at boot</text>
+<line x1="292.0" y1="568.0" x2="432.0" y2="568.0" stroke="#57616F" stroke-width="2" stroke-linecap="round" marker-end="url(#ah)"/>
+<text x="300.0" y="556.0" font-size="15" fill="#17212E" font-weight="600" text-anchor="start" class="m">34.2 °C</text>
+<text x="300.0" y="592.0" font-size="14" fill="#57616F" font-weight="400" text-anchor="start">battery hot</text>
+<rect x="440.0" y="526.0" width="300.0" height="84.0" rx="12" fill="#FFFFFF" stroke="#7A5600" stroke-width="2"/><circle cx="460" cy="552" r="6" fill="#7A5600"/><text x="474.0" y="558.0" font-size="19" fill="#17212E" font-weight="700" text-anchor="start" class="t">Saving</text><text x="456.0" y="586.0" font-size="14" fill="#57616F" font-weight="400" text-anchor="start">Wi-Fi off, learner paused, dimmed</text>
+<line x1="748.0" y1="568.0" x2="888.0" y2="568.0" stroke="#57616F" stroke-width="2" stroke-linecap="round" marker-end="url(#ah)"/>
+<text x="756.0" y="556.0" font-size="15" fill="#17212E" font-weight="600" text-anchor="start" class="m">33.7 °C</text>
+<text x="756.0" y="592.0" font-size="14" fill="#57616F" font-weight="400" text-anchor="start">cooled</text>
+<rect x="896.0" y="526.0" width="240.0" height="84.0" rx="12" fill="#FFFFFF" stroke="#2D7A31" stroke-width="2"/><circle cx="916" cy="552" r="6" fill="#2D7A31"/><text x="930.0" y="558.0" font-size="19" fill="#17212E" font-weight="700" text-anchor="start" class="t">Parked</text><text x="912.0" y="586.0" font-size="14" fill="#57616F" font-weight="400" text-anchor="start">load back on</text>
+<rect x="64.0" y="646.0" width="220.0" height="84.0" rx="12" fill="#FFFFFF" stroke="#2D7A31" stroke-width="2"/><circle cx="84" cy="672" r="6" fill="#2D7A31"/><text x="98.0" y="678.0" font-size="19" fill="#17212E" font-weight="700" text-anchor="start" class="t">Parked</text><text x="80.0" y="706.0" font-size="14" fill="#57616F" font-weight="400" text-anchor="start">on USB</text>
+<line x1="292.0" y1="688.0" x2="432.0" y2="688.0" stroke="#57616F" stroke-width="2" stroke-linecap="round" marker-end="url(#ah)"/>
+<text x="300.0" y="676.0" font-size="15" fill="#17212E" font-weight="600" text-anchor="start" class="m">4,188 mV</text>
+<text x="300.0" y="712.0" font-size="14" fill="#57616F" font-weight="400" text-anchor="start">over-voltage</text>
+<rect x="440.0" y="646.0" width="696.0" height="84.0" rx="12" fill="#FFFFFF" stroke="#BF352B" stroke-width="2"/><circle cx="460" cy="672" r="6" fill="#BF352B"/><text x="474.0" y="678.0" font-size="19" fill="#17212E" font-weight="700" text-anchor="start" class="t">Stopped: charger fault</text><text x="456.0" y="706.0" font-size="14" fill="#57616F" font-weight="400" text-anchor="start">logs flushed, storage stopped</text>
+<rect x="64.0" y="766.0" width="220.0" height="84.0" rx="12" fill="#FFFFFF" stroke="#57616F" stroke-width="2"/><circle cx="84" cy="792" r="6" fill="#57616F"/><text x="98.0" y="798.0" font-size="19" fill="#17212E" font-weight="700" text-anchor="start" class="t">Start</text><text x="80.0" y="826.0" font-size="14" fill="#57616F" font-weight="400" text-anchor="start">limit lowered to 26 °C</text>
+<line x1="292.0" y1="808.0" x2="432.0" y2="808.0" stroke="#57616F" stroke-width="2" stroke-linecap="round" marker-end="url(#ah)"/>
+<text x="300.0" y="796.0" font-size="15" fill="#17212E" font-weight="600" text-anchor="start" class="m">28 °C</text>
+<text x="300.0" y="832.0" font-size="14" fill="#57616F" font-weight="400" text-anchor="start">too hot</text>
+<rect x="440.0" y="766.0" width="696.0" height="84.0" rx="12" fill="#FFFFFF" stroke="#BF352B" stroke-width="2"/><circle cx="460" cy="792" r="6" fill="#BF352B"/><text x="474.0" y="798.0" font-size="19" fill="#17212E" font-weight="700" text-anchor="start" class="t">Stopped: critical</text><text x="456.0" y="826.0" font-size="14" fill="#57616F" font-weight="400" text-anchor="start">logs flushed, storage stopped, no power-off</text>
+<text x="64.0" y="890.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="start">The real limits, 45 °C, 60 °C and 4.25 V, were not reached. The temperature is the gauge chip's own sensor, next to the cell.</text>
+</svg>
+</body></html>

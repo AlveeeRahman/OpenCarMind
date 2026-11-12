@@ -1,0 +1,86 @@
+<!doctype html>
+<!-- OpenCarMind EdgeOS figure. Render with docs/images/render.sh. Numbers: code for budgets, board logs for measurements. -->
+<html lang="en"><head><meta charset="utf-8"><title>Boot and runlevels</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+html, body { margin: 0; background: #F5F2EB; }
+svg { display: block; font-family: 'IBM Plex Sans', system-ui, sans-serif; }
+.t { font-family: 'Space Grotesk', system-ui, sans-serif; font-weight: 700; }
+.m { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-weight: 500; }
+</style></head><body>
+<svg width="1200" height="950" viewBox="0 0 1200 950" xmlns="http://www.w3.org/2000/svg">
+<rect width="1200" height="950" fill="#F5F2EB"/>
+<defs><marker id="ah" orient="auto" markerWidth="8" markerHeight="8" refX="6" refY="4" markerUnits="userSpaceOnUse"><path d="M0,0 L8,4 L0,8 Z" fill="#57616F"/></marker></defs>
+<text x="64.0" y="70.0" font-size="40" fill="#17212E" font-weight="700" text-anchor="start" class="t">Boot and runlevels on the board</text>
+<text x="64.0" y="108.0" font-size="19" fill="#57616F" font-weight="400" text-anchor="start">The release boot as measured, then the runlevels the tests drove the board through.</text>
+<text x="64.0" y="160.0" font-size="15" fill="#57616F" font-weight="600" text-anchor="start" letter-spacing="0.08em">RELEASE BOOT, 4aeff43, SECONDS AFTER POWER-ON</text>
+<line x1="96.0" y1="262.0" x2="1120.0" y2="262.0" stroke="#C9C1B3" stroke-width="4" stroke-linecap="round"/>
+<rect x="136.0" y="255.0" width="593.0" height="14.0" rx="4" fill="#E8EEFC" stroke="#9DB3E8" stroke-width="1"/>
+<path d="M916.1,255.0 H1083.4 Q1087.4,255.0 1087.4,259.0 V265.0 Q1087.4,269.0 1083.4,269.0 H916.1 Z" fill="#2F5FD0"/>
+<text x="96.0" y="292.0" font-size="14" fill="#57616F" font-weight="400" text-anchor="middle">0</text>
+<text x="189.1" y="292.0" font-size="14" fill="#57616F" font-weight="400" text-anchor="middle">10</text>
+<text x="282.2" y="292.0" font-size="14" fill="#57616F" font-weight="400" text-anchor="middle">20</text>
+<text x="375.3" y="292.0" font-size="14" fill="#57616F" font-weight="400" text-anchor="middle">30</text>
+<text x="468.4" y="292.0" font-size="14" fill="#57616F" font-weight="400" text-anchor="middle">40</text>
+<text x="561.5" y="292.0" font-size="14" fill="#57616F" font-weight="400" text-anchor="middle">50</text>
+<text x="654.5" y="292.0" font-size="14" fill="#57616F" font-weight="400" text-anchor="middle">60</text>
+<text x="747.6" y="292.0" font-size="14" fill="#57616F" font-weight="400" text-anchor="middle">70</text>
+<text x="840.7" y="292.0" font-size="14" fill="#57616F" font-weight="400" text-anchor="middle">80</text>
+<text x="933.8" y="292.0" font-size="14" fill="#57616F" font-weight="400" text-anchor="middle">90</text>
+<text x="1026.9" y="292.0" font-size="14" fill="#57616F" font-weight="400" text-anchor="middle">100</text>
+<text x="1120.0" y="292.0" font-size="14" fill="#57616F" font-weight="400" text-anchor="middle">110</text>
+<circle cx="136.0" cy="262" r="7" fill="#FFFFFF" stroke="#17212E" stroke-width="2"/>
+<line x1="136.0" y1="252.0" x2="136.0" y2="232.0" stroke="#57616F" stroke-width="1" />
+<text x="136.0" y="186.0" font-size="17" fill="#17212E" font-weight="600" text-anchor="middle" class="m">4.3 s</text>
+<text x="136.0" y="206.0" font-size="15" fill="#17212E" font-weight="400" text-anchor="middle">running,</text>
+<text x="136.0" y="225.0" font-size="15" fill="#17212E" font-weight="400" text-anchor="middle">Wi-Fi held</text>
+<circle cx="729.0" cy="262" r="7" fill="#2D7A31" stroke="#F5F2EB" stroke-width="2"/>
+<line x1="729.0" y1="252.0" x2="729.0" y2="232.0" stroke="#57616F" stroke-width="1" />
+<text x="729.0" y="186.0" font-size="17" fill="#17212E" font-weight="600" text-anchor="middle" class="m">68.0 s</text>
+<text x="729.0" y="206.0" font-size="15" fill="#17212E" font-weight="400" text-anchor="middle">boot health good,</text>
+<text x="729.0" y="225.0" font-size="15" fill="#17212E" font-weight="400" text-anchor="middle">Wi-Fi released, 128.9 KB free</text>
+<circle cx="916.1" cy="262" r="7" fill="#FFFFFF" stroke="#17212E" stroke-width="2"/>
+<line x1="916.1" y1="300.0" x2="916.1" y2="312.0" stroke="#57616F" stroke-width="1" />
+<text x="916.1" y="332.0" font-size="17" fill="#17212E" font-weight="600" text-anchor="middle" class="m">88.1 s</text>
+<text x="916.1" y="352.0" font-size="15" fill="#17212E" font-weight="400" text-anchor="middle">Wi-Fi</text>
+<text x="916.1" y="371.0" font-size="15" fill="#17212E" font-weight="400" text-anchor="middle">driver up</text>
+<circle cx="1008.3" cy="262" r="7" fill="#FFFFFF" stroke="#17212E" stroke-width="2"/>
+<line x1="1008.3" y1="252.0" x2="1008.3" y2="232.0" stroke="#57616F" stroke-width="1" />
+<text x="1008.3" y="186.0" font-size="17" fill="#17212E" font-weight="600" text-anchor="middle" class="m">98.0 s</text>
+<text x="1008.3" y="206.0" font-size="15" fill="#17212E" font-weight="400" text-anchor="middle">clock</text>
+<text x="1008.3" y="225.0" font-size="15" fill="#17212E" font-weight="400" text-anchor="middle">synced</text>
+<circle cx="1087.4" cy="262" r="7" fill="#FFFFFF" stroke="#17212E" stroke-width="2"/>
+<line x1="1087.4" y1="300.0" x2="1087.4" y2="312.0" stroke="#57616F" stroke-width="1" />
+<text x="1087.4" y="332.0" font-size="17" fill="#17212E" font-weight="600" text-anchor="middle" class="m">106.5 s</text>
+<text x="1087.4" y="352.0" font-size="15" fill="#17212E" font-weight="400" text-anchor="middle">driver</text>
+<text x="1087.4" y="371.0" font-size="15" fill="#17212E" font-weight="400" text-anchor="middle">down</text>
+<path d="M729.0,272 V404 H703.0" fill="none" stroke="#BF352B" stroke-width="2" stroke-linecap="round" marker-end="url(#ah)"/>
+<rect x="255.0" y="376.0" width="440.0" height="58.0" rx="10" fill="#FFFFFF" stroke="#BF352B" stroke-width="1.5"/>
+<text x="271.0" y="400.0" font-size="15" fill="#17212E" font-weight="600" text-anchor="start">If health is bad (scratch build, forced): safe mode,</text>
+<text x="271.0" y="422.0" font-size="15" fill="#17212E" font-weight="400" text-anchor="start">Wi-Fi held. Sync clock now still starts it by hand.</text>
+<text x="96.0" y="322.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="start">Health is checked once, about 65 s after a start: model self-test, flash FAT,</text>
+<text x="96.0" y="342.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="start">NAND, first UI tick, touch, scheduler misses, stalls and response times.</text>
+<text x="64.0" y="530.0" font-size="15" fill="#57616F" font-weight="600" text-anchor="start" letter-spacing="0.08em">RUNLEVELS SEEN IN THE TESTS</text>
+<rect x="450.0" y="630.0" width="250.0" height="96.0" rx="12" fill="#FFFFFF" stroke="#2D7A31" stroke-width="2"/><circle cx="470" cy="657" r="6" fill="#2D7A31"/><text x="484.0" y="663.0" font-size="20" fill="#17212E" font-weight="700" text-anchor="start" class="t">Parked</text><text x="466.0" y="688.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="start">the start state, all</text><text x="466.0" y="708.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="start">services allowed</text>
+<rect x="64.0" y="630.0" width="250.0" height="96.0" rx="12" fill="#FFFFFF" stroke="#BF352B" stroke-width="2"/><circle cx="84" cy="657" r="6" fill="#BF352B"/><text x="98.0" y="663.0" font-size="20" fill="#17212E" font-weight="700" text-anchor="start" class="t">Safe mode</text><text x="80.0" y="688.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="start">health bad (forced,</text><text x="80.0" y="708.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="start">scratch): Wi-Fi held</text>
+<rect x="880.0" y="570.0" width="256.0" height="96.0" rx="12" fill="#FFFFFF" stroke="#2F5FD0" stroke-width="2"/><circle cx="900" cy="597" r="6" fill="#2F5FD0"/><text x="914.0" y="603.0" font-size="20" fill="#17212E" font-weight="700" text-anchor="start" class="t">Driving</text><text x="896.0" y="628.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="start">forced drive, scratch</text>
+<rect x="880.0" y="780.0" width="256.0" height="96.0" rx="12" fill="#FFFFFF" stroke="#7A5600" stroke-width="2"/><circle cx="900" cy="807" r="6" fill="#7A5600"/><text x="914.0" y="813.0" font-size="20" fill="#17212E" font-weight="700" text-anchor="start" class="t">Saving</text><text x="896.0" y="838.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="start">battery hot, test</text><text x="896.0" y="858.0" font-size="15" fill="#57616F" font-weight="400" text-anchor="start">limits, scratch</text>
+<line x1="442.0" y1="678.0" x2="322.0" y2="678.0" stroke="#57616F" stroke-width="2" stroke-linecap="round" marker-end="url(#ah)"/>
+<text x="330.0" y="668.0" font-size="14" fill="#17212E" font-weight="600" text-anchor="start">health bad</text>
+<line x1="708.0" y1="660.0" x2="872.0" y2="608.0" stroke="#57616F" stroke-width="2" stroke-linecap="round" marker-end="url(#ah)"/>
+<text x="720.0" y="600.0" font-size="14" fill="#17212E" font-weight="600" text-anchor="start">car answers</text>
+<line x1="872.0" y1="642.0" x2="708.0" y2="680.0" stroke="#57616F" stroke-width="2" stroke-linecap="round" marker-end="url(#ah)"/>
+<text x="770.0" y="700.0" font-size="14" fill="#57616F" font-weight="400" text-anchor="start">drive ends</text>
+<line x1="708.0" y1="704.0" x2="872.0" y2="810.0" stroke="#57616F" stroke-width="2" stroke-linecap="round" marker-end="url(#ah)"/>
+<text x="800.0" y="754.0" font-size="14" fill="#17212E" font-weight="600" text-anchor="start">34.2 °C: load shed</text>
+<line x1="872.0" y1="842.0" x2="660.0" y2="734.0" stroke="#57616F" stroke-width="2" stroke-linecap="round" marker-end="url(#ah)"/>
+<text x="652.0" y="862.0" font-size="14" fill="#57616F" font-weight="400" text-anchor="start">33.7 °C: cooled</text>
+<rect x="64.0" y="756.0" width="560.0" height="150.0" rx="12" fill="#FFFFFF" stroke="#C9C1B3" stroke-width="1.5"/>
+<text x="82.0" y="784.0" font-size="17" fill="#17212E" font-weight="700" text-anchor="start" class="t">Refused while Driving</text>
+<text x="82.0" y="810.0" font-size="15" fill="#17212E" font-weight="400" text-anchor="start">USB door:</text>
+<text x="82.0" y="832.0" font-size="14" fill="#17212E" font-weight="400" text-anchor="start" class="m">ERR busy: a drive is running, try again when parked</text>
+<text x="82.0" y="858.0" font-size="15" fill="#17212E" font-weight="400" text-anchor="start">Screen, for the clock sync and Format:</text>
+<text x="82.0" y="880.0" font-size="15" fill="#17212E" font-weight="400" text-anchor="start">“Not now: a drive is running. Try again later.”</text>
+<text x="64.0" y="934.0" font-size="14" fill="#57616F" font-weight="400" text-anchor="start">Since 06ddf1d, Driving starts only once the car's computer answers (host-checked).</text>
+</svg>
+</body></html>
