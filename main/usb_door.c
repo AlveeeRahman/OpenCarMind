@@ -24,6 +24,9 @@
 #else
 #include "driver/usb_serial_jtag.h"
 #endif
+#if BOARD_MOSAICO && CONFIG_OCM_BAT_LOG
+#include "bat_est.h"                /* the battery log's bNNNNNN.csv files, listed and read like the drive files */
+#endif
 #include "psa/crypto.h"
 #include "mbedtls/base64.h"
 #include "cJSON.h"
@@ -131,6 +134,9 @@ static bool unb64(const char *in, char *out, size_t cap)
 
 static bool valid_name(const char *n)
 {
+#if BOARD_MOSAICO && CONFIG_OCM_BAT_LOG
+    if (bat_log_name_valid(n)) return true;
+#endif
     if (strlen(n) < 11 || n[0] != 's') return false;
     for (int i = 1; i <= 6; i++) if (!isdigit((unsigned char)n[i])) return false;
     const char *e = n + 7;
@@ -155,6 +161,10 @@ static void cmd_get(char *name, char *off_s, char *len_s, char *buf, char *b64)
     long off = off_s ? atol(off_s) : -1, len = len_s ? atol(len_s) : -1;
     if (!name || !valid_name(name) || off < 0 || len <= 0 || len > GET_MAX) { reply("ERR usage: GET <name> <offset> <1..%d>", GET_MAX); return; }
     char path[96];
+#if BOARD_MOSAICO && CONFIG_OCM_BAT_LOG
+    if (bat_log_name_valid(name)) snprintf(path, sizeof path, BAT_LOG_DIR "/%.20s", name);
+    else
+#endif
 #if CONFIG_OCM_NAND_LOGS
     sdlog_drive_file(name, path, sizeof path);       /* the NAND first, then the flash FAT (drives not moved yet) */
 #else
@@ -424,6 +434,17 @@ static void handle(char *line, char *buf, char *b64)
             }
             if (d) closedir(d);
         }
+#if BOARD_MOSAICO && CONFIG_OCM_BAT_LOG
+        DIR *bd = opendir(BAT_LOG_DIR);              /* the battery log (training data), after the drive files */
+        for (struct dirent *e; bd && (e = readdir(bd)) != NULL;) {
+            if (!bat_log_name_valid(e->d_name)) continue;
+            char path[96];
+            struct stat st;
+            snprintf(path, sizeof path, BAT_LOG_DIR "/%.20s", e->d_name);
+            if (stat(path, &st) == 0) reply("D %s %ld", e->d_name, (long)st.st_size);
+        }
+        if (bd) closedir(bd);
+#endif
         reply("OK LIST");
 #else
         DIR *d = sdlog_ok() ? opendir(SDLOG_SESSIONS_DIR) : NULL;

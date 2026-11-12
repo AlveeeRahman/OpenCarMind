@@ -4,6 +4,8 @@ if(ocm_target STREQUAL "esp32s31")
     set(ocm_board_srcs "mosaico_console.c" "mosaico_board.c" "mosaico_display.c" "mosaico_apps.c" "mosaico_files.c" "mosaico_drive.c" "mosaico_logos.c" "mosaico_icons.c")
     list(APPEND ocm_board_srcs "board_pins_safe.c")                # every unused GPIO in a safe state at boot (M1)
     list(APPEND ocm_board_srcs "os.c" "os_core.c")                 # the mossREV OS layer: sys_reset, runlevels, health (2.0.0)
+    list(APPEND ocm_board_srcs "ai_svc.c" "ai_svc_core.c")         # EdgeOS AI services: one worker, RTA admission (CONFIG_OCM_AI_SVC)
+    list(APPEND ocm_board_srcs "bat_est.c" "bat_est_core.c")       # AI service: battery SoC/SoH estimator (CONFIG_OCM_BAT_EST)
     set(ocm_board_reqs esp_driver_i2c wear_levelling esp_pm esp_psram spi_flash esp_mm)
     list(APPEND ocm_board_reqs app_update)                        # esp_ota_ops.h for the prepared A/B rollback (OCM_APP_ROLLBACK);
                                                                    # a CONFIG test cannot pick REQUIRES (IDF reads them first)

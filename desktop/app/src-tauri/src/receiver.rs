@@ -120,6 +120,10 @@ pub fn local_address() -> Option<String> {
 }
 
 pub fn valid_name(n: &str) -> bool {
+    // the ESP-Mosaico battery log for training data, bNNNNNN.csv
+    if let Some(d) = n.strip_prefix('b').and_then(|r| r.strip_suffix(".csv")) {
+        return d.len() == 6 && d.bytes().all(|b| b.is_ascii_digit());
+    }
     let Some(rest) = n.strip_prefix('s') else { return false };
     if rest.len() < 10 || !rest.as_bytes()[..6].iter().all(|b| b.is_ascii_digit()) {
         return false;
@@ -365,6 +369,7 @@ mod tests {
     #[test]
     fn names_and_base64() {
         assert!(valid_name("s000123.ml.csv") && valid_name("s000123.json") && !valid_name("s12.csv") && !valid_name("s000123.exe"));
+        assert!(valid_name("b000001.csv") && !valid_name("b0001.csv") && !valid_name("b000001.json") && !valid_name("b00000a.csv"));
         assert_eq!(base64_decode("aGVsbG8=").unwrap(), b"hello");
         assert_eq!(query("/a?name=s1.csv&offset=7", "offset").as_deref(), Some("7"));
     }

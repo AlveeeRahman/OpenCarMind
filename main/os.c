@@ -27,6 +27,7 @@
 #if CONFIG_OCM_NAND_LOGS
 #include "nand_store.h"
 #endif
+#include "ai_svc.h"
 
 static const char *TAG = "os";
 
@@ -198,6 +199,7 @@ static void health_form(void)
     if (d == OS_RB_CONFIRM) ESP_LOGI(TAG, "app slot confirmed: %s", esp_ota_mark_app_valid_cancel_rollback() == ESP_OK ? "ok" : "FAILED");
     if (d == OS_RB_ROLLBACK) { sys_event(EV_ERROR, "Boot health bad: rolling back to the other app slot"); sys_reset(SYS_RESET_ROLLBACK, "health bad"); }
 #endif
+    ai_svc_start();                          /* the AI services: admitted now that sched_mon has measured the jobs */
     /* the Wi-Fi boot hold (os_core.h section 3): app_main started no Wi-Fi; the verdict decides the automatic start */
     if (os_wifi_may_start(v, false)) wifi_sync_boot_release();
     else {
@@ -214,15 +216,28 @@ static void ladder_window(void)
     static os_ladder_t l;
     sched_stats_t js[8];
     int n = sched_get_stats(js, 8);
-    uint32_t miss = 0;
+    uint32_t miss = 0, ai = 0;
     for (int i = 0; i < n; i++) if (!strcmp(js[i].name, "ml")) miss = js[i].misses;
-    uint8_t was = l.level, lv = os_ladder_step(&l, miss, elm_drive_active());
+#if CONFIG_OCM_AI_SVC
+    /* the AI-side input (os_core.h section 7): the UI, the AI worker and its services; climbs to the AI rung only */
+    for (int i = 0; i < n; i++) if (!strcmp(js[i].name, "ui") || !strcmp(js[i].name, "ai")) ai += js[i].misses;
+    ai += ai_svc_misses();
+#endif
+    uint8_t was = l.level, lv = os_ladder_step(&l, miss, ai, elm_drive_active());
+#if CONFIG_OCM_AI_SVC
+    ai_svc_set_os_level(lv);
+#endif
     if (lv == was) return;
     if (lv >= OS_DL_UI_SLOW) s_ui_req |= OS_UI_SLOW; else s_ui_req &= (uint8_t)~OS_UI_SLOW;
     const os_ai_contract_t *c = os_ai_contract(OS_AI_REV_LEARNER);
     if (s_ai_job[OS_AI_REV_LEARNER] >= 0) sched_set_cpu_share(s_ai_job[OS_AI_REV_LEARNER], lv >= OS_DL_NO_LEARNER ? 1 : c->share_pm, c->burst_ms);
     s_ml_paused = lv >= OS_DL_MODEL_OFF;
+#if CONFIG_OCM_AI_SVC
+    sys_event(lv > was ? EV_WARN : EV_INFO, "Model deadlines: %s (%lu misses, %lu AI-side)", os_ladder_name(lv), (unsigned long)miss,
+              (unsigned long)ai);
+#else
     sys_event(lv > was ? EV_WARN : EV_INFO, "Model deadlines: %s (%lu misses)", os_ladder_name(lv), (unsigned long)miss);
+#endif
 }
 
 void os_tick(void)
@@ -316,6 +331,7 @@ void os_power_sample(bool ok, int ma, int mv)
     }
     if (a & OS_UPS_A_POWER_OFF) {
         s_saving = true;
+        ai_svc_board_tick(true);                           /* the safe-shutdown path: learnt values and log rows saved */
         sys_event(EV_WARN, "Battery: powering off (%d mV)", mv);
         sys_reset(SYS_RESET_POWER_OFF, mv <= CONFIG_OCM_UPS_FLOOR_MV ? "voltage floor" : "battery grace");
     }
@@ -355,6 +371,7 @@ void os_battery_sample(bool ok, int temp_dc, int mv, bool on_usb)
         if (ov) sys_event(EV_ERROR, "Battery over-voltage (%d mV): charger fault, stopped", mv);
         else sys_event(EV_ERROR, "Battery too hot (%d C): stopped", temp_dc / 10);
         ESP_LOGE(TAG, "battery safety stop: %s, %d mV, %.1f C; logs flushed, storage stopped", os_bat_name(b.state), mv, temp_dc / 10.0);
+        ai_svc_board_tick(true);                           /* the safe-shutdown path: learnt values and log rows saved */
         sdlog_sync_now();
 #if CONFIG_OCM_BATSAFE_POWER_OFF
         sys_reset(SYS_RESET_POWER_OFF, ov ? "over-voltage" : "too hot");
