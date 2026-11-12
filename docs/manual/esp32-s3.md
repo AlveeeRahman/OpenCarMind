@@ -83,6 +83,8 @@ The ESP32-S3 has no Classic Bluetooth radio, so Classic-only adapters will not p
 
 The board connects to the strongest nearby device that looks like an OBD adapter and remembers it.
 
+**In the next S3 release, not yet tested on a board:** the board asks first. It offers only an adapter with a strong signal, -70 dBm or better, and shows "Use &lt;name>?" with "Strong. Tap = use it" (or "Good" for a weaker signal). Tap BOOT within 5 seconds to pair it. If you do nothing, nothing is saved. Once paired, the adapter also connects at a weaker signal, down to -90 dBm.
+
 | Adapter | Bluetooth | Status |
 |---|---|---|
 | LELink², LELink | LE | tested |
@@ -130,7 +132,7 @@ Tap BOOT to turn the page. Every number carries its unit, every status colour co
 
 Plain text about the link and the drive.
 
-- **Adapter:** the adapter's name and its signal strength
+- **Adapter:** the adapter's name and its signal strength. In the next S3 release, not yet tested on a board, it also says "paired" or "not paired".
 - **VIN:** the car's vehicle identification number, if it reports one
 - **Protocol:** the OBD protocol the car uses
 - **Trouble codes:** the MIL (check-engine light) state and the stored and pending codes
@@ -194,6 +196,10 @@ The board has one button for you, BOOT. How you press it decides what it does.
 **Hold 2 seconds.** Power off. Let go after 2 seconds. The screen says "Turning off" while it saves and closes the drive, then "Off, safe to unplug". The backlight and LED go dark. Press BOOT to wake it.
 
 **Hold 8 seconds.** Forget the saved adapter. The screen asks "Forget paired adapter?". Tap BOOT within 5 seconds to forget it, or wait to cancel. The board can then pick another adapter.
+
+### Pairing prompt
+
+**In the next S3 release, not yet tested on a board.** When the board finds a new adapter with a strong signal, it shows "Use &lt;name>?" and "Strong. Tap = use it" for 5 seconds. A tap on BOOT pairs it. If an alarm is showing, the first tap clears the alarm. If you wait, nothing is saved, and the board offers that adapter again only after your next double-click or a restart. The automatic search never replaces a paired adapter. To switch to another adapter, double-click BOOT while the car link is not working, or forget the paired one first.
 
 ### The connection search
 
@@ -352,7 +358,7 @@ Check that the ignition is on and the adapter is in the port. Double-click BOOT 
 
 ### It found the wrong adapter
 
-Hold BOOT for 8 seconds, then tap BOOT to confirm. The board forgets the saved adapter and connects to the strongest nearby adapter again.
+Hold BOOT for 8 seconds, then tap BOOT to confirm. The board forgets the saved adapter and connects to the strongest nearby adapter again. In the next S3 release, not yet tested on a board, it asks first ("Use &lt;name>?"), and you tap BOOT within 5 seconds only for the right one.
 
 ### A value shows "--"
 

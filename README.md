@@ -58,6 +58,7 @@ The same firmware also runs on Espressif's ESP-Mosaico touch-screen board. Its n
 <li><a href="#model-admission-by-response-time-analysis">Model admission by response-time analysis</a></li>
 <li><a href="#what-it-costs">What it costs</a></li>
 <li><a href="#what-you-see-on-the-board">What you see on the board</a></li>
+<li><a href="#changes-after-the-board-check">Changes after the board check</a></li>
 <li><a href="#flash-it-or-go-back-to-mossrev-120">Flash it, or go back to mossREV 1.2.0</a></li>
 <li><a href="#prepared-but-off-ab-rollback-and-the-battery-as-a-ups">Prepared but off: A/B rollback and the battery as a UPS</a></li>
 <li><a href="#what-is-verified-on-the-board">What is verified on the board</a></li>
@@ -226,7 +227,7 @@ For the ESP-Mosaico, build with `idf.py --preview set-target esp32s31` and flash
 
 The first build downloads ESP-DL, LVGL, led_strip and cJSON through the IDF component manager. If you built an earlier version in the same folder, delete `sdkconfig` first. If the board stays in download mode after flashing, reset it with `python -m esptool --chip esp32s3 -p <port> --after watchdog-reset chip-id`.
 
-On first boot the board connects to the strongest nearby adapter that looks like an OBD adapter and remembers it. If yours is not found, add its name to `OBD_BLE_NAME_PREFIXES` in `idf.py menuconfig` under OBD Logger Configuration. Settings, SD card files, the Wi-Fi list and the CSV columns are in [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
+On first boot the board connects to the strongest nearby adapter that looks like an OBD adapter and remembers it. In the next S3 release this changes: a new adapter is offered only at -70 dBm or better, and saved only when you tap BOOT within 5 s. That is built and host-checked, not yet tested on a board. If yours is not found, add its name to `OBD_BLE_NAME_PREFIXES` in `idf.py menuconfig` under OBD Logger Configuration. Settings, SD card files, the Wi-Fi list and the CSV columns are in [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 
 ## User manuals
 
@@ -322,9 +323,9 @@ Not checked yet: R.E.V over many drives and other cars, the corrected R.E.V on t
 
 OpenCarMind also runs on Espressif's ESP-Mosaico<sup>[[12]](#ref-12)</sup>, an ESP32-S31 board with a 480 × 480 AMOLED touch screen, 32 MB of PSRAM and a 128 MB NAND for the drive logs. Up to version 1.2.0 that build was called mossREV. Version 2.0.0 is called OpenCarMind EdgeOS 2.0.0, or Edge OS for short. It is not related to Ubiquiti's EdgeOS router software.
 
-Edge OS comes from the same source tree as the S3 version and keeps everything mossREV 1.2.0 has: both models (CarMind R.E.V, the default on a new board, and CarMind E.V, each re-quantized for the S31), the 16 apps on the touch screen with Wi-Fi search and join, a light and a dark theme, and per-drive event logs. What 2.0.0 adds is a small operating-system layer, described below. The image above is a render with example values. The S3 build does not change with any of this. Compared with the S3 build of the mossREV 1.2.0 tree, every byte the chip loads is the same.
+Edge OS comes from the same source tree as the S3 version and keeps everything mossREV 1.2.0 has: both models (CarMind R.E.V, the default on a new board, and CarMind E.V, each re-quantized for the S31), the 16 apps on the touch screen with Wi-Fi search and join, a light and a dark theme, and per-drive event logs. What 2.0.0 adds is a small operating-system layer, described below. The image above is a render with example values. The OS layer does not change the S3 build. Up to 4aeff43, every byte the S3 chip loads was the same as in the mossREV 1.2.0 tree. The pairing change merged after the board check is shared code, so it does change the next S3 image (see [Changes after the board check](#changes-after-the-board-check)).
 
-Edge OS is in its board check now, so mossREV 1.2.0 stays the Mosaico release until that check is done. The [status table](#what-is-verified-on-the-board) at the end of this section says what has been seen on the board so far.
+Edge OS 2.0.0 has been through most of its board check, on build 4aeff43. The soak and a few parts are still open, and four changes merged after the check have not been on a board yet. Until those are done, mossREV 1.2.0 stays the Mosaico release. The [status table](#what-is-verified-on-the-board) at the end of this section says what the board showed.
 
 The full guide is [docs/MOSAICO.md](docs/MOSAICO.md): the hardware, flashing, every app, the two models, Smart swipe and Smart UI, the storage, the NAND, the OS layer and the known limits. The [Edge OS user manual](docs/manual/edgeos-2.0.0.md) explains every screen and message for a driver.
 
@@ -332,7 +333,7 @@ The full guide is [docs/MOSAICO.md](docs/MOSAICO.md): the hardware, flashing, ev
 
 Edge OS is not a new kernel. FreeRTOS, as ESP-IDF 6.1 ships it, still schedules the tasks on the S31's two cores. Edge OS is a set of rules on top of it that decide what may run, when and how fast, and what happens when something goes wrong. It adds no task of its own. Its code runs inside the tasks that already exist: the board task every 2 s, the screen task, the USB door and the scheduler monitor.
 
-The rules live in one plain C file, `main/os_core.c`, with no ESP-IDF calls in it, so the host tests on a computer check every rule. `main/os.c` connects the rules to the firmware. Files that the S3 build shares call the OS through macros in `main/os_hooks.h`, which turn back into the old S3 statement on the same line. That is how the S3 image stays the same.
+The rules live in one plain C file, `main/os_core.c`, with no ESP-IDF calls in it, so the host tests on a computer check every rule. `main/os.c` connects the rules to the firmware. Files that the S3 build shares call the OS through macros in `main/os_hooks.h`, which turn back into the old S3 statement on the same line. That is how the OS layer leaves the S3 image as it was.
 
 ### The parts and why each exists
 
@@ -356,7 +357,7 @@ flowchart TB
   subgraph inputs["What the OS reads on every check"]
     b["start-up has not finished"]
     s["3 abnormal resets in a row"]
-    d["a drive is recorded,<br/>or the car link is up"]
+    d["a drive is recorded,<br/>or the car's computer answers"]
     v["battery hot, or USB lost<br/>(UPS option, off)"]
     u["a reset, a door entry<br/>or a format is running"]
     n["none of these"]
@@ -415,26 +416,51 @@ Measured with `idf.py size` against mossREV 1.2.0 rc3 (8b0b96f), on the S31 buil
 
 Most of the app growth is the graphics work (+37,312 B). The OS parts together add about 9 KB to the app image. With the UPS option switched on, the deep-sleep path alone would add about 12 KB of IRAM, which is one reason that option stays off.
 
-How much internal RAM is free at run time, with Wi-Fi joined and the car's Bluetooth link up together, is part of the board check. The target is more than 60 KB free in every phase.
-<!-- VERIFY: OS2's per-phase internal-RAM lowest values on the release image (boot, Wi-Fi round, BLE connected, both together). Put the lowest number and its phase here, with the build, and say whether the 60 KB target holds. -->
+The target for internal RAM at run time is more than 60 KB free in every phase. This was measured on the board, EdgeOS 2.0.0 4aeff43, with a debug build of that code that adds a RAM monitor. Each figure is the lowest free internal RAM in that phase, all internal heaps added up:
+
+| Phase | Lowest free internal RAM |
+|---|---|
+| The first minute after a start, before Wi-Fi | 127,407 B |
+| The first Wi-Fi round, with the automatic adapter search | 82,907 B |
+| An adapter search alone | 112,935 B |
+| An adapter search and Sync clock now together | 82,883 B |
+| Sync clock now alone | 82,907 B |
+| Wi-Fi search | 88,791 B |
+| A theme switch | 112,799 B |
+| A switch to E.V | 102,383 B |
+| A launcher slide | 112,599 B |
+
+The lowest is 82,883 B, about 81 KB, with an adapter search and a clock sync running at once. Every phase stays above 60 KB. Two parts of that total were never used in any phase: the 32 KB internal reserve (32,031 B free) and the LP RAM (31,948 B free). The main heap alone went down to 18,900 B.
+
+Before 4aeff43, the Board page's "lowest" read 32 KB too low. A photo showed 49 KB. ESP-IDF sets the minimum of a heap added after start-up to 0 (`heap_caps_init.c`, lines 325 to 332, in ESP-IDF 6.1). The 32 KB internal reserve is added that way, so the summed minimum always counted that pool as empty. 4aeff43 restarts the minimum count early in the boot. RAM use stays the same. Only the figure changes.
 
 ### What you see on the board
 
 - The firmware reads "OpenCarMind EdgeOS 2.0.0" on the boot line, in Settings and on the Board page. The desktop app sees `fw=EdgeOS-2.0.0`.
-- The Board page's bottom line shows the runlevel and the health, for example "Parked, health good" in green. Degraded is amber and bad is red. The events list gets "Boot health: good" or the reasons, such as "Boot health: degraded: NAND not mounted".
+- The Board page's header shows the runlevel and the health at the top right, for example "Parked, health good" in green. Degraded is amber and bad is red. The events list gets "Boot health: good" or the reasons, such as "Boot health: degraded: NAND not mounted".
 - Wi-Fi stays off for about the first minute after a start. Then the automatic clock sync runs, and on a board whose clock is not set the first sync follows about 20 s later.
-- A refused change says why. During a drive: "A drive is active. End the drive first, then switch models." While the board connects to the adapter: "Not now: the car link is up. Try again later." The USB door answers "ERR busy: the car link is up, try again when parked".
+- A refused change says why. During a drive: "A drive is active. End the drive first, then switch models." For other actions during a drive: "Not now: a drive is running. Try again later." When the car's computer answers but no drive is recorded yet: "Not now: the car link is up. Try again later." The USB door answers "ERR busy: a drive is running, try again when parked".
 - The ladder and the battery write events such as "Model deadlines: UI slowed", with the miss count, or "Battery hot (45.0 C on USB): load shed".
 - The Board page's battery card shows the current, "on USB" or "on battery", the gauge temperature, and "uncalibrated" with the cycle count until the gauge is set up for the 65 mAh cell.
 
 The [user manual](docs/manual/edgeos-2.0.0.md#os) lists every message with what to do about it.
 
+### Changes after the board check
+
+Four changes were merged after the board check, at 06ddf1d. Each is built and host-checked, not yet seen on the board.
+
+- **Pairing asks you first, and only at a strong signal.** On the bench, the board kept trying a neighbour's adapter at -88 to -90 dBm: 35 connect attempts in about 16 minutes, all failed. With no saved adapter, the old rule took any device that looked like an OBD adapter at -90 dBm or better and saved the first one that answered. Now a new adapter is offered only at -70 dBm or better (`CONFIG_OBD_BLE_PAIR_MIN_RSSI`), and nothing is saved until you say yes. The Mosaico shows "OBD adapter found: <name>, signal strong. Use this adapter?" with "Not this one" and "Use this adapter", and counts down 30 s. The S3 shows "Use <name>?" and "Strong. Tap = use it", and you tap BOOT within 5 s. The automatic search never replaces a saved adapter. The paired adapter still connects down to -90 dBm, so it works at the edge of range. The S3 shares this code, so the next S3 image changes too.
+- **Driving starts only when the car's computer answers.** The same neighbour's adapter kept putting the board into Driving for short spells, a median of about 4 s and at most 14 s, because connect attempts counted as Driving. Now the board is Driving only once the car's computer answers and rows are logged. Searching, connecting and an adapter in a parked car with the engine off keep it Parked.
+- **Model names on the screen.** The model's file shows as "ev-frozen" for E.V and "active-estimator" for R.E.V, where the screen showed a 12-character hash before. The hash stays in the logs, the session files and the USB door.
+- **No text smaller than 16 px.** The screen used 12 px and 14 px text in places. NHTSA's driver-interface guidance (DOT HS 812 360)<sup>[[14]](#ref-14)</sup>, following ISO 15008, asks for capital letters of at least 16 arcminutes for urgent text and 12 arcminutes for the rest, with 20 arcminutes as the best size. On this 2.16 inch, 480 × 480 screen, 16 px text has capitals about 1 mm tall. At about 65 cm from your eyes, that is about 5 arcminutes. So 16 px is the smallest size the screen uses, and even that is small for a driver. That is why the Drive screen and the alarm banner keep a few big items. The alarm banner's headline is now 32 px. The Board page now scrolls.
+
 ### Flash it, or go back to mossREV 1.2.0
 
 Flashing needs no buttons. Open the board's USB port at 1200 baud, then write the merged image with esptool 5.6.0 or later. [docs/MOSAICO.md](docs/MOSAICO.md#flashing) has the commands. The merged image erases the NVS partition, so the pairing with the desktop app, the saved Wi-Fi networks and the settings go, and you pair again. The drive logs on the NAND and the flash FAT's state files are not written.
 
-To go back, flash the mossREV 1.2.0 merged image the same way. Going back has not been tried on the board yet.
-<!-- VERIFY: the EdgeOS 2.0.0 release image's file name, SHA-256 and where it is published, and the result of flashing mossREV 1.2.0 over 2.0.0 and back (drives and R.E.V's learned state kept or not). -->
+The board-checked image is `EdgeOS-2.0.0-esp32s31-merged.bin`, built from 4aeff43, with a SHA-256 that starts `a225125d27f3906c`. It is not published yet. The merged branch tip (06ddf1d) has no released image yet. The release image will be rebuilt from the branch tip, and it gets a new SHA-256.
+
+To go back, flash the mossREV 1.2.0 merged image the same way. Going back is not yet verified on the board.
 
 ### Prepared but off: A/B rollback and the battery as a UPS
 
@@ -445,29 +471,35 @@ Two parts are built into 2.0.0 and switched off by default.
 
 ### What is verified on the board
 
-The board check is running. This table holds only what the board agent saw on the board, with the build. Everything else is not yet verified on the board. Host tests pass for every part: `make os` (41,635 checks), `make ppa`, `make uimetrics` and the source audits in `tests/host/os_audit.sh`.
+The board check ran on EdgeOS 2.0.0 4aeff43, the image `EdgeOS-2.0.0-esp32s31-merged.bin` (SHA-256 `a225125d27f3906c...`). The owner stopped it before the soak. VERIFIED means a board log line shows it. Some rows ran on a scratch build of the 2.0.0 code with one test switch on, and the row says so. A scratch build is never shipped. Host tests pass for every part: `make os` (41,635 checks at 4aeff43, 41,719 with the pairing change), `make pair`, `make ppa`, `make uimetrics` and the source audits in `tests/host/os_audit.sh`.
 
-| Part | Seen on the board | Build |
-|---|---|---|
-| Boot | `OpenCarMind mossREV 2.0.0 running` (the name before the rename), 0 USB drops and 0 crashes in 200 s | 09ec8f5 |
-| Boot health | `boot health good \| model self-test 1, flash FAT 1 (0 repaired), NAND 1, first UI tick 1415 ms, touch ok, 0 misses, 0 stalls, schedulable, runlevel Parked` at 68.1 s | 09ec8f5 |
-| Runlevel at rest | `os: runlevel Parked` | 09ec8f5 |
-| Model admission | R.E.V self-test exact in 2,236 µs, admitted with a margin of 995.5 ms | 09ec8f5 |
-| Service contract | `service R.E.V learner: job rev, T 1000 ms, D 30000 ms, stall 60000 ms, CPU 20 per mille in 30 ms bursts, prio 2 core 1` | 09ec8f5 |
-| Wi-Fi boot hold | held at 4.4 s with no driver, released at 68.1 s with 132,003 B of internal RAM free, driver up 20 s later (91,135 B free), clock synced, driver down again | 09ec8f5 |
-| PPA and 2D-DMA | on at boot, 0 failures in the first 190 s. The speed gain is not measured yet | 09ec8f5 |
-| Battery monitor | the PWR line carries the gauge temperature (33.2 °C), cycles and status | 09ec8f5 |
-| Final OpenCarMind EdgeOS 2.0.0 image | not yet verified on the board <!-- VERIFY: OS2's boot of the final image (EdgeOS name, db0467f or later): boot line, health line, sha256 --> | |
-| Internal RAM above 60 KB in every phase | not yet verified on the board <!-- VERIFY: OS2's RAM phases --> | |
-| Board page health line and battery card | not yet verified on the board <!-- VERIFY: OS2b capture of the Board page --> | |
-| Refusals while driving | not yet verified on the board <!-- VERIFY: OS2 step 4 (replay or car) --> | |
-| Resets through `sys_reset` | not yet verified on the board <!-- VERIFY: OS2 step 3, "the last run ended with sys_reset(...)" lines --> | |
-| Feature gate | not yet verified on the board <!-- VERIFY: OS2 step 5 --> | |
-| Admission refusal, degradation ladder | not yet verified on the board <!-- VERIFY: OS2 steps 6 and 7, scratch builds only --> | |
-| Battery thresholds | not yet verified on the board. They need a hot or over-charged cell, which the bench check does not create | |
-| PPA speed-up | not yet verified on the board <!-- VERIFY: OS2 step 8 A/B slide numbers --> | |
-| 10-minute soak | not yet verified on the board <!-- VERIFY: OS2 step 9 --> | |
-| A/B rollback, UPS, GPIO57 power-off | off in this release, not on the board | |
+| Part | Result | What the board showed | Build |
+|---|---|---|---|
+| Boot and name | VERIFIED | `OpenCarMind EdgeOS 2.0.0 running` at 4.3 s after a power-on, 0 USB drops in 185 s | 4aeff43 |
+| Boot health, good | VERIFIED | `boot health good \| model self-test 1, flash FAT 1 (0 repaired), NAND 1, first UI tick 1365 ms, touch ok, 0 misses, 0 stalls, schedulable, runlevel Parked` at 68.0 s | 4aeff43 |
+| Boot health, bad | VERIFIED | `boot health bad: safe mode`, then `Wi-Fi held: boot health bad`. Sync clock now still started Wi-Fi by hand | scratch, forced bad |
+| Wi-Fi boot hold | VERIFIED | held at 4.3 s with no driver, released at 68.0 s with 131,975 B of internal RAM free, driver up at 88.1 s and down again at 106.5 s | 4aeff43 |
+| No addresses in the log | VERIFIED | no access-point address and no board address in the boot and Wi-Fi log | 4aeff43 |
+| Model admission, admitted | VERIFIED | `C 4248 us (self-test 2124 us x 2.0) on core 1, R: ml 4.2/1000 ms, margin 995.8 ms (ml): admitted` | 4aeff43 |
+| Model admission, refused | VERIFIED | the boot load logged `REFUSED`, and a switch to E.V got `ERR CarMind E.V refused: ml would miss its deadline` while R.E.V stayed | scratch, safety factor raised from 2 to 2,000 |
+| Service contract | VERIFIED | `service R.E.V learner: job rev, T 1000 ms, D 30000 ms, stall 60000 ms, CPU 20 per mille in 30 ms bursts, prio 2 core 1` | 4aeff43 |
+| Runlevels and refusals during a drive | VERIFIED | `runlevel Driving (active 0x08)` and back to `runlevel Parked`. The USB door answered `ERR busy: a drive is running, try again when parked`. The screen showed "Not now: a drive is running. Try again later." for the clock sync and Format | scratch, forced drive |
+| Degradation ladder | VERIFIED | events "UI slowed (2 misses)", "learner paused (6 misses)", "model paused (10 misses)", then one step back at a time to "normal" | scratch, extra model load |
+| Battery protection | VERIFIED, test limits | "Battery hot (34.2 C on USB): load shed" with Wi-Fi off, the learner paused and the screen dimmed, runlevel Saving, then "Battery cooled (33.7 C)" and Parked, and "Battery over-voltage (4188 mV): charger fault, stopped". The real limits (45 °C, 60 °C, 4.25 V) were not reached | scratch, test limits |
+| Desktop app | VERIFIED | connect with `fw=EdgeOS-2.0.0`, a wrong token refused, a model switch both ways, two files read at their listed sizes | 4aeff43 |
+| Internal RAM above 60 KB | VERIFIED | lowest 82,883 B over 9 phases (see [What it costs](#what-it-costs)) | debug build of 4aeff43 |
+| PPA and 2D-DMA | PARTLY | on at boot, `failures dma 0 ppa 0` in all 18 reports over 185 s. The speed A/B test gave no clean number | 4aeff43 |
+| Resets through `sys_reset` | PARTLY | `the last run ended with sys_reset(REBOOT: door REBOOT)` after a door REBOOT. The line after a download-door entry was not captured | 4aeff43 |
+| Feature gate | PARTLY | the gate starts and Smart swipe's warm-up runs. No verdict yet | 4aeff43 |
+| Version on screen | PARTLY | the boot line and the door's `fw=EdgeOS-2.0.0`. Settings and the Board footer were not checked | 4aeff43 |
+| 10-minute soak | NOT | stopped by the owner before it ran | |
+| 60 °C stop | NOT | built, not run | |
+| Where the gauge temperature comes from | NOT | not checked | |
+| Board page "lowest" after the fix | NOT | no photo of the fixed Board page yet | |
+| Wi-Fi with no known network in reach | NOT | not run | |
+| Going back to mossREV 1.2.0 | NOT | not tried | |
+| A/B rollback, UPS, GPIO57 power-off | NOT | off in this release | |
+| Pairing, Driving rule, model names, 16 px text | NOT | merged after the check (06ddf1d). Built and host-checked, not yet seen on the board | 06ddf1d |
 
 ## Limitations and future work
 
@@ -511,6 +543,8 @@ The board check is running. This table holds only what the board agent saw on th
 <a id="ref-12"></a>[12] Espressif Systems, "ESP-Mosaico," esp-dev-kits documentation. [docs.espressif.com](https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32s31/esp-mosaico/index.html)
 
 <a id="ref-13"></a>[13] J. Iyengar and M. Thomson, Eds., "QUIC: A UDP-based multiplexed and secure transport," RFC 9000, IETF, 2021. [rfc-editor.org](https://www.rfc-editor.org/rfc/rfc9000)
+
+<a id="ref-14"></a>[14] J. L. Campbell *et al.*, "Human factors design guidance for driver-vehicle interfaces," Report DOT HS 812 360, National Highway Traffic Safety Administration, 2016. [nhtsa.gov](https://www.nhtsa.gov/sites/nhtsa.gov/files/documents/812360_humanfactorsdesignguidance.pdf)
 
 ## Repository layout
 

@@ -166,7 +166,7 @@ tbody tr:first-child td{border-top:0}
 </div>
 <div class="callout">
 <h3>What 2.0.0 adds</h3>
-<p>Version 2.0.0 adds a small operating-system layer. You do not have to set anything up for it. About a minute after every start the board rates its own health and shows it on the Board page. While you drive it refuses changes that could spoil the drive, such as a model switch, and tells you why. It watches the battery's temperature and voltage. Section 08 explains every line and message it shows.</p>
+<p>Version 2.0.0 adds a small operating-system layer. You do not have to set anything up for it. About a minute after every start the board rates its own health and shows it on the Board page. While you drive it refuses changes that could spoil the drive, such as a model switch, and tells you why. It watches the battery's temperature and voltage. It pairs a new OBD adapter only when you say yes. Section 08 explains every line and message it shows.</p>
 </div>
 <div class="callout">
 <h3>Local first</h3>
@@ -200,8 +200,8 @@ tbody tr:first-child td{border-top:0}
 </dl></div>
 </div>
 <div class="warn" style="margin-top:16px"><p><strong>About the captures in this manual.</strong></p>
-<p>They come from mossREV 1.2.0 builds, the release before 2.0.0, taken on a bench with no car connected. The apps and their values are the same in 2.0.0. The Board page gains a health line, and the text on screen gets larger. New captures from 2.0.0 will replace these.</p>
-<!-- VERIFY: the larger screen text (OS2b's font-size fix) is in the final EdgeOS 2.0.0 image. If it is not, drop "and the text on screen gets larger". -->
+<p>They come from mossREV 1.2.0 builds, the release before 2.0.0, taken on a bench with no car connected. The apps and their values are the same in 2.0.0. Four things look different in 2.0.0. No text on screen is smaller than 16 px, so several lines are shorter or larger. The Board page scrolls and shows the health in its header. The model's file shows by name, "active-estimator" for R.E.V and "ev-frozen" for E.V. A new adapter is offered on a pairing sheet (see Pairing your OBD adapter). New captures from 2.0.0 will replace these.</p>
+<p>These four changes are built and checked on a computer, not yet seen on the board.</p>
 </div>
 </section>
 
@@ -229,14 +229,29 @@ tbody tr:first-child td{border-top:0}
 <div class="card"><h3>Before the first drive</h3>
 <ol class="steps">
 <li><div>Check that Settings &gt; FIRMWARE AND BOARD shows EdgeOS 2.0.0.</div></li>
-<li><div>Wait about a minute after the start. The bottom line of the Board page then says "Parked, health good" in green. See section 08 if it says something else.</div></li>
+<li><div>Wait about a minute after the start. The top right of the Board page then says "Parked, health good" in green. See section 08 if it says something else.</div></li>
 <li><div>Check that Settings &gt; MODEL shows R.E.V.</div></li>
 <li><div>Set the clock. Join Wi-Fi, or use Settings &gt; Set clock. The clock line then says "From Wi-Fi" or "Set by hand".</div></li>
 <li><div>Open Files and check that the storage bar shows the 128 MB NAND.</div></li>
-<li><div>Plug the adapter into the OBD-II port and switch the ignition on.</div></li>
+<li><div>Plug the adapter into the OBD-II port and switch the ignition on. The first time, the board asks before it pairs (see below). Tap Use this adapter.</div></li>
 <li><div>Within about a minute the Drive app shows speed and rpm. If it does not, open Settings &gt; OBD ADAPTER and tap Find OBD adapter.</div></li>
 </ol></div>
 </div>
+<div class="card" id="pairing" style="margin-top:16px"><h3>Pairing your OBD adapter</h3>
+<p>The board pairs with one adapter, and after that it connects to it by itself. It never saves an adapter without asking you.</p>
+<ol class="steps">
+<li><div>Plug the adapter in, switch the ignition on and keep the board in the car, near the adapter.</div></li>
+<li><div>The board offers only an adapter with a strong signal, -70 dBm or better. An adapter in a car parked next to yours is usually weaker, so it is not offered.</div></li>
+<li><div>When an adapter answers, a sheet asks "OBD adapter found: &lt;name&gt;, signal strong. Use this adapter?" A weaker one says "signal good". Under it you see "Nothing is saved unless you choose." and the seconds left.</div></li>
+<li><div>Tap Use this adapter. The events say "OBD adapter paired: &lt;name&gt;".</div></li>
+</ol>
+<dl class="kv">
+<dt>Not this one</dt><dd>the board skips that adapter until its next start</dd>
+<dt>No answer in 30 s</dt><dd>nothing is saved, and the events say "OBD adapter not paired". The board does not offer that adapter again until you tap Find OBD adapter or restart.</dd>
+<dt>Switching to another adapter</dt><dd>open Settings &gt; OBD ADAPTER and tap Find OBD adapter. For the next 90 s the board offers a new adapter with a strong signal, even though one is paired. The automatic search never replaces your paired adapter.</dd>
+<dt>At the edge of range</dt><dd>once paired, your adapter also connects at a weaker signal, down to -90 dBm</dd>
+</dl>
+<p class="note">This pairing sheet is new in 2.0.0. It is built and checked on a computer, not yet tested on the board.</p></div>
 </section>
 
 <section id="nav">
@@ -319,7 +334,7 @@ tbody tr:first-child td{border-top:0}
 <figure><button class="shot" type="button" aria-label="Open the R.E.V capture full size"><img src="img/mosaico-rev-light.png" alt="R.E.V app: model card, self-test exact, learning fuel use in this car, fuel learning counters and an In use button" width="480" height="480"></button><figcaption>R.E.V, in use.</figcaption></figure>
 <figure><button class="shot" type="button" aria-label="Open the E.V capture full size"><img src="img/mosaico-ev-dark.png" alt="E.V app, dark theme: model card, self-test exact, runs as shipped with no learning, what E.V answers and an In use button" width="480" height="480"></button><figcaption>E.V, in use, dark theme.</figcaption></figure>
 </div>
-<div class="txt"><h3>R.E.V and E.V</h3><p>One app per model, side by side on the launcher. Each shows the model's name, its self-test and its own figures.</p>
+<div class="txt"><h3>R.E.V and E.V</h3><p>One app per model, side by side on the launcher. Each shows the model's name, its file, its self-test and its own figures. The file shows by name: "active-estimator" for R.E.V and "ev-frozen" for E.V.</p>
 <dl class="kv">
 <dt>Self-test</dt><dd>at start the board checks the model against known answers. "exact" means it matched. "One run" is how long one answer takes.</dd>
 <dt>R.E.V figures</dt><dd>fuel learning in this car: updates taken, updates kept as is, pairs seen and resets to factory</dd>
@@ -420,7 +435,7 @@ tbody tr:first-child td{border-top:0}
 
 <div class="app" id="app-board">
 <figure><div class="ph"><span>Capture coming</span></div><figcaption>Board: no capture of the 2.0.0 Board page yet.</figcaption></figure>
-<div class="txt"><h3>Board</h3><p>The board's own health, for checks and bug reports.</p>
+<div class="txt"><h3>Board</h3><p>The board's own health, for checks and bug reports. The page scrolls: the RAM and battery cards, log storage and the first deadline rows fill the screen, and the rest of the table and the footer follow below.</p>
 <dl class="kv">
 <dt>Firmware</dt><dd>the firmware version, and the chip with its revision ("S31 rev" and a number)</dd>
 <dt>RAM free</dt><dd>free internal memory in KB, the lowest it has been since start, and free PSRAM in MB</dd>
@@ -428,7 +443,8 @@ tbody tr:first-child td{border-top:0}
 <dt>Log storage</dt><dd>free space on the NAND in MB, and on the flash in KB</dd>
 <dt>Soft deadlines</dt><dd>the scheduler's job table: each job's runs, its worst run and how many times it missed its deadline. "All jobs on time" means no misses.</dd>
 <dt>Touch errors</dt><dd>how often the touch controller failed to answer</dd>
-<dt>Bottom line</dt><dd>the board state and its health, for example "Parked, health good". Green means good, amber degraded, red bad. During the first minute after a start it says "health pending". Section 08 explains it.</dd>
+<dt>Header</dt><dd>at the top right, the board state and its health, for example "Parked, health good". Green means good, amber degraded, red bad. During the first minute after a start it says "health pending". Section 08 explains it.</dd>
+<dt>Footer</dt><dd>two centred lines at the end of the scroll: the firmware version and the touch errors</dd>
 </dl>
 </div>
 </div>
@@ -452,7 +468,7 @@ tbody tr:first-child td{border-top:0}
 <dt>Status</dt><dd>what Wi-Fi is doing, and whether the clock has been synced over Wi-Fi</dd>
 <dt>Sync clock now</dt><dd>sets the clock now from a saved network. With none saved it says "No saved network yet: search and join one first."</dd>
 <dt>Search for networks</dt><dd>lists the networks in range so you can join one</dd>
-<dt>Saved networks</dt><dd>the networks the board knows (up to 8), each with Forget</dd>
+<dt>Saved networks</dt><dd>the networks the board knows (up to 8), each with Forget. The note under the list says "The board uses them only to set its clock."</dd>
 </dl>
 <p class="note">Section 06 covers searching and joining.</p></div>
 </div>
@@ -481,12 +497,12 @@ tbody tr:first-child td{border-top:0}
 <div class="grid2">
 <div class="card"><h3>Brightness</h3><p>A slider from 10 to 100 %. On an AMOLED the brightness is a command to the panel itself. There is no backlight.</p></div>
 <div class="card"><h3>Theme</h3><p>Auto, Light or Dark, for Home and every app. Auto is light from 06:00 to 17:00 once the clock is set, and dark at other times. With no clock set, Auto stays dark.</p><p>A theme change redraws the screen once, so it pauses for a moment. The change waits while the Wi-Fi password page or the clock picker is open.</p></div>
-<div class="card"><h3>Model</h3><p>R.E.V or E.V. The line below names the model in use and its self-test. A switch works only while parked. If the board refuses a switch, the line starts with "Not switched" and gives the reason. See The two models.</p></div>
+<div class="card"><h3>Model</h3><p>R.E.V or E.V. The line below names the model in use, its file and its self-test, for example "CarMind R.E.V active-estimator, self-test exact." A switch works only while parked. If the board refuses a switch, the line starts with "Not switched" and gives the reason. See The two models.</p></div>
 <div class="card"><h3>Clock</h3><p>The clock line shows the time and date and where the time came from: "Not set", "Estimated, not synced", "Set by hand" or "From Wi-Fi".</p><p>Tap Set clock to open the picker. It has day, month, year, hour and minute rollers and a time zone list. Back cancels. During a drive the board refuses a new time and says "A drive is active. End the drive first, then set the clock."</p></div>
 <div class="card"><h3>Economy units</h3><p>km/L or L/100 km. This changes only how economy is shown.</p></div>
 <div class="card"><h3>Screen off after</h3><p>Never, 10 s, 20 s or 60 s without a touch. A touch or the orange key turns the screen back on.</p></div>
 <div class="card"><h3>Home apps order</h3><p>Each app has Up and Down buttons that move it one place. The launcher follows the list. You cannot hide an app.</p></div>
-<div class="card"><h3>OBD adapter</h3><p>Find OBD adapter searches for the adapter again. Forget adapter drops the saved one, so the board can pick another.</p></div>
+<div class="card"><h3>OBD adapter</h3><p>Find OBD adapter searches for the adapter again. For 90 s it also offers a new adapter with a strong signal, so you can switch. Forget adapter drops the saved one. Either way, the board asks before it pairs (see Pairing your OBD adapter in section 02).</p></div>
 <div class="card"><h3>Smart swipe</h3><p>A status line shows how Smart swipe's test is going, and its verdict once it has one. It keeps itself only if it makes swipes faster.</p></div>
 <div class="card"><h3>Storage and firmware</h3><p>Format storage erases the drive store after a confirm sheet (see Storage and power). It works only while parked or in safe mode. FIRMWARE AND BOARD shows the version, EdgeOS 2.0.0, with the chip, the flash and PSRAM size and the board name.</p></div>
 </div>
@@ -536,11 +552,10 @@ tbody tr:first-child td{border-top:0}
 <li>open Settings &gt; MODEL and tap R.E.V or E.V</li>
 <li>use the model switch in the desktop app</li>
 </ul>
-<p class="note">During a drive the board refuses and says "A drive is active. End the drive first, then switch models." While it is connecting to the adapter, before a drive starts, it says "Not now: the car link is up. Try again later." The board keeps your choice after a restart. Every model mark and name on the screen follows the model in use.</p></div>
+<p class="note">During a drive the board refuses and says "A drive is active. End the drive first, then switch models." When the car's computer answers but no drive is recorded yet, it says "Not now: the car link is up. Try again later." While the board only searches for the adapter or connects to it, it stays Parked and the switch works. The board keeps your choice after a restart. Every model mark and name on the screen follows the model in use.</p></div>
 <div class="card" style="margin-top:16px"><h3>The board checks that a model fits</h3>
 <p>A model has to give its answer within 1 second, while the board also reads the car and R.E.V learns. Before it loads a model, the board takes the model's measured run time from its self-test, doubles it for safety, and checks that every job on that core still finishes on time. If one would not, the board keeps the model it has and says, for example, "Not switched: CarMind E.V refused: ml would miss its deadline." Here "ml" is the name of the model's job.</p>
-<p>You should not see this with the two models that ship. On the bench, on a 2.0.0 build before the final one, the check gave R.E.V a worst case of 4.5 ms against its 1,000 ms deadline.</p>
-<!-- VERIFY: the 4.5 ms comes from OS2's first boot of build 09ec8f5 ("admission CarMind R.E.V: C 4472 us ... R: ml 4.5/1000 ms, margin 995.5 ms"). Re-check on the final EdgeOS 2.0.0 image and update if it differs. -->
+<p>You should not see this with the two models that ship. Measured on the board, EdgeOS 2.0.0 4aeff43: the check gave R.E.V a worst case of 4.2 ms against its 1,000 ms deadline.</p>
 </div>
 </section>
 
@@ -558,7 +573,7 @@ tbody tr:first-child td{border-top:0}
 <dt>Bad</dt><dd>the screen never updated, or the board started in safe mode after three crashes in a row. Red.</dd>
 <dt>Pending</dt><dd>the first minute, before the check</dd>
 </dl>
-<p class="note">The result shows on the bottom line of the Board page, for example "Parked, health good", and in the events list as "Boot health: good".</p></div>
+<p class="note">The result shows at the top right of the Board page, for example "Parked, health good", and in the events list as "Boot health: good".</p></div>
 <div class="card"><h3>What a degraded reason means</h3>
 <dl class="kv">
 <dt>model self-test differs, model self-test not run</dt><dd>the model did not match its known answers at start. Note it and send the Board page.</dd>
@@ -575,10 +590,10 @@ tbody tr:first-child td{border-top:0}
 <dl class="kv">
 <dt>Boot</dt><dd>the first seconds after a start, until start-up has finished</dd>
 <dt>Parked</dt><dd>none of the others. Everything is allowed.</dd>
-<dt>Driving</dt><dd>a drive is being recorded, or the board is connected or connecting to the adapter</dd>
+<dt>Driving</dt><dd>a drive is being recorded, or the car's computer answers and the board logs rows. Searching for the adapter, connecting to it, or an adapter in a parked car with the engine off keep the board Parked.</dd>
 <dt>Safe</dt><dd>the board started in safe mode after three crashes in a row. Logging stays on, the model and R.E.V's learning stay off.</dd>
 <dt>Update</dt><dd>a restart, a firmware download or Format storage is running</dd>
-<dt>Saving</dt><dd>the battery is too warm, so the board saves power (see Battery protection below)</dd>
+<dt>Saving</dt><dd>the battery is too warm, so the board saves power. The screen dims, Wi-Fi waits and R.E.V's learning pauses. The board goes back to Parked by itself when the battery has cooled. See Battery protection below.</dd>
 </dl>
 <p class="note">Each action is allowed only in some states. If several states hold at once, the action has to be allowed in all of them.</p></div>
 
@@ -596,11 +611,12 @@ tbody tr:first-child td{border-top:0}
 <div class="card" style="margin-top:16px"><h3>Messages when an action has to wait</h3>
 <dl class="kv">
 <dt>"A drive is active. End the drive first, then switch models."</dt><dd>a drive is being recorded. The same message ends with "set the clock" or "format" for those actions. Hold End drive, or switch the engine off and wait for the drive to end.</dd>
-<dt>"Not now: the car link is up. Try again later."</dt><dd>the board is connected or connecting to the adapter. Wait until the drive ends.</dd>
+<dt>"Not now: a drive is running. Try again later."</dt><dd>the same reason for the clock sync, Format and other actions. Wait until the drive ends.</dd>
+<dt>"Not now: the car link is up. Try again later."</dt><dd>the car's computer answers, but no drive is recorded yet. Switch the engine off, or wait for the drive to end.</dd>
 <dt>"Not now: the board is starting. Try again later."</dt><dd>start-up has not finished. Try again a few seconds later.</dd>
 <dt>"Not now: an update or format is running. Try again later."</dt><dd>wait for the format or the restart to finish</dd>
 <dt>"Not now: safe mode is on. Try again later."</dt><dd>the board is in safe mode. Restart it. If it stays in safe mode, send the Board page and the events.</dd>
-<dt>"Not now: the board is saving power. Try again later."</dt><dd>the battery is warm. Let the board cool down.</dd>
+<dt>"Not now: the board is saving power. Try again later."</dt><dd>the battery is warm. Let the board cool down. If you tap Sync clock now while the board saves power, the sync waits until the battery has cooled.</dd>
 <dt>"Not forgotten: a drive is running."</dt><dd>Forget for a Wi-Fi network waits until you park</dd>
 <dt>"ERR busy: ..., try again when parked"</dt><dd>the board answers the desktop app with this during a drive</dd>
 </dl></div>
@@ -627,7 +643,7 @@ tbody tr:first-child td{border-top:0}
 <div class="grid2">
 <div class="card"><h3>One safe restart</h3><p>Every restart the firmware asks for, such as the restart after Format storage or the firmware download door, takes the same path. It saves and closes the flash files and the drive store first, then restarts. The next start writes in its log which requested restart ended the last run.</p></div>
 <div class="card"><h3>Faster screen drawing</h3><p>The chip has a pixel accelerator and a 2D copy engine. Edge OS uses them to copy the page pictures while you swipe and to fill large areas of the screen. If an engine fails three times in a row, or its start-up test does not match the processor's result, the board turns that engine off until the next start and draws with the processor instead.</p>
-<!-- VERIFY: the board speed-up of the PPA and 2D-DMA (the A/B slide test in OS2's board plan, step 8). Add the measured number here only if OS2 measured it. -->
+<p class="note">On the board (EdgeOS 2.0.0 4aeff43) both engines stayed on with no failures. How much faster the screen draws is not yet verified on the board.</p>
 </div>
 </div>
 </section>
@@ -639,7 +655,7 @@ tbody tr:first-child td{border-top:0}
 <figure><button class="shot" type="button" aria-label="Open the alarm banner capture full size"><img src="img/mosaico-alarm-banner-dark.png" alt="Home in the dark theme with a red-edged banner across the top reading TEST: engine misfire, stop safely (P0300)" width="480" height="480"></button><figcaption>A test alarm on Home, dark theme. The text is a bench test, not a real fault.</figcaption></figure>
 <div class="txt">
 <h3>The critical-fault banner</h3>
-<p>A critical fault shows as a red-edged banner across the top of the screen, over any app.</p>
+<p>A critical fault shows as a red-edged banner across the top of the screen, over any app. Its headline is 32 px text, so you can read it at a glance.</p>
 <p>To clear it, tap the banner, swipe up or sideways on it, or press the orange key. The swipe does not move the page underneath. The fault itself stays in the Faults app and on the Home card.</p>
 <h3 style="margin-top:16px">Other faults</h3>
 <p>Faults that are not critical never pop up. They show in the Faults app and on the Home card. The Faults app ranks every code by severity and groups codes that share a cause.</p>
@@ -691,7 +707,7 @@ tbody tr:first-child td{border-top:0}
 </div>
 <div class="card" style="margin-top:16px"><h3>Flashing version 2.0.0</h3>
 <p>You need the image <code>EdgeOS-2.0.0-esp32s31-merged.bin</code> and its <code>.sha256</code> file, a USB-C cable, Python with pyserial (<code>pip install pyserial</code>) and esptool 5.6.0 or later (<code>pip install "esptool&gt;=5.6.0"</code>). You press no buttons.</p>
-<!-- VERIFY: the release image's file name and where it is published (OS2 builds it). Replace EdgeOS-2.0.0-esp32s31-merged.bin everywhere if the name differs. -->
+<p class="note">The image checked on the board is built from 4aeff43. It is not published yet. The release image will be rebuilt from the latest 2.0.0 code, with the pairing sheet and the larger text, so its SHA-256 will differ. Check the <code>.sha256</code> file that comes with the image you download.</p>
 <ol class="steps">
 <li><div>Plug the board into the computer. It shows up as a USB serial port: <code>/dev/cu.usbmodem...</code> on macOS, <code>/dev/ttyACM...</code> on Linux, <code>COMx</code> on Windows.</div></li>
 <li><div>Open that port at 1200 baud and close it again. This is the download door. The board finishes its writes and restarts into the chip's download mode.
@@ -704,8 +720,7 @@ tbody tr:first-child td{border-top:0}
 <p class="note">The download door needs no pairing. Anyone with the cable can put the board into download mode. That is how flashing works without buttons.</p></div>
 <div class="card" style="margin-top:16px"><h3>Going back to mossREV 1.2.0</h3>
 <p>Follow the same four steps with the image <code>mossREV-1.2.0-esp32s31-merged.bin</code>. Flashing it erases the internal settings again, so pair again afterwards. The drive logs on the NAND and what R.E.V learned stay on the board.</p>
-<p class="note">Going back has not been tried on the board yet.</p>
-<!-- VERIFY: OS2 or OS2b flashes mossREV 1.2.0 (rc3) over 2.0.0 and back, and checks that the drives and R.E.V's learned state survive both ways. Then replace "Going back has not been tried on the board yet." with the result. -->
+<p class="note">Going back is not yet verified on the board.</p>
 </div>
 </section>
 
@@ -717,7 +732,8 @@ tbody tr:first-child td{border-top:0}
 <div class="card"><h3>A change says "Not now"</h3><p>The board refuses changes while it drives, starts, formats or saves power. The message names the reason. Park, wait for the drive to end, then try again (section 08).</p></div>
 <div class="card"><h3>Wi-Fi did not start after a restart</h3><p>Wi-Fi waits for the health check, about a minute after a start. To start it now, open Wi-Fi and tap Sync clock now.</p></div>
 <div class="card"><h3>Touch stops answering</h3><p>The board notices and opens the touch controller again by itself. On the bench that took about 1 second. Wait a moment and touch again.</p></div>
-<div class="card"><h3>No speed or rpm</h3><p>Check that the ignition is on and the adapter is in the port. Open Settings &gt; OBD ADAPTER, tap Find OBD adapter and note what the screen says.</p></div>
+<div class="card"><h3>No speed or rpm</h3><p>Check that the ignition is on and the adapter is in the port. Open Settings &gt; OBD ADAPTER, tap Find OBD adapter and note what the screen says. If the pairing sheet appears, check the adapter's name before you tap Use this adapter.</p></div>
+<div class="card"><h3>The board never offers my adapter</h3><p>The board offers a new adapter only at a strong signal. Bring the board close to the adapter, then tap Find OBD adapter. If you tapped Not this one by mistake, restart the board.</p></div>
 <div class="card"><h3>The clock is wrong</h3><p>If Settings says "Not set" or "Estimated, not synced", join Wi-Fi and tap Sync clock now, or set it by hand in Settings &gt; Set clock. Auto theme needs the clock.</p></div>
 <div class="card"><h3>A storage error after a restart</h3><p>The board checks and repairs its storage at start. If a store still will not open, import what you can, then use Settings &gt; Format storage.</p></div>
 <div class="card"><h3>The screen pauses on a theme change</h3><p>A theme change redraws the launcher and the open app once. On the bench that took up to about 0.7 seconds. This is expected.</p></div>

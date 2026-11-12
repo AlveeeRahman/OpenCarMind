@@ -2,7 +2,7 @@
 
 OpenCarMind EdgeOS 2.0.0 (Edge OS for short) is the build of OpenCarMind for Espressif's ESP-Mosaico board. Up to version 1.2.0 it was called mossREV. It is not related to Ubiquiti's EdgeOS router software. It comes from the same source tree as the ESP32-S3 version and does the same job: it reads your car over a Bluetooth OBD-II adapter, logs every drive, and runs a small neural network on the chip. The Mosaico adds a 480 x 480 touch screen, more memory and a 128 MB store for the drive logs.
 
-The S3 build is not changed by any of this. For the Waveshare ESP32-S3 board, keep using the S3 releases and the main [README](../README.md).
+The OS layer does not change the S3 build. The pairing change merged after the board check is shared code, so the next S3 image changes with it. For the Waveshare ESP32-S3 board, keep using the S3 releases and the main [README](../README.md).
 
 This guide is for building, flashing and checking the board. The [user manual](manual/edgeos-2.0.0.md) explains every screen and message for a driver.
 
@@ -63,11 +63,9 @@ You need the merged image `EdgeOS-2.0.0-esp32s31-merged.bin` (its SHA-256 is in 
 
 4. The board restarts into Edge OS. The console (115200 baud on the same port) prints `OpenCarMind EdgeOS 2.0.0 running`. Pair it again from the desktop app.
 
-<!-- VERIFY: the release image's file name (EdgeOS-2.0.0-esp32s31-merged.bin assumed here and in the manual) and the boot line on the final image, from OS2. -->
+Measured on the board, EdgeOS 2.0.0 4aeff43: the image `EdgeOS-2.0.0-esp32s31-merged.bin` (SHA-256 `a225125d27f3906c...`) printed `OpenCarMind EdgeOS 2.0.0 running` at 4.3 s and `boot health good` at 68.0 s. That image is not published yet. The merged branch tip (06ddf1d) has no released image yet. The release image will be rebuilt from the branch tip, with a new SHA-256.
 
-To go back to mossREV 1.2.0, flash `mossREV-1.2.0-esp32s31-merged.bin` with the same steps. It erases the NVS again, so pair again after it. Going back has not been tried on the board yet.
-
-<!-- VERIFY: mossREV 1.2.0 flashed over 2.0.0 and back on the board, drives and R.E.V's learned state kept or not. -->
+To go back to mossREV 1.2.0, flash `mossREV-1.2.0-esp32s31-merged.bin` with the same steps. It erases the NVS again, so pair again after it. Going back is not yet verified on the board.
 
 To build it yourself, use ESP-IDF 6.1. The S31 is a preview target there, hence `--preview`:
 
@@ -118,9 +116,11 @@ Edge OS carries both on-board models, each re-quantized by ESP-PPQ for the esp32
 | Same class as the float model | 255 of 255 calibration windows, 16 of 16 test windows | 255 of 255 calibration windows, 16 of 16 test windows |
 | One inference on the board | 1,960 us on mossREV 1.2.0, 2,236 us on a 2.0.0 build (09ec8f5), the timed run at boot | 4,172 us on mossREV 1.2.0 rc3 (`MODEL SET ev`) |
 
+On the screen, the model's file shows by name: "active-estimator" for R.E.V and "ev-frozen" for E.V. The version hash above stays in the logs, the session files and the USB door. (The names were merged after the board check and are not yet seen on the board.)
+
 Both files are exported without ESP-PPQ's int16 lookup table (`int16_lut_step=-1`). ESP-DL reads a stepped int16 table by nearest neighbour while ESP-PPQ's simulator computes the exact ReLU, and that was the whole gap between the chip and the PC.
 
-A new board starts on R.E.V. To switch, tap Use in the R.E.V or E.V app, open Settings > MODEL and tap R.E.V or E.V, or use the desktop app's model switch. A switch needs the car to be parked: during a drive the board says "A drive is active. End the drive first, then switch models.", and while it connects to the adapter "Not now: the car link is up. Try again later." The board keeps the choice after a restart. Every model mark and name on the screen follows the model in use, and what R.E.V learned stays on the board while E.V runs. One model is loaded at a time.
+A new board starts on R.E.V. To switch, tap Use in the R.E.V or E.V app, open Settings > MODEL and tap R.E.V or E.V, or use the desktop app's model switch. A switch needs the car to be parked: during a drive the board says "A drive is active. End the drive first, then switch models." When the car's computer answers but no drive is recorded yet, it says "Not now: the car link is up. Try again later." The board keeps the choice after a restart. Every model mark and name on the screen follows the model in use, and what R.E.V learned stays on the board while E.V runs. One model is loaded at a time.
 
 ## Smart swipe and Smart UI
 
@@ -212,7 +212,7 @@ Edge OS treats the firmware as a small operating system. The parts that already 
 +----------------------------------------------------------------------+
 ```
 
-The rules live in one plain C file (`main/os_core.c`) that the host tests check. The firmware side is `main/os.c`. Files that the S3 build also uses call the OS through two macros in `main/os_hooks.h`, which turn back into the old S3 code on the S3, so the S3 firmware stays byte for byte the same.
+The rules live in one plain C file (`main/os_core.c`) that the host tests check. The firmware side is `main/os.c`. Files that the S3 build also uses call the OS through two macros in `main/os_hooks.h`, which turn back into the old S3 code on the S3, so the OS layer leaves the S3 firmware byte for byte the same.
 
 ### One reset path
 
@@ -225,8 +225,8 @@ The board is always in one or more of six states, called runlevels:
 - **Boot**: start-up has not finished.
 - **Safe**: three crashes in a row. The model and the learner stay off.
 - **Parked**: nothing else holds.
-- **Driving**: a drive is recorded or the car link is up.
-- **Saving**: USB power is gone and the board runs on its battery (only with the UPS option).
+- **Driving**: a drive is recorded, or the car's computer answers and rows are logged. Searching for the adapter, connecting to it, and an adapter in a parked car with the engine off keep the board Parked. (This rule was merged after the board check and is not yet seen on the board.)
+- **Saving**: the battery is too warm and the board sheds load, or, with the UPS option only, USB power is gone and the board runs on its battery.
 - **Update**: a reset, a door entry or a format is running.
 
 Each service has a list of runlevels it may run in. A service runs only if every runlevel that holds allows it. So in safe mode while driving, both sets of limits apply. The services never ask which runlevel holds. They only ask "may I run now". This is how PebbleOS does it. Switching models, setting the clock, formatting, editing Wi-Fi networks, using the Wi-Fi radio and the USB door's commands all go through this one check. Safe mode still allows a format, the clock, the door and Wi-Fi, so the board can always be repaired. The Board page shows the runlevel.

@@ -74,7 +74,8 @@
 <dt>Power</dt><dd>the car's USB port</dd>
 </dl></div>
 <div class="card"><h3>Why Bluetooth LE only</h3><p>The ESP32-S3 has no Classic Bluetooth radio, so Classic-only adapters will not pair. Check that your adapter's listing says Bluetooth LE.</p>
-<h3 style="margin-top:16px">First boot</h3><p>The board connects to the strongest nearby device that looks like an OBD adapter and remembers it.</p></div>
+<h3 style="margin-top:16px">First boot</h3><p>The board connects to the strongest nearby device that looks like an OBD adapter and remembers it.</p>
+<p><strong>In the next S3 release, not yet tested on a board:</strong> the board asks first. It offers only an adapter with a strong signal, -70 dBm or better, and shows "Use &lt;name&gt;?" with "Strong. Tap = use it" (or "Good" for a weaker signal). Tap BOOT within 5 seconds to pair it. If you do nothing, nothing is saved. Once paired, the adapter also connects at a weaker signal, down to -90 dBm.</p></div>
 </div>
 <div class="tbl"><table>
 <thead><tr><th>Adapter</th><th>Bluetooth</th><th>Status</th></tr></thead>
@@ -125,7 +126,7 @@
 <figure><div class="ph"><span>Capture coming</span></div><figcaption>Details: no picture without a VIN on it yet.</figcaption></figure>
 <div class="txt"><h3>2 · Details</h3><p>Plain text about the link and the drive.</p>
 <dl class="kv">
-<dt>Adapter</dt><dd>the adapter's name and its signal strength</dd>
+<dt>Adapter</dt><dd>the adapter's name and its signal strength. In the next S3 release, not yet tested on a board, it also says "paired" or "not paired".</dd>
 <dt>VIN</dt><dd>the car's vehicle identification number, if it reports one</dd>
 <dt>Protocol</dt><dd>the OBD protocol the car uses</dd>
 <dt>Trouble codes</dt><dd>the MIL (check-engine light) state and the stored and pending codes</dd>
@@ -186,6 +187,7 @@
 <div class="key"><strong>Hold 2 seconds</strong><p>Power off. Let go after 2 seconds. The screen says "Turning off" while it saves and closes the drive, then "Off, safe to unplug". The backlight and LED go dark. Press BOOT to wake it.</p></div>
 <div class="key"><strong>Hold 8 seconds</strong><p>Forget the saved adapter. The screen asks "Forget paired adapter?". Tap BOOT within 5 seconds to forget it, or wait to cancel. The board can then pick another adapter.</p></div>
 </div>
+<div class="card" style="margin-top:16px"><h3>Pairing prompt</h3><p><strong>In the next S3 release, not yet tested on a board.</strong> When the board finds a new adapter with a strong signal, it shows "Use &lt;name&gt;?" and "Strong. Tap = use it" for 5 seconds. A tap on BOOT pairs it. If an alarm is showing, the first tap clears the alarm. If you wait, nothing is saved, and the board offers that adapter again only after your next double-click or a restart. The automatic search never replaces a paired adapter. To switch to another adapter, double-click BOOT while the car link is not working, or forget the paired one first.</p></div>
 <div class="card" style="margin-top:16px"><h3>The connection search</h3><p>Some cars have several computers that answer at once, such as the engine and the transmission. The board picks the engine computer. With no engine data for a minute, it searches by itself. It tries every protocol and each computer in turn, and keeps the one that works. It only reads. Nothing is written to the car or the adapter. With no adapter in range, it lets a different adapter be found for 90 seconds.</p></div>
 </section>
 
@@ -303,7 +305,7 @@ idf.py -p /dev/cu.usbmodemXXXX flash monitor</code></pre>
 <h2>When something looks wrong</h2>
 <div class="grid2">
 <div class="card"><h3>No engine data</h3><p>Check that the ignition is on and the adapter is in the port. Double-click BOOT to start a connection search now. The board also starts one by itself after a minute without engine data.</p></div>
-<div class="card"><h3>It found the wrong adapter</h3><p>Hold BOOT for 8 seconds, then tap BOOT to confirm. The board forgets the saved adapter and connects to the strongest nearby adapter again.</p></div>
+<div class="card"><h3>It found the wrong adapter</h3><p>Hold BOOT for 8 seconds, then tap BOOT to confirm. The board forgets the saved adapter and connects to the strongest nearby adapter again. In the next S3 release, not yet tested on a board, it asks first ("Use &lt;name&gt;?"), and you tap BOOT within 5 seconds only for the right one.</p></div>
 <div class="card"><h3>A value shows "--"</h3><p>Either the car does not report it, or the drive has not started. The board shows a dash rather than guess.</p></div>
 <div class="card"><h3>The clock is wrong</h3><p>The clock needs a known Wi-Fi network within reach while parked, and it is exact to about one second. Check the time zone in the desktop app.</p></div>
 <div class="card"><h3>The board stays in download mode after flashing</h3><p>Reset it with this command.</p><pre class="code"><code>python -m esptool --chip esp32s3 -p &lt;port&gt; --after watchdog-reset chip-id</code></pre></div>

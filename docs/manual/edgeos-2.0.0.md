@@ -49,7 +49,7 @@ A small neural network, called the model, watches the last few seconds of drivin
 > [!NOTE]
 > **What 2.0.0 adds**
 >
-> Version 2.0.0 adds a small operating-system layer. You do not have to set anything up for it. About a minute after every start the board rates its own health and shows it on the Board page. While you drive it refuses changes that could spoil the drive, such as a model switch, and tells you why. It watches the battery's temperature and voltage. Section 08 explains every line and message it shows.
+> Version 2.0.0 adds a small operating-system layer. You do not have to set anything up for it. About a minute after every start the board rates its own health and shows it on the Board page. While you drive it refuses changes that could spoil the drive, such as a model switch, and tells you why. It watches the battery's temperature and voltage. It pairs a new OBD adapter only when you say yes. Section 08 explains every line and message it shows.
 
 > [!NOTE]
 > **Local first**
@@ -84,9 +84,9 @@ A small neural network, called the model, watches the last few seconds of drivin
 > [!WARNING]
 > **About the captures in this manual.**
 >
-> They come from mossREV 1.2.0 builds, the release before 2.0.0, taken on a bench with no car connected. The apps and their values are the same in 2.0.0. The Board page gains a health line, and the text on screen gets larger. New captures from 2.0.0 will replace these.
+> They come from mossREV 1.2.0 builds, the release before 2.0.0, taken on a bench with no car connected. The apps and their values are the same in 2.0.0. Four things look different in 2.0.0. No text on screen is smaller than 16 px, so several lines are shorter or larger. The Board page scrolls and shows the health in its header. The model's file shows by name, "active-estimator" for R.E.V and "ev-frozen" for E.V. A new adapter is offered on a pairing sheet (see Pairing your OBD adapter). New captures from 2.0.0 will replace these.
 >
-> <!-- VERIFY: the larger screen text (OS2b's font-size fix) is in the final EdgeOS 2.0.0 image. If it is not, drop "and the text on screen gets larger". -->
+> These four changes are built and checked on a computer, not yet seen on the board.
 
 <a id="start"></a>
 
@@ -115,12 +115,28 @@ A press counts when you let go within 1 second. A longer hold does nothing.
 ### Before the first drive
 
 1. Check that Settings > FIRMWARE AND BOARD shows EdgeOS 2.0.0.
-2. Wait about a minute after the start. The bottom line of the Board page then says "Parked, health good" in green. See section 08 if it says something else.
+2. Wait about a minute after the start. The top right of the Board page then says "Parked, health good" in green. See section 08 if it says something else.
 3. Check that Settings > MODEL shows R.E.V.
 4. Set the clock. Join Wi-Fi, or use Settings > Set clock. The clock line then says "From Wi-Fi" or "Set by hand".
 5. Open Files and check that the storage bar shows the 128 MB NAND.
-6. Plug the adapter into the OBD-II port and switch the ignition on.
+6. Plug the adapter into the OBD-II port and switch the ignition on. The first time, the board asks before it pairs (see below). Tap Use this adapter.
 7. Within about a minute the Drive app shows speed and rpm. If it does not, open Settings > OBD ADAPTER and tap Find OBD adapter.
+
+### Pairing your OBD adapter
+
+The board pairs with one adapter, and after that it connects to it by itself. It never saves an adapter without asking you.
+
+1. Plug the adapter in, switch the ignition on and keep the board in the car, near the adapter.
+2. The board offers only an adapter with a strong signal, -70 dBm or better. An adapter in a car parked next to yours is usually weaker, so it is not offered.
+3. When an adapter answers, a sheet asks "OBD adapter found: &lt;name>, signal strong. Use this adapter?" A weaker one says "signal good". Under it you see "Nothing is saved unless you choose." and the seconds left.
+4. Tap Use this adapter. The events say "OBD adapter paired: &lt;name>".
+
+- **Not this one:** the board skips that adapter until its next start
+- **No answer in 30 s:** nothing is saved, and the events say "OBD adapter not paired". The board does not offer that adapter again until you tap Find OBD adapter or restart.
+- **Switching to another adapter:** open Settings > OBD ADAPTER and tap Find OBD adapter. For the next 90 s the board offers a new adapter with a strong signal, even though one is paired. The automatic search never replaces your paired adapter.
+- **At the edge of range:** once paired, your adapter also connects at a weaker signal, down to -90 dBm
+
+This pairing sheet is new in 2.0.0. It is built and checked on a computer, not yet tested on the board.
 
 <a id="nav"></a>
 
@@ -210,7 +226,7 @@ While E.V runs, the cards are dimmed and the page says "Learning off: E.V in use
 
 *Left:* R.E.V, in use. *Right:* E.V, in use, dark theme.
 
-One app per model, side by side on the launcher. Each shows the model's name, its self-test and its own figures.
+One app per model, side by side on the launcher. Each shows the model's name, its file, its self-test and its own figures. The file shows by name: "active-estimator" for R.E.V and "ev-frozen" for E.V.
 
 - **Self-test:** at start the board checks the model against known answers. "exact" means it matched. "One run" is how long one answer takes.
 - **R.E.V figures:** fuel learning in this car: updates taken, updates kept as is, pairs seen and resets to factory
@@ -327,7 +343,7 @@ The board ranks the codes by severity and groups codes that share a cause, so se
 
 *[Capture coming] Board: no capture of the 2.0.0 Board page yet.*
 
-The board's own health, for checks and bug reports.
+The board's own health, for checks and bug reports. The page scrolls: the RAM and battery cards, log storage and the first deadline rows fill the screen, and the rest of the table and the footer follow below.
 
 - **Firmware:** the firmware version, and the chip with its revision ("S31 rev" and a number)
 - **RAM free:** free internal memory in KB, the lowest it has been since start, and free PSRAM in MB
@@ -335,7 +351,8 @@ The board's own health, for checks and bug reports.
 - **Log storage:** free space on the NAND in MB, and on the flash in KB
 - **Soft deadlines:** the scheduler's job table: each job's runs, its worst run and how many times it missed its deadline. "All jobs on time" means no misses.
 - **Touch errors:** how often the touch controller failed to answer
-- **Bottom line:** the board state and its health, for example "Parked, health good". Green means good, amber degraded, red bad. During the first minute after a start it says "health pending". Section 08 explains it.
+- **Header:** at the top right, the board state and its health, for example "Parked, health good". Green means good, amber degraded, red bad. During the first minute after a start it says "health pending". Section 08 explains it.
+- **Footer:** two centred lines at the end of the scroll: the firmware version and the touch errors
 
 ### Files
 
@@ -362,7 +379,7 @@ Search, join and the clock sync. The radio is off unless one of these is running
 - **Status:** what Wi-Fi is doing, and whether the clock has been synced over Wi-Fi
 - **Sync clock now:** sets the clock now from a saved network. With none saved it says "No saved network yet: search and join one first."
 - **Search for networks:** lists the networks in range so you can join one
-- **Saved networks:** the networks the board knows (up to 8), each with Forget
+- **Saved networks:** the networks the board knows (up to 8), each with Forget. The note under the list says "The board uses them only to set its clock."
 
 Section 06 covers searching and joining.
 
@@ -403,7 +420,7 @@ A theme change redraws the screen once, so it pauses for a moment. The change wa
 
 ### Model
 
-R.E.V or E.V. The line below names the model in use and its self-test. A switch works only while parked. If the board refuses a switch, the line starts with "Not switched" and gives the reason. See The two models.
+R.E.V or E.V. The line below names the model in use, its file and its self-test, for example "CarMind R.E.V active-estimator, self-test exact." A switch works only while parked. If the board refuses a switch, the line starts with "Not switched" and gives the reason. See The two models.
 
 ### Clock
 
@@ -425,7 +442,7 @@ Each app has Up and Down buttons that move it one place. The launcher follows th
 
 ### OBD adapter
 
-Find OBD adapter searches for the adapter again. Forget adapter drops the saved one, so the board can pick another.
+Find OBD adapter searches for the adapter again. For 90 s it also offers a new adapter with a strong signal, so you can switch. Forget adapter drops the saved one. Either way, the board asks before it pairs (see Pairing your OBD adapter in section 02).
 
 ### Smart swipe
 
@@ -492,15 +509,13 @@ Switch only while parked. All three ways do the same thing:
 - open Settings > MODEL and tap R.E.V or E.V
 - use the model switch in the desktop app
 
-During a drive the board refuses and says "A drive is active. End the drive first, then switch models." While it is connecting to the adapter, before a drive starts, it says "Not now: the car link is up. Try again later." The board keeps your choice after a restart. Every model mark and name on the screen follows the model in use.
+During a drive the board refuses and says "A drive is active. End the drive first, then switch models." When the car's computer answers but no drive is recorded yet, it says "Not now: the car link is up. Try again later." While the board only searches for the adapter or connects to it, it stays Parked and the switch works. The board keeps your choice after a restart. Every model mark and name on the screen follows the model in use.
 
 ### The board checks that a model fits
 
 A model has to give its answer within 1 second, while the board also reads the car and R.E.V learns. Before it loads a model, the board takes the model's measured run time from its self-test, doubles it for safety, and checks that every job on that core still finishes on time. If one would not, the board keeps the model it has and says, for example, "Not switched: CarMind E.V refused: ml would miss its deadline." Here "ml" is the name of the model's job.
 
-You should not see this with the two models that ship. On the bench, on a 2.0.0 build before the final one, the check gave R.E.V a worst case of 4.5 ms against its 1,000 ms deadline.
-
-<!-- VERIFY: the 4.5 ms comes from OS2's first boot of build 09ec8f5 ("admission CarMind R.E.V: C 4472 us ... R: ml 4.5/1000 ms, margin 995.5 ms"). Re-check on the final EdgeOS 2.0.0 image and update if it differs. -->
+You should not see this with the two models that ship. Measured on the board, EdgeOS 2.0.0 4aeff43: the check gave R.E.V a worst case of 4.2 ms against its 1,000 ms deadline.
 
 <a id="os"></a>
 
@@ -517,7 +532,7 @@ About a minute (65 s) after every start, the board rates itself. It looks at the
 - **Bad:** the screen never updated, or the board started in safe mode after three crashes in a row. Red.
 - **Pending:** the first minute, before the check
 
-The result shows on the bottom line of the Board page, for example "Parked, health good", and in the events list as "Boot health: good".
+The result shows at the top right of the Board page, for example "Parked, health good", and in the events list as "Boot health: good".
 
 ### What a degraded reason means
 
@@ -534,10 +549,10 @@ The board is always in one or more of these states. The Board page shows the mai
 
 - **Boot:** the first seconds after a start, until start-up has finished
 - **Parked:** none of the others. Everything is allowed.
-- **Driving:** a drive is being recorded, or the board is connected or connecting to the adapter
+- **Driving:** a drive is being recorded, or the car's computer answers and the board logs rows. Searching for the adapter, connecting to it, or an adapter in a parked car with the engine off keep the board Parked.
 - **Safe:** the board started in safe mode after three crashes in a row. Logging stays on, the model and R.E.V's learning stay off.
 - **Update:** a restart, a firmware download or Format storage is running
-- **Saving:** the battery is too warm, so the board saves power (see Battery protection below)
+- **Saving:** the battery is too warm, so the board saves power. The screen dims, Wi-Fi waits and R.E.V's learning pauses. The board goes back to Parked by itself when the battery has cooled. See Battery protection below.
 
 Each action is allowed only in some states. If several states hold at once, the action has to be allowed in all of them.
 
@@ -553,11 +568,12 @@ Each action is allowed only in some states. If several states hold at once, the 
 ### Messages when an action has to wait
 
 - **"A drive is active. End the drive first, then switch models.":** a drive is being recorded. The same message ends with "set the clock" or "format" for those actions. Hold End drive, or switch the engine off and wait for the drive to end.
-- **"Not now: the car link is up. Try again later.":** the board is connected or connecting to the adapter. Wait until the drive ends.
+- **"Not now: a drive is running. Try again later.":** the same reason for the clock sync, Format and other actions. Wait until the drive ends.
+- **"Not now: the car link is up. Try again later.":** the car's computer answers, but no drive is recorded yet. Switch the engine off, or wait for the drive to end.
 - **"Not now: the board is starting. Try again later.":** start-up has not finished. Try again a few seconds later.
 - **"Not now: an update or format is running. Try again later.":** wait for the format or the restart to finish
 - **"Not now: safe mode is on. Try again later.":** the board is in safe mode. Restart it. If it stays in safe mode, send the Board page and the events.
-- **"Not now: the board is saving power. Try again later.":** the battery is warm. Let the board cool down.
+- **"Not now: the board is saving power. Try again later.":** the battery is warm. Let the board cool down. If you tap Sync clock now while the board saves power, the sync waits until the battery has cooled.
 - **"Not forgotten: a drive is running.":** Forget for a Wi-Fi network waits until you park
 - **"ERR busy: ..., try again when parked":** the board answers the desktop app with this during a drive
 
@@ -589,7 +605,7 @@ Every restart the firmware asks for, such as the restart after Format storage or
 
 The chip has a pixel accelerator and a 2D copy engine. Edge OS uses them to copy the page pictures while you swipe and to fill large areas of the screen. If an engine fails three times in a row, or its start-up test does not match the processor's result, the board turns that engine off until the next start and draws with the processor instead.
 
-<!-- VERIFY: the board speed-up of the PPA and 2D-DMA (the A/B slide test in OS2's board plan, step 8). Add the measured number here only if OS2 measured it. -->
+On the board (EdgeOS 2.0.0 4aeff43) both engines stayed on with no failures. How much faster the screen draws is not yet verified on the board.
 
 <a id="alarms"></a>
 
@@ -601,7 +617,7 @@ The chip has a pixel accelerator and a 2D copy engine. Edge OS uses them to copy
 
 *A test alarm on Home, dark theme. The text is a bench test, not a real fault.*
 
-A critical fault shows as a red-edged banner across the top of the screen, over any app.
+A critical fault shows as a red-edged banner across the top of the screen, over any app. Its headline is 32 px text, so you can read it at a glance.
 
 To clear it, tap the banner, swipe up or sideways on it, or press the orange key. The swipe does not move the page underneath. The fault itself stays in the Faults app and on the Home card.
 
@@ -674,7 +690,7 @@ Two things in the app are written for the S3:
 
 You need the image `EdgeOS-2.0.0-esp32s31-merged.bin` and its `.sha256` file, a USB-C cable, Python with pyserial (`pip install pyserial`) and esptool 5.6.0 or later (`pip install "esptool>=5.6.0"`). You press no buttons.
 
-<!-- VERIFY: the release image's file name and where it is published (OS2 builds it). Replace EdgeOS-2.0.0-esp32s31-merged.bin everywhere if the name differs. -->
+The image checked on the board is built from 4aeff43. It is not published yet. The release image will be rebuilt from the latest 2.0.0 code, with the pairing sheet and the larger text, so its SHA-256 will differ. Check the `.sha256` file that comes with the image you download.
 
 1. Plug the board into the computer. It shows up as a USB serial port: `/dev/cu.usbmodem...` on macOS, `/dev/ttyACM...` on Linux, `COMx` on Windows.
 2. Open that port at 1200 baud and close it again. This is the download door. The board finishes its writes and restarts into the chip's download mode.
@@ -696,9 +712,7 @@ The download door needs no pairing. Anyone with the cable can put the board into
 
 Follow the same four steps with the image `mossREV-1.2.0-esp32s31-merged.bin`. Flashing it erases the internal settings again, so pair again afterwards. The drive logs on the NAND and what R.E.V learned stay on the board.
 
-Going back has not been tried on the board yet.
-
-<!-- VERIFY: OS2 or OS2b flashes mossREV 1.2.0 (rc3) over 2.0.0 and back, and checks that the drives and R.E.V's learned state survive both ways. Then replace "Going back has not been tried on the board yet." with the result. -->
+Going back is not yet verified on the board.
 
 <a id="trouble"></a>
 
@@ -722,7 +736,11 @@ The board notices and opens the touch controller again by itself. On the bench t
 
 ### No speed or rpm
 
-Check that the ignition is on and the adapter is in the port. Open Settings > OBD ADAPTER, tap Find OBD adapter and note what the screen says.
+Check that the ignition is on and the adapter is in the port. Open Settings > OBD ADAPTER, tap Find OBD adapter and note what the screen says. If the pairing sheet appears, check the adapter's name before you tap Use this adapter.
+
+### The board never offers my adapter
+
+The board offers a new adapter only at a strong signal. Bring the board close to the adapter, then tap Find OBD adapter. If you tapped Not this one by mistake, restart the board.
 
 ### The clock is wrong
 
