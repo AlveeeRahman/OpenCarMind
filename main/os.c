@@ -300,7 +300,7 @@ void os_power_sample(bool ok, int ma, int mv)
         s_saving = true;                                   /* the Saving runlevel: every change is refused */
         s_ui_req |= OS_UI_DIM;
         sdlog_sync_now();
-        sys_event(EV_WARN, "USB power lost: on battery, %d mA, %d mV; off in %d s", ma, mv, CONFIG_OCM_UPS_GRACE_S);
+        sys_event(EV_WARN, "USB lost: on battery, %d mA, %d mV, off in %d s", ma, mv, CONFIG_OCM_UPS_GRACE_S);
     }
     if (a & OS_UPS_A_RESTORE) {
         s_saving = false;
