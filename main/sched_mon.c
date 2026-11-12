@@ -28,6 +28,9 @@
 #include "esp_rom_sys.h"
 #include "reset_class.h"
 #endif
+#if CONFIG_OCM_AI_SVC
+#include "ai_svc.h"
+#endif
 
 static const char *TAG = "sched";
 
@@ -411,6 +414,9 @@ static void monitor_task(void *arg)
             ESP_LOGI(TAG, "%s", line);
             ESP_LOGI(TAG, "U core0 %.4f core1 %.4f (RM bound %.3f / %.3f), %s", sys.util[0], sys.util[1], sys.rm_bound[0],
                      sys.rm_bound[1], sys.schedulable ? "all WCRT within deadline" : "a WCRT exceeds its deadline");
+#if CONFIG_OCM_AI_SVC
+            if (ai_svc_log_line(line, sizeof line)) ESP_LOGI(TAG, "%s", line);   /* per service: released, done, missed, skipped */
+#endif
         }
     }
 }

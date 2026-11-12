@@ -259,11 +259,12 @@ Each model and learner declares in one table: how often it runs, its deadline, h
 
 If the model starts missing its deadlines, the board gives up comfort before function, one step every 10 s while misses continue:
 
-1. The screen draws half as many frames.
-2. The R.E.V learner pauses. What it learned is kept.
-3. The model's inference pauses. The same model stays loaded.
+1. The AI services (the battery estimator first) run at a tenth of their rate with their learned heads off. Built, not yet checked on the board.
+2. The screen draws half as many frames, and the AI services pause.
+3. The R.E.V learner pauses. What it learned is kept.
+4. The model's inference pauses. The same model stays loaded.
 
-A minute without misses takes one step back. The ladder never switches to another model. Models change only while parked and only when the owner asks. The last step is undone only when parked, so the model does not go on and off during one drive.
+Misses of the screen or of the AI services alone reach step 1 only. A minute without misses takes one step back, in reverse order. The ladder never switches to another model. Models change only while parked and only when the owner asks. The last step is undone only when parked, so the model does not go on and off during one drive.
 
 ### Feature gate
 

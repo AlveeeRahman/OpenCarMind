@@ -1260,7 +1260,8 @@ static void power_sheet_cb(lv_event_t *e)
     if (s_pw_n) snprintf(b, sizeof b, "last %d s: min %.2f  avg %.2f  max %.2f W", s_pw_n, (double)mn, (double)(sum / s_pw_n), (double)mxx);
     else snprintf(b, sizeof b, "no discharge measured in the last 60 s");
     ui_label(c, UI_THEME.f_label, UI_MUTED, b);
-    if (g->ok && g->tte_min > 0 && g->tte_min < 65535)
+    if (meas && g->ma >= 5) snprintf(b, sizeof b, "charging: the power into the cell");   /* not the board's draw */
+    else if (g->ok && g->tte_min > 0 && g->tte_min < 65535)
         snprintf(b, sizeof b, "gauge time to empty %d min%s", g->tte_min, mosaico_gauge_uncalibrated(g) ? " (gauge not configured for the cell)" : "");
     else snprintf(b, sizeof b, "gauge time to empty: not reported");
     lv_obj_t *tte = ui_label(c, UI_THEME.f_small, UI_MUTED, b);
@@ -1594,7 +1595,10 @@ static void refresh_home(const ui_snap_t *s)
     if (!s->gauge.ok) { ui_set_text(h_sub[3], ""); ui_set_text(h_pw_note, "gauge not read"); }
     else if (!meas) { ui_set_text(h_sub[3], "ON USB"); ui_set_text(h_pw_note, "not measured"); }
     else {
-        ui_set_fmt(h_sub[3], "%.2f V x %d mA", s->gauge.mv / 1000.0, abs(s->gauge.ma));   /* on the battery: volts and amps */
+        /* charging (USB): the gauge measures the current into the cell, so V x I is the charging power, not the board's
+           draw; "CHARGING 999 mA" 15 characters, narrower than "SYS  320.0 MIPS" */
+        if (s->gauge.ma >= 5) ui_set_fmt(h_sub[3], "CHARGING %d mA", s->gauge.ma);
+        else ui_set_fmt(h_sub[3], "%.2f V x %d mA", s->gauge.mv / 1000.0, abs(s->gauge.ma));   /* on the battery: volts and amps */
         pw_fill(h_pw_chart, h_pw_ser, h_pw_area, h_pw_sera, NULL);
         SI_MUT();
         if (s_pw_n) {                                      /* the dot on the newest point */

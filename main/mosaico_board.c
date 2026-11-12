@@ -31,6 +31,10 @@
 #include "esp_heap_caps.h"
 #include "sys_mode.h"
 #include "wifi_ui_logic.h"
+#include "ai_svc.h"
+#if CONFIG_OCM_BAT_EST
+#include "bat_est.h"
+#endif
 
 static const char *TAG = "mosaico";
 
@@ -656,6 +660,8 @@ static void board_task(void *arg)
         portENTER_CRITICAL(&s_mux);
         s_last = g;
         portEXIT_CRITICAL(&s_mux);
+        ai_svc_gauge_publish(&g);                  /* the AI services' copy of this sample (read-only, no extra I2C) */
+        ai_svc_board_tick(false);                  /* their NVS saves and log rows, here where storage work belongs */
         settings_flush();
 #if CONFIG_OCM_SWIPE_INTENT
         si_flush();
@@ -703,6 +709,14 @@ static void board_task(void *arg)
             ESP_LOGI(TAG, "PWR soc=%d%% mv=%d ma=%d rem=%d/%d mAh design=%d temp=%.1fC soh=%d%% cycles=%d status=0x%04x%s", g.soc,
                      g.mv, g.ma, g.rem_mah, g.full_mah, g.design_mah, g.temp_dc / 10.0, g.soh, g.cycles, (unsigned)g.bstat,
                      mosaico_gauge_uncalibrated(&g) ? " (gauge not configured for the 65 mAh cell)" : "");
+#if CONFIG_OCM_BAT_EST
+        bat_est_out_t be;
+        if (tick % 30 == 0 && g.ok && bat_est_read(&be))
+            ESP_LOGI(TAG, "BAT est soc=%.1f%% soh=%.0f%% dcir=x%.2f mode=%s%s%s, %lu steps, log %lu rows (%lu dropped, %lu skipped)",
+                     (double)be.soc_pct, (double)be.soh_pct, (double)be.dcir_ratio, bat_mode_name(be.mode), be.anchored ? "" : ", learning",
+                     be.placeholder ? ", placeholder model" : "", (unsigned long)be.steps, (unsigned long)be.log_rows,
+                     (unsigned long)be.log_dropped, (unsigned long)be.log_skipped);
+#endif
         os_tick();                                 /* mossREV OS: runlevel changes in the log */
 #if CONFIG_OCM_UPS
         os_power_sample(g.ok, g.ma, g.mv);         /* the UPS state (os_core.h section 6) */

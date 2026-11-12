@@ -45,6 +45,12 @@ extern const lv_image_dsc_t ocm_icon_drive_52, ocm_icon_ai_52, ocm_icon_learn_52
 #include "sdlog.h"
 #include "sys_mode.h"
 #include "uploader.h"
+#if CONFIG_OCM_AI_SVC
+#include "ai_svc.h"
+#endif
+#if CONFIG_OCM_BAT_EST
+#include "bat_est.h"
+#endif
 
 #define F48 (UI_THEME.f_hero)
 #define F32 (UI_THEME.f_big)
@@ -1023,7 +1029,10 @@ static void engine_update(const ui_snap_t *s)
 /* ======================= Board: flex columns and rows; the deadline table is an lv grid sized to its texts ======= */
 static lv_obj_t *o_dot, *o_jobs_ok, *o_touch, *o_ram_v, *o_ram_note, *o_psram, *o_bat_v, *o_bat_note, *o_cal, *o_store,
                 *o_sbar, *o_flash, *o_fw, *o_health;
-#define O_ROWS 6
+#define O_ROWS 8                                           /* sched_mon's MAX_JOBS: the AI worker's "ai" row too */
+#if CONFIG_OCM_AI_SVC
+static lv_obj_t *o_est, *o_ai_lv, *o_ai[AI_SVC_MAX + 1];  /* the estimator line; the AI services card (+1: why not) */
+#endif
 static lv_obj_t *o_rn[O_ROWS], *o_rr[O_ROWS], *o_rw[O_ROWS], *o_rb[O_ROWS], *o_rm[O_ROWS];
 
 static lv_obj_t *fbox(lv_obj_t *p, lv_flex_flow_t f, lv_flex_align_t main, lv_flex_align_t cross, int gap)
@@ -1085,6 +1094,9 @@ static void board_create(lv_obj_t *p)
     o_bat_v = ui_label(c, UI_THEME.f_title, UI_TEXT, "--");
     o_bat_note = ui_label(c, UI_THEME.f_small, UI_MUTED, "");
     o_cal = ui_label(c, UI_THEME.f_small, UI_WARN, "");
+#if CONFIG_OCM_AI_SVC
+    o_est = ui_label(c, UI_THEME.f_small, UI_MUTED, "");      /* the estimator: "est 87 %, SoH 98 %" */
+#endif
     c = fcard(col, 0);
     lv_obj_set_width(c, LV_PCT(100));
     lv_obj_t *r = frow(c);
@@ -1147,6 +1159,20 @@ static void board_create(lv_obj_t *p)
         o_rm[i] = ui_label(g, UI_THEME.f_small, UI_GREEN, "");
         lv_obj_set_grid_cell(o_rm[i], LV_GRID_ALIGN_END, 4, 1, LV_GRID_ALIGN_CENTER, i + 1, 1);
     }
+#if CONFIG_OCM_AI_SVC
+    /* AI services (ai_svc.c): one wrapped line pair per service, so nothing runs past the card */
+    c = fcard(col, 0);
+    lv_obj_set_width(c, LV_PCT(100));
+    r = frow(c);
+    d_lab(r, "AI SERVICES", 0, 0, UI_MUTED);
+    o_ai_lv = ui_label(r, UI_THEME.f_label, UI_MUTED, "");
+    for (int i = 0; i <= AI_SVC_MAX; i++) {
+        o_ai[i] = ui_label(c, UI_THEME.f_small, UI_TEXT, "");
+        lv_obj_set_width(o_ai[i], LV_PCT(100));
+        lv_label_set_long_mode(o_ai[i], LV_LABEL_LONG_WRAP);
+        lv_obj_add_flag(o_ai[i], LV_OBJ_FLAG_HIDDEN);
+    }
+#endif
     /* footer: two centred lines, clear of the rounded corners at the bottom of the page */
     lv_obj_t *f = fbox(col, LV_FLEX_FLOW_COLUMN, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, 2);
     lv_obj_set_size(f, LV_PCT(100), LV_SIZE_CONTENT);
@@ -1173,12 +1199,52 @@ static void board_update(const ui_snap_t *s)
         /* widest texts: "4.89 V, -10.0 C" 165 px (Montserrat 24), "-999 mA, on battery" 171 px and "uncalibrated, 9999 cyc"
            (Montserrat 16), in the card's 194 px */
         ui_set_fmt(o_bat_v, "%.2f V, %.1f C", s->gauge.mv / 1000.0, s->gauge.temp_dc / 10.0);
+#if CONFIG_OCM_BAT_EST
+        bat_est_out_t be;
+        static const char *const MODE_WORD[4] = { "rest", "discharge", "charging", "CV taper" };   /* widest "-999 mA, discharge" */
+        if (bat_est_read(&be)) ui_set_fmt(o_bat_note, "%d mA, %s", s->gauge.ma, MODE_WORD[be.mode & 3]);
+        else
+#endif
         ui_set_fmt(o_bat_note, "%d mA, %s", s->gauge.ma, s->gauge.ma > -5 ? "on USB" : "on battery");
         uint8_t bs = os_battery_state();                   /* battery safety (os_core.h section 8) first */
         if (bs != OS_BAT_OK) { ui_set_text(o_cal, os_bat_name(bs)); ui_set_color(o_cal, bs == OS_BAT_HOT ? UI_WARN : UI_RED); }
         else if (mosaico_gauge_uncalibrated(&s->gauge)) { ui_set_fmt(o_cal, "uncalibrated, %d cyc", s->gauge.cycles); ui_set_color(o_cal, UI_WARN); }
         else { ui_set_fmt(o_cal, "SOH %d %%, %d cyc", s->gauge.soh, s->gauge.cycles); ui_set_color(o_cal, UI_MUTED); }   /* the % is in the status bar */
     } else { ui_set_text(o_bat_v, "--"); ui_set_text(o_bat_note, "gauge not read"); ui_set_text(o_cal, ""); }
+#if CONFIG_OCM_AI_SVC
+    ai_svc_status_t as;
+    bool have_as = ai_svc_status(&as);
+#if CONFIG_OCM_BAT_EST
+    {   /* widest "est 100 %, SoH 120 %" 20 characters, about 180 px of the card's 194 */
+        bat_est_out_t be;
+        if (bat_est_read(&be)) {
+            if (be.anchored) ui_set_fmt(o_est, "est %.0f %%, SoH %.0f %%", (double)be.soc_pct, (double)be.soh_pct);
+            else ui_set_fmt(o_est, "est %.0f %%, learning", (double)be.soc_pct);
+        } else if (have_as && as.n && as.s[0].state == AI_ST_SAFE) ui_set_text(o_est, "est off (safe mode)");
+        else if (have_as && as.n && as.s[0].state != AI_ST_RUNNING) ui_set_text(o_est, "est refused");
+        else ui_set_text(o_est, "est starting");
+    }
+#endif
+    if (!have_as || !as.n) {
+        ui_set_text(o_ai_lv, "starting");
+        for (int i = 0; i <= AI_SVC_MAX; i++) lv_obj_add_flag(o_ai[i], LV_OBJ_FLAG_HIDDEN);
+    } else {
+        if (as.core >= 0) ui_set_fmt(o_ai_lv, "core %d, %s", as.core, ai_dl_name(as.level));
+        else ui_set_text(o_ai_lv, "not running");
+        ui_set_color(o_ai_lv, as.core < 0 ? UI_WARN : as.level ? UI_WARN : UI_GREEN);
+        for (int i = 0; i < AI_SVC_MAX; i++) {
+            if (i >= as.n) { lv_obj_add_flag(o_ai[i], LV_OBJ_FLAG_HIDDEN); continue; }
+            const ai_svc_stat_t *v = &as.s[i];
+            lv_obj_remove_flag(o_ai[i], LV_OBJ_FLAG_HIDDEN);
+            ui_set_fmt(o_ai[i], "%s: every %lu ms, deadline %lu ms, budget %.1f ms\n%lu done, %lu missed, %lu skipped, WCRT %.2f ms",
+                       v->name, (unsigned long)v->period_ms, (unsigned long)v->deadline_ms, v->budget_us / 1000.0,
+                       (unsigned long)v->done, (unsigned long)v->missed, (unsigned long)v->skipped, v->wcrt_us / 1000.0);
+            ui_set_color(o_ai[i], v->missed ? UI_WARN : UI_TEXT);
+        }
+        if (as.why[0]) { lv_obj_remove_flag(o_ai[AI_SVC_MAX], LV_OBJ_FLAG_HIDDEN); ui_set_text(o_ai[AI_SVC_MAX], as.why); ui_set_color(o_ai[AI_SVC_MAX], UI_WARN); }
+        else lv_obj_add_flag(o_ai[AI_SVC_MAX], LV_OBJ_FLAG_HIDDEN);
+    }
+#endif
     if (s->fat.ok && s->fat.total_kb) {
 #if CONFIG_OCM_NAND_LOGS
         if (s->fat.nand) {
