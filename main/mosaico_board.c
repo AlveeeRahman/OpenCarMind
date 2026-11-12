@@ -731,6 +731,13 @@ void mosaico_board_init(void)
        Bluetooth MAC at INFO: its warnings only. */
     esp_log_level_set("wifi", ESP_LOG_ERROR);
     esp_log_level_set("BLE_INIT", ESP_LOG_WARN);
+    /* The "lowest" internal RAM figure (Board page, Wi-Fi lines) is heap_caps_get_minimum_free_size(), the sum of each
+       heap's own minimum. ESP-IDF sets the minimum of a heap added after startup to 0 (heap_caps_add_region_with_caps),
+       and the 32 KB internal reserve (CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL) is added that way: its minimum read 0 although
+       nothing had used it, so the figure was 32 KB too low for the whole run (board: "lowest 49 KB", the reserve pool
+       free 32031 B, allocated 0, min_free 0). Starting the minimum here sets every heap's minimum to its free size now,
+       so the figure is the lowest since this point of the boot; nothing calls the matching stop. */
+    heap_caps_monitor_local_minimum_free_size_start();
     /* Safe states first: motor off; the 3.3 V rail (VCC_3V3, GPIO60 active low) ON. The USB-C controller HUSB320 and the
        boost converter hang off it; switching it off made USB re-enumerate every few seconds (clean project, 2026-11-11). */
     gpio_hold_dis(BOARD_LCD_PWR);
