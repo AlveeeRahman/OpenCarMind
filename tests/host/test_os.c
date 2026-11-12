@@ -456,10 +456,40 @@ static void test_battery(void)
     CHECK(!os_bq_cal_ok(3000, 3000, 11100, 10) && !os_bq_cal_ok(3000, 3000, 11100, 6000) && !os_bq_cal_ok(0, 0, 0, 65), "target range");
 }
 
+/* the car-link input (owner 2026-11-11): Driving only once the car's computer answers. Every Bluetooth state, alone and
+   with each other input, through the unchanged masks. */
+static void test_link_input(void)
+{
+    static const char *const NAME[] = {"idle", "scanning", "connecting", "discovering", "elm init", "logging", "locked"};
+    for (int b = BLE_ST_IDLE; b <= BLE_ST_LOCKED; b++) {
+        bool link = os_rl_link_input((ble_state_t)b);
+        CHECK(link == (b == BLE_ST_LOGGING), "%s: car link %s", NAME[b], link ? "up" : "down");
+        os_rl_in_t in = { .link = link };
+        os_runlevel_t r = os_rl_primary(os_rl_active(&in));
+        CHECK(r == (b == BLE_ST_LOGGING ? OS_RL_DRIVING : OS_RL_PARKED), "%s alone: runlevel %s", NAME[b], os_rl_name(r));
+        if (b != BLE_ST_LOGGING) {
+            /* an attempt to link (a neighbour's adapter, an adapter in a parked car) refuses nothing Parked allows */
+            for (int s = 0; s < OS_SVC_N; s++)
+                CHECK(os_rl_allows(os_rl_active(&in), (os_svc_t)s), "%s: %s allowed", NAME[b], os_svc_name((os_svc_t)s));
+            CHECK(os_rl_blocker(os_rl_active(&in), OS_SVC_MODEL_SWITCH) == OS_RL_N, "%s: nothing blocks a model switch", NAME[b]);
+        } else {
+            CHECK(!os_rl_allows(os_rl_active(&in), OS_SVC_MODEL_SWITCH) && !os_rl_allows(os_rl_active(&in), OS_SVC_FORMAT) &&
+                  !os_rl_allows(os_rl_active(&in), OS_SVC_CLOCK_SET), "logging: switch, format and clock refused");
+            CHECK(!strcmp(os_rl_phrase(OS_RL_DRIVING, &in), "the car link is up"), "logging without a drive: the link phrase");
+        }
+        /* the other inputs still act on their own */
+        os_rl_in_t d = { .link = link, .drive = true };
+        CHECK(os_rl_primary(os_rl_active(&d)) == OS_RL_DRIVING, "%s + a recorded drive: Driving", NAME[b]);
+        os_rl_in_t u = { .link = link, .update = true };
+        CHECK(os_rl_primary(os_rl_active(&u)) == OS_RL_UPDATE, "%s + update: Update shown", NAME[b]);
+    }
+}
+
 int main(void)
 {
     test_reset_plans();
     test_runlevels();
+    test_link_input();
     test_health();
     test_wifi_hold();
     test_rta();

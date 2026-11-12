@@ -110,6 +110,8 @@ const char *os_rl_phrase(os_runlevel_t r, const os_rl_in_t *in)
     }
 }
 
+bool os_rl_link_input(ble_state_t ble) { return ble == BLE_ST_LOGGING; }
+
 const char *os_svc_name(os_svc_t svc)
 {
     static const char *const N[OS_SVC_N] = { "model switch", "clock", "format", "Wi-Fi edit", "Wi-Fi radio", "door", "model",

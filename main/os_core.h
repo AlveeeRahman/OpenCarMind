@@ -13,7 +13,8 @@
  *    the reset that was asked for.
  *
  * 2. Runlevels (after PebbleOS's runlevel service). A runlevel is a condition the board is in: Boot (app_main has not
- *    finished), Safe (3 abnormal resets in a row), Driving (a drive is recorded or the car link is up), Saving (the
+ *    finished), Safe (3 abnormal resets in a row), Driving (a drive is recorded or the car's computer answers over the
+ *    adapter: os_rl_link_input; owner 2026-11-11, scanning and connecting keep Parked), Saving (the
  *    UPS state: USB power lost, CONFIG_OCM_UPS), Update (a reset, a door entry or a storage format is running), and
  *    Parked when none of these holds. Each service has an enable mask over the runlevels. Several conditions can hold
  *    at once (safe mode while driving), so a service runs only if every active runlevel enables it: each active
@@ -96,6 +97,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include "ble_state.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -147,7 +149,7 @@ typedef struct {
     bool boot;               /* app_main has not finished */
     bool safe;               /* sched_safe_mode() */
     bool drive;              /* elm_drive_active(): a drive is being recorded */
-    bool link;               /* sys_mode DRIVE: connecting to the adapter or logging */
+    bool link;               /* sys_mode DRIVE: the car's computer answers over the adapter (os_rl_link_input) */
     bool saving;             /* the UPS state is saving (CONFIG_OCM_UPS) */
     bool update;             /* a reset, a door entry or a format is running */
 } os_rl_in_t;
@@ -162,6 +164,11 @@ const char   *os_rl_name(os_runlevel_t r);                       /* "Parked", "D
    "safe mode is on", "the board is starting", "the board is saving power", "an update or format is running" */
 const char   *os_rl_phrase(os_runlevel_t r, const os_rl_in_t *in);
 const char   *os_svc_name(os_svc_t svc);
+/* the car-link input of the runlevels from the Bluetooth state: true only when the adapter is linked AND the car's
+   computer answered (BLE_ST_LOGGING: elm327.c sets it after the first valid 0100 answer and the PID lists). Scanning,
+   connecting, reading services, the adapter's start-up with a silent computer (ignition off) and a locked adapter keep
+   Parked. Read by sys_mode.c on the ESP-Mosaico; the masks are unchanged. */
+bool          os_rl_link_input(ble_state_t ble);
 
 /* ---------- 3. boot health ---------- */
 enum { OS_H_PENDING = 0, OS_H_GOOD, OS_H_DEGRADED, OS_H_BAD };
