@@ -42,6 +42,7 @@ ml/onboard_s31/ev/*
 tests/host/uimetrics_tests
 tests/host/prefetch_tests
 tests/host/pair_tests
+tests/host/guard_tests
 tests/host/pair_gate_tests
 # editor / OS
 .vscode/

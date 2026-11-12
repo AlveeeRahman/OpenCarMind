@@ -4,6 +4,9 @@
 #include <stdbool.h>
 #include "esp_err.h"
 #include "sdkconfig.h"
+#if CONFIG_OBD_BLE_PAIR_CONFIRM
+#include "board.h"                 /* BOARD_MOSAICO: the pairing safety below */
+#endif
 
 esp_err_t obd_ble_start(void);
 bool      obd_ble_connected(void);
@@ -38,7 +41,28 @@ bool      obd_ble_pair_offer(char *name, size_t n, const char **strength, int *s
 uint32_t  obd_ble_pair_seq(void);
 void      obd_ble_pair_answer(bool yes);
 void      obd_ble_pair_poll(void);
+#endif
+#if CONFIG_OBD_BLE_PAIR_CONFIRM && BOARD_MOSAICO
+/* Pairing safety on the ESP-Mosaico (adapter_guard.h: R1 the adapter fingerprint, R2 no silent re-pair).
+   elm: elm327.c hands over the paired adapter's ATI and AT@1 replies; the fingerprint is checked (or learned on the first
+   link after the yes) and the verdict logged. May write NVS: the obd task (internal-RAM stack).
+   protocol: the ATDPN reply, a soft field (noted, never a mismatch). changed: this link's adapter looks different or its
+   re-pair was refused, so its rows are marked and the learner gets none of them. meta: the obd task, every row: writes the
+   session's "adapter_check" when it changed. offer/answer: the guard question for the screen (one at a time, the pairing
+   sheet's style); seq tells a late answer apart; answer may write NVS (the board task). */
+void      obd_ble_guard_elm(const char *ati, const char *at1);
+void      obd_ble_guard_protocol(const char *dpn);
+bool      obd_ble_adapter_changed(void);
+void      obd_ble_guard_meta(void);
+bool      obd_ble_guard_offer(const char **text, const char **yes, const char **no, const char **note, int *secs_left,
+                              uint32_t *seq);
+void      obd_ble_guard_answer(uint32_t seq, bool yes);
 #else
+#define obd_ble_guard_offer(text, yes, no, note, secs_left, seq) \
+    ((void)(text), (void)(yes), (void)(no), (void)(note), (void)(secs_left), (void)(seq), false)
+#define obd_ble_guard_answer(seq, yes) ((void)(seq), (void)(yes))
+#endif
+#if !CONFIG_OBD_BLE_PAIR_CONFIRM
 /* Connection search: clears the skip list and, for 90 s, lifts the saved-adapter lock so a different adapter can be found.
    A device must still look like an OBD adapter (name or serial service): other people's devices are never tried. */
 void      obd_ble_explore(void);
