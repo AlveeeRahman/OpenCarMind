@@ -301,11 +301,13 @@ static void ai_update(const ui_snap_t *s)
     else snprintf(b, sizeof b, "--");
     d_value_set(&a_tq, b);
     ui_set_color(a_tq.v, UI_THEME.estimate);
-    if (m->learned_ok) { snprintf(b, sizeof b, "%.1f", (double)m->learned_lph); pill_set(a_fu_tag, "LEARNED", UI_GREEN); }
+    /* only R.E.V learns: with E.V in use the tag says MODEL even before the first window (the S3 rule, display.c) */
+    bool lrn = m->learned_ok && rev_in_use(s);
+    if (lrn) { snprintf(b, sizeof b, "%.1f", (double)m->learned_lph); pill_set(a_fu_tag, "LEARNED", UI_GREEN); }
     else if (have) { snprintf(b, sizeof b, "%.1f", (double)m->last_est[2]); pill_set(a_fu_tag, "MODEL", UI_CRIMSON); }
-    else snprintf(b, sizeof b, "--");
+    else { snprintf(b, sizeof b, "--"); pill_set(a_fu_tag, rev_in_use(s) ? "LEARNED" : "MODEL", rev_in_use(s) ? UI_GREEN : UI_CRIMSON); }
     d_value_set(&a_fu, b);
-    ui_set_color(a_fu.v, m->learned_ok ? UI_GREEN : UI_TEXT);
+    ui_set_color(a_fu.v, lrn ? UI_GREEN : UI_TEXT);
 }
 
 /* ======================= Learning ======================= */
@@ -1337,14 +1339,14 @@ static void drive_update(const ui_snap_t *s)
     if (torque_physics(s)) ui_set_fmt(d_ev[1], "%.0f N m", (double)o->torque_nm);
     else if (have) ui_set_fmt(d_ev[1], "%.0f N m", (double)m->last_est[1]);
     else ui_set_text(d_ev[1], "--");
-    if (m->learned_ok) { ui_set_fmt(d_ev[2], "%.1f L/h", (double)m->learned_lph); ui_set_text(d_tag[2], "LEARNED"); }
+    if (m->learned_ok && rev_in_use(s)) { ui_set_fmt(d_ev[2], "%.1f L/h", (double)m->learned_lph); ui_set_text(d_tag[2], "LEARNED"); }
     else if (s->obd_live && o->fuel_lph_calc >= 0) {
         ui_set_fmt(d_ev[2], "%.1f L/h", (double)o->fuel_lph_calc);
         char up[12]; const char *src = fuel_src_name((fuel_src_t)o->fuel_src); int i = 0;
         for (; src[i] && i < 11; i++) up[i] = (char)toupper((unsigned char)src[i]);
         up[i] = 0;
         ui_set_text(d_tag[2], up);
-    } else ui_set_text(d_ev[2], "--");
+    } else { ui_set_text(d_ev[2], "--"); ui_set_text(d_tag[2], rev_in_use(s) ? "LEARNED" : "MODEL"); }
     const rev_tank_out_t *t = &s->rs.tank;
     float level = t->ready ? t->level : have_f(s, F_fuel_level) ? fv(s, F_fuel_level) : -1;
     int tl = level >= 0 ? (int)lroundf(fminf(level, 100) / 10.0f) : 0;
