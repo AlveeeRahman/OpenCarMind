@@ -37,6 +37,10 @@
 #include "events.h"
 #if BOARD_MOSAICO
 #include "mosaico_clock.h"                 /* the clock's source, for the jump guard (R6) */
+#include "ids_svc.h"                       /* the network guard: Wi-Fi hooks (counters only) and its verdict */
+#endif
+#ifndef IDS_HOOK
+#define IDS_HOOK(x) ((void)0)                    /* the S3: no network guard */
 #endif
 
 static const char *TAG = "sync";
@@ -55,6 +59,9 @@ static void wifi_event(void *arg, esp_event_base_t base, int32_t id, void *data)
 {
     if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
         s_last_reason = ((wifi_event_sta_disconnected_t *)data)->reason;
+#if BOARD_MOSAICO
+        IDS_HOOK(ids_hook_wifi_disc(s_last_reason));     /* deauth and disassoc reasons are counted, nothing else */
+#endif
         s_connected = false;
         xEventGroupSetBits(s_ev, LOST_BIT);
     } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
@@ -76,6 +83,16 @@ static wifi_cred_t *pick_network(int8_t *rssi)
     uint16_t n = 24;
     EXT_RAM_BSS_ATTR static wifi_ap_record_t ap[24];
     if (esp_wifi_scan_get_ap_records(&n, ap) != ESP_OK) { esp_wifi_clear_ap_list(); return NULL; }
+#if BOARD_MOSAICO && CONFIG_OCM_IDS
+    ids_hook_wifi_scan_begin();                        /* the guard's Wi-Fi head: one bitmap bit per BSSID hash */
+    for (int i = 0; i < n; i++) ids_hook_wifi_ap(ap[i].bssid);
+    ids_hook_wifi_scan_done();
+    const char *why = NULL;
+    if (ids_wifi_refuse(&why)) {                       /* the round stops here; the clock is kept */
+        sys_event(EV_WARN, "Wi-Fi round stopped: network guard, %s", why);
+        return NULL;
+    }
+#endif
     wifi_cred_t *best = NULL;
     int8_t best_rssi = -127;
     int64_t now_ms = esp_timer_get_time() / 1000;
@@ -128,6 +145,8 @@ static esp_err_t on_header(esp_http_client_event_t *e)
 }
 
 #if BOARD_MOSAICO
+static volatile uint32_t s_jump_refusals;
+uint32_t wifi_sync_clock_refusals(void) { return s_jump_refusals; }
 /* R6 (clock_set.h): a clock that came from Wi-Fi is not moved more than 24 h ahead or 10 min back by one answer */
 static bool jump_ok(int64_t epoch)
 {
@@ -138,6 +157,7 @@ static bool jump_ok(int64_t epoch)
     clock_jump_t j = clock_jump_check(src, now, epoch);
     if (j == CLOCK_JUMP_OK) return true;
     long long mins = (long long)((j == CLOCK_JUMP_AHEAD ? epoch - now : now - epoch) / 60);
+    s_jump_refusals = s_jump_refusals + 1;
     sys_event(EV_WARN, "Clock sync refused: %lld min %s", mins, j == CLOCK_JUMP_AHEAD ? "ahead" : "behind");
     return false;
 }
@@ -174,6 +194,8 @@ static bool sync_clock(void)
     }
 #if BOARD_MOSAICO
     if (!jump_ok(epoch)) return false;
+    const char *why = NULL;
+    if (ids_wifi_refuse(&why)) { sys_event(EV_WARN, "Clock kept: network guard, %s", why); return false; }
 #endif
     /* Date has 1 s resolution: take the middle of that second, stamped half a round trip before the reply arrived */
     int64_t us = epoch * 1000000LL + 500000 + rtt_us / 2;
@@ -212,7 +234,7 @@ static void stay_connected(void)
 /* One attempt: scan, connect, set the clock, linger briefly, disconnect. Returns true when the clock was set. */
 static bool sync_once(void)
 {
-    int8_t rssi = -127;
+    int8_t rssi = -127; IDS_HOOK(ids_hook_wifi_round());
     set_wifi_state(WIFI_ST_SCANNING);
     wifi_cred_t *net = pick_network(&rssi);
     if (!net) return false;
@@ -232,7 +254,7 @@ static bool sync_once(void)
         net->fail_count++;
         net->retry_after_ms = esp_timer_get_time() / 1000 + (net->fail_count >= 3 ? 300000 : 60000);   /* back off: 1 min, then 5 min */
         SYS_EVENT_NET(EV_WARN, "Wi-Fi '%s' connect failed (%u)", net->ssid, net->fail_count);
-        esp_wifi_disconnect();
+        IDS_HOOK(ids_hook_wifi_leave()); esp_wifi_disconnect();
         set_wifi_state(WIFI_ST_IDLE);
         return false;
     }
@@ -263,7 +285,7 @@ static bool sync_once(void)
             if (w & LOST_BIT) { sys_event(EV_WARN, "Wi-Fi lost (reason %d)", s_last_reason); break; }
         }
     } else if (ok) stay_connected();
-    esp_wifi_disconnect();
+    IDS_HOOK(ids_hook_wifi_leave()); esp_wifi_disconnect();
     vTaskDelay(pdMS_TO_TICKS(500));
     set_wifi_state(WIFI_ST_IDLE);
     return ok;

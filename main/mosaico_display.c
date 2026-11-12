@@ -812,15 +812,21 @@ static void settings_load(void)
 {
     ui_settings_t s, m;
     settings_defaults(&s_set);
-    if (!mosaico_settings_load(&s, sizeof s)) return;
-    int wifi = -1, ev = -1;
+    if (!mosaico_settings_load(&s, sizeof s)) {
+        ui_settings_v7_t s7;                             /* versions 5-7: the 16-app layout (ui_settings_logic.h) */
+        if (!mosaico_settings_load(&s7, sizeof s7)) return;
+        ocm_settings_from_v7(&s7, &s);
+    }
+    int wifi = -1, ev = -1, health = -1;
     for (int i = 0; i < ui_app_count(); i++) {
         if (!strcmp(ui_app(i)->id, "wifi")) wifi = i;
         if (!strcmp(ui_app(i)->id, "ev")) ev = i;
+        if (!strcmp(ui_app(i)->id, "health")) health = i;
     }
     /* version 5 -> 6: the Wi-Fi app goes in before Settings and every hidden app shows again; 6 -> 7: the E.V app goes
-       in after R.E.V (read once, then saved); invalid indices are dropped and apps added in a newer firmware are appended */
-    int r = ocm_settings_migrate(&s, &m, ui_app_count(), wifi, ev);
+       in after R.E.V; 7 -> 8: the Health app goes in after Board (read once, then saved); invalid indices are dropped
+       and apps added in a newer firmware are appended */
+    int r = ocm_settings_migrate(&s, &m, ui_app_count(), wifi, ev, health);
     if (r == OCM_SET_REJECT) return;
     if (m.widget >= W_COUNT) m.widget = W_KPL;
     if (m.theme > 2) m.theme = 0;
@@ -1177,9 +1183,9 @@ static void wall_task(void *arg)
 
 /* ---------- launcher (H): one tileview. Tile 0 = Home (smart card, dark clock tile, SYSTEM card, All apps, dots, End
    drive pill). Tiles 1..4 = the apps, four a page in a 2 x 2 grid of lifted cards ---------- */
-#define N_APP_PAGES 4
+#define N_APP_PAGES 5                    /* at most: 4 apps a page; EdgeOS 2.1.0 has 17 apps (Health), so 5 pages */
 static lv_obj_t *s_tv, *s_tiles[1 + N_APP_PAGES];
-static int s_ntiles, s_return_tile;
+static int s_ntiles, s_return_tile, s_npages = N_APP_PAGES;   /* s_npages: grid pages in use, (apps + 3) / 4 */
 static lv_obj_t *h_ctl, *h_lab, *h_tag, *h_val, *h_unit, *h_dot, *h_line, *h_ind[3], *h_noclock, *w_hand_h, *w_hand_m;
 static lv_obj_t *h_sub[4], *h_bar[3], *h_rv[4], *h_pw_note, *h_search, *h_pw_chart, *h_pw_area, *h_pw_dot, *h_card;
 static lv_chart_series_t *h_pw_ser, *h_pw_sera;
@@ -1627,8 +1633,9 @@ static void refresh_home(const ui_snap_t *s)
     else if (!meas) { ui_set_text(h_sub[3], "ON USB"); ui_set_text(h_pw_note, "not measured"); }
     else {
         /* charging (USB): the gauge measures the current into the cell, so V x I is the charging power, not the board's
-           draw; "CHARGING 999 mA" 15 characters, narrower than "SYS  320.0 MIPS" */
-        if (s->gauge.ma >= 5) ui_set_fmt(h_sub[3], "CHARGING %d mA", s->gauge.ma);
+           draw; "CHARGE 99 mA" fits the 150 px column at 16 px with its letter spacing ("CHARGING 12 mA" ran 6 px past it,
+           host textfit), "CHARGE 999 mA" is 1 px over (the 65 mAh cell's charger gives far less) */
+        if (s->gauge.ma >= 5) ui_set_fmt(h_sub[3], "CHARGE %d mA", s->gauge.ma);
         else ui_set_fmt(h_sub[3], "%.2f V x %d mA", s->gauge.mv / 1000.0, abs(s->gauge.ma));   /* on the battery: volts and amps */
         pw_fill(h_pw_chart, h_pw_ser, h_pw_area, h_pw_sera, NULL);
         SI_MUT();
@@ -1650,15 +1657,15 @@ static void refresh_home(const ui_snap_t *s)
 static void build_apps_page(lv_obj_t *t, int page, const int *apps, int n)
 {
     /* the default order (registry order, four a page): Drive AI Learning R.E.V | E.V Summary Live Fuel |
-       Brakes Trip Engine Faults | Board Files Wi-Fi Settings */
-    static const char *const TITLE[N_APP_PAGES] = {"DRIVE AND AI", "E.V AND CAR DATA", "TRIP AND FAULTS", "BOARD AND SETTINGS"};
+       Brakes Trip Engine Faults | Board Health Files Wi-Fi | Settings */
+    static const char *const TITLE[N_APP_PAGES] = {"DRIVE AND AI", "E.V AND CAR DATA", "TRIP AND FAULTS", "BOARD AND HEALTH", "SETTINGS"};
     lv_obj_t *col = page_col(t, 56, 10);
     lv_obj_t *r = flex_box(col, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, 0);
     lv_obj_set_size(r, LV_PCT(100), LV_SIZE_CONTENT);
     lv_obj_set_style_pad_hor(r, 8, 0);
     card_label(r, TITLE[page < N_APP_PAGES ? page : N_APP_PAGES - 1], HM);
     lv_obj_t *pl = ui_label(r, UI_THEME.f_small, HM, "");
-    ui_set_fmt(pl, "%d of %d", page + 1, N_APP_PAGES);
+    ui_set_fmt(pl, "%d of %d", page + 1, s_npages);
     lv_obj_t *grid = lv_obj_create(col);
     lv_obj_remove_style_all(grid);
     lv_obj_set_width(grid, LV_PCT(100));
@@ -1700,7 +1707,7 @@ static void build_apps_page(lv_obj_t *t, int page, const int *apps, int n)
     }
     lv_obj_t *dr = flex_box(col, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, 0);
     lv_obj_set_size(dr, LV_PCT(100), 10);
-    page_dots(dr, 1 + page, 1 + N_APP_PAGES);
+    page_dots(dr, 1 + page, 1 + s_npages);
 }
 
 static void slide_attach(void);
@@ -1715,7 +1722,10 @@ static void build_launcher(void)
     if (s_wall_ready) lv_image_set_src(s_wall_img, &s_wall_dsc2[s_light]);
     lv_obj_set_style_bg_color(s_home, lv_color_hex(s_light ? 0xF3F1EC : 0x000000), 0);
     int shown[UI_MAX_APPS], n = home_order(shown);
-    s_ntiles = 1 + N_APP_PAGES;
+    s_npages = (n + 3) / 4;
+    if (s_npages < 1) s_npages = 1;
+    if (s_npages > N_APP_PAGES) s_npages = N_APP_PAGES;
+    s_ntiles = 1 + s_npages;
 #if CONFIG_OCM_UI_METRICS
     s_nicons = 0;
 #endif
@@ -1728,7 +1738,7 @@ static void build_launcher(void)
         lv_obj_remove_flag(s_tiles[t], LV_OBJ_FLAG_SCROLLABLE);
     }
     build_home_tile(s_tiles[0]);
-    for (int p = 0; p < N_APP_PAGES; p++) build_apps_page(s_tiles[1 + p], p, shown + p * 4, n - p * 4 > 0 ? n - p * 4 : 0);
+    for (int p = 0; p < s_npages; p++) build_apps_page(s_tiles[1 + p], p, shown + p * 4, n - p * 4 > 0 ? n - p * 4 : 0);
     if (s_return_tile >= s_ntiles) s_return_tile = 0;
     lv_tileview_set_tile_by_index(s_tv, (uint32_t)s_return_tile, 0, LV_ANIM_OFF);
     slide_attach();

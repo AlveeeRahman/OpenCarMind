@@ -29,6 +29,8 @@
 #include "nand_store.h"
 #endif
 #include "uishot.h"
+#include "ai_svc.h"
+#include "health_view.h"
 
 app_status_t g_status;
 SemaphoreHandle_t g_status_mutex;
@@ -498,3 +500,91 @@ bool sdlog_saved(void) { return true; }
 sys_mode_t sys_mode_get(void) { return (sys_mode_t)0; }
 void sys_reset(sys_reset_reason_t r, const char *d) { (void)r; (void)d; abort(); }
 bool uploader_busy(void) { return false; }
+
+/* ---- EdgeOS AI services and the Health app (health_view.h). Demo: realistic values for the manual. Worst case: the
+   widest texts each field can show (the guard blocking with the Clear button, an alarm class, four services with big
+   numbers, three long events). Idle: nothing measured yet. ---- */
+static bool s_ids_blocking = true;
+bool ids_blocking_enabled(void) { return s_ids_blocking; }
+void ids_set_blocking(bool on) { s_ids_blocking = on; }
+void ids_request_clear(void) {}
+const char *hv_ladder_name(uint8_t l)
+{
+    static const char *const N[] = { "normal", "AI slowed", "UI slowed", "learner paused", "model paused" };
+    return l < 5 ? N[l] : "?";
+}
+const char *ai_dl_name(uint8_t level)
+{
+    static const char *const N[3] = { "normal", "slowed x10", "paused" };
+    return level < 3 ? N[level] : "?";
+}
+static void svc(health_view_t *v, int i, const char *n, uint8_t st, uint32_t runs, uint32_t miss, uint32_t skip, uint32_t wcrt,
+                uint32_t bud, uint32_t per)
+{
+    snprintf(v->ai[i].name, sizeof v->ai[i].name, "%s", n);
+    v->ai[i].state = st; v->ai[i].runs = runs; v->ai[i].misses = miss; v->ai[i].skipped = skip;
+    v->ai[i].wcrt_us = wcrt; v->ai[i].budget_us = bud; v->ai[i].period_ms = per;
+}
+void health_view_read(health_view_t *v)
+{
+    memset(v, 0, sizeof *v);
+    v->soh_ref_need = 10; v->anom_warm_need_h = 24; v->shadow_need_h = 2; v->blocking_on = s_ids_blocking;
+    v->bat_event_age_s = -1;
+    for (int k = 0; k < HV_EV_N; k++) v->guard_ev_age_s[k] = -1;
+    if (uishot_case.idle) { v->ids_state = HV_IDS_LEARNING; v->ai_core = -1; return; }
+    if (uishot_case.demo) {
+        v->bat_valid = v->bat_anchored = true; v->bat_mode = 2; v->usb = true;
+        v->soc_pct = 87; v->i_ma = 12; v->v = 4.12f; v->p_mw = 49; v->temp_c = 25.8f;
+        v->soh_src = HV_SOH_MODEL; v->soh_pct = 97; v->soh_ref_n = 10; v->dcir_ratio = 1.04f;
+        v->anom_state = HV_ANOM_WARMUP; v->anom_warm_h = 3.2f; v->anom_score = 0.8f; v->anom_thr = 5.38f;
+        snprintf(v->bat_event, sizeof v->bat_event, "%s", "Battery anomaly detector warming up");
+        v->bat_event_age_s = 120;
+        v->ids_state = HV_IDS_SHADOW; v->shadow_h = 0.7f;
+        v->head_on[HV_HEAD_SCAN] = v->head_on[HV_HEAD_LINK] = true;
+        v->head_q8[HV_HEAD_SCAN] = 34; v->head_q8[HV_HEAD_LINK] = 12;
+        v->fp_checks = 3;
+        snprintf(v->guard_ev[0], HV_EV_LEN, "%s", "Network guard: shadow started (2 h)");
+        v->guard_ev_age_s[0] = 2520;
+        snprintf(v->guard_ev[1], HV_EV_LEN, "%s", "OBD adapter fingerprint same (id 3f9a)");
+        v->guard_ev_age_s[1] = 2400;
+        v->ai_n = 3; v->ai_core = 1; v->ai_level = 0; v->os_level = 0;
+        svc(v, 0, "bat", 1, 2512, 0, 0, 2610, 2000, 1000);
+        svc(v, 1, "banom", 1, 1256, 0, 0, 3020, 1500, 2000);
+        svc(v, 2, "ids", 1, 502, 0, 0, 3480, 2000, 5000);
+        return;
+    }
+    v->bat_valid = true; v->bat_anchored = false; v->bat_mode = 1; v->usb = false;
+    v->soc_pct = 100; v->i_ma = -999; v->v = 4.38f; v->p_mw = -4375; v->temp_c = -40.0f;
+    v->soh_src = HV_SOH_LEARNING; v->soh_ref_n = 10; v->dcir_ratio = 9.99f;
+    v->anom_state = HV_ANOM_ALARM; v->anom_score = 99.9f; v->anom_thr = 5.38f;
+    snprintf(v->anom_class, sizeof v->anom_class, "%s", "self-discharge (rest drop)");
+    snprintf(v->bat_event, sizeof v->bat_event, "%s", "Battery anomaly: self-discharge (rest drop), score 99.9");
+    v->bat_event_age_s = 172800 * 50;
+    v->ids_state = HV_IDS_BLOCKING; v->blocking_on = true;
+    snprintf(v->block_reason, sizeof v->block_reason, "%s", "BLE flood nearby (rotating addresses)");
+    v->block_left_s = 600;
+    for (int k = 0; k < HV_HEADS; k++) { v->head_on[k] = true; v->head_q8[k] = 99999; }
+    v->fp_checks = v->repair_refusals = v->clock_refusals = v->blocks_today = 99999;
+    static const char *const EVL[HV_EV_N] = { "Network guard: blocking, BLE flood nearby (hash 3f9a1c2e)",
+        "Network guard: Wi-Fi round aborted, clock kept (3 deauths)", "Network guard: re-pair request refused (hash 0b7d55e1)" };
+    for (int k = 0; k < HV_EV_N; k++) { snprintf(v->guard_ev[k], HV_EV_LEN, "%s", EVL[k]); v->guard_ev_age_s[k] = 3599 + 172800 * k; }
+    v->ai_n = AI_SVC_MAX; v->ai_core = 1; v->ai_level = 2; v->os_level = 4;
+    snprintf(v->ai_why, sizeof v->ai_why, "%s", "ids refused: self-test 99999 us over 2000 us");
+    static const char *const NM[4] = { "bat", "banom", "ids", "wwwwwww" };
+    for (int i = 0; i < AI_SVC_MAX; i++) svc(v, i, NM[i], (uint8_t)(i % 5), 4294967295u, 4294967295u, 4294967295u, 4294967295u, 99999, 99999);
+}
+bool ai_svc_status(ai_svc_status_t *out)
+{
+    memset(out, 0, sizeof *out);
+    if (uishot_case.idle) return false;
+    out->n = 3; out->core = 1; out->level = uishot_case.demo ? 0 : 2;
+    static const char *const NM[3] = { "bat", "banom", "ids" };
+    for (int i = 0; i < 3; i++) {
+        snprintf(out->s[i].name, sizeof out->s[i].name, "%s", NM[i]);
+        out->s[i].state = 1; out->s[i].period_ms = uishot_case.demo ? 1000 : 99999; out->s[i].deadline_ms = 1000;
+        out->s[i].budget_us = 2000; out->s[i].done = uishot_case.demo ? 2512 : 4294967295u;
+        out->s[i].missed = uishot_case.demo ? 0 : 4294967295u; out->s[i].wcrt_us = uishot_case.demo ? 2610 : 99999999;
+    }
+    if (!uishot_case.demo) snprintf(out->why, sizeof out->why, "%s", "ids refused: self-test 99999 us over 2000 us");
+    return true;
+}

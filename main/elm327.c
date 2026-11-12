@@ -27,6 +27,9 @@
 #include "esp_attr.h"
 #include "esp_heap_caps.h"
 #include "ecu_select.h"
+#if BOARD_MOSAICO
+#include "ids_svc.h"                   /* the network guard's link head: the round-trip hook (a counter, no more) */
+#endif
 
 static const char *TAG = "elm";
 
@@ -184,6 +187,10 @@ int elm_transact(const char *cmd, char *resp, size_t resp_sz, uint32_t timeout_m
         ESP_LOGW(TAG, "timeout on '%s' (got '%s')", cmd, resp);
         return s_link_up ? -1 : -2;
     }
+#if BOARD_MOSAICO
+    if (cmd[0] == '0' && cmd[1] == '1')                 /* mode 01 requests only: their round trip is the link head's input */
+        IDS_HOOK(ids_hook_link_rtt((uint32_t)(esp_timer_get_time() - (deadline - (int64_t)timeout_ms * 1000))));
+#endif
     size_t cl = strlen(cmd);
     if (strncasecmp(resp, cmd, cl) == 0) memmove(resp, resp + cl, used - cl + 1);
     char *w = resp;

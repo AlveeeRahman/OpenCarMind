@@ -9,7 +9,7 @@
 LVGL_DIR  ?= ../../managed_components/lvgl__lvgl
 UISHOT_OUT ?= uishot/out
 UI_B       = uishot/build
-UI_CFLAGS  = -std=gnu11 -O1 -g -DLV_CONF_KCONFIG_EXTERNAL_INCLUDE='"lv_host_kconfig.h"' -DLV_CONF_SKIP -DUISHOT_HOST=1 -DCARMIND_VERSION='"mossREV 2.0.0"' \
+UI_CFLAGS  = -std=gnu11 -O1 -g -DLV_CONF_KCONFIG_EXTERNAL_INCLUDE='"lv_host_kconfig.h"' -DLV_CONF_SKIP -DUISHOT_HOST=1 -DCARMIND_VERSION='"OpenCarMind EdgeOS 2.1.0"' -DCARMIND_VERSION_HAS_NAME=1 \
              -Iuishot -Iuishot/stubs -I$(LVGL_DIR) -I$(LVGL_DIR)/src
 LVGL_SRCS  = $(shell find $(LVGL_DIR)/src -name '*.c' 2>/dev/null)
 LVGL_OBJS  = $(patsubst $(LVGL_DIR)/src/%.c,$(UI_B)/lvgl/%.o,$(LVGL_SRCS))

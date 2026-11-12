@@ -187,8 +187,43 @@ static void test_snap(void)
     CHECK(strlen(ai_ring_peek(&r)) == AI_RING_LINE - 1, "ring: a long line is cut, never overflows");
 }
 
+/* 2.1.0: the admission self-test runs AI_SELFTEST_RUNS times and the fastest run decides, so one preempted run (the
+   board's 26,089 us against 423-583 us) does not refuse the service; a real failure (every run slow, or the check
+   failed) still does. The IDS's slow factor: every 4th window on the AI rung. */
+static void test_selftest_and_slow(void)
+{
+    uint32_t one_slow[AI_SELFTEST_RUNS] = { 512, 26089, 498, 583, 423 };
+    ai_selftest_t j = ai_selftest_judge(one_slow, AI_SELFTEST_RUNS, 2000);
+    CHECK(j.ok && j.min_us == 423 && j.max_us == 26089 && j.median_us == 512, "one slow run: admitted on the minimum (%u %u %u)",
+          j.min_us, j.median_us, j.max_us);
+    uint32_t first_slow[AI_SELFTEST_RUNS] = { 26089, 440, 450, 460, 470 };
+    CHECK(ai_selftest_judge(first_slow, AI_SELFTEST_RUNS, 2000).ok, "a slow first run: admitted");
+    uint32_t all_slow[AI_SELFTEST_RUNS] = { 2100, 2600, 2050, 9000, 2001 };
+    CHECK(!ai_selftest_judge(all_slow, AI_SELFTEST_RUNS, 2000).ok, "every run over the budget: refused");
+    uint32_t failed[AI_SELFTEST_RUNS] = { 400, UINT32_MAX, 400, 400, 400 };
+    CHECK(!ai_selftest_judge(failed, AI_SELFTEST_RUNS, 2000).ok, "a failed check in one run: refused");
+    uint32_t nobudget[AI_SELFTEST_RUNS] = { 90000, 90000, 90000, 90000, 90000 };
+    CHECK(ai_selftest_judge(nobudget, AI_SELFTEST_RUNS, 0).ok, "no budget: admitted");
+    CHECK(!ai_selftest_judge(one_slow, 0, 2000).ok, "no runs: refused");
+
+    ai_rt_t ids = svc("ids", 5000, 1000, 2000), bat = svc("bat", 1000, 1000, 2000);
+    ids.slow_factor = 4;
+    CHECK(ai_rt_period_us(&ids, AI_DL_SLOW) == 20000000ull && ai_rt_period_us(&ids, AI_DL_NORMAL) == 5000000ull,
+          "ids slowed: every 4th window");
+    CHECK(ai_rt_period_us(&bat, AI_DL_SLOW) == 10000000ull, "the default slow factor stays x10");
+    ai_rt_t set[2] = { bat, ids };
+    int64_t now = 0;
+    int mo = 0;
+    ai_rt_start(&set[0], 0);
+    ai_rt_start(&set[1], 0);
+    simulate(set, 2, 200000000, AI_DL_SLOW, step_ok, &now, &mo);
+    CHECK(set[1].released == 10 || set[1].released == 11, "ids releases in 200 s slowed: %u", set[1].released);
+    CHECK(set[0].released == 20 || set[0].released == 21, "bat releases in 200 s slowed: %u", set[0].released);
+}
+
 int main(void)
 {
+    test_selftest_and_slow();
     test_release_table();
     test_degrade_order();
     test_snap();

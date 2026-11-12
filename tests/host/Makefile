@@ -191,12 +191,41 @@ bat: bat_tests
 bat_tests: test_bat_est.c ../../main/bat_est_core.c ../../main/bat_est_core.h ../../main/bat_model.h $(BAT_MODEL) FORCE
 	$(CC) $(CFLAGS) -O2 $(BAT_MODEL_DEF) -o $@ test_bat_est.c ../../main/bat_est_core.c -lm
 
+# OpenCarMind EdgeOS 2.1.0 AI services. The research vectors live in carmind-ml (never in this tree):
+#   soh   the SoH ridge (main/bat_soh_model.h) against soh_vectors.csv, the Q(V) features against p3_soh.py (vec/), the cycle logic
+#   anom  the battery anomaly detector (main/bat_anom_core.c) against anom_vectors.csv, plus the 2 s sample period
+#   ids   the network guard: the rotation detector bit-exact against ids_vectors.csv, the guard's policy, the hook bitmaps
+#   idsaudit  the radio hooks only count and set bits; the guard never transmits, pairs or sets the clock (ids_audit.sh)
+SOH_VECTORS ?= $(BAT_DIR)/soh_vectors.csv
+ANOM_VECTORS ?= $(BAT_DIR)/anom_vectors.csv
+IDS_VECTORS ?= $(HOME)/Desktop/dev/carmind-ml/experiments/net_ids/tests/ids_vectors.csv
+soh: soh_tests
+	SOH_VECTORS="$(SOH_VECTORS)" ./soh_tests
+
+soh_tests: test_bat_soh.c ../../main/bat_soh.c ../../main/bat_soh.h ../../main/bat_soh_model.h ../../main/bat_est_core.h
+	$(CC) $(CFLAGS) -O2 -o $@ test_bat_soh.c ../../main/bat_soh.c -lm
+
+anom: anom_tests
+	ANOM_VECTORS="$(ANOM_VECTORS)" ./anom_tests
+
+anom_tests: test_bat_anom.c ../../main/bat_anom_core.c ../../main/bat_anom_core.h ../../main/bat_anom_model.h
+	$(CC) $(CFLAGS) -O2 -o $@ test_bat_anom.c ../../main/bat_anom_core.c -lm
+
+ids: ids_tests idsaudit
+	IDS_VECTORS="$(IDS_VECTORS)" ./ids_tests
+
+ids_tests: test_ids.c ../../main/ids_core.c ../../main/ids_core.h ../../main/ids_hooks.h ../../main/ids_model.h
+	$(CC) $(CFLAGS) -O2 -o $@ test_ids.c ../../main/ids_core.c
+
+idsaudit:
+	./ids_audit.sh
+
 FORCE:
 
 clean:
-	rm -f carmind_tests rev_tests tank_tests session_tests reset_tests swipe_tests clock_tests uimetrics_tests prefetch_tests logstore_tests nandfat_tests settings_tests wifi_tests events_tests theme_tests wificreds_tests rows_tests ppa_tests os_tests pair_tests pair_gate_tests pair_gate_off.inc pair_gate_on.inc uishot_bin ai_tests bat_tests
+	rm -f carmind_tests rev_tests tank_tests session_tests reset_tests swipe_tests clock_tests uimetrics_tests prefetch_tests logstore_tests nandfat_tests settings_tests wifi_tests events_tests theme_tests wificreds_tests rows_tests ppa_tests os_tests pair_tests pair_gate_tests pair_gate_off.inc pair_gate_on.inc uishot_bin ai_tests bat_tests guard_tests soh_tests anom_tests ids_tests
 	rm -rf uishot_bin.dSYM
-.PHONY: run rev session reset swipe clock uimetrics prefetch logstore clean settings wifi events theme wificreds rows eventtext ppa os pair textfit uishot uishot_lvgl ai bat FORCE
+.PHONY: run rev session reset swipe clock uimetrics prefetch logstore clean settings wifi events theme wificreds rows eventtext ppa os pair textfit uishot uishot_lvgl ai bat guard soh anom ids idsaudit FORCE
 
 # ESP-Mosaico screens rendered on the Mac: text fit, corners, the 16 px floor (uishot/uishot.mk)
 include uishot/uishot.mk

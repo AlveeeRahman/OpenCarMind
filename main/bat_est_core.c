@@ -166,7 +166,11 @@ static void anchor(bat_est_t *e, float z)
         float dz = z - e->anchor_z;
         if (fabsf(dz) >= BAT_SOH_MIN_DZ) {
             float m = e->ah_since / (dz * QNOM_AH);          /* the capacity seen, over the nominal */
-            if (m >= 0.3f && m <= 1.3f) { e->soh = e->n_q ? e->soh + 0.2f * (m - e->soh) : 0.5f * (e->soh + m); e->n_q++; }
+            if (m >= 0.3f && m <= 1.3f) {
+                e->soh = e->n_q ? e->soh + 0.2f * (m - e->soh) : 0.5f * (e->soh + m);
+                e->n_q++;
+                if (fabsf(dz) >= BAT_FULL_DZ) { e->soh_full = e->n_full ? e->soh_full + 0.2f * (m - e->soh_full) : m; e->n_full++; }
+            }
         }
     }
     e->z = z;

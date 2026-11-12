@@ -1,5 +1,5 @@
-/* ai_svc: EdgeOS's small AI services on the ESP-Mosaico (CONFIG_OCM_AI_SVC). The battery estimator (bat_est.c) is the
- * first; a radio IDS classifier and others follow the same contract. The rules (release table, no pile-up, degrade
+/* ai_svc: OpenCarMind EdgeOS's small AI services on the ESP-Mosaico (CONFIG_OCM_AI_SVC): the battery estimator
+ * (bat_est.c, with the SoH regressor), the battery anomaly detector (bat_anom.c) and the network guard (ids_svc.c). The rules (release table, no pile-up, degrade
  * order) are in ai_svc_core.h; this file is the firmware side. See the block comment at the top of ai_svc.c for the
  * scheduling choice and the deadlock-freedom argument.
  *
@@ -25,6 +25,7 @@
 typedef struct {
     const char *name;                       /* short: the Board page and the sched line */
     uint32_t    period_ms, deadline_ms, budget_us;
+    uint8_t     slow_factor;                /* the period multiplier at the ladder's AI rung; 0 = x10 */
     void        (*step)(int64_t release_us);
     uint32_t    (*selftest)(void);
     void        (*prepare)(void);
@@ -37,7 +38,7 @@ typedef struct {
     char     name[8];
     uint8_t  state;                         /* AI_ST_* */
     uint32_t period_ms, deadline_ms, budget_us;
-    uint32_t released, done, missed, skipped, overruns, wcrt_us, max_step_us, selftest_us;
+    uint32_t released, done, missed, skipped, overruns, wcrt_us, max_step_us, selftest_us, selftest_max_us;
 } ai_svc_stat_t;
 
 typedef struct {
@@ -58,6 +59,7 @@ void ai_svc_start(void);                    /* board task, at the boot health ve
 uint32_t ai_svc_misses(void);
 void     ai_svc_set_os_level(uint8_t os_level);
 uint8_t  ai_svc_level(void);                /* AI_DL_*: a step may drop optional work ("learned heads") when slowed */
+uint8_t  ai_svc_os_level(void);             /* the OS ladder rung the services last saw (the Health app) */
 void ai_svc_board_tick(bool shutdown);      /* board task: every 2 s, and true on the safe-shutdown path */
 void ai_svc_gauge_publish(const mosaico_gauge_t *g);   /* board task, after each gauge poll */
 bool ai_svc_gauge_read(ai_gauge_sample_t *out);         /* any task, lock-free; false = no sample yet or torn */

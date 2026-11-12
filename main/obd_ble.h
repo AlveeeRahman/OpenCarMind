@@ -57,6 +57,7 @@ void      obd_ble_guard_meta(void);
 bool      obd_ble_guard_offer(const char **text, const char **yes, const char **no, const char **note, int *secs_left,
                               uint32_t *seq);
 void      obd_ble_guard_answer(uint32_t seq, bool yes);
+void      obd_ble_guard_counts(uint32_t *fp_checks, uint32_t *repair_refused);   /* the Health app (plain reads) */
 #else
 #define obd_ble_guard_offer(text, yes, no, note, secs_left, seq) \
     ((void)(text), (void)(yes), (void)(no), (void)(note), (void)(secs_left), (void)(seq), false)

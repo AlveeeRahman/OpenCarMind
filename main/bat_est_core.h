@@ -16,7 +16,8 @@
  *   mode      from c: rest |c| < BAT_REST_C_RATE, discharge, charge, CV taper (charging at V >= BAT_FULL_V - 30 mV)
  *   anchors   rest for BAT_REST_MIN_S: z = OCV^-1(V); the end of a CV taper (V >= BAT_FULL_V, c <= BAT_FULL_C_RATE):
  *             z = 1. Until the first anchor the estimate is "learning".
- *   capacity  two anchors at least BAT_SOH_MIN_DZ apart: soh sample = Ah counted between them / (dz Q)
+ *   capacity  two anchors at least BAT_SOH_MIN_DZ apart: soh sample = Ah counted between them / (dz Q); at least
+ *             BAT_FULL_DZ apart it is also the full-ends count (soh_full, n_full), which bat_soh.h prefers to its model
  *   DCIR      a current step of at least BAT_DCIR_MIN_DC within one sample: dV / dc (V per C), smoothed; its trend is
  *             DCIR / the first DCIR this cell gave, and BAT_SOH_RMAP_A + B x trend is the resistance-based SoH flag
  */
@@ -30,6 +31,7 @@ extern "C" {
 #endif
 
 enum { BAT_MODE_REST = 0, BAT_MODE_DISCHARGE, BAT_MODE_CHARGE, BAT_MODE_CV };
+#define BAT_FULL_DZ 0.8f                              /* two anchors this far apart: a nearly empty-to-full count (bat_soh.h) */
 
 typedef struct {
     float v, i_inst, i_avg, t_c, dt;                  /* V, A (charge positive), A over the sample, deg C, s */
@@ -42,7 +44,8 @@ typedef struct {
     float    z_ekf, z_corr, soc_user, innov, v_hat;
     /* the firmware's additions */
     float    rest_s, anchor_z, ah_since, last_v, last_c, dcir, dcir_new;
-    uint32_t n_anchor, n_q, n_dcir, steps;
+    float    soh_full;                                /* the full-ends count: a sample from anchors >= BAT_FULL_DZ apart */
+    uint32_t n_anchor, n_q, n_dcir, steps, n_full;
     uint8_t  mode;
     bool     learn, ridge_off, anchored, rest_done, full_done, have_last;
 } bat_est_t;

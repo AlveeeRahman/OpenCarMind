@@ -463,6 +463,8 @@ void uishot_clock_picker(void);
 void uishot_wifi_password(void);
 void uishot_model_refused(void);
 void uishot_close_overlays(void);
+void uishot_health_page(int k);
+void uishot_settings_guard(void);
 
 static int app_index(const char *id)
 {
@@ -541,6 +543,21 @@ static void all_screens(const char *suf)
         snprintf(n, sizeof n, "%s%s", ui_app(i)->id, suf);
         shoot(n);
         shoot_scrolled(n);
+        if (!strcmp(ui_app(i)->id, "health")) {              /* its three pages, each built when its tab is tapped */
+            static const char *const HP[3] = { "health_battery", "health_guard", "health_ai" };
+            for (int k = 0; k < 3; k++) {
+                uishot_health_page(k);
+                snprintf(n, sizeof n, "%s%s", HP[k], suf);
+                shoot(n);
+                shoot_scrolled(n);
+            }
+            uishot_health_page(0);
+        }
+        if (!strcmp(ui_app(i)->id, "settings")) {           /* the Network guard row, below the sixth page */
+            uishot_settings_guard();
+            snprintf(n, sizeof n, "settings_guard%s", suf);
+            shoot(n);
+        }
     }
     ui_go_home();
 }

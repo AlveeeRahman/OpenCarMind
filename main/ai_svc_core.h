@@ -13,7 +13,8 @@
  * 3. Soft real time. A job whose response time (finish minus release) exceeds D is counted as missed. A miss is never
  *    fatal: it feeds the degradation rule below.
  * 4. Degradation (AI services shed first). The OS ladder (os_core.h section 7) has the AI rung first: at rung 1 every
- *    service runs at period x10 with its learned heads off, from rung 2 (UI slowed) up the services are paused. The
+ *    service runs at period x10 (or at its own slow_factor: the IDS evaluates every 4th window) with its learned
+ *    heads off, from rung 2 (UI slowed) up the services are paused. The
  *    services' own deadline misses, the UI's and the AI worker's feed the ladder's AI-side input, which can climb to
  *    rung 1 only; model misses climb every rung. The rungs come back in reverse order, so the services come back last.
  */
@@ -33,6 +34,7 @@ enum { AI_DL_NORMAL = 0, AI_DL_SLOW, AI_DL_PAUSED };
 typedef struct {
     const char *name;
     uint32_t    period_ms, deadline_ms, budget_us;
+    uint8_t     slow_factor;              /* period multiplier at rung 1; 0 = AI_DL_SLOW_FACTOR (the IDS: 4) */
     bool        active;                   /* admitted and running */
     int64_t     next_us;                  /* the next release instant */
     int64_t     release_us;               /* release of the job picked last */
@@ -48,6 +50,18 @@ uint64_t ai_rt_period_us(const ai_rt_t *t, uint8_t level);
 int      ai_rt_pick(ai_rt_t *t, int n, int64_t now_us, uint8_t level, int64_t *wake_us);
 /* the picked job ran from start_us to end_us: response, miss, overrun (skip the next release) */
 void     ai_rt_finish(ai_rt_t *t, int64_t start_us, int64_t end_us, uint8_t level);
+
+/* 5. Admission self-test (2.1.0). A self-test is timed by the wall clock, so one preemption during it (Wi-Fi bring-up,
+ *    NimBLE, a flash write) can make one run look 50 times slower (board, 13757fd: 26,089 us once, 423-583 us in six
+ *    other boots) and refuse the service for the whole boot. So it runs AI_SELFTEST_RUNS times and the admission takes
+ *    the fastest run: preemption only ever adds time, so the minimum is the closest to the step's own cost. A refused
+ *    service is tried once more AI_SELFTEST_RETRY_MS later. The admission figure is not the WCET: the worker measures
+ *    each service's real response times (wcrt_us) and counts misses against its deadline on its own. */
+#define AI_SELFTEST_RUNS     5
+#define AI_SELFTEST_RETRY_MS 30000
+typedef struct { uint32_t min_us, median_us, max_us; bool ok; } ai_selftest_t;
+/* runs[k] microseconds each (UINT32_MAX = the self-test's own check failed: never admitted); budget 0 = no budget */
+ai_selftest_t ai_selftest_judge(const uint32_t *runs, int k, uint32_t budget_us);
 
 /* the AI level for an OS ladder level: rung 0 normal, rung 1 slowed, rung 2 and up paused */
 uint8_t     ai_dl_from_os(uint8_t os_level);

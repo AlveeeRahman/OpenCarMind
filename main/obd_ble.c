@@ -45,6 +45,9 @@
 #include "sys_mode.h"
 #endif
 #endif
+#if BOARD_MOSAICO
+#include "ids_svc.h"                   /* the network guard: hooks (counters only) and its verdict (OpenCarMind EdgeOS 2.1.0) */
+#endif
 
 static const char *TAG = "obd_ble";
 
@@ -145,7 +148,7 @@ EXT_RAM_BSS_ATTR static struct ble_store_value_sec s_bond_peer, s_bond_our;
 static int64_t       s_hold_until_ms;      /* "Not this one", "Don't allow" or no answer: the saved address waits */
 static int64_t       s_allow_until_ms;     /* "Allow": a pairing request is let through until then */
 static uint32_t      s_meta_gen = 1, s_meta_done, s_meta_session;
-static struct { uint16_t r1_changed, r2_seen, r2_refused, r2_allowed; } s_cnt;
+static struct { uint16_t r1_changed, r2_seen, r2_refused, r2_allowed, r1_checks; } s_cnt;
 
 static int64_t now_ms(void) { return esp_timer_get_time() / 1000; }
 static bool guard_driving(void) { return elm_drive_active() || sys_mode_get() == MODE_DRIVE; }
@@ -398,6 +401,9 @@ static int gap_event(struct ble_gap_event *event, void *arg);
 /* obd_ble_set_paused() stops the scan loop (an existing link is kept); obd_ble_probe() opens one short scan window
    while paused. Nothing in the logger pauses the receiver by default; the hooks stay for experiments. */
 static volatile bool s_paused;
+#if BOARD_MOSAICO && CONFIG_OCM_IDS
+static bool s_scan_wl;                  /* host task: the running scan uses the accept list (the guard blocks) */
+#endif
 
 static void start_scan(void)
 {
@@ -408,7 +414,15 @@ static void start_scan(void)
     p.passive = 0;          /* active: ask for scan responses so we see names */
     p.itvl = 0x60;          /* 60 ms */
     p.window = 0x30;        /* 30 ms: leaves radio time for Wi-Fi */
-    int rc = ble_gap_disc(s_own_addr_type, BLE_HS_FOREVER, &p, gap_event, NULL);
+    int32_t dur = BLE_HS_FOREVER;
+#if BOARD_MOSAICO && CONFIG_OCM_IDS
+    /* The network guard blocks (a flood nearby): the scan is narrowed to the paired adapter through the controller's
+       accept list, so the flood is dropped before the host sees it. Scanned in 30 s pieces then, so the restart at the
+       end of each piece (DISC_COMPLETE) opens the scan again as soon as the block lifts. Nothing is transmitted. */
+    s_scan_wl = ids_ble_blocking() && s_have_saved && ble_gap_wl_set(&s_saved_addr, 1) == 0;
+    if (s_scan_wl) { p.filter_policy = BLE_HCI_SCAN_FILT_USE_WL; dur = 30000; }
+#endif
+    int rc = ble_gap_disc(s_own_addr_type, dur, &p, gap_event, NULL);
     if (rc != 0 && rc != BLE_HS_EALREADY) ESP_LOGE(TAG, "ble_gap_disc rc=%d", rc);
     STATUS_LOCK(); g_status.ble = BLE_ST_SCANNING; STATUS_UNLOCK();
 }
@@ -451,6 +465,9 @@ static obd_pick_t is_candidate(const struct ble_gap_disc_desc *d, const struct b
     portENTER_CRITICAL(&s_pair_mux);
     obd_pick_t pick = obd_pair_pick(&s_pair, &a, CONFIG_OBD_BLE_MIN_RSSI, CONFIG_OBD_BLE_PAIR_MIN_RSSI);
     portEXIT_CRITICAL(&s_pair_mux);
+#if BOARD_MOSAICO
+    if (pick == OBD_PICK_OFFER && ids_ble_blocking()) return OBD_PICK_NONE;   /* the guard blocks: no new-adapter offers */
+#endif
     return pick;
 }
 #else
@@ -583,7 +600,17 @@ static int gap_event(struct ble_gap_event *event, void *arg)
 
     switch (event->type) {
     case BLE_GAP_EVENT_DISC: {
+#if BOARD_MOSAICO
+        IDS_HOOK(ids_hook_ble_adv(event->disc.addr.val, event->disc.addr.type));   /* a count and a bitmap bit, no more */
+#endif
         if (ble_gap_conn_active()) return 0;   /* already connecting */
+#if BOARD_MOSAICO && CONFIG_OCM_IDS
+        if (ids_ble_blocking() != s_scan_wl && s_conn == BLE_HS_CONN_HANDLE_NONE) {   /* the verdict changed: restart */
+            ble_gap_disc_cancel();
+            start_scan();
+            return 0;
+        }
+#endif
         const struct ble_gap_disc_desc *d = &event->disc;
         int64_t now = esp_timer_get_time();
 #if CONFIG_OBD_BLE_PAIR_CONFIRM
@@ -642,6 +669,9 @@ static int gap_event(struct ble_gap_event *event, void *arg)
         }
         s_conn = event->connect.conn_handle;
         s_sec_tried = false;
+#if BOARD_MOSAICO
+        IDS_HOOK(ids_hook_link(true));
+#endif
 #if CONFIG_OBD_BLE_PAIR_CONFIRM
         s_probe_drop = false;
 #endif
@@ -662,6 +692,9 @@ static int gap_event(struct ble_gap_event *event, void *arg)
         return 0;
 
     case BLE_GAP_EVENT_DISCONNECT:
+#if BOARD_MOSAICO
+        IDS_HOOK(ids_hook_link(false));
+#endif
 #if CONFIG_OBD_BLE_PAIR_CONFIRM
         if (s_probe_drop) s_probe_drop = false;                    /* dropped on purpose: the user is being asked */
         else {
@@ -965,6 +998,7 @@ static ag_r2_t r2_decide(bool *driving)
     portENTER_CRITICAL(&s_pair_mux);
     bool busy = s_q.kind != AG_Q_NONE || s_pair.phase == OBD_PAIR_ASKING;
     ag_r2_t r = ag_r2_decide(*driving, now < s_allow_until_ms, busy);
+    if (r == AG_R2_ASK && ids_ble_blocking()) r = AG_R2_REFUSE;   /* the guard blocks: no re-pair request reaches the user */
     if (r == AG_R2_ASK && !ag_q_open(&s_q, AG_Q_REPAIR, now, PAIR_ASK_MS)) r = AG_R2_REFUSE;
     if (r == AG_R2_ALLOW) s_allow_until_ms = 0;            /* one pairing per "Allow" */
     portEXIT_CRITICAL(&s_pair_mux);
@@ -1035,6 +1069,7 @@ void obd_ble_guard_elm(const char *ati, const char *at1)
     uint16_t diff;
     bool driving = guard_driving();
     ag_r1_t r = ag_r1_decide(have ? &saved : NULL, &now, driving, &diff);
+    s_cnt.r1_checks++;
     unsigned long id = (unsigned long)afp_id(&now);
     s_meta_gen++;
     switch (r) {
@@ -1077,7 +1112,12 @@ void obd_ble_guard_protocol(const char *dpn)
     }
 }
 
-bool obd_ble_adapter_changed(void) { return s_fp_changed || s_bond_bad; }
+bool obd_ble_adapter_changed(void) { return s_fp_changed || s_bond_bad || ids_rows_suspect(); }   /* + the network guard */
+void obd_ble_guard_counts(uint32_t *fp_checks, uint32_t *repair_refused)
+{
+    *fp_checks = s_cnt.r1_checks;
+    *repair_refused = s_cnt.r2_refused;
+}
 
 void obd_ble_guard_meta(void)
 {

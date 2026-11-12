@@ -55,6 +55,12 @@
 #if CONFIG_OCM_BAT_EST
 #include "bat_est.h"
 #endif
+#if CONFIG_OCM_BAT_ANOM
+#include "bat_anom.h"
+#endif
+#if CONFIG_OCM_IDS
+#include "ids_svc.h"
+#endif
 
 static const char *TAG = "ai";
 
@@ -62,7 +68,9 @@ static const char *TAG = "ai";
 
 static const ai_svc_def_t *s_def[AI_SVC_MAX];
 static ai_rt_t s_rt[AI_SVC_MAX];               /* written by the worker only, once it runs */
-static uint32_t s_selftest_us[AI_SVC_MAX];
+static uint32_t s_selftest_us[AI_SVC_MAX], s_selftest_max_us[AI_SVC_MAX];
+static int64_t s_retry_at_us;                   /* a refused self-test: the one retry of the admission */
+static volatile uint8_t s_os_level;
 static uint8_t s_state[AI_SVC_MAX];
 static int s_n;
 static sched_job_t s_job = -1;
@@ -96,6 +104,7 @@ static void publish(void)
         o->released = r->released; o->done = r->done; o->missed = r->missed; o->skipped = r->skipped;
         o->overruns = r->overruns; o->wcrt_us = r->wcrt_us; o->max_step_us = r->max_step_us;
         o->selftest_us = s_selftest_us[i];
+        o->selftest_max_us = s_selftest_max_us[i];
     }
     AI_SEQ_PUT(&s_pub_seq, &s_pub, &st);
 }
@@ -157,6 +166,7 @@ static int add(const ai_svc_def_t *d)
     s_rt[i].period_ms = d->period_ms;
     s_rt[i].deadline_ms = d->deadline_ms;
     s_rt[i].budget_us = d->budget_us;
+    s_rt[i].slow_factor = d->slow_factor;
     return i;
 }
 
@@ -191,6 +201,23 @@ static int pick_core(void)
     return l1 <= l0 ? 1 : 0;
 }
 
+/* AI_SELFTEST_RUNS timed runs; the fastest one decides (ai_svc_core.h section 5). Logs every run. */
+static bool selftest_one(int i)
+{
+    uint32_t runs[AI_SELFTEST_RUNS];
+    for (int k = 0; k < AI_SELFTEST_RUNS; k++) runs[k] = s_def[i]->selftest ? s_def[i]->selftest() : 0;
+    ai_selftest_t j = ai_selftest_judge(runs, AI_SELFTEST_RUNS, s_def[i]->budget_us);
+    s_selftest_us[i] = j.min_us;
+    s_selftest_max_us[i] = j.max_us;
+    ESP_LOGI(TAG, "service %s: T %lu ms, D %lu ms, budget %lu us, self-test runs %ld %ld %ld %ld %ld us: min %ld, median %ld%s",
+             s_def[i]->name, (unsigned long)s_def[i]->period_ms, (unsigned long)s_def[i]->deadline_ms,
+             (unsigned long)s_def[i]->budget_us, (long)runs[0], (long)runs[1], (long)runs[2], (long)runs[3], (long)runs[4],
+             (long)j.min_us, (long)j.median_us, j.ok ? "" : runs[0] == UINT32_MAX ? ": REFUSED, its check failed" : ": REFUSED, over its budget");
+    return j.ok;
+}
+
+static void admit(void);
+
 void ai_svc_start(void)
 {
     static bool started;
@@ -198,6 +225,12 @@ void ai_svc_start(void)
     started = true;
 #if CONFIG_OCM_BAT_EST
     add(bat_est_service());
+#endif
+#if CONFIG_OCM_BAT_ANOM
+    add(bat_anom_service());
+#endif
+#if CONFIG_OCM_IDS
+    add(ids_service());
 #endif
     if (!s_n) return;
     if (sched_safe_mode()) {
@@ -207,21 +240,34 @@ void ai_svc_start(void)
         ESP_LOGW(TAG, "safe mode: the AI services stay off");
         return;
     }
+    bool all = true;
     for (int i = 0; i < s_n; i++) {
         if (s_def[i]->prepare) s_def[i]->prepare();
-        s_selftest_us[i] = s_def[i]->selftest ? s_def[i]->selftest() : 0;
-        bool ok = !s_def[i]->budget_us || s_selftest_us[i] <= s_def[i]->budget_us;
+        bool ok = selftest_one(i);
         s_rt[i].active = ok;
         s_state[i] = ok ? AI_ST_OFF : AI_ST_REFUSED;
-        ESP_LOGI(TAG, "service %s: T %lu ms, D %lu ms, budget %lu us, self-test %lu us%s", s_def[i]->name,
-                 (unsigned long)s_def[i]->period_ms, (unsigned long)s_def[i]->deadline_ms, (unsigned long)s_def[i]->budget_us,
-                 (unsigned long)s_selftest_us[i], ok ? "" : ": REFUSED, over its budget");
-        if (!ok) snprintf(s_why, sizeof s_why, "%s refused: self-test %lu us over %lu us", s_def[i]->name,
-                          (unsigned long)s_selftest_us[i], (unsigned long)s_def[i]->budget_us);
+        all = all && ok;
     }
+    if (!all) {                                    /* one retry of the refused ones, 30 s later (board task tick) */
+        s_retry_at_us = esp_timer_get_time() + AI_SELFTEST_RETRY_MS * 1000LL;
+        snprintf(s_why, sizeof s_why, "self-test over budget: one retry in %d s", AI_SELFTEST_RETRY_MS / 1000);
+        publish();
+        ESP_LOGW(TAG, "a self-test was over its budget: the admission is tried again in %d s", AI_SELFTEST_RETRY_MS / 1000);
+        return;
+    }
+    admit();
+}
+
+static void admit(void)
+{
+    s_why[0] = 0;
+    for (int i = 0; i < s_n; i++)
+        if (s_state[i] == AI_ST_REFUSED)
+            snprintf(s_why, sizeof s_why, "%s refused: self-test %lu us over %lu us", s_def[i]->name,
+                     (unsigned long)s_selftest_us[i], (unsigned long)s_def[i]->budget_us);
     uint32_t c, t, d;
     ai_rt_worker_load(s_rt, s_n, &c, &t, &d);
-    if (!c && !t) { publish(); sys_event(EV_WARN, "AI services refused: %s", s_why); return; }
+    if (!c && !t) { publish(); sys_event(EV_WARN, "AI services refused: every self-test failed"); return; }
     int first = pick_core(), core = -1;
     EXT_RAM_BSS_ATTR static os_admit_t a;
     for (int k = 0; k < 2 && core < 0; k++) {
@@ -232,7 +278,7 @@ void ai_svc_start(void)
         snprintf(s_why, sizeof s_why, "refused: the AI worker would miss its %lu ms deadline", (unsigned long)d);
         for (int i = 0; i < s_n; i++) if (s_rt[i].active) { s_rt[i].active = false; s_state[i] = AI_ST_REFUSED; }
         publish();
-        sys_event(EV_WARN, "AI services %s", s_why);
+        sys_event(EV_WARN, "AI services refused: worker misses %lu ms", (unsigned long)d);
         return;
     }
     s_job = sched_register("ai", t, d, false);
@@ -240,7 +286,6 @@ void ai_svc_start(void)
     int64_t now = esp_timer_get_time();
     for (int i = 0; i < s_n; i++) if (s_rt[i].active) { ai_rt_start(&s_rt[i], now); s_state[i] = AI_ST_RUNNING; }
     s_core = (int8_t)core;
-    s_why[0] = 0;
     publish();                                 /* the last publish from the board task: the worker owns it from here */
     if (xTaskCreatePinnedToCoreWithCaps(worker, "ai", WORKER_STACK, NULL, AI_SVC_PRIO, NULL, core, MALLOC_CAP_SPIRAM) != pdPASS) {
         snprintf(s_why, sizeof s_why, "no memory for the worker");
@@ -248,7 +293,7 @@ void ai_svc_start(void)
         s_core = -1;
         sched_set_expected(s_job, false);
         publish();
-        sys_event(EV_ERROR, "AI services: %s", s_why);
+        sys_event(EV_ERROR, "AI services: no memory for the worker");
         return;
     }
     ESP_LOGI(TAG, "AI worker on core %d, priority %d, %d service(s)", core, AI_SVC_PRIO, s_n);
@@ -272,11 +317,23 @@ uint32_t ai_svc_misses(void)
     return m;
 }
 
-void ai_svc_set_os_level(uint8_t os_level) { s_level = ai_dl_from_os(os_level); }
+void ai_svc_set_os_level(uint8_t os_level) { s_os_level = os_level; s_level = ai_dl_from_os(os_level); }
+uint8_t ai_svc_os_level(void) { return s_os_level; }
 uint8_t ai_svc_level(void) { return s_level; }
 
 void ai_svc_board_tick(bool shutdown)
 {
+    if (s_retry_at_us && !shutdown && esp_timer_get_time() >= s_retry_at_us) {   /* the admission's one retry */
+        s_retry_at_us = 0;
+        for (int i = 0; i < s_n; i++)
+            if (s_state[i] == AI_ST_REFUSED) {
+                bool ok = selftest_one(i);
+                s_rt[i].active = ok;
+                s_state[i] = ok ? AI_ST_OFF : AI_ST_REFUSED;
+                ESP_LOGI(TAG, "service %s: retry %s", s_def[i]->name, ok ? "admitted" : "refused again");
+            }
+        admit();
+    }
     for (int i = 0; i < s_n; i++) if (s_def[i]->board && s_state[i] == AI_ST_RUNNING) s_def[i]->board(shutdown);
 }
 

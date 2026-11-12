@@ -233,7 +233,7 @@ static void ladder_window(void)
     if (s_ai_job[OS_AI_REV_LEARNER] >= 0) sched_set_cpu_share(s_ai_job[OS_AI_REV_LEARNER], lv >= OS_DL_NO_LEARNER ? 1 : c->share_pm, c->burst_ms);
     s_ml_paused = lv >= OS_DL_MODEL_OFF;
 #if CONFIG_OCM_AI_SVC
-    sys_event(lv > was ? EV_WARN : EV_INFO, "Model deadlines: %s (%lu misses, %lu AI-side)", os_ladder_name(lv), (unsigned long)miss,
+    sys_event(lv > was ? EV_WARN : EV_INFO, "Deadlines: %s (%lu model, %lu AI misses)", os_ladder_name(lv), (unsigned long)miss,
               (unsigned long)ai);
 #else
     sys_event(lv > was ? EV_WARN : EV_INFO, "Model deadlines: %s (%lu misses)", os_ladder_name(lv), (unsigned long)miss);

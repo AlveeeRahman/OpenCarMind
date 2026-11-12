@@ -38,6 +38,12 @@ static ai_seq_t s_out_seq;
 static bat_persist_t s_per;                   /* the newest values worth keeping */
 static ai_seq_t s_per_seq;
 static volatile uint32_t s_per_gen;
+EXT_RAM_BSS_ATTR static bat_soh_t s_soh;      /* the SoH regressor's cycle and reference (bat_soh.h) */
+EXT_RAM_BSS_ATTR static soh_ref_t s_soh_pub;  /* its reference, for the board task's NVS save */
+static ai_seq_t s_soh_seq;
+static volatile uint32_t s_soh_gen;
+static bat_filt_t s_filt;                     /* the anomaly detector's input */
+static ai_seq_t s_filt_seq;
 
 #if CONFIG_OCM_BAT_LOG
 EXT_RAM_BSS_ATTR static ai_ring_t s_ring;     /* worker -> board task */
@@ -47,6 +53,8 @@ static volatile uint32_t s_log_rows, s_log_skipped;   /* board task */
 /* ---------- board-task side ---------- */
 static bat_persist_t s_saved;                 /* prepare() fills it before the worker exists */
 static bool s_saved_ok;
+EXT_RAM_BSS_ATTR static soh_ref_t s_soh_saved;
+static bool s_soh_saved_ok;
 
 static const char *const MODE_TOKEN[4] = { "rest", "discharge", "charge", "cv" };
 
@@ -66,6 +74,9 @@ static void publish(float i_avg_a)
         .valid = true, .anchored = s_e.anchored, .placeholder = bat_model_placeholder(), .mode = s_e.mode,
         .soc_pct = 100.0f * s_e.soc_user, .soh_pct = bat_soh_pct(&s_e), .dcir_ratio = bat_dcir_ratio(&s_e),
         .iavg_ma = i_avg_a * 1000.0f, .steps = s_e.steps,
+        .soh_src = bat_soh_source(&s_soh, s_e.n_full), .soh_model_pct = 100.0f * s_soh.ref.last_soh,
+        .soh_full_pct = s_e.n_full ? 100.0f * s_e.soh_full : 0.0f, .soh_ref_n = s_soh.ref.n,
+        .soh_cycles = s_soh.ref.cycles, .soh_usable = s_soh.ref.usable, .n_dcir = s_e.n_dcir,
     };
     AI_SEQ_PUT(&s_out_seq, &s_out, &o);
     bat_persist_t p;
@@ -73,6 +84,8 @@ static void publish(float i_avg_a)
     AI_SEQ_PUT(&s_per_seq, &s_per, &p);
     s_per_gen++;
 }
+
+bool bat_est_filter(bat_filt_t *out) { return AI_SEQ_GET(&s_filt_seq, out, &s_filt) && out->n > 0; }
 
 bool bat_est_read(bat_est_out_t *out)
 {
@@ -97,6 +110,9 @@ static void step(int64_t release_us)
     if (!s_init) {
         if (!valid) { s_seen = gs.n; return; }
         bat_est_boot(&s_e, s_saved_ok ? &s_saved : NULL, v, i);
+        bat_soh_init(&s_soh, bat_model_qnom_ah(), s_soh_saved_ok ? &s_soh_saved : NULL);
+        s_e.n_full = s_soh.ref.n_full;
+        s_e.soh_full = s_soh.ref.full_soh;
         s_init = true;
         s_next_row = release_us;
         i_avg = i;
@@ -104,6 +120,17 @@ static void step(int64_t release_us)
         s_e.ridge_off = ai_svc_level() != AI_DL_NORMAL;   /* the ladder's AI rung: the EKF alone, no learned head */
         bat_in_t in = { v, i, i_avg, gs.g.temp_dc / 10.0f, (float)((gs.t_us - s_t_last) / 1e6), valid };
         bat_est_step(&s_e, &in);
+        /* the SoH features on the same sample (a few compares and adds; a cycle's end runs the 8-MAC ridge) */
+        soh_in_t si = { in.v, in.i_inst / bat_model_qnom_ah(), in.t_c, in.dt, s_e.z_ekf, bat_ocv_v(s_e.z_ekf), s_e.mode, valid != 0 };
+        uint32_t nf = s_soh.ref.n_full;
+        s_soh.ref.n_full = s_e.n_full;
+        s_soh.ref.full_soh = s_e.soh_full;
+        if (bat_soh_step(&s_soh, &si) || nf != s_e.n_full) {
+            AI_SEQ_PUT(&s_soh_seq, &s_soh_pub, &s_soh.ref);
+            s_soh_gen++;
+        }
+        bat_filt_t fo = { in.v, in.i_inst, in.t_c, in.dt, s_e.innov, bat_ocv_v(s_e.z_ekf), s_e.v1, valid, s_e.steps };
+        AI_SEQ_PUT(&s_filt_seq, &s_filt, &fo);
     }
     i_last = i;
     s_seen = gs.n;
@@ -126,13 +153,17 @@ static uint32_t selftest(void)
 {
     EXT_RAM_BSS_ATTR static bat_est_t e;                /* board task: off its stack */
     ai_gauge_sample_t gs = { .g = { .ok = true, .mv = 3900, .ma = -25, .soc = 60, .temp_dc = 250 }, .t_us = 0, .n = 1 };
+    EXT_RAM_BSS_ATTR static bat_soh_t sh;
     bat_est_init(&e, 0.6f, bat_model_p0_z(), bat_model_p0_v(), 1.0f, true);
+    bat_soh_init(&sh, bat_model_qnom_ah(), NULL);
     uint32_t worst = 0;
     char row[AI_RING_LINE];
     for (int k = 0; k < 3; k++) {
         bat_in_t in = { 3.9f - 0.001f * k, -0.025f - 0.02f * k, -0.025f, 25.0f, 2.0f, 1 };
         int64_t t0 = esp_timer_get_time();
         bat_est_step(&e, &in);
+        soh_in_t si = { in.v, 0.4f, in.t_c, in.dt, e.z_ekf, bat_ocv_v(e.z_ekf), k ? BAT_MODE_CHARGE : BAT_MODE_REST, true };
+        bat_soh_step(&sh, &si);                        /* k = 1: a charge starts and closes a cycle (the ridge path) */
         format_row(row, sizeof row, &gs, in.i_avg, &e);
         uint32_t us = (uint32_t)(esp_timer_get_time() - t0);
         if (us > worst) worst = us;
@@ -150,6 +181,17 @@ static void prepare(void)
         s_saved_ok = nvs_get_blob(h, "est", &s_saved, &n) == ESP_OK && n == sizeof s_saved && bat_persist_valid(&s_saved);
         nvs_close(h);
     }
+    n = sizeof s_soh_saved;
+    s_soh_saved_ok = false;
+    if (nvs_open("ocm_bat", NVS_READONLY, &h) == ESP_OK) {
+        s_soh_saved_ok = nvs_get_blob(h, "soh", &s_soh_saved, &n) == ESP_OK && n == sizeof s_soh_saved && bat_soh_ref_valid(&s_soh_saved);
+        nvs_close(h);
+    }
+    if (s_soh_saved_ok)
+        ESP_LOGI(TAG, "SoH: %u of %d reference cycles learnt, %lu cycles seen (%lu usable), model %.1f %%, full-ends %.1f %% (%lu)",
+                 s_soh_saved.n, BAT_SOH_NREF, (unsigned long)s_soh_saved.cycles, (unsigned long)s_soh_saved.usable,
+                 s_soh_saved.last_soh * 100.0, s_soh_saved.full_soh * 100.0, (unsigned long)s_soh_saved.n_full);
+    else ESP_LOGI(TAG, "SoH: no reference yet: learning from the first %d full charges", BAT_SOH_NREF);
     ESP_LOGI(TAG, "estimator: model %s%s, nominal %d mAh (UNVERIFIED), %s", bat_model_id(),
              bat_model_placeholder() ? " (PLACEHOLDER)" : "", CONFIG_OCM_BAT_NOMINAL_MAH,
              s_saved_ok ? "learnt values restored from NVS" : "no saved values: SoC from the first OCV");
@@ -176,6 +218,17 @@ static void persist(bool shutdown)
         e = nvs_set_blob(h, "est", &p, sizeof p);
         if (e == ESP_OK) e = nvs_commit(h);
         nvs_close(h);
+    }
+    static uint32_t soh_written;
+    uint32_t sg = s_soh_gen;
+    if (e == ESP_OK && sg != soh_written) {             /* the SoH reference and the full-ends count, same rule */
+        EXT_RAM_BSS_ATTR static soh_ref_t r;
+        if (AI_SEQ_GET(&s_soh_seq, &r, &s_soh_pub) && r.magic == BAT_SOH_MAGIC && nvs_open("ocm_bat", NVS_READWRITE, &h) == ESP_OK) {
+            if (nvs_set_blob(h, "soh", &r, sizeof r) == ESP_OK) nvs_commit(h);
+            nvs_close(h);
+            soh_written = sg;
+            ESP_LOGI(TAG, "SoH reference saved: %u of %d cycles, model %.1f %%", r.n, BAT_SOH_NREF, r.last_soh * 100.0);
+        }
     }
     last_us = now;
     written_gen = gen;

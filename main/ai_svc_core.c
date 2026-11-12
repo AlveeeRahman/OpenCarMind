@@ -9,7 +9,7 @@ void ai_rt_start(ai_rt_t *t, int64_t now_us)
 
 uint64_t ai_rt_period_us(const ai_rt_t *t, uint8_t level)
 {
-    return (uint64_t)t->period_ms * 1000u * (level == AI_DL_SLOW ? AI_DL_SLOW_FACTOR : 1);
+    return (uint64_t)t->period_ms * 1000u * (level == AI_DL_SLOW ? (t->slow_factor ? t->slow_factor : AI_DL_SLOW_FACTOR) : 1);
 }
 
 int ai_rt_pick(ai_rt_t *t, int n, int64_t now_us, uint8_t level, int64_t *wake_us)
@@ -54,6 +54,25 @@ void ai_rt_finish(ai_rt_t *t, int64_t start_us, int64_t end_us, uint8_t level)
         t->skipped++;
         t->next_us += (int64_t)ai_rt_period_us(t, level);
     }
+}
+
+ai_selftest_t ai_selftest_judge(const uint32_t *runs, int k, uint32_t budget_us)
+{
+    ai_selftest_t r = { UINT32_MAX, UINT32_MAX, 0, false };
+    uint32_t t[16];
+    if (k <= 0) return r;
+    if (k > 16) k = 16;
+    for (int i = 0; i < k; i++) {
+        t[i] = runs[i];
+        for (int j = i; j > 0 && t[j - 1] > t[j]; j--) { uint32_t u = t[j]; t[j] = t[j - 1]; t[j - 1] = u; }
+    }
+    r.min_us = t[0];
+    r.median_us = t[k / 2];
+    r.max_us = t[k - 1];
+    bool failed = false;                            /* a failed check (UINT32_MAX) in any run is a real failure */
+    for (int i = 0; i < k; i++) if (runs[i] == UINT32_MAX) failed = true;
+    r.ok = !failed && (!budget_us || r.min_us <= budget_us);
+    return r;
 }
 
 uint8_t ai_dl_from_os(uint8_t os_level)
