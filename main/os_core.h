@@ -88,10 +88,11 @@ typedef enum {
     SYS_RESET_UI_STALL,      /* the UI tick stopped for 15 s: abort for a core dump */
     SYS_RESET_MONITOR,       /* sched_mon: an I/O job hung past 3 deadlines */
     SYS_RESET_POWER_OFF,     /* the UPS state: on battery past the grace, or at the voltage floor (CONFIG_OCM_UPS) */
+    SYS_RESET_ROLLBACK,      /* the boot health verdict was Bad on a new image: back to the other slot (CONFIG_OCM_APP_ROLLBACK) */
     SYS_RESET_N
 } sys_reset_reason_t;
 
-enum { OS_RST_RESTART = 0, OS_RST_ROM_DOWNLOAD, OS_RST_ABORT, OS_RST_POWER_OFF };
+enum { OS_RST_RESTART = 0, OS_RST_ROM_DOWNLOAD, OS_RST_ABORT, OS_RST_POWER_OFF, OS_RST_ROLLBACK };
 enum { OS_STEP_WAIT = 1, OS_STEP_MARK, OS_STEP_QUIESCE, OS_STEP_SETTLE, OS_STEP_RESET };
 
 typedef struct {
@@ -165,6 +166,10 @@ typedef struct {
     bool     safe;
 } os_health_in_t;
 uint8_t os_health_verdict(const os_health_in_t *in, uint16_t *flags);    /* OS_H_GOOD / DEGRADED / BAD and why */
+/* A/B rollback (CONFIG_OCM_APP_ROLLBACK): only an image waiting for its confirmation (pending) is judged. Good and
+   Degraded confirm it, Bad rolls back, Pending waits. Returns OS_RB_*. */
+enum { OS_RB_NOTHING = 0, OS_RB_CONFIRM, OS_RB_ROLLBACK };
+uint8_t os_rollback_decision(bool pending_verify, uint8_t verdict);
 const char *os_health_name(uint8_t verdict);                             /* "pending", "good", "degraded", "bad" */
 /* "good" or "degraded: model self-test differs, NAND not mounted" (truncated to n) */
 int os_health_text(uint8_t verdict, uint16_t flags, char *buf, size_t n);

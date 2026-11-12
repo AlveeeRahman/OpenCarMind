@@ -162,6 +162,15 @@ static void test_health(void)
     os_health_text(OS_H_BAD, 0x1FFF, t, 24);
     CHECK(strlen(t) == 23, "text truncates to the buffer");
     CHECK(!strcmp(os_health_name(OS_H_PENDING), "pending") && !strcmp(os_health_name(9), "?"), "names");
+    /* A/B rollback (prepared, CONFIG_OCM_APP_ROLLBACK): only a pending image is judged, Bad rolls back */
+    CHECK(os_rollback_decision(true, OS_H_GOOD) == OS_RB_CONFIRM && os_rollback_decision(true, OS_H_DEGRADED) == OS_RB_CONFIRM,
+          "pending + good or degraded: confirm");
+    CHECK(os_rollback_decision(true, OS_H_BAD) == OS_RB_ROLLBACK, "pending + bad: roll back");
+    CHECK(os_rollback_decision(true, OS_H_PENDING) == OS_RB_NOTHING && os_rollback_decision(false, OS_H_BAD) == OS_RB_NOTHING,
+          "no verdict yet, or an image that is not pending: nothing");
+    const os_reset_plan_t *rb = os_reset_plan(SYS_RESET_ROLLBACK);
+    CHECK(rb && rb->asked_for && rb->quiesce && rb->method == OS_RST_ROLLBACK,
+          "the rollback quiesces and is asked for (the old image must not inherit the crash count)");
 }
 
 /* ---------- 4. response-time analysis ---------- */

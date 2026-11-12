@@ -121,6 +121,17 @@ menu "OBD Logger Configuration"
             depends on OCM_UPS
             range 3000 3800
             default 3400
+        config OCM_APP_ROLLBACK
+            bool "mossREV OS: confirm a new app slot after the boot health verdict (A/B rollback, prepared, not in use)"
+            depends on IDF_TARGET_ESP32S31 && BOOTLOADER_APP_ROLLBACK_ENABLE
+            default n
+            help
+                With the bootloader's CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE, an image the bootloader starts in the
+                PENDING_VERIFY state gets one boot to confirm itself. The boot health verdict (about 65 s after boot)
+                confirms it with esp_ota_mark_app_valid_cancel_rollback() unless the verdict is Bad, and asks for the
+                rollback otherwise. This only helps once new images are written to the inactive slot with an otadata
+                entry in the NEW state, which today's flashing (esptool at 0x20000, otadata erased) never does. See
+                "A/B slots and rollback" in docs/MOSAICO.md. The owner decides the flashing flow first.
         config OCM_UPS_GPIO57
             bool "Power off through GPIO57 (SAM8108 POWER_SWITCH, open-drain low); deep sleep if it is still up"
             depends on OCM_UPS

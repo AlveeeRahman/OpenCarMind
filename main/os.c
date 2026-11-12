@@ -11,6 +11,9 @@
 #include "soc/lp_system_reg.h"
 #include "driver/gpio.h"
 #include "esp_sleep.h"
+#if CONFIG_OCM_APP_ROLLBACK
+#include "esp_ota_ops.h"
+#endif
 #include "soc/soc.h"
 #include "sched_mon.h"
 #include "sdlog.h"
@@ -76,6 +79,9 @@ void sys_reset(sys_reset_reason_t reason, const char *detail)
             }
 #if CONFIG_OCM_UPS
             else if (p->method == OS_RST_POWER_OFF) power_off();
+#endif
+#if CONFIG_OCM_APP_ROLLBACK
+            else if (p->method == OS_RST_ROLLBACK) esp_ota_mark_app_invalid_rollback_and_reboot();   /* resets */
 #endif
             else if (p->method == OS_RST_ABORT) {
                 esp_system_abort(detail ? detail : p->name);   /* a panic: the core dump holds every task */
@@ -183,6 +189,14 @@ static void health_form(void)
              in.nor_warn ? ", audit warning" : "", in.nand, (unsigned long)in.first_tick_ms, in.touch_ok ? "ok" : "failing",
              (unsigned long)in.misses, (unsigned long)in.stalls, in.schedulable ? "" : "not ", os_rl_name(os_runlevel()));
     sys_event(v == OS_H_GOOD ? EV_INFO : v == OS_H_DEGRADED ? EV_WARN : EV_ERROR, "Boot health: %s", t);
+#if CONFIG_OCM_APP_ROLLBACK
+    /* A/B rollback: an image the bootloader started as PENDING_VERIFY has this one boot to confirm itself */
+    esp_ota_img_states_t st;
+    bool pending = esp_ota_get_state_partition(esp_ota_get_running_partition(), &st) == ESP_OK && st == ESP_OTA_IMG_PENDING_VERIFY;
+    uint8_t d = os_rollback_decision(pending, v);
+    if (d == OS_RB_CONFIRM) ESP_LOGI(TAG, "app slot confirmed: %s", esp_ota_mark_app_valid_cancel_rollback() == ESP_OK ? "ok" : "FAILED");
+    if (d == OS_RB_ROLLBACK) { sys_event(EV_ERROR, "Boot health bad: rolling back to the other app slot"); sys_reset(SYS_RESET_ROLLBACK, "health bad"); }
+#endif
 }
 
 /* ---------- degradation ladder ---------- */

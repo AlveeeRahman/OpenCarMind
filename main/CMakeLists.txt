@@ -5,6 +5,8 @@ if(ocm_target STREQUAL "esp32s31")
     list(APPEND ocm_board_srcs "board_pins_safe.c")                # every unused GPIO in a safe state at boot (M1)
     list(APPEND ocm_board_srcs "os.c" "os_core.c")                 # the mossREV OS layer: sys_reset, runlevels, health (2.0.0)
     set(ocm_board_reqs esp_driver_i2c wear_levelling esp_pm esp_psram spi_flash esp_mm)
+    list(APPEND ocm_board_reqs app_update)                        # esp_ota_ops.h for the prepared A/B rollback (OCM_APP_ROLLBACK);
+                                                                   # a CONFIG test cannot pick REQUIRES (IDF reads them first)
     list(APPEND ocm_board_srcs "swipe_intent.c")                   # smart swipe (CONFIG_OCM_SWIPE_INTENT)
     list(APPEND ocm_board_srcs "ui_metrics.c")                     # Smart UI metrics + gate (smart swipe's histograms too)
     list(APPEND ocm_board_srcs "ui_prefetch.c")                    # Smart UI arm A1: press-time prefetch (CONFIG_OCM_UI_PREFETCH)

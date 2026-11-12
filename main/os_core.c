@@ -20,6 +20,8 @@ static const os_reset_plan_t PLANS[SYS_RESET_N] = {
     [SYS_RESET_UI_STALL]  = { "ui stall",  0, 1, OS_RST_ABORT,        0, 0 },
     [SYS_RESET_MONITOR]   = { "monitor",   0, 1, OS_RST_RESTART,      0, 0 },
     [SYS_RESET_POWER_OFF] = { "power off", 1, 1, OS_RST_POWER_OFF,    0, 0 },
+    /* asked for: the old image must not start with this image's crash count (it would boot into safe mode) */
+    [SYS_RESET_ROLLBACK]  = { "rollback",  1, 1, OS_RST_ROLLBACK,     0, 0 },
 };
 
 const os_reset_plan_t *os_reset_plan(sys_reset_reason_t r)
@@ -134,6 +136,12 @@ uint8_t os_health_verdict(const os_health_in_t *in, uint16_t *flags)
     if (in->safe) f |= OS_HF_SAFE;
     if (flags) *flags = f;
     return f & OS_H_BAD_FLAGS ? OS_H_BAD : f ? OS_H_DEGRADED : OS_H_GOOD;
+}
+
+uint8_t os_rollback_decision(bool pending_verify, uint8_t verdict)
+{
+    if (!pending_verify || verdict == OS_H_PENDING || verdict > OS_H_BAD) return OS_RB_NOTHING;
+    return verdict == OS_H_BAD ? OS_RB_ROLLBACK : OS_RB_CONFIRM;
 }
 
 const char *os_health_name(uint8_t v)
