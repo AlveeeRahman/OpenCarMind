@@ -1,4 +1,6 @@
 <p align="center"><img src="docs/images/banner.png" width="900" alt="OpenCarMind: an open-source OBD2 logger for the ESP32, with TinyML on the board"></p>
+<p align="center"><img src="docs/images/edgeos-banner.png" width="900" alt="OpenCarMind EdgeOS 2.0.0: a small operating-system layer for the ESP-Mosaico. Checked on the board: boot health check, Wi-Fi held until healthy, internal RAM above 60 KB in every phase, battery protection. In the Mosaico firmware: 16 touch apps, CarMind R.E.V and E.V with an exact self-test on the board, drive logs on the 128 MB NAND, Wi-Fi joined on the screen and used only for the clock, light and dark themes, the desktop app over USB, an alarm banner you clear with a tap or swipe, and the graphics accelerator (PPA) on."></p>
+<p align="center"><sub>New: <a href="#opencarmind-edgeos-200-esp-mosaico">OpenCarMind EdgeOS 2.0.0</a> for the ESP-Mosaico. Banner photo: Espressif Systems, CC BY-SA 4.0, so this banner image is shared under CC BY-SA 4.0 too. Screen: captured on the board.</sub></p>
 
 <p align="center">
 <a href="https://github.com/AlveeeRahman/OpenCarMind/actions/workflows/ci.yml"><img src="https://github.com/AlveeeRahman/OpenCarMind/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
@@ -319,6 +321,8 @@ Not checked yet: R.E.V over many drives and other cars, the corrected R.E.V on t
 
 ## OpenCarMind EdgeOS 2.0.0 (ESP-Mosaico)
 
+<p align="center"><img src="docs/images/edgeos.gif" width="900" alt="Animated, OpenCarMind EdgeOS 2.0.0 on the ESP-Mosaico in six steps: a layer of rules on top of FreeRTOS, under the models and apps. Boot health check: each part checked once after a start, health good at 68.0 s, safe mode with Wi-Fi held if bad. Wi-Fi held until healthy: no radio at boot, released at 68.0 s with 131,975 B of internal RAM free. Model admission: CarMind R.E.V answers in 4.2 ms against a 1,000 ms deadline and is admitted with a margin of 995.8 ms, and a model that would miss its deadline is refused. Parked or Driving: during a drive a model switch, the clock and a format are refused because a drive is running, while the model keeps running. Degradation ladder, in a forced test with extra load: UI slowed at 110.6 s, learner paused at 122.6 s, model paused at 134.6 s, back to normal at 348.6 s, and the model is never swapped. Battery protection, in a board test at lowered limits: hot at 34.2 C sheds load, cooled at 33.7 C restores it, and over-voltage at 4188 mV saves the logs and stops. Internal RAM stays above 60 KB in every phase, lowest 82,883 B"></p>
+
 <p align="center"><img src="docs/images/mosaico-rev.png" width="900" alt="Concept: OpenCarMind with CarMind R.E.V on ESP-Mosaico, three 480 by 480 screens in the dark, light and dark themes: drive gauges, what R.E.V sees and estimates, and what it has learned"></p>
 
 OpenCarMind also runs on Espressif's ESP-Mosaico<sup>[[12]](#ref-12)</sup>, an ESP32-S31 board with a 480 × 480 AMOLED touch screen, 32 MB of PSRAM and a 128 MB NAND for the drive logs. Up to version 1.2.0 that build was called mossREV. Version 2.0.0 is called OpenCarMind EdgeOS 2.0.0, or Edge OS for short. It is not related to Ubiquiti's EdgeOS router software.
@@ -471,7 +475,7 @@ Two parts are built into 2.0.0 and switched off by default.
 
 ### What is verified on the board
 
-The board check ran on EdgeOS 2.0.0 4aeff43, the image `EdgeOS-2.0.0-esp32s31-merged.bin` (SHA-256 `a225125d27f3906c...`). The owner stopped it before the soak. VERIFIED means a board log line shows it. Some rows ran on a scratch build of the 2.0.0 code with one test switch on, and the row says so. A scratch build is never shipped. Host tests pass for every part: `make os` (41,635 checks at 4aeff43, 41,719 with the pairing change), `make pair`, `make ppa`, `make uimetrics` and the source audits in `tests/host/os_audit.sh`.
+Two board passes ran. The first on EdgeOS 2.0.0 4aeff43 (SHA-256 `a225125d27f3906c...`), the second on 06ddf1d, which adds the pairing change, the 16 px text and the model names (merged image SHA-256 `4cc402a76a53edc2...`). The release image in this branch is rebuilt from its tip, whose Mosaico code equals 06ddf1d apart from the Home card fix in ce58ca7. VERIFIED means a board log line shows it. Some rows ran on a scratch build of the 2.0.0 code with one test switch on, and the row says so. A scratch build is never shipped. Host tests pass for every part: `make os` (41,635 checks at 4aeff43, 41,719 with the pairing change), `make pair`, `make ppa`, `make uimetrics` and the source audits in `tests/host/os_audit.sh`.
 
 | Part | Result | What the board showed | Build |
 |---|---|---|---|
@@ -484,22 +488,25 @@ The board check ran on EdgeOS 2.0.0 4aeff43, the image `EdgeOS-2.0.0-esp32s31-me
 | Model admission, refused | VERIFIED | the boot load logged `REFUSED`, and a switch to E.V got `ERR CarMind E.V refused: ml would miss its deadline` while R.E.V stayed | scratch, safety factor raised from 2 to 2,000 |
 | Service contract | VERIFIED | `service R.E.V learner: job rev, T 1000 ms, D 30000 ms, stall 60000 ms, CPU 20 per mille in 30 ms bursts, prio 2 core 1` | 4aeff43 |
 | Runlevels and refusals during a drive | VERIFIED | `runlevel Driving (active 0x08)` and back to `runlevel Parked`. The USB door answered `ERR busy: a drive is running, try again when parked`. The screen showed "Not now: a drive is running. Try again later." for the clock sync and Format | scratch, forced drive |
-| Degradation ladder | VERIFIED | events "UI slowed (2 misses)", "learner paused (6 misses)", "model paused (10 misses)", then one step back at a time to "normal" | scratch, extra model load |
+| Degradation ladder | VERIFIED | events "UI slowed (2 misses)" at 110.6 s, "learner paused (6 misses)" at 122.6 s, "model paused (10 misses)" at 134.6 s, then one step back at a time to "normal" at 348.6 s. One model load in the whole run | scratch, extra model load |
 | Battery protection | VERIFIED, test limits | "Battery hot (34.2 C on USB): load shed" with Wi-Fi off, the learner paused and the screen dimmed, runlevel Saving, then "Battery cooled (33.7 C)" and Parked, and "Battery over-voltage (4188 mV): charger fault, stopped". The real limits (45 °C, 60 °C, 4.25 V) were not reached | scratch, test limits |
 | Desktop app | VERIFIED | connect with `fw=EdgeOS-2.0.0`, a wrong token refused, a model switch both ways, two files read at their listed sizes | 4aeff43 |
 | Internal RAM above 60 KB | VERIFIED | lowest 82,883 B over 9 phases (see [What it costs](#what-it-costs)) | debug build of 4aeff43 |
-| PPA and 2D-DMA | PARTLY | on at boot, `failures dma 0 ppa 0` in all 18 reports over 185 s. The speed A/B test gave no clean number | 4aeff43 |
-| Resets through `sys_reset` | PARTLY | `the last run ended with sys_reset(REBOOT: door REBOOT)` after a door REBOOT. The line after a download-door entry was not captured | 4aeff43 |
+| PPA and 2D-DMA | PARTLY | on at boot, `failures dma 0 ppa 0` in all 18 reports. A clean A/B on the same build: composing one slide frame takes 5.5 ms with the accelerator and 8.4 to 9.0 ms without, but a whole slide runs at 8.4 to 9.0 fps with it and 11.7 to 12.5 fps without, and its slowest frame is about 45 ms longer. Under investigation | 06ddf1d |
+| Resets through `sys_reset` | VERIFIED | `the last run ended with sys_reset(REBOOT: door REBOOT)` after a door REBOOT, and `the last run ended with sys_reset(door: USB door)` after a download-door entry | 4aeff43, 06ddf1d |
 | Feature gate | PARTLY | the gate starts and Smart swipe's warm-up runs. No verdict yet | 4aeff43 |
-| Version on screen | PARTLY | the boot line and the door's `fw=EdgeOS-2.0.0`. Settings and the Board footer were not checked | 4aeff43 |
-| 10-minute soak | NOT | stopped by the owner before it ran | |
-| 60 °C stop | NOT | built, not run | |
-| Where the gauge temperature comes from | NOT | not checked | |
-| Board page "lowest" after the fix | NOT | no photo of the fixed Board page yet | |
+| Version on screen | VERIFIED | `OpenCarMind EdgeOS 2.0.0` in the boot line, on the Board page and in Settings, and `fw=EdgeOS-2.0.0` over USB | 4aeff43, 06ddf1d |
+| 10-minute soak | VERIFIED | 10 min 02 s on the release: 0 restarts, 0 USB drops, 0 UI misses, every job within its deadline. The Wi-Fi round ran on the next boot: clock synced, internal RAM 90,959 B free at its low | 06ddf1d |
+| Critical battery stop | VERIFIED, test limit | with the limit lowered to 26 °C: `Battery too hot (28 C): stopped` and `logs flushed, storage stopped`, no power-off. The real 60 °C was not reached | scratch, lowered limit |
+| Where the gauge temperature comes from | VERIFIED | the gauge chip's own sensor: `Temperature()` equals `InternalTemperature()` in all 25 readings (28.1 to 31.4 °C). The board has no thermistor on the cell, so this is the temperature next to the cell, not of the cell | debug builds |
+| Board page "lowest" after the fix | PARTLY | the Board page reads 108 KB, the all-internal figure (110,631 B) and no longer 32 KB low. Not shown after a Wi-Fi round | debug build of 06ddf1d |
 | Wi-Fi with no known network in reach | NOT | not run | |
 | Going back to mossREV 1.2.0 | NOT | not tried | |
 | A/B rollback, UPS, GPIO57 power-off | NOT | off in this release | |
-| Pairing, Driving rule, model names, 16 px text | NOT | merged after the check (06ddf1d). Built and host-checked, not yet seen on the board | 06ddf1d |
+| Pairing: a weak adapter is ignored | VERIFIED | over the soak and the next boot: 0 connection tries, 0 pairing questions and 0 Driving spells, `automatic adapter search: not paired, strong signal only` | 06ddf1d |
+| Pairing: offering and saving your adapter | NOT | needs the owner's adapter next to the board | |
+| Model names and 16 px text on screen | VERIFIED | 37 board captures: "active-estimator" and "ev-frozen" on the model pages, no text under 16 px, nothing in a 60 px corner. One overlap on Home (fixed in ce58ca7, host-checked) | 06ddf1d |
+| The download door in every state | VERIFIED | the 1200-baud door entered the ROM download mode on the release, in Saving, during a forced drive and after a battery safety stop | 4aeff43, 06ddf1d, scratch |
 
 ## Limitations and future work
 
