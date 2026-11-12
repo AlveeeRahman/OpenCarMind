@@ -151,8 +151,9 @@ static void step(int64_t release_us)
             EXT_RAM_BSS_ATTR static ids_bm_t cur, prev;
             if (!ids_bm_copy(s_wtask.slot, q, &cur)) continue;
             bool hp = ids_bm_copy(s_wtask.slot, q - 1, &prev);
+            if (!ids_wifi_scan_scored(hp)) continue;   /* nothing earlier to compare with: not scored */
             ids_win_t *x = &in.wifi[in.n_wifi];
-            ids_bm_window(&cur, hp ? &prev : NULL, &x->n_adv, &x->set_bits, &x->new_bits, &x->su_new, NULL);
+            ids_bm_window(&cur, &prev, &x->n_adv, &x->set_bits, &x->new_bits, &x->su_new, NULL);
             x->on = true;
             in.n_wifi++;
         }
@@ -233,7 +234,7 @@ static void prepare(void)
 }
 
 /* ---------- board task: events, the setting's NVS, the log line ---------- */
-#define GEV_N 3
+#define GEV_N 3                                 /* the Health app's guard log (HV_EV_N) */
 static struct { char text[64]; int64_t t_ms; } s_gev[GEV_N];
 static ai_seq_t s_gev_seq;
 

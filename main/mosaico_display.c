@@ -46,6 +46,10 @@
 #include "sdlog.h"
 #include "fault_engine.h"
 #include "econ.h"
+#if CONFIG_OCM_AI_SVC
+#include "health_view.h"
+#include "health_text.h"
+#endif
 #include "esp_attr.h"
 #include "esp_heap_caps.h"
 #include "esp_lcd_co5300.h"
@@ -921,11 +925,13 @@ static lv_obj_t *grow(lv_obj_t *p) { lv_obj_t *g = flex_box(p, LV_FLEX_FLOW_ROW,
    on Drive, where the SYSTEM card and row 1 show the same numbers). Nothing is placed by pixel offsets next to text. ---------- */
 extern const lv_image_dsc_t ocm_logo_28, ocm_logo_160;
 static lv_obj_t *s_sb, *sb_row1, *sb_time, *sb_dcpu, *sb_dpwr, *sb_bt, *sb_wifi, *sb_batt_i, *sb_batt, *sb_pill, *sb_grp[4], *sb_val[4],
-                *s_banner, *s_banner_head, *s_banner_txt;
+                *s_banner, *s_banner_head, *s_banner_txt, *s_banner_open;
 enum { SB_HOME = 0, SB_DRIVE, SB_APP };
 static int s_sb_mode = -1;
 
 static bool s_banner_alarm;                            /* the banner shows a critical alarm */
+static int s_banner_page = -1;                         /* EdgeOS 2.1.0: the alarm is the Health monitor's: its page */
+static void open_app(int idx);
 static char s_banner_gone[64];                         /* the alarm cleared on the screen, until a snapshot shows it gone */
 static void banner_cb(lv_event_t *e)
 {
@@ -943,6 +949,11 @@ static void banner_cb(lv_event_t *e)
     STATUS_UNLOCK();
     s_banner_alarm = false;
     lv_obj_add_flag(s_banner, LV_OBJ_FLAG_HIDDEN);
+    int page = s_banner_page;
+    s_banner_page = -1;
+    if (page >= 0 && lv_event_get_code(e) == LV_EVENT_CLICKED)   /* a tap on a Health banner opens that page; a swipe only clears */
+        for (int i = 0; i < ui_app_count(); i++)
+            if (!strcmp(ui_app(i)->id, "health")) { ui_health_set_page(page); open_app(i); break; }
 }
 
 static void build_status_bar(void)
@@ -1014,6 +1025,8 @@ static void build_status_bar(void)
     lv_obj_set_width(s_banner_txt, 372);
     lv_label_set_long_mode(s_banner_txt, LV_LABEL_LONG_WRAP);
     lv_obj_set_style_text_align(s_banner_txt, LV_TEXT_ALIGN_CENTER, 0);
+    s_banner_open = ui_pill(s_banner, "Open Health", UI_TEXT);   /* a Health alarm: the whole banner is the tap target */
+    lv_obj_add_flag(s_banner_open, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(s_banner, LV_OBJ_FLAG_HIDDEN);
     s_sb_mode = -1;
 }
@@ -1104,12 +1117,24 @@ static void refresh_status_bar(const ui_snap_t *s)
     uint32_t col = UI_WARN;
     /* floating banner: critical alarms, and the desktop pairing code (it must be read off the screen); prompts such as
        "No engine data yet" go into the Home smart card instead */
-    if (st->alarm_text[0] && st->alarm_critical && strcmp(st->alarm_text, s_banner_gone)) { txt = st->alarm_text; col = UI_RED; }
+    if (st->alarm_text[0] && st->alarm_critical && s->now_ms < st->alarm_until_ms && strcmp(st->alarm_text, s_banner_gone)) { txt = st->alarm_text; col = UI_RED; }
     else if (st->sys_popup[0] && s->now_ms < st->sys_popup_until_ms && !strncmp(st->sys_popup, "Desktop pairing code", 20)) { txt = st->sys_popup; col = UI_GREEN; }
     if (txt) {
         char head[EVENT_TEXT + 8];                         /* a popup text can be the whole headline */
         const char *detail;
         banner_split(txt, txt == st->alarm_text, head, sizeof head, &detail);
+        int hp = -1;
+#if CONFIG_OCM_AI_SVC
+        uint8_t sev = HS_CHECK;
+        if (txt == st->alarm_text) hp = health_mon_banner(txt, &sev);
+        if (hp >= 0) {                                     /* the plain headline under the severity in words */
+            snprintf(head, sizeof head, LV_SYMBOL_WARNING " %s", hs_sev_word(sev));
+            detail = txt;
+            col = sev >= HS_ACT ? UI_RED : UI_WARN;
+        }
+#endif
+        s_banner_page = hp;
+        show(s_banner_open, hp >= 0);
         ui_set_text(s_banner_head, head);
         ui_set_color(s_banner_head, col);
         ui_set_text(s_banner_txt, detail);
@@ -1118,6 +1143,7 @@ static void refresh_status_bar(const ui_snap_t *s)
             lv_obj_set_style_border_color(s_banner, lv_color_hex(col), 0);
     }
     show(s_banner, txt != NULL);
+    if (!txt) s_banner_page = -1;
     s_banner_alarm = txt == st->alarm_text;
     if (!st->alarm_text[0]) s_banner_gone[0] = 0;          /* the snapshot caught up with the clear */
 }
@@ -1654,6 +1680,30 @@ static void refresh_home(const ui_snap_t *s)
 }
 
 /* one apps page: title row, 2 x 2 lifted cards with a 100 px flat icon (radius 26, dark glyph) and an 18 px label */
+#if CONFIG_OCM_AI_SVC
+/* EdgeOS 2.1.0: a dot on the Health icon while an issue is active (amber check soon, red act now), hidden otherwise.
+   It follows health_mon_worst() once a second (health_dot_tick); a change marks that launcher page's picture stale. */
+static lv_obj_t *s_hdot;
+static int s_hdot_tile = -1, s_hdot_sev = -1;
+static void health_dot_make(lv_obj_t *icon, int tile)
+{
+    lv_obj_add_flag(icon, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
+    s_hdot = lv_obj_create(icon);
+    lv_obj_remove_style_all(s_hdot);
+    lv_obj_add_flag(s_hdot, LV_OBJ_FLAG_IGNORE_LAYOUT | LV_OBJ_FLAG_HIDDEN);
+    lv_obj_remove_flag(s_hdot, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_size(s_hdot, 26, 26);
+    lv_obj_set_style_radius(s_hdot, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_opa(s_hdot, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(s_hdot, 3, 0);
+    lv_obj_set_style_border_color(s_hdot, lv_color_hex(s_light ? 0xFFFFFF : 0x000000), 0);
+    lv_obj_align(s_hdot, LV_ALIGN_TOP_RIGHT, 0, 0);       /* on the icon's rounded corner, inside its cell */
+    s_hdot_tile = tile;
+    s_hdot_sev = -1;
+}
+static void health_dot_tick(void);
+#endif
+
 static void build_apps_page(lv_obj_t *t, int page, const int *apps, int n)
 {
     /* the default order (registry order, four a page): Drive AI Learning R.E.V | E.V Summary Live Fuel |
@@ -1690,19 +1740,23 @@ static void build_apps_page(lv_obj_t *t, int page, const int *apps, int n)
         lv_obj_add_event_cb(cell, pf_cell_pressing_cb, LV_EVENT_PRESSING, NULL);
 #endif
         /* Tabler icon (A8, recoloured): dark = bright tile with a dark glyph, light = deeper tile with a white glyph */
+        lv_obj_t *ic;
         if (ui_app(app)->tile) {                          /* the app's own mark is the tile (98 px square, centred in the 100 px slot) */
-            lv_obj_t *box = flex_box(cell, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, 0);
+            lv_obj_t *box = ic = flex_box(cell, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, 0);
             lv_obj_set_size(box, 100, 100);
             lv_obj_t *mk = lv_image_create(box);
             lv_image_set_src(mk, ui_app(app)->tile);
         } else {
-            lv_obj_t *ic = ui_rect(cell, 0, 0, 100, 100, s_light ? ui_app(app)->icon_g1 : ui_app(app)->icon_bg, 26);
+            ic = ui_rect(cell, 0, 0, 100, 100, s_light ? ui_app(app)->icon_g1 : ui_app(app)->icon_bg, 26);
             lv_obj_t *gl = lv_image_create(ic);
             lv_image_set_src(gl, ui_app(app)->icon52);
             lv_obj_set_style_image_recolor(gl, lv_color_hex(s_light ? 0xFFFFFF : 0x0B0B0D), 0);
             lv_obj_set_style_image_recolor_opa(gl, LV_OPA_COVER, 0);
             lv_obj_center(gl);
         }
+#if CONFIG_OCM_AI_SVC
+        if (!strcmp(ui_app(app)->id, "health")) health_dot_make(ic, 1 + page);
+#endif
         ui_label(cell, UI_THEME.f_status, HT, ui_app(app)->name);
     }
     lv_obj_t *dr = flex_box(col, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, 0);
@@ -1714,6 +1768,9 @@ static void slide_attach(void);
 static void build_launcher(void)
 {
     lv_obj_clean(s_home);
+#if CONFIG_OCM_AI_SVC
+    s_hdot = NULL;                                     /* build_apps_page makes it again */
+#endif
     lv_obj_set_style_bg_color(s_home, lv_color_hex(0x000000), 0);
     lv_obj_set_style_bg_grad_dir(s_home, LV_GRAD_DIR_NONE, 0);
     s_wall_img = lv_image_create(s_home);              /* behind everything; the source is set when the wallpaper is ready */
@@ -2734,6 +2791,22 @@ static void stall_cb(void *arg)
         sys_reset(SYS_RESET_UI_STALL, "ui tick stalled");   /* quiesce, then abort for the core dump (os_core.h) */
     }
 }
+#if CONFIG_OCM_AI_SVC
+static void health_dot_tick(void)
+{
+    if (!s_hdot) return;
+    uint8_t w = health_mon_worst();
+    int sev = w >= HS_CHECK ? w : 0;
+    if (sev == s_hdot_sev) return;
+    s_hdot_sev = sev;
+    if (sev) {
+        lv_obj_set_style_bg_color(s_hdot, lv_color_hex(sev >= HS_ACT ? UI_THEME.bad : UI_THEME.warn), 0);
+        lv_obj_remove_flag(s_hdot, LV_OBJ_FLAG_HIDDEN);
+    } else lv_obj_add_flag(s_hdot, LV_OBJ_FLAG_HIDDEN);
+    if (s_hdot_tile > 0 && s_hdot_tile < 1 + N_APP_PAGES) s_tsnap_ok[s_hdot_tile] = false;   /* retaken on the next launcher visit */
+}
+#endif
+
 static void tick_cb(lv_timer_t *t)
 {
     (void)t;
@@ -2871,6 +2944,9 @@ static void tick_cb(lv_timer_t *t)
         }
 #if CONFIG_OCM_SWIPE_INTENT
         si_warm_tick();
+#endif
+#if CONFIG_OCM_AI_SVC
+        health_dot_tick();
 #endif
     }
     /* Home order moved in Settings: one launcher rebuild once the moves stopped, outside the job, finger up (the

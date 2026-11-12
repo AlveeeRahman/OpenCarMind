@@ -1327,3 +1327,8 @@ esp_err_t obd_ble_start(void)
     nimble_port_freertos_init(host_task);
     return ESP_OK;
 }
+
+#if CONFIG_OBD_BLE_PAIR_CONFIRM && BOARD_MOSAICO
+/* the Health app's adapter question (rule R1's "looks different"), at the end of the file so the S3's line numbers stay */
+bool obd_ble_adapter_mismatch(void) { return s_fp_changed; }
+#endif

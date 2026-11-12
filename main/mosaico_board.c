@@ -32,6 +32,7 @@
 #include "sys_mode.h"
 #include "wifi_ui_logic.h"
 #include "ai_svc.h"
+#include "health_view.h"
 #if CONFIG_OCM_BAT_EST
 #include "bat_est.h"
 #endif
@@ -663,6 +664,9 @@ static void board_task(void *arg)
         portEXIT_CRITICAL(&s_mux);
         ai_svc_gauge_publish(&g);                  /* the AI services' copy of this sample (read-only, no extra I2C) */
         ai_svc_board_tick(false);                  /* their NVS saves and log rows, here where storage work belongs */
+#if CONFIG_OCM_AI_SVC
+        health_mon_tick();                         /* new issues: the Health app's recent list and the banner */
+#endif
         settings_flush();
 #if CONFIG_OCM_SWIPE_INTENT
         si_flush();

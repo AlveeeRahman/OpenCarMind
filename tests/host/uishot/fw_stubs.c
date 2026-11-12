@@ -31,6 +31,7 @@
 #include "uishot.h"
 #include "ai_svc.h"
 #include "health_view.h"
+#include "health_text.h"
 
 app_status_t g_status;
 SemaphoreHandle_t g_status_mutex;
@@ -215,6 +216,11 @@ void uishot_fill(void)
     if (uishot_case.alarm) {
         const fault_t *f = &st->faults.faults[0];
         snprintf(st->alarm_text, sizeof st->alarm_text, "%s %s", f->code, uishot_case.alarm_desc ? uishot_case.alarm_desc : f->desc);
+        st->alarm_critical = true;
+        st->alarm_until_ms = INT64_MAX;
+    }
+    if (uishot_case.hbanner) {                            /* a Health monitor banner (health_mon_banner says whose) */
+        snprintf(st->alarm_text, sizeof st->alarm_text, "%s", uishot_case.hbanner);
         st->alarm_critical = true;
         st->alarm_until_ms = INT64_MAX;
     }
@@ -525,12 +531,105 @@ static void svc(health_view_t *v, int i, const char *n, uint8_t st, uint32_t run
     v->ai[i].state = st; v->ai[i].runs = runs; v->ai[i].misses = miss; v->ai[i].skipped = skip;
     v->ai[i].wcrt_us = wcrt; v->ai[i].budget_us = bud; v->ai[i].period_ms = per;
 }
+/* the Health states: a realistic board (a good battery, the guard watching, the AI on time), then one change */
+static void ri(health_view_t *v, int page, int k, const char *t, int32_t age, uint8_t sev)
+{
+    snprintf(v->recent[page][k].text, HV_RI_LEN, "%s", t);
+    v->recent[page][k].age_s = age;
+    v->recent[page][k].sev = sev;
+}
+static void hstate_view(health_view_t *v, int st)
+{
+    v->bat_valid = v->bat_anchored = true; v->bat_mode = 0; v->usb = true;
+    v->soc_pct = 98; v->i_ma = 0; v->v = 4.18f; v->p_mw = 0; v->temp_c = 26.9f;
+    v->soh_src = HV_SOH_FULL; v->soh_pct = 98; v->soh_ref_n = 10; v->dcir_ratio = 1.04f;
+    v->anom_state = HV_ANOM_NORMAL; v->anom_warm_h = 24; v->anom_score = 0.6f; v->anom_thr = 5.38f;
+    snprintf(v->bat_event, sizeof v->bat_event, "%s", "Anomaly detector warming up (24 h)");
+    v->bat_event_age_s = 90000;
+    v->ids_state = HV_IDS_WATCHING; v->shadow_h = 2; v->blocking_on = true;
+    v->head_on[HV_HEAD_SCAN] = true; v->head_q8[HV_HEAD_SCAN] = 21;
+    v->head_on[HV_HEAD_WIFI] = true; v->head_q8[HV_HEAD_WIFI] = 64;
+    v->fp_checks = 3;
+    snprintf(v->guard_ev[0], HV_EV_LEN, "%s", "Shadow over, now watching");
+    v->guard_ev_age_s[0] = 5400;
+    v->ai_started = true; v->ai_n = 3; v->ai_core = 1;
+    svc(v, 0, "bat", 1, 2512, 0, 1, 12900, 2000, 1000); v->ai[0].deadline_ms = 1000; v->ai[0].step_us = 230;
+    svc(v, 1, "banom", 1, 2512, 0, 0, 13000, 1000, 1000); v->ai[1].deadline_ms = 1000; v->ai[1].step_us = 20;
+    svc(v, 2, "ids", 1, 502, 0, 0, 11900, 2000, 5000); v->ai[2].deadline_ms = 1000; v->ai[2].step_us = 60;
+    switch (st) {
+    case HSX_LEARN:
+        v->soh_src = HV_SOH_LEARNING; v->soh_ref_n = 7; v->soh_pct = 0; v->dcir_ratio = 0;
+        v->anom_state = HV_ANOM_WARMUP; v->anom_warm_h = 3.2f; v->i_ma = 12; v->bat_mode = 2; v->p_mw = 50;
+        break;
+    case HSX_WORN:
+        v->soh_pct = 76; v->dcir_ratio = 1.62f; v->i_ma = -118; v->bat_mode = 1; v->usb = false; v->p_mw = -460; v->soc_pct = 64;
+        ri(v, 0, 0, "Battery is wearing out", 1500, HS_CHECK);
+        break;
+    case HSX_HEAT: case HSX_LEAK: case HSX_GLITCH: {
+        v->anom_state = HV_ANOM_ALARM; v->anom_score = 7.4f;
+        int j = st == HSX_HEAT ? 4 : st == HSX_LEAK ? 3 : 8;
+        for (int k = 0; k < HV_ANOM_NF; k++) v->anom_err[k] = 0.05f * (float)(k + 1);
+        v->anom_err[j] = 3.1f;
+        if (st == HSX_HEAT) { v->temp_c = 41.5f; v->i_ma = -160; v->bat_mode = 1; v->usb = false; v->p_mw = -610; }
+        hs_card_t c;
+        hs_issue_card(v, HI_BAT_ANOM, 870, &c);
+        ri(v, 0, 0, c.head, 240, c.sev);
+        ri(v, 0, 1, "Battery behaves normally again", 86400, HS_GOOD);
+        ri(v, 0, 2, c.head, 90000, c.sev);
+        snprintf(v->bat_event, sizeof v->bat_event, "Anomaly: %s", st == HSX_HEAT ? "unexpected heating" : st == HSX_LEAK
+                 ? "rest current leak" : "gauge read glitches");
+        v->bat_event_age_s = 240;
+        break;
+    }
+    case HSX_SHADOW:
+        v->ids_state = HV_IDS_SHADOW; v->shadow_h = 1.2f; v->head_on[HV_HEAD_WIFI] = false;
+        v->guard_ev[0][0] = 0; v->guard_ev_age_s[0] = -1;
+        break;
+    case HSX_BLOCK:
+        v->ids_state = HV_IDS_BLOCKING; v->block_why = HV_GR_BLE; v->block_left_s = 540; v->blocks_today = 1;
+        snprintf(v->block_reason, sizeof v->block_reason, "%s", "radio flood nearby");
+        v->head_q8[HV_HEAD_SCAN] = 412;
+        ri(v, 1, 0, "Blocked a flood of Bluetooth devices", 60, HS_CHECK);
+        snprintf(v->guard_ev[0], HV_EV_LEN, "%s", "Blocking: radio flood nearby (p3f9a)");
+        v->guard_ev_age_s[0] = 60;
+        break;
+    case HSX_MISMATCH:
+        v->adapter_mismatch = true; v->fp_checks = 4;
+        ri(v, 1, 0, "An adapter that looks like yours behaved differently", 300, HS_CHECK);
+        break;
+    case HSX_AI_SLOW:
+        v->ai_level = 1; v->os_level = 1; v->ai[0].misses = 4; v->ai[0].wcrt_us = 1180000; v->ai[2].period_ms = 20000;
+        ri(v, 2, 0, "Board busy: AI features slowed", 30, HS_INFO);
+        break;
+    default: break;
+    }
+}
+uint8_t health_mon_worst(void)
+{
+    health_view_t v;
+    health_view_read(&v);
+    uint8_t w;
+    hs_issues(&v, &w);
+    return w;
+}
+int health_mon_banner(const char *alarm_text, uint8_t *sev)
+{
+    if (!uishot_case.hbanner || !alarm_text || strcmp(alarm_text, uishot_case.hbanner)) return -1;
+    health_view_t v;
+    health_view_read(&v);
+    hs_card_t c;
+    for (int k = 0; k < HI_N; k++)
+        if (hs_issue_card(&v, k, -1, &c) && !strcmp(c.head, alarm_text)) { if (sev) *sev = c.sev; return hs_issue_page(k); }
+    return -1;
+}
 void health_view_read(health_view_t *v)
 {
     memset(v, 0, sizeof *v);
     v->soh_ref_need = 10; v->anom_warm_need_h = 24; v->shadow_need_h = 2; v->blocking_on = s_ids_blocking;
     v->bat_event_age_s = -1;
     for (int k = 0; k < HV_EV_N; k++) v->guard_ev_age_s[k] = -1;
+    for (int p = 0; p < HV_PAGES; p++) for (int k = 0; k < HV_RI_N; k++) v->recent[p][k].age_s = -1;
+    if (uishot_case.hstate) { hstate_view(v, uishot_case.hstate); return; }
     if (uishot_case.idle) { v->ids_state = HV_IDS_LEARNING; v->ai_core = -1; return; }
     if (uishot_case.demo) {
         v->bat_valid = v->bat_anchored = true; v->bat_mode = 2; v->usb = true;
@@ -547,7 +646,8 @@ void health_view_read(health_view_t *v)
         v->guard_ev_age_s[0] = 2520;
         snprintf(v->guard_ev[1], HV_EV_LEN, "%s", "OBD adapter fingerprint same (id 3f9a)");
         v->guard_ev_age_s[1] = 2400;
-        v->ai_n = 3; v->ai_core = 1; v->ai_level = 0; v->os_level = 0;
+        v->ai_started = true; v->ai_n = 3; v->ai_core = 1; v->ai_level = 0; v->os_level = 0;
+        for (int i = 0; i < 3; i++) { v->ai[i].deadline_ms = 1000; v->ai[i].step_us = 230; }
         svc(v, 0, "bat", 1, 2512, 0, 0, 2610, 2000, 1000);
         svc(v, 1, "banom", 1, 1256, 0, 0, 3020, 1500, 2000);
         svc(v, 2, "ids", 1, 502, 0, 0, 3480, 2000, 5000);
@@ -568,10 +668,20 @@ void health_view_read(health_view_t *v)
     static const char *const EVL[HV_EV_N] = { "Network guard: blocking, BLE flood nearby (hash 3f9a1c2e)",
         "Network guard: Wi-Fi round aborted, clock kept (3 deauths)", "Network guard: re-pair request refused (hash 0b7d55e1)" };
     for (int k = 0; k < HV_EV_N; k++) { snprintf(v->guard_ev[k], HV_EV_LEN, "%s", EVL[k]); v->guard_ev_age_s[k] = 3599 + 172800 * k; }
-    v->ai_n = AI_SVC_MAX; v->ai_core = 1; v->ai_level = 2; v->os_level = 4;
+    v->ai_started = true; v->ai_n = AI_SVC_MAX; v->ai_core = 1; v->ai_level = 2; v->os_level = 4;
+    v->adapter_mismatch = true; v->block_why = HV_GR_DEAUTH;
+    for (int k = 0; k < HV_ANOM_NF; k++) v->anom_err[k] = 1.0f;
+    v->anom_err[5] = 9.0f;                              /* the longest reason text (resistance) */
+    static const char *const RIL[HV_RI_N] = { "An adapter that looks like yours behaved differently", "Blocked a Wi-Fi disconnect attack",
+        "Battery current reading looks wrong", "Connection to the battery glitches", "Battery behaves normally again" };
+    for (int p = 0; p < HV_PAGES; p++)
+        for (int k = 0; k < HV_RI_N; k++) { snprintf(v->recent[p][k].text, HV_RI_LEN, "%s", RIL[k]); v->recent[p][k].age_s = 172800 * (k + 1); v->recent[p][k].sev = HS_ACT; }
     snprintf(v->ai_why, sizeof v->ai_why, "%s", "ids refused: self-test 99999 us over 2000 us");
     static const char *const NM[4] = { "bat", "banom", "ids", "wwwwwww" };
-    for (int i = 0; i < AI_SVC_MAX; i++) svc(v, i, NM[i], (uint8_t)(i % 5), 4294967295u, 4294967295u, 4294967295u, 4294967295u, 99999, 99999);
+    for (int i = 0; i < AI_SVC_MAX; i++) {
+        svc(v, i, NM[i], (uint8_t)(i % 5), 4294967295u, 4294967295u, 4294967295u, 4294967295u, 99999, 99999);
+        v->ai[i].deadline_ms = 4294967295u; v->ai[i].step_us = 4294967295u;
+    }
 }
 bool ai_svc_status(ai_svc_status_t *out)
 {

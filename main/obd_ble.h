@@ -58,6 +58,7 @@ bool      obd_ble_guard_offer(const char **text, const char **yes, const char **
                               uint32_t *seq);
 void      obd_ble_guard_answer(uint32_t seq, bool yes);
 void      obd_ble_guard_counts(uint32_t *fp_checks, uint32_t *repair_refused);   /* the Health app (plain reads) */
+bool      obd_ble_adapter_mismatch(void);   /* ESP-Mosaico: the adapter looks different and the user has not said "Use it" */
 #else
 #define obd_ble_guard_offer(text, yes, no, note, secs_left, seq) \
     ((void)(text), (void)(yes), (void)(no), (void)(note), (void)(secs_left), (void)(seq), false)

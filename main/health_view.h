@@ -11,8 +11,13 @@ enum { HV_SOH_NONE = 0, HV_SOH_LEARNING, HV_SOH_MODEL, HV_SOH_FULL };          /
 enum { HV_ANOM_OFF = 0, HV_ANOM_WARMUP, HV_ANOM_NORMAL, HV_ANOM_ALARM };
 enum { HV_IDS_OFF = 0, HV_IDS_LEARNING, HV_IDS_SHADOW, HV_IDS_WATCHING, HV_IDS_BLOCKING };
 enum { HV_HEAD_SCAN = 0, HV_HEAD_LINK, HV_HEAD_WIFI, HV_HEADS };
-#define HV_EV_N   3
-#define HV_EV_LEN 64
+enum { HV_GR_NONE = 0, HV_GR_BLE, HV_GR_WIFI, HV_GR_DEAUTH };     /* why the guard blocks (= IDS_R_*) */
+#define HV_EV_N     3
+#define HV_EV_LEN   64
+#define HV_ANOM_NF  9          /* the anomaly detector's features (= AN_NF) */
+#define HV_PAGES    3
+#define HV_RI_N     5          /* recent issues kept per page */
+#define HV_RI_LEN   56
 
 typedef struct {
     /* ---- page 1: battery ---- */
@@ -29,6 +34,7 @@ typedef struct {
     float    anom_warm_h, anom_warm_need_h;   /* warm-up done of 24 h */
     float    anom_score, anom_thr; /* autoencoder score and its alarm threshold */
     char     anom_class[32];       /* the fault class while alarmed ("resistance rise", "self-discharge", ...) */
+    float    anom_err[HV_ANOM_NF]; /* while alarmed: each feature's reconstruction error at the alarm's onset window */
     char     bat_event[HV_EV_LEN]; /* the last battery event, "" for none */
     int32_t  bat_event_age_s;      /* -1 for none */
 
@@ -37,6 +43,10 @@ typedef struct {
     bool     blocking_on;          /* Settings > Network guard: blocking */
     float    shadow_h, shadow_need_h;      /* shadow done of 2 h */
     char     block_reason[40];     /* while blocking: "radio flood nearby", "Wi-Fi deauth", ... */
+    uint8_t  block_why;            /* HV_GR_*, also while it only "would" block */
+    bool     ids_would;            /* a head would block, but the shadow or the setting holds it */
+    bool     link_note;            /* the car link answers slower than this board's normal (advisory) */
+    bool     adapter_mismatch;     /* the adapter on the link looks different from the paired one (rows kept out) */
     uint32_t block_left_s;         /* while blocking: until it lifts by itself */
     bool     head_on[HV_HEADS];    /* the head has data now (scan running, link up, a round ran) */
     int32_t  head_q8[HV_HEADS];    /* score, Q8: 256 = the threshold */
@@ -45,6 +55,7 @@ typedef struct {
     int32_t  guard_ev_age_s[HV_EV_N];
 
     /* ---- page 3: AI services ---- */
+    bool     ai_started;           /* the services' status exists (false until the boot health verdict starts them) */
     uint8_t  ai_n;                 /* services in the table */
     int8_t   ai_core;              /* -1: no worker */
     uint8_t  ai_level;             /* AI_DL_* */
@@ -53,11 +64,22 @@ typedef struct {
     struct {
         char     name[8];
         uint8_t  state;            /* AI_ST_* (ai_svc.h) */
-        uint32_t runs, misses, skipped, wcrt_us, budget_us, period_ms;
+        uint32_t runs, misses, skipped, wcrt_us, budget_us, period_ms, deadline_ms, step_us;
     } ai[AI_SVC_MAX];
+
+    /* ---- recent issues per page (health_mon), newest first; "" for none ---- */
+    struct { char text[HV_RI_LEN]; int32_t age_s; uint8_t sev; } recent[HV_PAGES][HV_RI_N];
 } health_view_t;
 
-void health_view_read(health_view_t *out);     /* any task; never blocks */
+void health_view_read(health_view_t *out);     /* the UI task; never blocks */
+
+/* health_mon (health_view.c): the board task, every 2 s. It turns each new issue (health_text.h) into a recent-list line,
+   and for a new battery wear, battery anomaly, guard block or adapter mismatch into the alarm banner with "Open Health"
+   (amber issues only log while driving; red ones banner for 10 s then). It never writes NVS and never acts on power. */
+void    health_mon_tick(void);
+uint8_t health_mon_worst(void);                /* HS_* of the active issues (the Home icon dot), any task */
+/* the banner on screen is health_mon's: its page (and severity), else -1 */
+int     health_mon_banner(const char *alarm_text, uint8_t *sev);
 const char *hv_ladder_name(uint8_t os_level);  /* "normal", "AI slowed", "UI slowed", ... */
 
 /* the guard's controls (ids_svc.c): flags only, the IDS step applies them */

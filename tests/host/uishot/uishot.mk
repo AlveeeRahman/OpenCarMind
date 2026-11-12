@@ -15,7 +15,7 @@ LVGL_SRCS  = $(shell find $(LVGL_DIR)/src -name '*.c' 2>/dev/null)
 LVGL_OBJS  = $(patsubst $(LVGL_DIR)/src/%.c,$(UI_B)/lvgl/%.o,$(LVGL_SRCS))
 UI_FW      = ../../main/mosaico_logos.c ../../main/mosaico_icons.c ../../main/econ.c \
              ../../main/ui_settings_logic.c ../../main/ui_events_logic.c ../../main/ui_rows_logic.c ../../main/wifi_ui_logic.c \
-             ../../main/clock_set.c ../../main/power_state.c ../../main/fault_engine.c ../../main/harden.c ../../main/os_core.c ../../main/reset_class.c
+             ../../main/clock_set.c ../../main/power_state.c ../../main/fault_engine.c ../../main/harden.c ../../main/os_core.c ../../main/reset_class.c ../../main/health_text.c
 UI_FW_OBJS = $(patsubst ../../main/%.c,$(UI_B)/fw/%.o,$(UI_FW))
 
 $(UI_B)/lvgl/%.o: $(LVGL_DIR)/src/%.c uishot/lv_host_kconfig.h

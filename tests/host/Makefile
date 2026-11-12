@@ -220,12 +220,19 @@ ids_tests: test_ids.c ../../main/ids_core.c ../../main/ids_core.h ../../main/ids
 idsaudit:
 	./ids_audit.sh
 
+# the Health app's plain words: each state's card, the issue count, the anomaly reason, the Wi-Fi first-scan skip
+health: health_tests
+	./health_tests
+
+health_tests: test_health_text.c ../../main/health_text.c ../../main/health_text.h ../../main/health_view.h ../../main/ids_core.c ../../main/ids_core.h ../../main/ids_model.h
+	$(CC) $(CFLAGS) -o $@ test_health_text.c ../../main/health_text.c ../../main/ids_core.c
+
 FORCE:
 
 clean:
-	rm -f carmind_tests rev_tests tank_tests session_tests reset_tests swipe_tests clock_tests uimetrics_tests prefetch_tests logstore_tests nandfat_tests settings_tests wifi_tests events_tests theme_tests wificreds_tests rows_tests ppa_tests os_tests pair_tests pair_gate_tests pair_gate_off.inc pair_gate_on.inc uishot_bin ai_tests bat_tests guard_tests soh_tests anom_tests ids_tests
+	rm -f carmind_tests rev_tests tank_tests session_tests reset_tests swipe_tests clock_tests uimetrics_tests prefetch_tests logstore_tests nandfat_tests settings_tests wifi_tests events_tests theme_tests wificreds_tests rows_tests ppa_tests os_tests pair_tests pair_gate_tests pair_gate_off.inc pair_gate_on.inc uishot_bin ai_tests bat_tests guard_tests soh_tests anom_tests ids_tests health_tests
 	rm -rf uishot_bin.dSYM
-.PHONY: run rev session reset swipe clock uimetrics prefetch logstore clean settings wifi events theme wificreds rows eventtext ppa os pair textfit uishot uishot_lvgl ai bat guard soh anom ids idsaudit FORCE
+.PHONY: run rev session reset swipe clock uimetrics prefetch logstore clean settings wifi events theme wificreds rows eventtext ppa os pair textfit uishot uishot_lvgl ai bat guard soh anom ids idsaudit health FORCE
 
 # ESP-Mosaico screens rendered on the Mac: text fit, corners, the 16 px floor (uishot/uishot.mk)
 include uishot/uishot.mk

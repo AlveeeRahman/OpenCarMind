@@ -100,6 +100,11 @@ bool     ids_shadow(const ids_t *g);
 uint32_t ids_block_left_s(const ids_t *g);                /* while blocking: until it lifts by itself */
 const char *ids_reason_text(uint8_t r);                   /* "radio flood nearby", "Wi-Fi beacon flood", "Wi-Fi deauth attack" */
 const char *ids_state_name(uint8_t st);
+/* a finished Wi-Fi scan is scored only against the scan before it: the first scan after boot (or after the slot ring lost
+   the one before) has nothing to compare with, so every network would look new (290 of 256 right after boot, V21). It is
+   only kept as the next scan's "before". Each clock round makes one scan (wifi_sync.c sync_once), so a round's scan is
+   compared with the previous round's. */
+static inline bool ids_wifi_scan_scored(bool have_prev) { return have_prev; }
 /* the deauth rule alone, for the Wi-Fi task's inline check before the clock is set */
 static inline bool ids_deauth_rule(uint16_t deauth_round) { return deauth_round >= IDS_DEAUTH_K; }
 /* the link head on one window's mean latency (1/16 ms): the score (Q8), and the note's start (true once) */

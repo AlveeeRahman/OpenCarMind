@@ -13,9 +13,9 @@
 #include "bat_anom_model.h"
 #include "bat_est.h"
 #include "events.h"
-#include "status.h"
 
 static const char *TAG = "banom";
+_Static_assert(sizeof ((bat_anom_out_t *)0)->err == AN_NF * sizeof(float), "bat_anom_out_t.err: one per feature");
 
 #define BAN_PERIOD_MS   1000
 #define BAN_DEADLINE_MS 1000
@@ -86,7 +86,7 @@ static void publish(const an_out_t *o)
     if (o) { r.s_ae = o->s_ae; r.s_rz = o->s_rz; r.s_g = o->s_g; }
     r.windows = (uint32_t)s_s.nwin;
     r.state = s_alarm ? BAN_ALARM : s_s.nwin <= s_p.warmup_win ? BAN_WARMUP : BAN_NORMAL;
-    if (!s_alarm) r.cls[0] = 0;
+    if (!s_alarm) { r.cls[0] = 0; memset(r.err, 0, sizeof r.err); }
     AI_SEQ_PUT(&s_out_seq, &s_out, &r);
 }
 
@@ -117,6 +117,7 @@ static void step(int64_t release_us)
     if (alarm && !s_alarm) {
         bat_anom_out_t r = s_out;
         snprintf(r.cls, sizeof r.cls, "%s", an_class_name(&o));
+        memcpy(r.err, o.ae_err, sizeof r.err);
         r.alarms++;
         AI_SEQ_PUT(&s_out_seq, &s_out, &r);
         evq_push(1, r.cls, o.s_ae);
@@ -202,14 +203,7 @@ static void board(bool shutdown)
         char b[64];
         if (k == 1) {
             sys_event(EV_WARN, "Battery anomaly: %s (score %.1f)", cls, (double)sc);
-            snprintf(b, sizeof b, "Anomaly: %s", cls);
-            STATUS_LOCK();                             /* the banner (a tap clears it); power is never touched */
-            if (!g_status.alarm_text[0]) {
-                snprintf(g_status.alarm_text, sizeof g_status.alarm_text, "Battery anomaly: %s", cls);
-                g_status.alarm_critical = true;
-                g_status.alarm_until_ms = INT64_MAX;
-            }
-            STATUS_UNLOCK();
+            snprintf(b, sizeof b, "Anomaly: %s", cls);   /* the banner is health_mon's (plain words); power is never touched */
         } else {
             sys_event(EV_INFO, "Battery anomaly over (score %.1f)", (double)sc);
             snprintf(b, sizeof b, "Anomaly over");
