@@ -128,12 +128,25 @@ os_tests: test_os.c ../../main/os_core.c ../../main/os_core.h ../../main/reset_c
 	$(CC) $(CFLAGS) -o $@ test_os.c ../../main/os_core.c ../../main/reset_class.c -lm
 
 # Bluetooth OBD adapter choice and pairing ("ask + strong signal"): the pure rules (main/obd_pair.c) plus a source audit
-pair: pair_tests
+# rules, and is_candidate() of obd_ble.c with CONFIG_OBD_BLE_PAIR_CONFIRM off (the car board's tested rule) and on
+pair: pair_tests pair_gate_tests
 	./pair_tests
+	./pair_gate_tests
 	./pair_audit.sh
 
 pair_tests: test_obd_pair.c ../../main/obd_pair.c ../../main/obd_pair.h
 	$(CC) $(CFLAGS) -o $@ test_obd_pair.c ../../main/obd_pair.c
+
+# unifdef exits 1 when it removed something
+pair_gate_tests: test_pair_gate.c ../../main/obd_ble.c ../../main/obd_pair.c ../../main/adapter_match.c
+	unifdef -DCONFIG_OBD_BLE_PAIR_CONFIRM=0 ../../main/obd_ble.c | \
+	    awk '/^static bool is_candidate\(/,/^}/' | sed 's/is_candidate(/is_candidate_off(/' > pair_gate_off.inc || [ $$? = 1 ]
+	unifdef -DCONFIG_OBD_BLE_PAIR_CONFIRM=1 ../../main/obd_ble.c | \
+	    awk '/^static void addr_key\(/,/^}/; /^static obd_pick_t is_candidate\(/,/^}/' | \
+	    sed 's/is_candidate(/is_candidate_on(/' > pair_gate_on.inc || [ $$? = 1 ]
+	grep -q is_candidate_off pair_gate_off.inc && grep -q is_candidate_on pair_gate_on.inc
+	$(CC) $(CFLAGS) -I. -o $@ test_pair_gate.c ../../main/obd_pair.c ../../main/adapter_match.c
+	rm -f pair_gate_off.inc pair_gate_on.inc
 
 carmind_tests: $(SRCS) ../../main/custom_pids.h ../../main/fault_engine.h
 	$(CC) $(CFLAGS) -o $@ $(SRCS) -lm
@@ -151,7 +164,7 @@ rev_tests: $(REV_SRCS) ../../main/rev_learn.h ../../main/rev_cal.h ../../main/re
 	$(CC) $(CFLAGS) -o $@ $(REV_SRCS) -lm
 
 clean:
-	rm -f carmind_tests rev_tests tank_tests session_tests reset_tests swipe_tests clock_tests uimetrics_tests prefetch_tests logstore_tests nandfat_tests settings_tests wifi_tests events_tests theme_tests wificreds_tests rows_tests ppa_tests os_tests pair_tests uishot_bin
+	rm -f carmind_tests rev_tests tank_tests session_tests reset_tests swipe_tests clock_tests uimetrics_tests prefetch_tests logstore_tests nandfat_tests settings_tests wifi_tests events_tests theme_tests wificreds_tests rows_tests ppa_tests os_tests pair_tests pair_gate_tests pair_gate_off.inc pair_gate_on.inc uishot_bin
 	rm -rf uishot_bin.dSYM
 .PHONY: run rev session reset swipe clock uimetrics prefetch logstore clean settings wifi events theme wificreds rows eventtext ppa os pair textfit uishot uishot_lvgl
 

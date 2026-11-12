@@ -1,7 +1,16 @@
 #!/bin/sh
 # Source audit for the adapter pairing rules (run by `make pair`): what test_obd_pair.c cannot see in obd_ble.c, the
 # firmware glue around the pure rules (owner 2026-11-11, "ask + strong signal").
-cd "$(dirname "$0")/../../main" || exit 1
+# CONFIG_OBD_BLE_PAIR_CONFIRM: sections 1-5 read the sources with the switch on (unifdef), section 6 with it off.
+src="$(cd "$(dirname "$0")/../../main" && pwd)" || exit 1
+tmp=$(mktemp -d) || exit 1
+trap 'rm -rf "$tmp"' EXIT
+mkdir "$tmp/on" "$tmp/off"
+for f in obd_ble.c obd_ble.h elm327.c elm327.h app_main.c display.c display.h mosaico_board.c mosaico_display.c sys_mode.c; do
+    unifdef -DCONFIG_OBD_BLE_PAIR_CONFIRM=1 "$src/$f" > "$tmp/on/$f"
+    unifdef -DCONFIG_OBD_BLE_PAIR_CONFIRM=0 "$src/$f" > "$tmp/off/$f"
+done
+cd "$tmp/on" || exit 1
 fail=0
 bad() { echo "FAIL $*"; fail=1; }
 
@@ -18,7 +27,7 @@ grep -q 'save_current' obd_ble.c && bad "the old save_current() (saved at the fi
 a=$(grep -l -E '\bobd_ble_pair_answer\(' *.c | tr '\n' ' ')
 [ "$a" = "app_main.c mosaico_board.c obd_ble.c " ] || bad "obd_ble_pair_answer() is called from: $a"
 grep -q -E 'case MB_BLE_PAIR: +obd_ble_pair_answer\(r->arg != 0\);' mosaico_board.c || bad "mosaico_board.c MB_BLE_PAIR"
-awk '/^#if !BOARD_MOSAICO/{m=1} /^#endif/{m=0} /obd_ble_pair_answer\(true\)/{if(!m) bad=1; n++} END{exit bad || n != 1}' app_main.c ||
+awk '/^#if !BOARD_MOSAICO( |$)/{m=1} /^#endif/{m=0} /obd_ble_pair_answer\(true\)/{if(!m) bad=1; n++} END{exit bad || n != 1}' app_main.c ||
     bad "app_main.c answers yes outside the car board's BOOT tap"
 grep -q 'mosaico_board_request(MB_BLE_PAIR' mosaico_display.c || bad "the pairing sheet does not send its answer"
 
@@ -53,5 +62,26 @@ grep -n 'adapter_addr' display.c mosaico_*.c >/dev/null && bad "a screen shows t
 # 5. The runlevel's car-link input on the ESP-Mosaico is os_rl_link_input() (logging only).
 grep -q 'bool link = os_rl_link_input(g_status.ble);' sys_mode.c || bad "sys_mode.c: the S31 car link is not os_rl_link_input()"
 
-[ $fail = 0 ] && echo "pair audit: save only on yes PASS ($c caller), new adapter unused before yes PASS, automatic search PASS ($n paths), no address in logs PASS, runlevel input PASS"
+# 6. Switch off (the car board's default): the sources are the car board's tested EdgeOS 2.0.0 rules (4aeff43). The
+#    image identity itself is checked by building (README, Build and flash); this checks the source.
+cd "$tmp/off" || exit 1
+# code only: comment lines and trailing comments dropped
+for f in obd_ble.c elm327.c app_main.c display.c; do
+    sed -e 's:/\*.*\*/::g' -e 's://.*$::' "$f" | grep -v -E '^ *(/\*|\*)' | grep -n -E 'obd_pair|save_adapter|s_probe_drop|PAIR_MIN_RSSI|PAIR_ASK_MS' &&
+        bad "off: $f compiles pairing-confirm code (above)"
+done
+grep -q -E 'obd_ble_pair_(offer|seq|answer)\(' app_main.c && bad "off: app_main.c asks the pairing question"
+grep -q -E '^#define obd_ble_pair_poll\(\) +\(\(void\)0\)' obd_ble.h || bad "off: obd_ble_pair_poll() is not empty"
+grep -q -E '^#define +elm_explore_auto\(\) elm_explore\(\)' elm327.h || bad "off: the automatic search is not the old elm_explore()"
+grep -q '^    obd_ble_adapter_confirmed();           /\* it answered with a prompt' elm327.c || bad "off: elm327.c does not keep the adapter at its first prompt"
+awk '/^void obd_ble_adapter_confirmed\(void\)/,/^}/' obd_ble.c | grep -q 'save_current();' || bad "off: the adapter is not saved at its first prompt"
+awk '/^static bool is_candidate\(/,/^}/' obd_ble.c > cand.txt
+grep -q 'if (d->rssi < CONFIG_OBD_BLE_MIN_RSSI) return false;' cand.txt &&
+grep -q 'if (s_have_saved && !exploring) return ble_addr_cmp(&d->addr, &s_saved_addr) == 0;' cand.txt &&
+grep -q 'if (is_rejected(&d->addr)) return false;' cand.txt || bad "off: is_candidate() is not the old rule"
+grep -q 'DISPLAY_ADAPTER_FMT      "%s%s"' display.h && grep -q '(st).adapter_addr, (st).adapter_saved ? " (saved)" : ""' display.h ||
+    bad "off: the car board's info page does not show the address and (saved)"
+grep -q '^#line 262 ' app_main.c || bad "off: app_main.c lost the #line that keeps the car board's ESP_ERROR_CHECK numbers"
+
+[ $fail = 0 ] && echo "pair audit (switch off: car board rule PASS): save only on yes PASS ($c caller), new adapter unused before yes PASS, automatic search PASS ($n paths), no address in logs PASS, runlevel input PASS"
 exit $fail

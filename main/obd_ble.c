@@ -1,15 +1,21 @@
 /* NimBLE central for ELM327-style Bluetooth LE OBD-II adapters.
  *
- * First pairing (owner, 2026-11-11, "ask + strong signal"; the rules are obd_pair.c): with no adapter saved, or in the
- * user's Find OBD window, devices that look like adapters (advertised name, serial service or the configured prefixes) at
+ * CONFIG_OBD_BLE_PAIR_CONFIRM off (the car board's default, its tested rule): scan for adapters (by advertised name, by
+ * advertised serial service, or by the configured prefixes), collect candidates for a short window, connect to the
+ * strongest, find its serial line, and keep its address only after it answers the ELM327 reset. Devices that turn out not
+ * to be adapters are skipped for a while. Later runs: connect only to the stored address. Long-press BOOT clears it.
+ *
+ * CONFIG_OBD_BLE_PAIR_CONFIRM on (the ESP-Mosaico's default; owner, 2026-11-11, "ask + strong signal"; the rules are
+ * obd_pair.c): with no adapter saved, or in the user's Find OBD window, devices that look like adapters at
  * CONFIG_OBD_BLE_PAIR_MIN_RSSI or stronger are collected for a short window; the strongest is connected, its serial line
  * found and the ELM327 reset tried (the probe). If it answers, the link is dropped at once and the user is asked
  * (ESP-Mosaico: the pairing sheet; car board: tap BOOT within 5 s). Only a yes saves its address.
  * Later runs: connect only to the saved address (down to CONFIG_OBD_BLE_MIN_RSSI). The automatic search never looks past
  * it; only the user's Find OBD may offer another adapter, and switching needs the same yes. Forget clears it.
  * Devices that turn out not to be adapters are skipped for a while. The address is never shown or logged.
- * Bluetooth pairing (Just Works) and bonding happen only when the adapter asks for them; a bond made during a probe that
- * was not confirmed is deleted.
+ * A bond made during a probe that was not confirmed is deleted.
+ *
+ * Pairing (Just Works) and bonding happen only when the adapter asks for them.
  */
 #include <string.h>
 #include <strings.h>
@@ -30,7 +36,9 @@
 #include "elm327.h"
 #include "status.h"
 #include "events.h"
+#if CONFIG_OBD_BLE_PAIR_CONFIRM
 #include "obd_pair.h"
+#endif
 
 static const char *TAG = "obd_ble";
 
@@ -40,11 +48,13 @@ void ble_store_config_init(void);
 #define REJECT_TTL_US        (10 * 60 * 1000000LL)
 #define N_REJECT             8
 #define MAX_CHRS             48
+#if CONFIG_OBD_BLE_PAIR_CONFIRM
 /* how long the question waits for an answer: the sheet on the ESP-Mosaico, a BOOT tap on the car board (owner: 30 s / 5 s) */
 #if CONFIG_IDF_TARGET_ESP32S31
 #define PAIR_ASK_MS          30000u
 #else
 #define PAIR_ASK_MS          5000u
+#endif
 #endif
 
 static uint8_t   s_own_addr_type;
@@ -60,7 +70,9 @@ static SemaphoreHandle_t s_write_done;
 
 static ble_addr_t s_saved_addr;
 static bool       s_have_saved;
+#if CONFIG_OBD_BLE_PAIR_CONFIRM
 static char       s_saved_name[32];
+#endif
 static char       s_cur_name[32];
 static ble_addr_t s_cur_addr;
 
@@ -70,6 +82,7 @@ static ble_addr_t s_best_addr;
 static char       s_best_name[32];
 static int8_t     s_best_rssi;
 static int64_t    s_window_start;
+#if CONFIG_OBD_BLE_PAIR_CONFIRM
 
 /* the pairing question (obd_pair.c): written by the NimBLE host task, the obd task, the button / board task, read by the
    screen; every access is a short critical section, the actions (NVS, bonds, links) run after it */
@@ -106,6 +119,7 @@ static void probe_failed(void)
     obd_pair_probe_failed(&s_pair);
     portEXIT_CRITICAL(&s_pair_mux);
 }
+#endif
 
 static portMUX_TYPE s_reject_mux = portMUX_INITIALIZER_UNLOCKED;
 static struct { ble_addr_t addr; int64_t until; } s_reject[N_REJECT];
@@ -122,10 +136,15 @@ static void load_saved(void)
     len = sizeof s_cur_name;
     nvs_get_str(h, "name", s_cur_name, &len);
     nvs_close(h);
+#if CONFIG_OBD_BLE_PAIR_CONFIRM
     snprintf(s_saved_name, sizeof s_saved_name, "%s", s_cur_name);
     ESP_LOGI(TAG, "OBD adapter: %s", s_have_saved ? "paired" : "not paired");
+#else
+    if (s_have_saved) ESP_LOGI(TAG, "saved adapter %s (%s)", addr_str(s_saved_addr.val), s_cur_name);
+#endif
 }
 
+#if CONFIG_OBD_BLE_PAIR_CONFIRM
 /* only obd_ble_pair_answer() reaches this, with the user's yes */
 static void save_adapter(const ble_addr_t *a, const char *name)
 {
@@ -140,6 +159,20 @@ static void save_adapter(const ble_addr_t *a, const char *name)
     s_have_saved = true;
     ESP_LOGI(TAG, "OBD adapter paired; future boots auto-connect");
 }
+#else
+static void save_current(void)
+{
+    nvs_handle_t h;
+    if (nvs_open("obdble", NVS_READWRITE, &h) != ESP_OK) return;
+    nvs_set_blob(h, "addr", &s_cur_addr, sizeof s_cur_addr);
+    nvs_set_str(h, "name", s_cur_name);
+    nvs_commit(h);
+    nvs_close(h);
+    s_saved_addr = s_cur_addr;
+    s_have_saved = true;
+    ESP_LOGI(TAG, "adapter address saved; future boots auto-connect");
+}
+#endif
 
 void obd_ble_forget_adapter(void)
 {
@@ -150,10 +183,16 @@ void obd_ble_forget_adapter(void)
         nvs_close(h);
     }
     s_have_saved = false;
+#if CONFIG_OBD_BLE_PAIR_CONFIRM
     s_saved_name[0] = 0;
     STATUS_LOCK(); g_status.adapter_saved = false; STATUS_UNLOCK();
+#endif
     ble_store_clear();                     /* drop bonds too, so a new adapter pairs from scratch */
+#if CONFIG_OBD_BLE_PAIR_CONFIRM
     ESP_LOGW(TAG, "OBD adapter forgotten: not paired");
+#else
+    ESP_LOGW(TAG, "saved adapter forgotten");
+#endif
     if (s_conn != BLE_HS_CONN_HANDLE_NONE) ble_gap_terminate(s_conn, BLE_ERR_REM_USER_CONN_TERM);
 }
 
@@ -184,12 +223,17 @@ static void drop_current(const char *why)
     bool saved = s_have_saved && ble_addr_cmp(&s_cur_addr, &s_saved_addr) == 0;
     if (!saved) {
         reject(&s_cur_addr);
+#if CONFIG_OBD_BLE_PAIR_CONFIRM
         probe_failed();
         sys_event(EV_WARN, "Skipping %s: %s", s_cur_name[0] ? s_cur_name : "a device", why);
+#else
+        sys_event(EV_WARN, "Skipping %s: %s", s_cur_name[0] ? s_cur_name : addr_str(s_cur_addr.val), why);
+#endif
     }
     if (s_conn != BLE_HS_CONN_HANDLE_NONE) ble_gap_terminate(s_conn, BLE_ERR_REM_USER_CONN_TERM);
 }
 
+#if CONFIG_OBD_BLE_PAIR_CONFIRM
 bool obd_ble_adapter_confirmed(void)
 {
     if (s_conn == BLE_HS_CONN_HANDLE_NONE) return false;
@@ -206,6 +250,14 @@ bool obd_ble_adapter_confirmed(void)
     ble_gap_terminate(s_conn, BLE_ERR_REM_USER_CONN_TERM);
     return false;
 }
+#else
+void obd_ble_adapter_confirmed(void)
+{
+    if (s_conn == BLE_HS_CONN_HANDLE_NONE) return;
+    if (!s_have_saved || ble_addr_cmp(&s_cur_addr, &s_saved_addr) != 0) save_current();
+    STATUS_LOCK(); g_status.adapter_saved = s_have_saved; STATUS_UNLOCK();
+}
+#endif
 
 void obd_ble_adapter_rejected(const char *why) { drop_current(why); }
 
@@ -314,6 +366,7 @@ static bool advertises_serial(const struct ble_hs_adv_fields *f)
     return false;
 }
 
+#if CONFIG_OBD_BLE_PAIR_CONFIRM
 /* obd_pair_pick() decides: the saved adapter (connect), a new one to offer (probe, then ask), or nothing */
 static obd_pick_t is_candidate(const struct ble_gap_disc_desc *d, const struct ble_hs_adv_fields *f)
 {
@@ -337,11 +390,35 @@ static obd_pick_t is_candidate(const struct ble_gap_disc_desc *d, const struct b
     portEXIT_CRITICAL(&s_pair_mux);
     return pick;
 }
+#else
+/* the car board's tested rule: the saved adapter only (outside the 90 s search), else any OBD-looking device at
+   CONFIG_OBD_BLE_MIN_RSSI or stronger that is not skipped */
+static bool is_candidate(const struct ble_gap_disc_desc *d, const struct ble_hs_adv_fields *f)
+{
+    if (d->event_type != BLE_HCI_ADV_RPT_EVTYPE_ADV_IND && d->event_type != BLE_HCI_ADV_RPT_EVTYPE_DIR_IND &&
+        d->event_type != BLE_HCI_ADV_RPT_EVTYPE_SCAN_RSP) return false;
+    if (d->rssi < CONFIG_OBD_BLE_MIN_RSSI) return false;
 
+    bool exploring = esp_timer_get_time() < s_explore_until;
+    if (s_have_saved && !exploring) return ble_addr_cmp(&d->addr, &s_saved_addr) == 0;
+    if (is_rejected(&d->addr)) return false;
+
+    if (f->name && f->name_len &&
+        (adapter_name_matches((const char *)f->name, f->name_len, CONFIG_OBD_BLE_NAME_PREFIXES) ||
+         adapter_name_looks_obd((const char *)f->name, f->name_len))) return true;
+    return advertises_serial(f);
+}
+#endif
+
+#if CONFIG_OBD_BLE_PAIR_CONFIRM
 static void connect_to(const ble_addr_t *addr, const char *name, int8_t rssi, obd_pick_t pick)
+#else
+static void connect_to(const ble_addr_t *addr, const char *name, int8_t rssi)
+#endif
 {
     s_cur_addr = *addr;
     snprintf(s_cur_name, sizeof s_cur_name, "%s", name);
+#if CONFIG_OBD_BLE_PAIR_CONFIRM
     ESP_LOGI(TAG, "adapter '%s' rssi=%d: connecting (%s)", s_cur_name, rssi, pick == OBD_PICK_SAVED ? "paired" : "not paired, probe");
     if (pick == OBD_PICK_OFFER) {
         uint8_t key[OBD_PAIR_KEY_LEN];
@@ -350,13 +427,20 @@ static void connect_to(const ble_addr_t *addr, const char *name, int8_t rssi, ob
         obd_pair_probe(&s_pair, key, s_cur_name, rssi);
         portEXIT_CRITICAL(&s_pair_mux);
     }
+#else
+    ESP_LOGI(TAG, "adapter found %s '%s' rssi=%d; connecting", addr_str(s_cur_addr.val), s_cur_name, rssi);
+#endif
     STATUS_LOCK();
     g_status.ble = BLE_ST_CONNECTING;
     g_status.adapter_rssi = rssi;
     snprintf(g_status.adapter_name, sizeof g_status.adapter_name, "%s", s_cur_name);
+#if CONFIG_OBD_BLE_PAIR_CONFIRM
     /* the session file keeps the paired adapter's address only; a probed device's is never kept */
     if (pick == OBD_PICK_SAVED) snprintf(g_status.adapter_addr, sizeof g_status.adapter_addr, "%s", addr_str(s_cur_addr.val));
     else g_status.adapter_addr[0] = 0;
+#else
+    snprintf(g_status.adapter_addr, sizeof g_status.adapter_addr, "%s", addr_str(s_cur_addr.val));
+#endif
     STATUS_UNLOCK();
 
     s_best_valid = false;
@@ -364,7 +448,9 @@ static void connect_to(const ble_addr_t *addr, const char *name, int8_t rssi, ob
     int rc = ble_gap_connect(s_own_addr_type, &s_cur_addr, 10000, NULL, gap_event, NULL);
     if (rc != 0) {
         ESP_LOGE(TAG, "ble_gap_connect rc=%d", rc);
+#if CONFIG_OBD_BLE_PAIR_CONFIRM
         if (pick == OBD_PICK_OFFER) probe_failed();
+#endif
         start_scan();
     }
 }
@@ -393,7 +479,11 @@ static int on_subscribe(uint16_t conn_handle, const struct ble_gatt_error *error
         drop_current("could not subscribe to its serial line");
         return 0;
     }
+#if CONFIG_OBD_BLE_PAIR_CONFIRM
     sys_event(EV_INFO, "Adapter linked: %s", s_cur_name[0] ? s_cur_name : "OBD adapter");
+#else
+    sys_event(EV_INFO, "Adapter linked: %s", s_cur_name[0] ? s_cur_name : addr_str(s_cur_addr.val));
+#endif
     s_ready = true;
     STATUS_LOCK();
     g_status.ble = BLE_ST_ELM_INIT;
@@ -433,13 +523,23 @@ static int gap_event(struct ble_gap_event *event, void *arg)
         if (ble_gap_conn_active()) return 0;   /* already connecting */
         const struct ble_gap_disc_desc *d = &event->disc;
         int64_t now = esp_timer_get_time();
+#if CONFIG_OBD_BLE_PAIR_CONFIRM
         obd_pick_t pick = ble_hs_adv_parse_fields(&f, d->data, d->length_data) == 0 ? is_candidate(d, &f) : OBD_PICK_NONE;
         if (pick != OBD_PICK_NONE) {
+#else
+        if (ble_hs_adv_parse_fields(&f, d->data, d->length_data) == 0 && is_candidate(d, &f)) {
+#endif
             char name[32] = "";
             if (f.name && f.name_len) snprintf(name, sizeof name, "%.*s", (int)f.name_len, (const char *)f.name);
+#if CONFIG_OBD_BLE_PAIR_CONFIRM
             if (pick == OBD_PICK_SAVED) {
                 if (!name[0]) snprintf(name, sizeof name, "%s", s_saved_name);
                 connect_to(&d->addr, name, d->rssi, OBD_PICK_SAVED);
+#else
+            if (s_have_saved) {
+                if (!name[0]) snprintf(name, sizeof name, "%s", s_cur_name);
+                connect_to(&d->addr, name, d->rssi);
+#endif
                 return 0;
             }
             if (!s_best_valid) { s_window_start = now; s_best_rssi = INT8_MIN; }
@@ -455,7 +555,11 @@ static int gap_event(struct ble_gap_event *event, void *arg)
             ble_addr_t a = s_best_addr;
             char n[32];
             snprintf(n, sizeof n, "%s", s_best_name);
+#if CONFIG_OBD_BLE_PAIR_CONFIRM
             connect_to(&a, n, s_best_rssi, OBD_PICK_OFFER);
+#else
+            connect_to(&a, n, s_best_rssi);
+#endif
         }
         return 0;
     }
@@ -463,13 +567,17 @@ static int gap_event(struct ble_gap_event *event, void *arg)
     case BLE_GAP_EVENT_CONNECT:
         if (event->connect.status != 0) {
             sys_event(EV_WARN, "Adapter connect failed (status %d)", event->connect.status);
+#if CONFIG_OBD_BLE_PAIR_CONFIRM
             if (probing(&s_cur_addr)) { probe_failed(); reject(&s_cur_addr); }   /* a new device that will not link: skip it */
+#endif
             start_scan();
             return 0;
         }
         s_conn = event->connect.conn_handle;
         s_sec_tried = false;
+#if CONFIG_OBD_BLE_PAIR_CONFIRM
         s_probe_drop = false;
+#endif
         ble_hs_cfg.sm_io_cap = (s_pin_valid && ble_addr_cmp(&s_pin_addr, &s_cur_addr) == 0) ? BLE_SM_IO_CAP_KEYBOARD_ONLY
                                                                                           : BLE_SM_IO_CAP_NO_IO;
         ESP_LOGI(TAG, "connected handle=%d", s_conn);
@@ -484,11 +592,15 @@ static int gap_event(struct ble_gap_event *event, void *arg)
         return 0;
 
     case BLE_GAP_EVENT_DISCONNECT:
+#if CONFIG_OBD_BLE_PAIR_CONFIRM
         if (s_probe_drop) s_probe_drop = false;                    /* dropped on purpose: the user is being asked */
         else {
             if (s_ready) sys_event(EV_WARN, "OBD adapter disconnected (reason %d)", event->disconnect.reason);
             if (probing(&s_cur_addr)) { probe_failed(); reject(&s_cur_addr); }   /* lost before it answered */
         }
+#else
+        if (s_ready) sys_event(EV_WARN, "OBD adapter disconnected (reason %d)", event->disconnect.reason);
+#endif
         peer_delete(event->disconnect.conn.conn_handle);
         s_conn = BLE_HS_CONN_HANDLE_NONE;
         s_ready = false;
@@ -592,6 +704,7 @@ int obd_ble_write(const uint8_t *data, size_t len)
 
 bool obd_ble_connected(void) { return s_ready; }
 
+#if CONFIG_OBD_BLE_PAIR_CONFIRM
 void obd_ble_explore(bool user)
 {
     if (!user) {
@@ -673,6 +786,20 @@ uint32_t obd_ble_pair_seq(void)
     portEXIT_CRITICAL(&s_pair_mux);
     return q;
 }
+#else
+void obd_ble_explore(void)
+{
+    portENTER_CRITICAL(&s_reject_mux);
+    memset(s_reject, 0, sizeof s_reject);
+    portEXIT_CRITICAL(&s_reject_mux);
+    s_explore_until = esp_timer_get_time() + 90LL * 1000000;
+    sys_event(EV_INFO, "Searching for an OBD adapter for 90 s");
+    if (s_conn == BLE_HS_CONN_HANDLE_NONE && !s_paused) {
+        ble_gap_disc_cancel();
+        start_scan();
+    }
+}
+#endif
 
 void obd_ble_set_paused(bool paused)
 {
@@ -714,7 +841,9 @@ static void host_task(void *param)
 
 esp_err_t obd_ble_start(void)
 {
+#if CONFIG_OBD_BLE_PAIR_CONFIRM
     obd_pair_init(&s_pair);
+#endif
     load_saved();
     STATUS_LOCK();
     g_status.adapter_saved = s_have_saved;

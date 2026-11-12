@@ -110,7 +110,7 @@ static void button_task(void *arg)
     int64_t last_tap_ms = 0;
     int64_t bad_since = 0, last_nag = -60000, last_check = 0;
     uint32_t auto_epoch = 0;           /* adapter connection the automatic search last ran for */
-#if !BOARD_MOSAICO
+#if !BOARD_MOSAICO && CONFIG_OBD_BLE_PAIR_CONFIRM
     uint32_t pair_seq = obd_ble_pair_seq();   /* the pairing question last shown (the ESP-Mosaico asks on its screen) */
 #endif
     bool auto_scan_done = false;       /* the automatic adapter search runs once per boot */
@@ -118,14 +118,11 @@ static void button_task(void *arg)
         vTaskDelay(pdMS_TO_TICKS(20));
         bool down = gpio_get_level(BOARD_BUTTON) == 0;
         int64_t now_ms = esp_timer_get_time() / 1000;
-#if !BOARD_MOSAICO
+#if !BOARD_MOSAICO && CONFIG_OBD_BLE_PAIR_CONFIRM
         if (obd_ble_pair_seq() != pair_seq) {
-            /* a new adapter answered: "Use <name>? / Strong. Tap = use it" for the 5 s a tap confirms it in (the owner's
-               "OBD adapter found: <name>, signal strong. Use this adapter?" cut to two lines of the 160 px prompt) */
+            /* a new adapter answered: "Use <name>? / Strong. Tap = use it" for the 5 s a tap confirms it in */
             pair_seq = obd_ble_pair_seq();
-            char name[24];
-            const char *str;
-            int left;
+            char name[24]; const char *str; int left;       /* the offer: name, "strong"/"good", seconds left */
             if (obd_ble_pair_offer(name, sizeof name, &str, &left)) {
                 STATUS_LOCK();
                 snprintf(g_status.prompt_text, sizeof g_status.prompt_text, "Use %.10s?\n%s. Tap = use it", name,
@@ -216,7 +213,7 @@ static void button_task(void *arg)
             if (g_status.alarm_text[0] && g_status.alarm_critical) { g_status.alarm_text[0] = 0; g_status.alarm_critical = false; handled = true; }
             else if (g_status.sys_popup[0] && now_ms < g_status.sys_popup_until_ms) { g_status.sys_popup[0] = 0; handled = true; }
             STATUS_UNLOCK();
-#if !BOARD_MOSAICO
+#if !BOARD_MOSAICO && CONFIG_OBD_BLE_PAIR_CONFIRM
             if (!handled && obd_ble_pair_offer(NULL, 0, NULL, NULL)) {
                 STATUS_LOCK(); g_status.prompt_text[0] = 0; STATUS_UNLOCK();
                 obd_ble_pair_answer(true);                            /* the user's yes: the only way an adapter is saved */
@@ -288,6 +285,9 @@ static void led_task(void *arg)
     }
 }
 
+#if !CONFIG_OBD_BLE_PAIR_CONFIRM   /* the lines below keep the numbers of EdgeOS 2.0.0 (4aeff43): the car board's tested */
+#line 262                          /* image has them in its ESP_ERROR_CHECK texts, so it stays byte-identical. Pairing */
+#endif                             /* confirm on: the file's own numbers. Edit above this point: update 262. */
 void app_main(void)
 {
 #if BOARD_MOSAICO

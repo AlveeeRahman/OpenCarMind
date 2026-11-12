@@ -25,10 +25,28 @@ menu "OBD Logger Configuration"
             string "Write characteristic UUID (hex, empty = auto-detect)"
             default "FFE1"
         config OBD_BLE_MIN_RSSI
-            int "Minimum RSSI (dBm) to connect to the paired adapter"
+            int "Minimum RSSI (dBm) to connect (with pairing confirm on: to the paired adapter)"
             default -90
+        config OBD_BLE_PAIR_CONFIRM
+            bool "Pair a new adapter only after the user says yes, at a strong signal"
+            default y if IDF_TARGET_ESP32S31
+            default n
+            help
+                The "ask + strong signal" pairing (EdgeOS 2.0.0). A device that is not
+                the paired adapter is only probed (serial line, ELM327 reset), then the
+                user is asked: the sheet on the ESP-Mosaico, a BOOT tap within 5 s on
+                the car board. Only the yes saves it. The automatic search never looks
+                past a saved adapter, and the car board's info page shows "paired" or
+                "not paired" instead of the address.
+                On by default for the ESP-Mosaico. Off for the ESP32-S3 car board
+                until it is tested there: off, the car board keeps its tested rule
+                (any OBD-looking device at OBD_BLE_MIN_RSSI or stronger, saved at its
+                first ELM327 prompt) and its image is the one of EdgeOS 2.0.0 (4aeff43).
+                To turn it on for the car board, add CONFIG_OBD_BLE_PAIR_CONFIRM=y to
+                sdkconfig.defaults.esp32s3.
         config OBD_BLE_PAIR_MIN_RSSI
             int "Minimum RSSI (dBm) to offer a new adapter for pairing"
+            depends on OBD_BLE_PAIR_CONFIRM
             default -70
             help
                 A device that is not the paired adapter is offered for pairing only

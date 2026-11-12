@@ -83,7 +83,7 @@ The ESP32-S3 has no Classic Bluetooth radio, so Classic-only adapters will not p
 
 The board connects to the strongest nearby device that looks like an OBD adapter and remembers it.
 
-**In the next S3 release, not yet tested on a board:** the board asks first. It offers only an adapter with a strong signal, -70 dBm or better, and shows "Use &lt;name>?" with "Strong. Tap = use it" (or "Good" for a weaker signal). Tap BOOT within 5 seconds to pair it. If you do nothing, nothing is saved. Once paired, the adapter also connects at a weaker signal, down to -90 dBm.
+**Planned for a later S3 release, off in this source by default (`CONFIG_OBD_BLE_PAIR_CONFIRM`):** the board asks first. It offers only an adapter with a strong signal, -70 dBm or better, and shows "Use &lt;name>?" with "Strong. Tap = use it" (or "Good" for a weaker signal). Tap BOOT within 5 seconds to pair it. If you do nothing, nothing is saved. Once paired, the adapter also connects at a weaker signal, down to -90 dBm.
 
 | Adapter | Bluetooth | Status |
 |---|---|---|
@@ -132,7 +132,7 @@ Tap BOOT to turn the page. Every number carries its unit, every status colour co
 
 Plain text about the link and the drive.
 
-- **Adapter:** the adapter's name and its signal strength. In the next S3 release, not yet tested on a board, it also says "paired" or "not paired".
+- **Adapter:** the adapter's name, its address, "(saved)" once it is remembered, and its signal strength. Planned for a later S3 release, off in this source by default (`CONFIG_OBD_BLE_PAIR_CONFIRM`): "paired" or "not paired" in place of the address.
 - **VIN:** the car's vehicle identification number, if it reports one
 - **Protocol:** the OBD protocol the car uses
 - **Trouble codes:** the MIL (check-engine light) state and the stored and pending codes
@@ -199,7 +199,7 @@ The board has one button for you, BOOT. How you press it decides what it does.
 
 ### Pairing prompt
 
-**In the next S3 release, not yet tested on a board.** When the board finds a new adapter with a strong signal, it shows "Use &lt;name>?" and "Strong. Tap = use it" for 5 seconds. A tap on BOOT pairs it. If an alarm is showing, the first tap clears the alarm. If you wait, nothing is saved, and the board offers that adapter again only after your next double-click or a restart. The automatic search never replaces a paired adapter. To switch to another adapter, double-click BOOT while the car link is not working, or forget the paired one first.
+**Planned for a later S3 release, off in this source by default (`CONFIG_OBD_BLE_PAIR_CONFIRM`):** when the board finds a new adapter with a strong signal, it shows "Use &lt;name>?" and "Strong. Tap = use it" for 5 seconds. A tap on BOOT pairs it. If an alarm is showing, the first tap clears the alarm. If you wait, nothing is saved, and the board offers that adapter again only after your next double-click or a restart. The automatic search never replaces a paired adapter. To switch to another adapter, double-click BOOT while the car link is not working, or forget the paired one first.
 
 ### The connection search
 
@@ -358,7 +358,7 @@ Check that the ignition is on and the adapter is in the port. Double-click BOOT 
 
 ### It found the wrong adapter
 
-Hold BOOT for 8 seconds, then tap BOOT to confirm. The board forgets the saved adapter and connects to the strongest nearby adapter again. In the next S3 release, not yet tested on a board, it asks first ("Use &lt;name>?"), and you tap BOOT within 5 seconds only for the right one.
+Hold BOOT for 8 seconds, then tap BOOT to confirm. The board forgets the saved adapter and connects to the strongest nearby adapter again. Planned for a later S3 release, off in this source by default (`CONFIG_OBD_BLE_PAIR_CONFIRM`): it asks first ("Use &lt;name>?"), and you tap BOOT within 5 seconds only for the right one.
 
 ### A value shows "--"
 

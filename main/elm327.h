@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
+#include "sdkconfig.h"
 
 /* Transport hooks implemented by obd_ble.c */
 int  obd_ble_write(const uint8_t *data, size_t len);
@@ -31,7 +32,11 @@ void elm_resume(void);
    plus each 11-bit physical address 7E0..7E7), asks each for RPM on its own address and keeps the engine for this boot
    (checked again at the next connect). The result is shown on screen and saved in the session JSON ("search"). */
 void     elm_explore(void);
+#if CONFIG_OBD_BLE_PAIR_CONFIRM
 void     elm_explore_auto(void);
+#else
+#define  elm_explore_auto() elm_explore()   /* pairing confirm off: the automatic search is the user's, as before */
+#endif
 bool     elm_exploring(void);
 bool     elm_link_is_up(void);
 int64_t  elm_link_up_ms(void);   /* esp_timer ms when the current link came up, -1 when down */

@@ -27,11 +27,15 @@ else()
     set(ocm_board_reqs perfmon)                                      # Xtensa PMU (cpu_monitor.c)
     set(ocm_ml_dir "${CMAKE_CURRENT_LIST_DIR}/../ml/onboard")
 endif()
+set(ocm_pair_srcs "")
+if(CONFIG_OBD_BLE_PAIR_CONFIRM)                                     # "ask + strong signal" pairing (Kconfig)
+    set(ocm_pair_srcs "obd_pair.c")
+endif()
 
 idf_component_register(
     SRCS ${ocm_board_srcs}
          "app_main.c"
-         "obd_ble.c" "obd_pair.c"
+         "obd_ble.c" ${ocm_pair_srcs}
          "adapter_match.c"
          "econ.c"
          "obd_fresh.c"

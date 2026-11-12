@@ -2,7 +2,7 @@
 
 OpenCarMind EdgeOS 2.0.0 (Edge OS for short) is the build of OpenCarMind for Espressif's ESP-Mosaico board. Up to version 1.2.0 it was called mossREV. It is not related to Ubiquiti's EdgeOS router software. It comes from the same source tree as the ESP32-S3 version and does the same job: it reads your car over a Bluetooth OBD-II adapter, logs every drive, and runs a small neural network on the chip. The Mosaico adds a 480 x 480 touch screen, more memory and a 128 MB store for the drive logs.
 
-The OS layer does not change the S3 build. The pairing change merged after the board check is shared code, so the next S3 image changes with it. For the Waveshare ESP32-S3 board, keep using the S3 releases and the main [README](../README.md).
+The OS layer does not change the S3 build. The pairing change merged after the board check is behind `CONFIG_OBD_BLE_PAIR_CONFIRM`, on for the Mosaico and off for the S3 by default, so the S3 image stays the tested one. For the Waveshare ESP32-S3 board, keep using the S3 releases and the main [README](../README.md).
 
 This guide is for building, flashing and checking the board. The [user manual](manual/edgeos-2.0.0.md) explains every screen and message for a driver.
 

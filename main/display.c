@@ -1169,9 +1169,9 @@ static void refresh_cb(lv_timer_t *t)
             else snprintf(tank, sizeof tank, "Tank %.1f %s left", left, vol);
         } else snprintf(tank, sizeof tank, "Tank: learning %.1f of %.0f %s", rs.tank.band_l * rs.cal / gal, REV_TANK_READY_L / gal, vol);
         lv_label_set_text_fmt(lbl_info,
-            "Adapter: %s\n%s  rssi %d\n\nVIN: %s\nProto: %s\n\nMIL %s, %u DTC\nstored: %s\npending: %s\n"
+            "Adapter: %s\n" DISPLAY_ADAPTER_FMT "  rssi %d\n\nVIN: %s\nProto: %s\n\nMIL %s, %u DTC\nstored: %s\npending: %s\n"
             "Wi-Fi: %s %s\nClock: %s\nSD: %s\n\nSession s%06lu  %lu rows  up %lu min\nIntake %d\xC2\xB0  Oil %d\xC2\xB0  Amb %d\xC2\xB0\nThr %d%%  MAF %.1f g/s\n%s\n%s\n%s\n" CARMIND_SCREEN_NAME " " CARMIND_VERSION "\nBOOT: tap = page, 2 s = off, 8 s = forget",
-            st.adapter_name[0] ? st.adapter_name : "-", st.adapter_saved ? "paired" : "not paired", st.adapter_rssi,
+            st.adapter_name[0] ? st.adapter_name : "-", DISPLAY_ADAPTER_ARGS(st), st.adapter_rssi,
             o->vin[0] ? o->vin : "-", o->protocol[0] ? o->protocol : "-",
             o->mil_on ? "ON" : "off", o->dtc_count, o->dtcs[0] ? o->dtcs : "none", o->pending_dtcs[0] ? o->pending_dtcs : "none",
             wifi_txt[st.wifi], (st.wifi == WIFI_ST_CONNECTING || st.wifi == WIFI_ST_CONNECTED) ? st.wifi_ssid : "", st.time_synced ? "synced" : "not synced",
