@@ -724,9 +724,13 @@ static void board_task(void *arg)
 
 void mosaico_board_init(void)
 {
-    /* the Wi-Fi driver logs "connected with <network name> ... bssid <MAC>" at INFO: its warnings only, so no network name
-       or access point address reaches the serial log (our own Wi-Fi lines print "<network>") */
-    esp_log_level_set("wifi", ESP_LOG_WARN);
+    /* the Wi-Fi driver logs "connected with <network name> ... bssid <MAC>" at INFO and its block-ack line "<ba-add> ...
+       TAHI/TALO" (the access point address in hex) at WARN: its errors only, so no network name or access point address
+       reaches the serial log (our own Wi-Fi lines print "<network>"). Its other WARN lines are the PHY power table, the
+       BT-coexistence scan-time note and the "(trc)band" rate line, none an error. The BLE controller prints the board's
+       Bluetooth MAC at INFO: its warnings only. */
+    esp_log_level_set("wifi", ESP_LOG_ERROR);
+    esp_log_level_set("BLE_INIT", ESP_LOG_WARN);
     /* Safe states first: motor off; the 3.3 V rail (VCC_3V3, GPIO60 active low) ON. The USB-C controller HUSB320 and the
        boost converter hang off it; switching it off made USB re-enumerate every few seconds (clean project, 2026-11-11). */
     gpio_hold_dis(BOARD_LCD_PWR);
