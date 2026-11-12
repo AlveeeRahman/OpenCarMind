@@ -148,6 +148,13 @@ pair_gate_tests: test_pair_gate.c ../../main/obd_ble.c ../../main/obd_pair.c ../
 	$(CC) $(CFLAGS) -I. -o $@ test_pair_gate.c ../../main/obd_pair.c ../../main/adapter_match.c
 	rm -f pair_gate_off.inc pair_gate_on.inc
 
+# pairing safety on the ESP-Mosaico: the adapter fingerprint (R1), the re-pair table (R2), the guard question
+# (main/adapter_guard.c), plus a source audit of the firmware glue (guard_audit.sh)
+guard: guard_tests
+	./guard_tests
+	./guard_audit.sh
+guard_tests: test_adapter_guard.c ../../main/adapter_guard.c ../../main/adapter_guard.h
+	$(CC) $(CFLAGS) -o $@ test_adapter_guard.c ../../main/adapter_guard.c
 carmind_tests: $(SRCS) ../../main/custom_pids.h ../../main/fault_engine.h
 	$(CC) $(CFLAGS) -o $@ $(SRCS) -lm
 

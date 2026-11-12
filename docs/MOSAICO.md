@@ -19,9 +19,10 @@ This guide is for building, flashing and checking the board. The [user manual](m
 9. [The 128 MB NAND](#the-128-mb-nand)
 10. [Swiping between pages](#swiping-between-pages)
 11. [The OS layer](#the-os-layer)
-12. [Known limits](#known-limits)
-13. [Coming next](#coming-next)
-14. [Licences](#licences)
+12. [Pairing safety](#pairing-safety)
+13. [Known limits](#known-limits)
+14. [Coming next](#coming-next)
+15. [Licences](#licences)
 
 ## The hardware
 
@@ -308,6 +309,16 @@ What the flashing would need:
 - **Merged images**: they erase otadata and NVS. They stay the recovery path, not the update path.
 - **The USB door**: it would stay as it is. The ROM download mode it enters can write the inactive slot like any other address. No new desktop-app command is needed.
 - **Timing**: the verdict comes at 65 s. A power cut in the first minute after an update would also roll back. Confirming earlier, after the first screen update and the storage mount, is an option.
+
+## Pairing safety
+
+Built, not yet checked on the board. Three rules keep the saved OBD adapter honest. They are compiled for the Mosaico only (`CONFIG_OBD_BLE_PAIR_CONFIRM` on and `BOARD_MOSAICO`), and the S3 image does not change. The rules are pure C in `main/adapter_guard.c` and `main/clock_set.c`, host-tested by `make -C tests/host guard` and `make -C tests/host clock`.
+
+- **Fingerprint (R1).** The saved adapter is no longer known by its address alone. On the first link after the pairing yes, the board stores one 32-bit FNV-1a hash per field in NVS (`obdble/fp`, 48 bytes): address type, advertised name, service UUIDs and maker id (per packet kind), the serial line `adapter_choose()` picked, and the ATI and AT@1 replies. The protocol is a soft field. The VIN is never a field. On a mismatch the link stays up, the session file gets `"adapter_check": {"result": "changed"}`, the R.E.V learner and the pattern model get no rows, and when parked the screen asks "This adapter looks different. Use it?" (Use it, Not this one, 30 s). Only Use it re-learns the fingerprint. Not this one leaves the saved address alone for 10 minutes. While driving there is no question until the car is parked.
+- **No silent re-pair (R2).** NimBLE in IDF 6.1 re-pairs by itself as a central when the saved key is refused, and never sends `BLE_GAP_EVENT_REPEAT_PAIRING` to a central. The board copies the bond at connect and compares it after each encryption. Parked: the link is held and the screen asks "The adapter asks to pair again. Allow?" (Allow, Don't allow, 30 s). Driving, or with another question open: the old key is put back, the link stays and is marked. The event handler uses the same table.
+- **Clock jump guard (R6).** A Wi-Fi time more than 24 h ahead of a clock that came from Wi-Fi, or more than 10 min behind it, is refused and logged. Hand-set, estimated and unset clocks are not guarded. The 2026 to 2099 range comes first, as before.
+
+The 1200-baud download door is not touched: `mosaico_console.c` and `os.c` are unchanged, and none of this code runs in the door's timer. Pairing with a real LELink has not been tried on this board.
 
 ## Known limits
 

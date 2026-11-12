@@ -35,6 +35,9 @@
 #include "harden.h"
 #include "uploader.h"
 #include "events.h"
+#if BOARD_MOSAICO
+#include "mosaico_clock.h"                 /* the clock's source, for the jump guard (R6) */
+#endif
 
 static const char *TAG = "sync";
 
@@ -124,6 +127,22 @@ static esp_err_t on_header(esp_http_client_event_t *e)
     return ESP_OK;
 }
 
+#if BOARD_MOSAICO
+/* R6 (clock_set.h): a clock that came from Wi-Fi is not moved more than 24 h ahead or 10 min back by one answer */
+static bool jump_ok(int64_t epoch)
+{
+    app_status_t st;
+    status_get(&st);
+    clock_src_t src = mosaico_clock_source(&st);
+    int64_t now = (int64_t)time(NULL);
+    clock_jump_t j = clock_jump_check(src, now, epoch);
+    if (j == CLOCK_JUMP_OK) return true;
+    long long mins = (long long)((j == CLOCK_JUMP_AHEAD ? epoch - now : now - epoch) / 60);
+    sys_event(EV_WARN, "Clock sync refused: %lld min %s", mins, j == CLOCK_JUMP_AHEAD ? "ahead" : "behind");
+    return false;
+}
+#endif
+
 static bool sync_clock(void)
 {
     const char *host = remote_config_time_host();
@@ -153,6 +172,9 @@ static bool sync_clock(void)
         sys_event(EV_WARN, "Clock sync refused: %s gave %lld, outside 2026-2099", host, (long long)epoch);
         return false;
     }
+#if BOARD_MOSAICO
+    if (!jump_ok(epoch)) return false;
+#endif
     /* Date has 1 s resolution: take the middle of that second, stamped half a round trip before the reply arrived */
     int64_t us = epoch * 1000000LL + 500000 + rtt_us / 2;
     struct timeval tv = {.tv_sec = (time_t)(us / 1000000), .tv_usec = (suseconds_t)(us % 1000000)};
@@ -166,6 +188,9 @@ static bool sync_clock(void)
     return true;
 }
 
+#if !BOARD_MOSAICO   /* the S3 keeps the line numbers of its release image (its ESP_ERROR_CHECK texts carry them), so */
+#line 168            /* it stays byte-identical: the jump guard above is the Mosaico's. Edit above this point: update 168. */
+#endif
 static bool driving(void) { return OCM_REFUSED(OS_SVC_WIFI_RADIO, sys_mode_get() == MODE_DRIVE); }   /* runlevels on the S31 */
 
 static void set_wifi_state(wifi_state_t st)

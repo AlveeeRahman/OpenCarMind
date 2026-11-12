@@ -32,6 +32,9 @@ endif()
 set(ocm_pair_srcs "")
 if(CONFIG_OBD_BLE_PAIR_CONFIRM)                                     # "ask + strong signal" pairing (Kconfig)
     set(ocm_pair_srcs "obd_pair.c")
+    if(ocm_target STREQUAL "esp32s31")
+        list(APPEND ocm_pair_srcs "adapter_guard.c")               # pairing safety: fingerprint, no silent re-pair
+    endif()
 endif()
 
 idf_component_register(

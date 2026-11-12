@@ -608,6 +608,13 @@ static bool elm_initialise(void)
         elm_transact(cmd, resp, sizeof resp, CONFIG_OBD_ELM_TIMEOUT_MS);
     }
     if (elm_transact("ATI", resp, sizeof resp, CONFIG_OBD_ELM_TIMEOUT_MS) > 0) snprintf(ati, sizeof ati, "%.31s", resp);
+#if CONFIG_OBD_BLE_PAIR_CONFIRM && BOARD_MOSAICO
+    {   /* pairing safety (adapter_guard.h R1): the device description too, then the paired adapter's fingerprint check */
+        char at1[48] = "";
+        if (elm_transact("AT@1", resp, sizeof resp, CONFIG_OBD_ELM_TIMEOUT_MS) > 0) snprintf(at1, sizeof at1, "%.47s", resp);
+        obd_ble_guard_elm(ati, at1);
+    }
+#endif
     app_status_t st;
     status_get(&st);
 
@@ -626,6 +633,9 @@ static bool elm_initialise(void)
 
     sdlog_begin_drive();                   /* the ECU answered: a new session if the last drive was closed */
     sdlog_meta_set_adapter(st.adapter_name, st.adapter_addr, ati, batch);
+#if CONFIG_OBD_BLE_PAIR_CONFIRM && BOARD_MOSAICO
+    obd_ble_guard_meta();                  /* the session says whether this adapter matched its fingerprint */
+#endif
     if (s_explore_json[0]) sdlog_meta_set_json("search", s_explore_json);
 
     char protocol[24] = "";
@@ -635,6 +645,9 @@ static bool elm_initialise(void)
         if (pn == '6' || pn == '8') strcpy(s_default_header, "7DF");
         else if (pn == '7' || pn == '9') strcpy(s_default_header, "18DB33F1");
     }
+#if CONFIG_OBD_BLE_PAIR_CONFIRM && BOARD_MOSAICO
+    obd_ble_guard_protocol(protocol);
+#endif
 
     char vin[18] = "";
     if (elm_transact("0902", resp, sizeof resp, 6000) > 0 && !resp_is_error(resp)) {
@@ -971,6 +984,9 @@ static void obd_task(void *arg)
                     /* a fresh fuel-level answer this row (not one carried over), for the tank learner */
                     bool level_fresh = OBD_HAS(&snap, F_fuel_level) && s_field_ms[F_fuel_level] != s_level_seen_ms;
                     if (level_fresh) s_level_seen_ms = s_field_ms[F_fuel_level];
+#if CONFIG_OBD_BLE_PAIR_CONFIRM && BOARD_MOSAICO
+                    if (!obd_ble_adapter_changed())   /* pairing safety: a different-looking adapter teaches the learner nothing */
+#endif
                     rev_row(&snap, t_us / 1000, src, raw, dt, level_fresh);   /* labels, airflow constant, ledger: before ml_feed takes the label */
                     bool tq_idle;
                     rev_row_outputs(&snap.torque_nm, &snap.torque_src, &tq_idle, &snap.tank_left_l, &snap.tank_range_km);
@@ -994,6 +1010,10 @@ static void obd_task(void *arg)
                     STATUS_UNLOCK();
                 }
                 ml_feed(&snap, esp_timer_get_time() / 1000);   /* before pattern_step: the closing row is in its second */
+#if CONFIG_OBD_BLE_PAIR_CONFIRM && BOARD_MOSAICO
+                obd_ble_guard_meta();
+                if (!obd_ble_adapter_changed())                /* the pattern model learns from rows too */
+#endif
                 pattern_step(&snap);
                 sdlog_write_row(&snap);
             } else if (++consecutive_fail > 10 || esp_timer_get_time() - last_ok > ECU_QUIET_US) {

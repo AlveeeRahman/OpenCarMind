@@ -525,6 +525,10 @@ void ui_confirm(const char *text, const char *yes, void (*cb)(void *arg), void *
    at once when a new question wakes the screen (ui_tick). Same geometry as ui_confirm. ---------- */
 static lv_obj_t *s_pair_sheet, *s_pair_left;
 static uint32_t s_pair_shown, s_pair_done;               /* the question shown, and the one answered on this screen */
+/* the adapter guard questions (obd_ble_guard_offer, adapter_guard.h: "This adapter looks different. Use it?" and "The
+   adapter asks to pair again. Allow?") use the same sheet; MB_BLE_GUARD carries the answer with its seq */
+static uint32_t s_guard_shown, s_guard_done;
+static bool     s_sheet_guard;                           /* the open sheet is a guard question */
 
 static void pair_close(void) { if (s_pair_sheet) { lv_obj_delete_async(s_pair_sheet); s_pair_sheet = NULL; } }
 static void pair_reply(bool yes)
@@ -535,9 +539,50 @@ static void pair_reply(bool yes)
 }
 static void pair_yes_cb(lv_event_t *e) { (void)e; pair_reply(true); }
 static void pair_no_cb(lv_event_t *e) { (void)e; pair_reply(false); }
+static void guard_reply(bool yes)
+{
+    if (!mosaico_board_request(MB_BLE_GUARD, (s_guard_shown << 1) | (yes ? 1u : 0u))) return;
+    s_guard_done = s_guard_shown;
+    pair_close();
+}
+static void guard_yes_cb(lv_event_t *e) { (void)e; guard_reply(true); }
+static void guard_no_cb(lv_event_t *e) { (void)e; guard_reply(false); }
+
+static void pair_sheet_build(const char *q, const char *no, const char *yes, lv_event_cb_t no_cb, lv_event_cb_t yes_cb)
+{
+    s_pair_sheet = lv_obj_create(lv_layer_top());
+    lv_obj_remove_style_all(s_pair_sheet);
+    lv_obj_set_size(s_pair_sheet, UI_W, UI_H);
+    lv_obj_set_style_bg_color(s_pair_sheet, lv_color_hex(UI_THEME.scrim), 0);
+    lv_obj_set_style_bg_opa(s_pair_sheet, LV_OPA_60, 0);
+    lv_obj_add_flag(s_pair_sheet, LV_OBJ_FLAG_CLICKABLE);         /* swallows taps behind it */
+    lv_obj_t *c = ui_card(s_pair_sheet, UI_MARGIN, UI_H - 220 - UI_MARGIN, UI_W - 2 * UI_MARGIN, 220, UI_BORDER);
+    lv_obj_t *t = ui_label(c, UI_THEME.f_value, UI_TEXT, q);
+    lv_obj_set_width(t, UI_W - 2 * UI_MARGIN - 2 * UI_THEME.pad_card - 4);
+    lv_label_set_long_mode(t, LV_LABEL_LONG_WRAP);
+    lv_obj_set_pos(t, 2, 2);
+    s_pair_left = ui_label(c, UI_THEME.f_label, UI_MUTED, "");
+    lv_obj_align(s_pair_left, LV_ALIGN_BOTTOM_LEFT, 2, -64);
+    modal_button(c, no, UI_THEME.track, UI_TEXT, no_cb, LV_ALIGN_BOTTOM_LEFT);
+    modal_button(c, yes, UI_THEME.section[SEC_GREEN], UI_BG, yes_cb, LV_ALIGN_BOTTOM_RIGHT);
+}
 
 static void pair_sheet_refresh(void)
 {
+    const char *gq, *gy, *gn, *gnote;
+    int gleft;
+    uint32_t gseq;
+    if (obd_ble_guard_offer(&gq, &gy, &gn, &gnote, &gleft, &gseq) && gseq != s_guard_done) {
+        if (s_pair_sheet && (!s_sheet_guard || gseq != s_guard_shown)) pair_close();
+        if (!s_pair_sheet) {
+            s_guard_shown = gseq;
+            s_sheet_guard = true;
+            pair_sheet_build(gq, gn, gy, guard_no_cb, guard_yes_cb);
+        }
+        ui_set_fmt(s_pair_left, "%s %d s", gnote, gleft);
+        return;
+    }
+    if (s_sheet_guard) { pair_close(); s_sheet_guard = false; }
     char name[OBD_PAIR_NAME_LEN];
     const char *strength;
     int left;
@@ -546,23 +591,9 @@ static void pair_sheet_refresh(void)
     if (s_pair_sheet && seq != s_pair_shown) pair_close();
     if (!s_pair_sheet) {
         s_pair_shown = seq;
-        s_pair_sheet = lv_obj_create(lv_layer_top());
-        lv_obj_remove_style_all(s_pair_sheet);
-        lv_obj_set_size(s_pair_sheet, UI_W, UI_H);
-        lv_obj_set_style_bg_color(s_pair_sheet, lv_color_hex(UI_THEME.scrim), 0);
-        lv_obj_set_style_bg_opa(s_pair_sheet, LV_OPA_60, 0);
-        lv_obj_add_flag(s_pair_sheet, LV_OBJ_FLAG_CLICKABLE);         /* swallows taps behind it */
-        lv_obj_t *c = ui_card(s_pair_sheet, UI_MARGIN, UI_H - 220 - UI_MARGIN, UI_W - 2 * UI_MARGIN, 220, UI_BORDER);
         char q[96];
         snprintf(q, sizeof q, "OBD adapter found: %s, signal %s. Use this adapter?", name, strength);
-        lv_obj_t *t = ui_label(c, UI_THEME.f_value, UI_TEXT, q);
-        lv_obj_set_width(t, UI_W - 2 * UI_MARGIN - 2 * UI_THEME.pad_card - 4);
-        lv_label_set_long_mode(t, LV_LABEL_LONG_WRAP);
-        lv_obj_set_pos(t, 2, 2);
-        s_pair_left = ui_label(c, UI_THEME.f_label, UI_MUTED, "");
-        lv_obj_align(s_pair_left, LV_ALIGN_BOTTOM_LEFT, 2, -64);
-        modal_button(c, "Not this one", UI_THEME.track, UI_TEXT, pair_no_cb, LV_ALIGN_BOTTOM_LEFT);
-        modal_button(c, "Use this adapter", UI_THEME.section[SEC_GREEN], UI_BG, pair_yes_cb, LV_ALIGN_BOTTOM_RIGHT);
+        pair_sheet_build(q, "Not this one", "Use this adapter", pair_no_cb, pair_yes_cb);
     }
     ui_set_fmt(s_pair_left, "Nothing is saved unless you choose. %d s", left);
 }
