@@ -59,7 +59,7 @@ The same firmware also runs on Espressif's ESP-Mosaico touch-screen board. Its n
 <li><a href="#services-and-runlevels">Services and runlevels</a></li>
 <li><a href="#model-admission-by-response-time-analysis">Model admission by response-time analysis</a></li>
 <li><a href="#scheduler-budgets-per-core">Scheduler budgets per core</a></li>
-<li><a href="#ai-services-and-the-battery-estimator">AI services and the battery estimator</a></li>
+<li><a href="#ai-services-in-edgeos">AI services in EdgeOS</a></li>
 <li><a href="#what-it-costs">What it costs</a></li>
 <li><a href="#what-you-see-on-the-board">What you see on the board</a></li>
 <li><a href="#changes-after-the-board-check">Changes after the board check</a></li>
@@ -387,8 +387,8 @@ The rules live in one plain C file, `main/os_core.c`, with no ESP-IDF calls in i
 | Runlevels | Boot, Safe, Parked, Driving, Saving and Update. Several can hold at once, and a service runs only if every active runlevel allows it. | In the middle of a drive, a model switch would mix two models' answers in one log, a clock change would break its timestamps, and a format would erase the drive being written. The board refuses them in one place and says why. |
 | Boot health check | About 65 s after a start the board rates itself good, degraded or bad from the model self-test, the flash FAT check, the NAND, the first screen update, the touch controller and the scheduler's misses, stalls and response times. | It gives you one line to read on the Board page. It is also the signal an A/B rollback needs to keep or reject a new image. |
 | Model admission | A model loads only if response-time analysis says every job on its core still meets its deadline (see [below](#model-admission-by-response-time-analysis)). | A model that is too slow would make the OBD poll or the learner miss deadlines. The check refuses it before it loads, and the old model stays. |
-| Degradation ladder | When the model misses deadlines, the board steps down: first the AI services slow to a tenth of their rate with their learned heads off (built, not yet checked on the board), then the screen refreshes every 33 ms instead of 16 ms and the AI services pause, then the R.E.V learner pauses, then the model's inference pauses. A minute without misses steps back up, in reverse order. Misses of the screen or the AI services alone reach the first rung only. | Estimates such as the battery SoC, screen frames and learning are worth less than the log and the model during a drive, so they go first. The ladder never swaps models. |
-| AI services | Small periodic AI jobs, the battery SoC and SoH estimator first, in one worker task below the screen and the models, admitted by the same response-time analysis (see [below](#ai-services-and-the-battery-estimator)). Built, not yet checked on the board. | More small models are coming (a Wi-Fi and BLE intrusion classifier next). Each one gets a deadline, a CPU budget and a place on the ladder, instead of its own task and its own rules. |
+| Degradation ladder | When the model misses deadlines, the board steps down: first the AI services slow to a tenth of their rate with their learned heads off (new, being checked on the board), then the screen refreshes every 33 ms instead of 16 ms and the AI services pause, then the R.E.V learner pauses, then the model's inference pauses. A minute without misses steps back up, in reverse order. Misses of the screen or the AI services alone reach the first rung only. | Estimates such as the battery SoC, screen frames and learning are worth less than the log and the model during a drive, so they go first. The ladder never swaps models. |
+| AI services | Small periodic AI jobs, the battery SoC and SoH estimator first, in one worker task below the screen and the models, admitted by the same response-time analysis (see [below](#ai-services-in-edgeos)). On build 13757fd the board admitted the worker on core 1 with R 2.00 ms. The estimates are being checked. | More small models are coming, a Bluetooth and Wi-Fi intrusion detector next. Each one gets a deadline, a CPU budget and a place on the ladder, instead of its own task and its own rules. |
 | Battery protection | Every 2 s it reads the gauge's voltage, current and temperature. At 45 °C on USB it sheds load, at 60 °C it stops safely, and at 4.25 V or more it reports a charger fault and stops. | The TP4057 charger has no enable pin and no thermistor input, and its supply comes from USB through diodes. The firmware cannot stop charging, so it watches and stops cleanly instead. The thresholds are placeholders until the cell's datasheet is known. |
 | Wi-Fi boot hold | No Wi-Fi starts at boot. The automatic start waits for the health verdict and goes ahead on good or degraded. Your own start in the Wi-Fi app is never held. | On mossREV 1.2.0 rc3 the boot window was the internal-RAM low point, 57.7 KB free while the Wi-Fi driver started (measured on the board). |
 | One reset path | Every reset the firmware asks for goes through `sys_reset(reason)`: mark it as asked for, flush and lock the flash FAT and the NAND, then reset. The screen stall guard and the hung-job restart skip the mark, so three of them in a row still start safe mode. | A reset between a sector's erase and its write had torn the FAT and lost the whole volume twice on the bench, before the storage fixes. Now no asked-for reset skips the flush. |
@@ -442,21 +442,182 @@ Every timed job registers a period T and a deadline D with the scheduler monitor
 
 The screen job's 7.8 ms is wall time from the start of a run to its end, and 4.98 ms is the CPU the screen task used in it. The difference is time the task waited for other tasks on core 0. The response-time analysis counts only registered jobs, so it reports 4.98 ms for `ui`. The board task (every 2 s), the Wi-Fi task and the scheduler monitor run on core 0 outside the job table.
 
-### AI services and the battery estimator
+<a id="ai-services-and-the-battery-estimator"></a>
 
-Built on the `battery-estimator` branch, host-tested, not yet checked on the board.
+### AI services in EdgeOS
 
-**The service layer** (`main/ai_svc.c`, rules in `main/ai_svc_core.c`). Each AI service is one table entry: a name, a period T, a relative deadline D, a CPU budget C and four hooks. All services run in one worker task at FreeRTOS priority 1. That is below the screen (2), the R.E.V learner (2), the model (3) and the OBD poll (5), and above idle. FreeRTOS preempts by fixed priority, so the screen and the models interrupt a service at any instruction. Inside the worker a release table picks the due service with the shortest deadline first (deadline-monotonic order). One worker instead of one task per service saves a stack and a scheduler slot per service. The cost is that one service can wait for one step of another, and the admission covers that: the worker is analysed as one job with C = the sum of all budgets, T = the shortest period and D = the shortest deadline. If its response R stays at or below that D, each service is released at most once inside R, so the sum of the budgets bounds all the work, waiting included.
+Edge OS runs its small AI models as services. The first is a battery estimator that gives the cell's state of charge (SoC) and state of health (SoH). A network intrusion detector for Bluetooth and Wi-Fi comes next. All services share one worker task at FreeRTOS priority 1, below the screen, the R.E.V learner, the model and the OBD poll, so any of those can preempt a service at any instruction. The worker is admitted by the same response-time analysis as the models. On build 13757fd the board admitted it on core 1 with a worst-case response of 2.00 ms against a 1,000 ms deadline, and the battery estimator's self-test took 570 µs of its 2 ms budget.
 
-Admission runs when the boot health verdict is formed, about 65 s after a start, once the scheduler monitor has measured the other jobs. It uses the same response-time analysis as the models, on the core with the lower measured load first and the other core second. A service whose self-test takes longer than its budget is refused on its own. If the worker is refused on both cores, the board runs without AI services and the Board page says why. In safe mode they stay off.
+A service reads copies of its inputs and writes its results without a lock, so it cannot hold up the jobs above it. No service acts on power, and none cuts the car link during a drive. When the model misses deadlines, the AI services are the first thing the board slows. On 13757fd the boot health check rated the board good at 68.9 s and released Wi-Fi with 130,623 B of internal RAM free. The estimates themselves, the new ladder rung and the pairing rules are built and being checked on the board now.
 
-**Soft real time, no pile-up.** A job that finishes after its deadline is counted as missed and logged once per 10 s window. A miss is never fatal. It feeds the ladder's first rung. A step that runs past its budget is allowed to finish, and the service's next release is skipped. A worker that comes back late runs only the newest release and counts the older ones as skipped. No job is ever queued behind another, so overload cannot build a backlog. `make -C tests/host ai` simulates the release table under overload (a step 3.5 periods long, budget overruns, a blocked worker) and checks that no service ever has more than one job outstanding, and that the ladder sheds in the order AI services, screen, learner, model, and comes back in reverse order.
+<p align="center"><img src="docs/images/edgeos-ai-services.png" width="900" alt="Where the AI services run, hand-drawn. Step 1, who preempts whom, FreeRTOS fixed priorities: obd_poll 5, the ml model 3, the ui screen 2 on core 0, the R.E.V learner 2, the AI worker 1, on core 1 on build 13757fd with R 2.00 ms, then idle. Step 2, the worker's release table, deadline-monotonic: bat_est for battery charge and health, T 1 s, D 1 s, budget 2 ms, self-test 570 microseconds, on the board. ids, the network intrusion detector, T 5 s, D 1 s, about 60 integer ops, shadow mode first, validated on the Mac, firmware service next. Future services plug in as one table entry each, with no new task. Admission treats the worker as one job with C the sum of the budgets, T the shortest period and D the shortest deadline. Step 3, in: snapshots of the gauge's V, I and T and the radio counters, one writer and a seqlock, so a reader never waits. One service step takes no mutex, waits on no queue, does no I/O and allocates nothing. Step 4, out: a lock-free result struct the screen reads, and log rows into a ring the board task writes to the NAND. The ladder when the model misses deadlines: 1, AI services slowed to a tenth of their rate with learned heads off, new in this build and being checked on the board. 2, UI slowed to 33 ms and AI services paused. 3, learner paused. 4, model paused, while the drive log keeps running. An overrun finishes and skips its next release. Board, build 13757fd: boot health good at 68.9 s, worker admitted on core 1 with R 2.00 ms and a 998 ms margin, battery self-test 570 microseconds, Wi-Fi released with 130,623 B free."></p>
 
-**No deadlocks, by construction.** A service step takes no mutex, waits on no queue, does no I/O and allocates nothing. Its input is a copy of the latest gauge sample in a single-writer seqlock. A reader never waits: a torn copy is retried at most four times, then the last good copy is kept. Its result goes out the same way, and the screen reads it without a lock. Rows for storage go into a single-producer, single-consumer ring that drops and counts when full. The board task, which already owns NVS and file writes, drains it. The only lock on a step's path is the scheduler monitor's spinlock, held for a few field copies and never nested. So the worker never holds one resource while it waits for another, and no service waits on another service. A wait-for cycle, the condition for a deadlock, cannot form through it.
+| Model | What it does | Cost per step | Status |
+|---|---|---|---|
+| Battery charge (SoC): extended Kalman filter on a one-RC cell model | counts the charge and corrects it with the voltage, once a second | 111 flops and 1 exp, 324 B | on the board with placeholder parameters. Self-test checked on 13757fd, estimates being checked |
+| Battery health (SoH): counted capacity and resistance trend | capacity between two charge anchors, and a DC resistance flag | a few ops, inside the charge estimator | on the board, being checked |
+| Battery health: partial-charge regressor | SoH from an ordinary charge, with no full cycle | 8 multiply-adds and 16 ops, 100 B | validated on the Mac, not in the firmware yet |
+| Battery anomaly detector | an alarm when 60 s windows stop looking normal for this cell | under 400 ops a window, 920 B | validated on the Mac, not in the firmware yet |
+| Network intrusion detector: rotation detector | scores each 5 s of Bluetooth and Wi-Fi traffic for address-rotation floods | about 60 integer ops, 552 B per head | validated on the Mac, firmware service next |
+| Pairing rules R1, R2 and R6 | adapter fingerprint, no silent re-pair, clock jump guard ([Pairing safety](#pairing-safety-built-not-yet-checked-on-the-board)) | one compare per link or clock sync, 48 B in NVS | on the board, being checked |
+| Residual MLP, 3-state EKF, neural ECM, KalmanNet-lite, pure MLP, general IDS learners | learned replacements or corrections | | tested, not shipped (see the last dropdown) |
 
-**The battery estimator** (`main/bat_est.c`, math in `main/bat_est_core.c`, model in `main/bat_model.h`). Once a second it takes the gauge sample the board task already reads every 2 s. There is no new I2C traffic, and the gauge is never written. The model is a first-order equivalent circuit, OCV(z) plus a series resistance and one RC pair. A two-state extended Kalman filter (EKF) on the state of charge z and the RC voltage counts the charge and corrects it with the measured voltage. An optional ridge correction adjusts the output only. The filter is the research agent's reference step, line for line, and it matches its test vectors to within 1.1e-6 (370 steps, `make -C tests/host bat BAT_MODEL=<fitted header>`). The mode comes from the current: charging, CV taper, discharging or rest. A rest of the model's length, or the end of a CV taper, is an anchor: the SoC is set from the OCV, or to 100 %. Until the first anchor the Board page says "learning". Two anchors far enough apart give a capacity sample, and SoH = learnt capacity / nominal. Current steps give a DC resistance trend. The learnt values and the last SoC go to NVS at most every 10 minutes and on the safe-shutdown path. The nominal capacity is `CONFIG_OCM_BAT_NOMINAL_MAH`, 65 mAh, the cell's label, UNVERIFIED. Every 10 s a training row (V, I, average I, T, the gauge's SoC and remaining capacity, the estimator's SoC, SoH and mode) goes to `obd/bat/bNNNNNN.csv` on the NAND, at most 2 MB in all with the oldest file deleted first. It is skipped while storage is busy or nearly full, and the desktop app lists the files with the drive files.
+<details>
+<summary><b>For experts: how the battery charge estimator works</b> (figure, equations, test results)</summary>
 
-The Board page's battery card shows the mode, the estimator's SoC and SoH or "learning", and an AI SERVICES card shows each service's period, deadline, budget, runs, misses, skips and worst response. On USB the gauge measures the current into the cell, so Home and the Power sheet label V x I as charging power, not the board's draw.
+<p align="center"><img src="docs/images/edgeos-ai-soc.png" width="900" alt="How the battery charge estimator works, hand-drawn. On the board with placeholder parameters. The gauge gives voltage V, current I and temperature T from the sample the board task already reads, with no new I2C traffic, and the gauge is never written. The cell model is one RC pair: an open-circuit voltage source OCV(z), a series resistance R0, then R1 in parallel with C1, so V equals OCV(z) plus v1 plus R0 times I. OCV is a 41-point table over the charge z from 0 to 1, and tau equals R1 times C1. The filter runs one step per second on the state z and v1 with covariance P. Predict: z minus equals z plus eta I delta t over 3600 Q SoH, v1 minus equals a v1 plus 1 minus a times R1 I with a equal to exp of minus delta t over tau, P minus equals F P F transpose plus W with F equal to diag 1, a. Expect: V hat equals OCV of z minus plus v1 minus plus R0 I, with H equal to dOCV/dz and 1. Correct: K equals P minus H transpose over H P minus H transpose plus R, x equals x minus plus K times V minus V hat, P equals P minus minus K H P minus. Anchors: after 300 s at rest z equals the inverse OCV of V, and at the end of a CV charge z equals 1. Tried on top of it and not shipped: a residual MLP with 11 inputs, 12 tanh units and one clamped output, and an EKF with a third state for the current offset. Results on the Mac: on the 18650 NMC cycling set RMSE 0.33 to 0.53 percent and worst 2.4 to 4.0 percent. Start 20 percent wrong: EKF 0.75 to 2.0 percent, coulomb counting 8.6 to 10.5 percent. NASA cells with the 18650 OCV curve: 7.9 to 21 percent. Cost 111 flops and 1 exp, 324 B."></p>
+
+The cell is modelled as a voltage source that depends on the charge, OCV(z), in series with a resistance R₀ and one resistor-capacitor pair R₁ ∥ C₁. R₀ gives the instant drop when current flows. The RC pair gives the slow part, with time constant τ = R₁C₁. The filter keeps two states, the charge z (0 to 1) and the voltage v₁ on the RC pair, and a 2 × 2 covariance P that says how sure it is of them. Plett laid out this use of the extended Kalman filter for battery management systems<sup>[[21]](#ref-21)</sup>.
+
+Every second it predicts. It counts the charge and lets the RC voltage decay towards its new level:
+
+$$z_k^- = z_{k-1} + \frac{\eta\, I_k\, \Delta t}{3600\, Q\, \mathrm{SoH}}, \qquad v_{1,k}^- = a\, v_{1,k-1} + (1 - a)\, R_1 I_k, \qquad a = e^{-\Delta t/\tau}$$
+
+Here I is the current in amps (positive while charging), Δt the seconds since the last step, Q the capacity in Ah, η the charge efficiency, and SoH the share of the capacity the cell still has. The covariance grows by the process noise W: P⁻ = F P Fᵀ + W, with F = diag(1, a).
+
+Then it predicts the terminal voltage and compares it with the gauge:
+
+$$\hat V_k = \mathrm{OCV}(z_k^-) + v_{1,k}^- + R_0 I_k, \qquad H_k = \left[\, \frac{d\,\mathrm{OCV}}{dz}\bigg|_{z_k^-} ,\quad 1 \,\right]$$
+
+The gap V − V̂ is the innovation. The Kalman gain K decides how much of it goes into each state:
+
+$$K_k = \frac{P_k^- H_k^{\top}}{H_k P_k^- H_k^{\top} + R}, \qquad x_k = x_k^- + K_k \left(V_k - \hat V_k\right), \qquad P_k = P_k^- - K_k H_k P_k^-$$
+
+R is the variance of the voltage reading. Where the OCV curve is steep, the voltage says a lot about z, and the filter follows it. Where the curve is flat, dOCV/dz is small, K shrinks, and the filter trusts the charge count. That is how a wrong start fixes itself: with the start 20 % off, the EKF's error stayed at 0.75 to 2.0 % RMSE, where plain coulomb counting stayed at 8.6 to 10.5 %.
+
+Two anchors reset the charge outright. After 300 s at rest the voltage is the OCV, so z = OCV⁻¹(V). At the end of a CV charge, z = 1. Until the first anchor the Board page says "learning". Two anchors at least 30 % of charge apart give a capacity sample for the health estimate.
+
+In the firmware (`main/bat_est.c`, math in `main/bat_est_core.c`, model in `main/bat_model.h`) the step matches the Mac reference to within 1.1e-6 over 370 test steps (`make -C tests/host bat BAT_MODEL=<fitted header>`). It reads the gauge sample the board task already takes every 2 s, so there is no new I2C traffic, and the gauge is never written. The learnt values and the last SoC go to NVS at most every 10 minutes and on the safe-shutdown path. Every 10 s a training row (V, I, average I, T, the gauge's SoC and remaining capacity, the estimator's SoC, SoH and mode) goes to `obd/bat/bNNNNNN.csv` on the NAND, at most 2 MB in all, oldest file first out. Those rows are what the cell's own OCV curve will be fitted from. Until then the firmware runs placeholder parameters for a 4.2 V cell, and the nominal capacity is `CONFIG_OCM_BAT_NOMINAL_MAH`, 65 mAh from the cell's label (UNVERIFIED).
+
+Tested on the Mac, held out from fitting:
+
+| Test | 2-state EKF (shipped) | For comparison |
+|---|---|---|
+| An 18650 NMC cycling data set, held-out early, middle and late life | RMSE 0.33 to 0.53 %, worst 2.4 to 4.0 % | |
+| Start 20 % wrong | RMSE 0.75 to 2.0 % | coulomb counting 8.6 to 10.5 % |
+| NASA cells<sup>[[26]](#ref-26)</sup>, with the 18650 cell's OCV curve | RMSE 7.9 to 21 % | the OCV curve is specific to the cell, so it has to come from this board's logs |
+| Current offset of +0.01C (0.65 mA on 65 mAh) | RMSE 5.3 % | the 3-state EKF: 0.27 to 0.79 % |
+| Cost per step | 111 flops and 1 exp, 324 B | |
+
+I checked where the EKF's remaining error comes from. It is a slow drift of about ±0.3 % from counting charge, and it does not sit at the low-charge knee, in the CV taper or with heat. An unscented Kalman filter<sup>[[22]](#ref-22)</sup> with one or two RC pairs gave the same RMSE. Neither the linearisation nor the model order is the limit. The biggest risk is a current offset, which the 3-state EKF in the last dropdown is kept ready for.
+
+</details>
+
+<details>
+<summary><b>For experts: how the battery health estimate works</b> (figure, features, test results)</summary>
+
+<p align="center"><img src="docs/images/edgeos-ai-soh.png" width="900" alt="How the battery health estimate works, hand-drawn. State of health is the capacity the cell still holds as a share of its label capacity. Card 1, counted capacity, on the board: two anchors at least 30 percent of charge apart give one capacity sample, and SoH equals the learnt capacity over the label capacity. A full charge counted to the cutoff: 0.12 percent error on the 18650 set and 1.2 percent on the NASA cells. Card 2, DC resistance trend, on the board: a current step gives the DC resistance over 120 s, with r of minus 0.88 against capacity, used as a flag, and 6.42 percent off as an SoH estimate on its own. Card 3, partial-charge regressor, validated on the Mac: features from an ordinary charge relative to the cell's first 10 cycles, the charge added between 3.9 and 4.1 V, dQ/dV peak height and position, CV duration and taper constant, DC resistance over 120 s and mean temperature. Ridge regression, 8 multiply-adds and 16 ops, 100 B, picked by forward cross-validation over a GBDT and an 8-unit MLP. Held-out cycles: on the 18650 set the ridge 1.45 percent, the DCIR trend 6.42 percent, the full-charge count 0.08 percent with a full cycle. On the NASA discharge-only cells the ridge 13.9 to 25.0 percent and the DCIR trend 8.5 to 19.2 percent."></p>
+
+SoH is the capacity the cell still holds divided by its label capacity. The board gets it two ways.
+
+The firmware counts it. Two anchors (a rest, or the end of a CV charge) at least 30 % of charge apart give one sample: the charge counted between them divided by the change in z. A full charge counted down to the cutoff was off by 0.12 % on the 18650 set and by 1.2 % on the NASA cells. Current steps also give a DC resistance (DCIR) over 120 s. It rises as the cell fades (r = −0.88 against capacity on the 18650 set), but as an SoH estimate on its own it is off by 6.42 %, so the board uses it as a flag.
+
+A count from full to the cutoff needs the board to run its cell flat, which a board on the car's USB rarely does. So I trained a regressor on what an ordinary charge shows. Its features are taken relative to the cell's first 10 cycles: the charge added between 3.9 and 4.1 V, the height and position of the dQ/dV peak (the charge added per volt of rise), the CV duration and its taper constant, the DCIR over 120 s and the mean temperature. Ridge regression won the forward cross-validation (0.83 % against 1.96 % for a tree ensemble (GBDT) and 20 % for an 8-unit MLP). It costs 8 multiply-adds and 16 ops, in 100 B.
+
+| Held-out cycles, forward in time (MAPE) | Partial-charge ridge | DCIR trend | Full-charge count |
+|---|---|---|---|
+| 18650 NMC cycling set | 1.45 % | 6.42 % | 0.08 %, needs a full cycle |
+| NASA cells<sup>[[26]](#ref-26)</sup>, discharge only | 13.9 to 25.0 % | 8.5 to 19.2 % | not compared |
+
+The regressor passes on the cell it learned and does not transfer to cells it never saw charge. It needs the board's own first charges as its reference. The plan is the count when there is a full cycle and the regressor otherwise. The regressor is trained and tested on the Mac, not in the firmware yet.
+
+</details>
+
+<details>
+<summary><b>For experts: how the battery anomaly detector works</b> (figure, features, fault tests)</summary>
+
+<p align="center"><img src="docs/images/edgeos-ai-anomaly.png" width="900" alt="How the battery anomaly detector works, hand-drawn. Validated on the Mac, not in the firmware yet. Card 1, every 60 s, 9 features from the EKF and the gauge: innovation mean and RMS as slow averages, voltage drift and current at rest, temperature against a one-node heat model, voltage sag per C-rate against R0 at that temperature, the DC resistance ratio at a current step, load level and gauge read glitches. Card 2, three detectors: a 9-4-9 tanh autoencoder raises the alarm from its reconstruction error, a z-score with a frugal median and MAD and an online Gaussian are diagnostics only. False alarms on 388 h of held-out normal data: autoencoder 0.0026 per hour with a 95 percent upper bound of 0.012, z-score 0.245 and Gaussian 0.126, which drift with ageing. Card 3: a 24 h warm-up, learning only from clearly normal windows, an alarm after 3 windows in a row, a banner and a log line, and it never acts on power. Under 400 ops per window, 280 B of state and 640 B of parameters. Injected faults caught and median time: resistance plus 100 percent 92 percent in 72 min, temperature plus 15 C 83 percent in 164 min, soft short 5 percent per hour 75 percent in 176 min, resistance plus 30 percent 25 percent, soft short 0.5 percent per hour 8 percent, current offset 8 percent, intermittent reads 0 to 8 percent, temperature plus 5 C, current gain error and extra drain 0 percent."></p>
+
+The detector learns what normal looks like for this cell and raises an alarm when 60 s windows stop looking like it. Nobody labels a fault for it. Each window has 9 features from the EKF and the gauge: the innovation's mean and RMS as slow averages, the voltage drift and the current at rest, the temperature against a one-node heat model, the voltage sag per C-rate against R₀ at that temperature, the DC resistance ratio at a current step, the load level and the gauge's read glitches.
+
+Three detectors ran side by side. One is a z-score against a frugal streaming median and MAD<sup>[[25]](#ref-25)</sup>, one an online Gaussian, and one a 9 → 4 → 9 tanh autoencoder whose score is its reconstruction error. All three warm up for 24 h, learn only from clearly normal windows, and alarm after 3 windows in a row. On 388 h of held-out normal data the autoencoder gave 0.0026 false alarms per hour (95 % upper bound 0.012). The z-score gave 0.245 per hour and the Gaussian 0.126, because the cell's ageing moved them. So only the autoencoder raises alarms, and the other two only log.
+
+| Injected fault | Caught | Median time to the alarm |
+|---|---|---|
+| Resistance +100 % | 92 % | 72 min |
+| Temperature +15 °C | 83 % | 164 min |
+| Soft short, 5 % of capacity per hour | 75 % | 176 min |
+| Resistance +30 % | 25 % | |
+| Soft short, 0.5 % per hour | 8 % | |
+| Current offset | 8 % | |
+| Intermittent reads | 0 to 8 % | |
+| Temperature +5 °C, current gain error, extra drain | 0 % | |
+
+It catches large faults only. The thresholds were learned on public cell data, so they have to be learned again on the board's own cell before an alarm means anything there. An alarm shows a banner and writes a log line. It never acts on power: the fixed battery protection above stays in charge of that. The cost is under 400 ops a window, with 280 B of state and 640 B of parameters. It is trained and tested on the Mac, not in the firmware yet.
+
+</details>
+
+<details>
+<summary><b>For experts: how the network intrusion detector works</b> (figure, rules, attack tests)</summary>
+
+<p align="center"><img src="docs/images/edgeos-ai-ids.png" width="900" alt="How the network intrusion detector works, hand-drawn. Rotation detector validated on the Mac, rules R1, R2 and R6 on the board. Card 1, radio callbacks: BLE adverts and link events, Wi-Fi round events, counters and three 1,024-bit bitmaps per head, no locks and no allocation. Card 2, the scan head every 5 s window: three features that measure rotation, not crowd size: single-use new transmitters, churn and adverts per address. Score: a frugal streaming median m and MAD per feature, m moves by eta times s times the sign of x minus m, z equals x minus m over 1.4826 MAD, one-sided, plus a fixed prior of 15 or more single-use new transmitters in one window. Block when 3 of the last 6 windows exceed, learning only from clean windows with clamped medians, after a 2 h shadow. Below it, the link head for relay timing is advisory only, the Wi-Fi head looks for floods of rotating access-point addresses with the fixed prior only, and the fixed rules on the board are R1 adapter fingerprint, R2 no silent re-pair and R6 clock jump guard. Step 6, a block does only safe, reversible steps: no pairing offers or re-pair requests, the scan narrowed to the paired adapter, the Wi-Fi round aborted with the current time kept, rows kept out of the learner, lifted 10 min after the last bad window or from the banner. It never cuts the paired adapter while driving, transmits, or pairs on its own. On the Mac: 0 false blocks in 446 h of BLE adverts, 2 times 120 h of a crowd shift and 769 h of Wi-Fi traffic. Advert floods at 100 ms and 20 ms 80 of 80, the stealthy 500 ms flood 71 of 80, a slow poisoning ramp blocked at 4.9 adverts per second, Wi-Fi floods with rotating access-point addresses 15 of 15. Cost 40 B of state and 512 B of bitmaps per head, about 60 integer ops a window. A stealthy flood inside a crowd of 150 or more devices was not caught."></p>
+
+The detector looks for a transmitter that changes its address on almost every advert, which is how Bluetooth spam floods and prompt-spam tools look. Each radio callback only sets bits and adds to counters. Every 5 s the IDS service turns three 1,024-bit bitmaps (seen this window, seen twice, seen last window) into three features:
+
+- single-use new: transmitters seen once that were not there in the last window,
+- churn: the share of transmitters that are new,
+- adverts per address, which falls towards 1 in a flood.
+
+A crowd of real phones repeats inside a window and keeps each address for minutes, so these features stay low in a busy car park. A raw count of adverts would not.
+
+For each feature the board keeps a frugal streaming median m and median absolute deviation (MAD)<sup>[[25]](#ref-25)</sup>. After each window the median moves one small step towards the new value, m ← m + η·s·sign(x − m), where η is the step and s the feature's scale. Over time m settles where half the values lie above it, and it costs one number per feature. The MAD follows the same rule on |x − m|. Scoring is one-sided, z = (x − m) / (1.4826·MAD), so only more rotation counts. With the factor 1.4826 the MAD equals the standard deviation for Gaussian data. A fixed prior adds that 15 or more single-use new transmitters in one window is a flood whatever the board has learned. A block starts when 3 of the last 6 windows exceed. The first 2 h are a shadow that learns and never blocks. After that the baseline learns only from clean windows, and its medians are clamped, so a slow poisoner cannot drag them into flood territory.
+
+A block only stops what the board would do on its own. It offers no new adapter and asks for no re-pair, narrows the scan to the paired adapter, aborts the Wi-Fi clock round with the current time kept, and keeps the rows out of the learner. The block lifts 10 minutes after the last bad window, and you can clear it from the banner. It never cuts the paired adapter while you drive, never transmits, and never pairs on its own. Cloned adapters, silent re-pairs and clock jumps are left to the fixed rules R1, R2 and R6 in [Pairing safety](#pairing-safety-built-not-yet-checked-on-the-board). A link head that watches for relay delay is advisory only: it marks rows unverified and blocks nothing.
+
+The data: a public BLE scanner data set, used for local testing only (nothing fitted on it ships), the UJI Probes<sup>[[27]](#ref-27)</sup> and IPIN2021<sup>[[28]](#ref-28)</sup> Wi-Fi probe-request captures, and a synthetic crowd of 5 to 300 devices for the busy car park. Attacks were injected into them.
+
+| Test on the Mac | Result |
+|---|---|
+| False blocks on normal traffic | 0 in 446 h of BLE adverts, 0 in 2 × 120 h of a crowd shift, 0 in 769 h of Wi-Fi management traffic. Target ≤ 0.05 per hour |
+| Advert floods at 100 ms and 20 ms | 80 / 80 each, blocked 10 to 15 s after the start |
+| Stealthy flood at 500 ms | 71 / 80. Inside a synthetic crowd of 150 or more devices: 0 / 15 |
+| Slow poisoning, 0 to 50 adverts per second over 6 h | blocked at 4.9 adverts per second, and the block held at full rate |
+| Wi-Fi floods of fake access points with rotating addresses | 15 / 15 on both captures |
+| Cost | 40 B of state and 512 B of bitmaps per head, about 60 integer ops a window |
+
+On the Mac the detector is bit-exact against its Python reference on 21,601 test windows. It is not in the firmware yet. Its service row is ready (T 5 s, D 1 s), and it will start in shadow mode, logging and never blocking, until a week of logs from real car parks shows its false-block rate on the board.
+
+</details>
+
+<details>
+<summary><b>For experts: why the AI services meet their deadlines and cannot deadlock</b> (the scheduling argument)</summary>
+
+The AI services are soft real-time jobs. A late result is worth less, never dangerous, so a miss is counted and fed to the ladder, never fatal.
+
+Each service is one table entry with a period T, a relative deadline D ≤ T, a CPU budget C and four hooks (`main/ai_svc.c`, rules in `main/ai_svc_core.c`). Inside the worker, a release table picks the due service with the shortest deadline first (deadline-monotonic order), and a step runs to its end. One worker instead of one task per service saves a stack and a scheduler slot per service. The cost is that one service can wait for one step of another, and the admission covers that. The worker is analysed as one job:
+
+$$C_w = \sum_{s} C_s, \qquad T_w = \min_{s} T_s, \qquad D_w = \min_{s} D_s$$
+
+and its response R<sub>w</sub> comes from the same response-time analysis as the models<sup>[[5]](#ref-5)</sup>, with every measured job above it on that core. If R<sub>w</sub> ≤ D<sub>w</sub>, every service is released at most once inside any window of length R<sub>w</sub>, so the sum of the budgets bounds all the work the worker can face, waiting for another service included. On 13757fd that gave R 2.00 ms on core 1, a margin of 998 ms. Admission runs when the boot health verdict is formed, about 65 s after a start, once the scheduler monitor has measured the other jobs, on the core with the lower measured load first. A service whose self-test takes longer than its budget is refused on its own. If both cores refuse the worker, the board runs without AI services and the Board page says why. In safe mode they stay off.
+
+Overruns do not pile up. A step that runs past its budget may finish, and that service's next release is skipped. A worker that comes back late runs only the newest release and counts the older ones as skipped. No job ever waits in a queue behind another, so overload cannot build a backlog. `make -C tests/host ai` simulates the release table under overload (a step 3.5 periods long, budget overruns, a blocked worker) and checks that no service ever has more than one job outstanding, and that the ladder sheds in the order AI services, screen, learner, model, and comes back in reverse.
+
+The worker cannot deadlock either. A deadlock needs a cycle of tasks, each holding something the next one waits for. A service step takes no mutex, waits on no queue, does no I/O and allocates nothing. Its input is a copy of the latest sample in a single-writer seqlock: the reader retries a torn copy at most four times, then keeps the last good one, and never waits. Its result goes out the same way, and the screen reads it without a lock. Rows for storage go into a single-producer, single-consumer ring that drops and counts when full. The board task drains it, since it already owns NVS and the file writes. The only lock on a step's path is the scheduler monitor's spinlock, held for a few field copies and never nested. So the worker never holds one resource while it waits for another, and the cycle cannot form through it.
+
+On the Board page, the AI SERVICES card shows each service's period, deadline, budget, runs, misses, skips and worst response.
+
+</details>
+
+<details>
+<summary><b>For experts: the models we tested and did not ship</b> (what each was for, and why it lost)</summary>
+
+| Model | What it tried | Result on the Mac | Why it is not shipped |
+|---|---|---|---|
+| Residual MLP, phase 2 (10 → 12 tanh → 1, 375 multiply-add equivalents, 984 B) | learn the EKF's remaining SoC error | RMSE 0.49 % middle and 0.21 % late life against the EKF's 0.53 and 0.33 %, but a worst error of 6.49 % on the forward test against 3.96 %, and NASA 12.1 % against 12.9 % | better in some places, worse in others. The gate was to beat the EKF everywhere |
+| Residual MLP, phase 3 (11 → 12 tanh → 1, trained with 120 simulated cells of random OCV shape, capacity, resistance and offset, with a confidence gate) | make the correction hold on other cells | the gate switched it off, or it raised the worst error | it did not pass |
+| EKF with a third state for the current offset | cancel a current-sensor offset | under +0.01C offset, RMSE 5.3 % down to 0.27 to 0.79 %. On clean data the early-life worst error rose from 4.0 % to 7.5 % | kept for boards whose measured offset is above about 0.003C (0.2 mA on 65 mAh), not the default |
+| UKF with one or two RC pairs<sup>[[22]](#ref-22)</sup> | a better nonlinear filter | the same RMSE as the EKF, a higher worst error (5.8 % against 2.5 % in middle life), 360 against 90 multiply-add equivalents | linearisation was not the limit |
+| Neural ECM | a network in place of the cell's voltage map | 62 % RMSE on the NASA cells | it learned one cell's voltage map |
+| Pure MLP | SoC straight from V, I and T | 32 % on the NASA cells, worst 10.8 % early in life, and no recovery from a wrong start | no physics to fall back on |
+| KalmanNet-lite, a small KalmanNet<sup>[[23]](#ref-23)</sup> | a learned Kalman gain | worse than the EKF everywhere, for example 3.51 % RMSE early in life against 0.45 %, after a short training run | it lost on every test |
+| SoH: GBDT and an 8-unit MLP | other SoH regressors | 1.96 % and 20 % MAPE in forward cross-validation, against 0.83 % for ridge | ridge was better and smaller |
+| Battery anomaly: z-score and online Gaussian as alarms | simple baselines | 0.245 and 0.126 false alarms per hour on normal data, against a target of 0.05 | ageing moved them. They only log |
+| IDS: z-score on all six features, diagonal Gaussian, Mahalanobis, online k-means, Half-Space Trees<sup>[[24]](#ref-24)</sup>, a tiny autoencoder | learn normal traffic, block anything unusual | 0.10 to 0.16 false blocks per hour on stable data (the autoencoder 0.009). After a move from a quiet place to a busy one, stuck blocking 33 to 100 % of the time | they learned the crowd's size, and the guard against poisoning froze them in the new place |
+| IDS: paired-adapter signal strength as a clone detector | spot a second transmitter on the paired address | 0 / 60 clones found at z = 6 | the public data has no fixed transmitter, so it could not answer. Clones stay with rule R1 |
+
+The two studies came out opposite ways. For the intrusion detector, the general learners failed and a baseline built for one pattern, address rotation, passed. For the battery anomaly detector, the simple baselines failed on ageing drift and the autoencoder passed.
+
+</details>
 
 ### What it costs
 
@@ -538,7 +699,7 @@ Two parts are built into 2.0.0 and switched off by default.
 
 Two board passes ran. The first on EdgeOS 2.0.0 4aeff43 (SHA-256 `a225125d27f3906c...`), the second on 06ddf1d, which adds the pairing change, the 16 px text and the model names (merged image SHA-256 `4cc402a76a53edc2...`). The release image in this branch is rebuilt from its tip, whose Mosaico code equals 06ddf1d apart from the Home card fix in ce58ca7. VERIFIED means a board log line shows it. Some rows ran on a scratch build of the 2.0.0 code with one test switch on, and the row says so. A scratch build is never shipped. Host tests pass for every part: `make os` (41,635 checks at 4aeff43, 41,719 with the pairing change), `make pair`, `make ppa`, `make uimetrics` and the source audits in `tests/host/os_audit.sh`.
 
-Of the 28 rows in the table, 21 are VERIFIED (6 of those on a scratch build), 3 PARTLY and 4 NOT: not run yet, or switched off in this release. The three figures below show the main results. The full table is folded under them.
+Of the 28 rows from those two passes, 21 are VERIFIED (6 of those on a scratch build), 3 PARTLY and 4 NOT: not run yet, or switched off in this release. The three figures below show the main results. A third pass is running on build 13757fd, which adds the AI services and pairing safety. Its 8 rows are at the end of the table: 4 VERIFIED so far, 3 being checked, and 1 for the intrusion detector, which is not in the firmware yet. The full table is folded under the figures.
 
 <p align="center"><img src="docs/images/edgeos-boot.png" width="900" alt="Boot and runlevels on the board. The release boot on 4aeff43, in seconds after power-on: running at 4.3 s with Wi-Fi held, boot health good at 68.0 s with Wi-Fi released and 128.9 KB of internal RAM free, the Wi-Fi driver up at 88.1 s, the clock synced at 98.0 s, the driver down at 106.5 s. If health is bad, on a scratch build forced bad: safe mode, Wi-Fi held, and Sync clock now still starts it by hand. The runlevels seen in the tests: Parked. Driving on a forced drive. Saving when the battery was hot at 34.2 °C, back to Parked when it cooled to 33.7 °C. Safe mode on a forced bad health check. Refused while Driving: the USB door answered ERR busy, and the screen said Not now: a drive is running for the clock sync and Format."></p>
 
@@ -552,7 +713,7 @@ The ladder drops the screen rate first and the model last, and climbs back one r
 
 Every phase stays above the 60 KB target. The lowest is 80.9 KB, with an adapter search and a clock sync running at once.
 
-<details><summary>Full board results table</summary>
+<details><summary><b>Full board results table</b> (all 36 rows, with the build each one ran on)</summary>
 
 | Part | Result | What the board showed | Build |
 |---|---|---|---|
@@ -584,6 +745,14 @@ Every phase stays above the 60 KB target. The lowest is 80.9 KB, with an adapter
 | Pairing: offering and saving your adapter | NOT | needs the owner's adapter next to the board | |
 | Model names and 16 px text on screen | VERIFIED | 37 board captures: "active-estimator" and "ev-frozen" on the model pages, no text under 16 px, nothing in a 60 px corner. One overlap on Home (fixed in ce58ca7, host-checked) | 06ddf1d |
 | The download door in every state | VERIFIED | the 1200-baud door entered the ROM download mode on the release, in Saving, during a forced drive and after a battery safety stop | 4aeff43, 06ddf1d, scratch |
+| Boot health, with the AI services | VERIFIED | rated good at 68.9 s | 13757fd |
+| Wi-Fi boot hold, with the AI services | VERIFIED | Wi-Fi released after the good verdict with 130,623 B of internal RAM free | 13757fd |
+| AI worker admission | VERIFIED | admitted on core 1 with R 2.00 ms against its 1,000 ms deadline, a margin of 998 ms | 13757fd |
+| Battery estimator self-test | VERIFIED | 570 µs against its 2 ms budget | 13757fd |
+| Battery SoC and SoH on the Board page | BEING CHECKED | built, being checked on the board. The parameters are placeholders until the cell's curve is fitted | 13757fd |
+| Ladder rung "AI services slowed" | BEING CHECKED | built, being checked on the board | 13757fd |
+| Pairing safety: fingerprint, no silent re-pair, clock jump guard | BEING CHECKED | built, being checked on the board | 13757fd |
+| Network intrusion detector | NOT | not in the firmware yet. Validated on the Mac (see [AI services in EdgeOS](#ai-services-in-edgeos)) | |
 
 </details>
 
@@ -643,6 +812,24 @@ Every phase stays above the 60 KB target. The lowest is 80.9 KB, with an adapter
 <a id="ref-19"></a>[19] D. Yoo and I. S. Kweon, "Learning loss for active learning," in *Proc. CVPR*, 2019. [arXiv:1905.03677](https://arxiv.org/abs/1905.03677)
 
 <a id="ref-20"></a>[20] S. Dasgupta, "Two faces of active learning," *Theoretical Computer Science*, 2011. [cseweb.ucsd.edu](https://cseweb.ucsd.edu/~dasgupta/papers/twoface.pdf)
+
+<a id="ref-21"></a>[21] G. L. Plett, "Extended Kalman filtering for battery management systems of LiPB-based HEV battery packs: Part 3. State and parameter estimation," *Journal of Power Sources*, vol. 134, no. 2, pp. 277–292, 2004. [doi:10.1016/j.jpowsour.2004.02.033](https://doi.org/10.1016/j.jpowsour.2004.02.033)
+
+<a id="ref-22"></a>[22] S. J. Julier and J. K. Uhlmann, "Unscented filtering and nonlinear estimation," *Proceedings of the IEEE*, vol. 92, no. 3, pp. 401–422, 2004. [doi:10.1109/JPROC.2003.823141](https://doi.org/10.1109/JPROC.2003.823141)
+
+<a id="ref-23"></a>[23] G. Revach, N. Shlezinger, X. Ni, A. L. Escoriza, R. J. G. van Sloun and Y. C. Eldar, "KalmanNet: Neural network aided Kalman filtering for partially known dynamics," *IEEE Transactions on Signal Processing*, vol. 70, pp. 1532–1547, 2022. [arXiv:2107.10043](https://arxiv.org/abs/2107.10043)
+
+<a id="ref-24"></a>[24] S. C. Tan, K. M. Ting and T. F. Liu, "Fast anomaly detection for streaming data," in *Proc. IJCAI*, 2011, pp. 1511–1516. [ijcai.org](https://www.ijcai.org/proceedings/2011/0254.pdf)
+
+<a id="ref-25"></a>[25] Q. Ma, S. Muthukrishnan and M. Sandler, "Frugal streaming for estimating quantiles: One (or two) memory suffices," 2014. [arXiv:1407.1121](https://arxiv.org/abs/1407.1121)
+
+<a id="ref-26"></a>[26] B. Saha and K. Goebel, "Battery data set," NASA Prognostics Data Repository, NASA Ames Research Center, Moffett Field, CA, 2007. [nasa.gov](https://www.nasa.gov/intelligent-systems-division/discovery-and-systems-health/pcoe/pcoe-data-set-repository/)
+
+<a id="ref-27"></a>[27] T. Bravenec, J. Torres-Sospedra, M. Gould and T. Fryza, Supplementary materials for "UJI Probes: Dataset of Wi-Fi probe requests," Zenodo, 2023. Licence CC BY 4.0. [doi:10.5281/zenodo.7801798](https://doi.org/10.5281/zenodo.7801798)
+
+<a id="ref-28"></a>[28] T. Bravenec, J. Torres-Sospedra, M. Gould and T. Fryza, Supplementary materials for "What your wearable devices revealed about you and possibilities of non-cooperative 802.11 presence detection during your last IPIN visit," Zenodo, 2022. Licence CC BY 4.0. [doi:10.5281/zenodo.6798302](https://doi.org/10.5281/zenodo.6798302)
+
+The UJI Probes and IPIN2021 probe-request captures are © T. Bravenec, J. Torres-Sospedra, M. Gould and T. Fryza, used under CC BY 4.0. Only windowed counts derived from them were used, on the Mac, and nothing from them is in this repository.
 
 ## Repository layout
 

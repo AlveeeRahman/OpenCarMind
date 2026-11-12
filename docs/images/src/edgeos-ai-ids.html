@@ -1,0 +1,104 @@
+<!doctype html>
+<!-- OpenCarMind EdgeOS figure: the network intrusion detector (IDS) over BLE and Wi-Fi, hand-drawn like
+     edgeos-runlevels.html. Render with docs/images/render.sh. Detector facts and results from the net IDS study on
+     the Mac (rotation features, frugal median/MAD, prior >= 15 single-use new per 5 s, 3 of 6 windows, 2 h shadow,
+     clamped medians, block actions, 446 h / 2 x 120 h / 769 h benign, 80/80, 71/80, 4.9 adverts/s, 15/15,
+     40 B + 512 B, about 60 ops). Rules R1, R2 and R6 from main/adapter_guard.c and the clock guard (pairing-hardening).
+     The detector is not in the firmware yet. -->
+<html lang="en"><head><meta charset="utf-8"><title>Network intrusion detector</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Kalam:wght@400;700&family=Patrick+Hand&display=swap">
+<style>
+html, body { margin: 0; background: #FBF4E4; }
+svg { display: block; }
+</style></head><body>
+<svg id="fig" width="1200" height="1440" viewBox="0 0 1200 1440" xmlns="http://www.w3.org/2000/svg"></svg>
+<script src="edgeos-ai-draw.js"></script>
+<script>
+const W = 1200, H = 1440;
+seed = 20261117;
+
+function draw() {
+  heading(W, 'How the network intrusion detector works',
+    'The board counts what its radios hear and scores each 5 s window for address rotation, the mark of a flood. ' +
+    'Fixed rules catch cloned adapters, silent re-pairs and clock jumps. A block only stops what the board would do on its own.');
+  let cx = chip(60, 200, 'mac', { label: 'rotation detector: validated on the Mac' })[1];
+  chip(cx + 14, 200, 'board', { label: 'rules R1, R2, R6: on the board' });
+
+  // ---- 1 radio counters ----
+  const r1 = 262, h1 = 420;
+  let y = card(1, 40, r1, 300, h1, C.orange, 'Radio callbacks', 'Inputs');
+  y = bullet(66, y + 32, 'BLE adverts and link events', 250, C.orange);
+  y = bullet(66, y + 28, 'Wi-Fi round events', 250, C.orange);
+  y = bullet(66, y + 28, 'counters and three 1,024-bit bitmaps per head: seen, seen twice, seen last window', 250, C.orange);
+  y = bullet(66, y + 28, 'no locks, no allocation in a callback', 250, C.orange);
+  roughLine([[342, r1 + 200], [386, r1 + 200]], C.ink);
+
+  // ---- 2 scan head ----
+  y = card(2, 390, r1, 770, h1, C.blue, 'Scan head, every 5 s window', 'Unsupervised streaming baseline');
+  let fy = y + 32;
+  fy = wrap(416, fy, 'Three features that measure rotation, not crowd size:', 340, 23, { size: 19, color: C.soft });
+  fy = bullet(416, fy + 30, 'single-use new: transmitters seen once that were not there last window', 340, C.blue);
+  fy = bullet(416, fy + 28, 'churn: the share of transmitters that are new', 340, C.blue);
+  fy = bullet(416, fy + 28, 'adverts per address, which falls towards 1 in a flood', 340, C.blue);
+  fy = wrap(416, fy + 40, 'A crowd of real phones repeats inside a window and keeps its addresses for minutes. ' +
+    'A spammer that rotates on every advert does neither.', 340, 23, { size: 18, color: C.soft });
+
+  const ex = 790;
+  roughLine([[ex - 22, y + 14], [ex - 22, r1 + h1 - 20]], C.rule, { arrow: false, sw: 1.6, bow: 0.002, dash: '3 8' });
+  text(ex, y + 32, 'Score', { font: TITLE, weight: 700, size: 20, color: C.blue });
+  eq(ex, y + 64, 'm ← m + η·s·sign(x − m)', { size: 19 });
+  eq(ex, y + 94, 'z = (x − m) / (1.4826·MAD)', { size: 19 });
+  let sy = wrap(ex, y + 124, 'A frugal streaming median m and MAD per feature. One-sided: only more rotation counts.', 340, 22, { size: 17.5 });
+  sy = wrap(ex, sy + 30, 'Plus a fixed prior: 15 or more single-use new transmitters in one window.', 340, 22, { size: 17.5 });
+  text(ex, sy + 40, 'Block', { font: TITLE, weight: 700, size: 20, color: C.red });
+  sy = wrap(ex, sy + 68, 'when 3 of the last 6 windows exceed. It learns only from clean windows, its medians are ' +
+    'clamped, and the first 2 h are a shadow that never blocks.', 340, 22, { size: 17.5 });
+
+  // ---- 3 other heads and rules ----
+  const r2 = 722, h2 = 210;
+  y = card(3, 40, r2, 340, h2, C.purple, 'Link head', 'Relay timing');
+  wrap(66, y + 32, 'A slower car link than this firmware and PID set usually see. Advisory only: rows are marked ' +
+    'unverified, nothing is blocked.', 290, 23, { size: 18.5 });
+  y = card(4, 420, r2, 340, h2, C.purple, 'Wi-Fi head', 'Management frames');
+  wrap(446, y + 32, 'Floods of rotating access-point addresses during a clock round. It starts with the fixed prior ' +
+    'only, because a round gives about 4 windows.', 290, 23, { size: 18.5 });
+  y = card(5, 800, r2, 360, h2, C.green, 'Fixed rules', 'Clones, relays and time attacks');
+  chip(826, y + 14, 'board', { size: 16 });
+  let ry = y + 72;
+  for (const [r, s] of [['R1', 'adapter fingerprint'], ['R2', 'no silent re-pair'], ['R6', 'clock jump guard']]) {
+    text(826, ry, r, { font: TITLE, weight: 700, size: 20, color: C.green });
+    text(870, ry, s, { size: 19 });
+    ry += 28;
+  }
+
+  // ---- 6 safe block ----
+  const r3 = 972, h3 = 200;
+  y = card(6, 40, r3, 1120, h3, C.red, 'What a block does: only safe, reversible steps', 'Outcome');
+  const doL = ['no pairing offers and no re-pair requests', 'the scan narrowed to the paired adapter',
+               'the Wi-Fi round aborted, the current time kept', 'rows kept out of the learner'];
+  doL.forEach((s, i) => bullet(66 + (i % 2) * 360, y + 34 + Math.floor(i / 2) * 28, s, 340, C.red));
+  wrap(66, y + 106, 'It lifts 10 min after the last bad window, and you can clear it from the banner.', 680, 23, { size: 18, color: C.soft });
+  text(800, y + 34, 'Never:', { font: TITLE, weight: 700, size: 19, color: C.red });
+  wrap(800, y + 62, 'cut the paired adapter while driving, transmit anything, or pair on its own.', 340, 23, { size: 18.5 });
+
+  // ---- results ----
+  const r4 = 1210;
+  roughLine([[40, r4 - 16], [W - 40, r4 - 16]], C.rule, { arrow: false, sw: 1.6, bow: 0.002, dash: '3 8' });
+  text(60, r4 + 18, 'On the Mac, with public captures and injected attacks', { font: TITLE, weight: 700, size: 22 });
+  const res = [
+    ['0 false blocks', 'in 446 h of BLE adverts, 2 × 120 h of a crowd shift and 769 h of Wi-Fi traffic'],
+    ['80 / 80', 'advert floods at 100 ms and at 20 ms. The stealthy 500 ms flood: 71 / 80'],
+    ['4.9 adverts/s', 'a 6 h slow poisoning ramp was blocked here, and the block held at full rate'],
+    ['15 / 15', 'Wi-Fi beacon floods with rotating addresses, on both captures'],
+  ];
+  res.forEach(([a, b], i) => {
+    const yy = r4 + 54 + i * 30;
+    text(60, yy, a, { size: 19, weight: 700, color: C.blue });
+    text(250, yy, b, { size: 19 });
+  });
+  wrap(60, r4 + 54 + 4 * 30 + 20, 'Cost: 40 B of state and 512 B of bitmaps per head, about 60 integer ops a window. ' +
+    'Weak spot: a stealthy flood inside a crowd of 150 or more devices was not caught.', 1080, 23, { size: 18, color: C.soft });
+}
+start(draw, W, H);
+</script>
+</body></html>

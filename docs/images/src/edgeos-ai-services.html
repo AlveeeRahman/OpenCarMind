@@ -1,0 +1,138 @@
+<!doctype html>
+<!-- OpenCarMind EdgeOS figure: where the AI services run, hand-drawn like edgeos-runlevels.html.
+     Render with docs/images/render.sh. Facts from main/ai_svc.c (priority 1, one worker, admission as one job),
+     main/ai_svc_core.c (deadline-monotonic release table, skip on overrun), main/bat_est.c (T 1000 ms, D 1000 ms,
+     budget 2000 us), main/os_core.c (ladder names) and the board test of build 13757fd (R 2.00 ms, self-test 570 us,
+     boot health good at 68.9 s, Wi-Fi released with 130,623 B free). The ids row is the contract row in the
+     net IDS study (T 5 s, D 1 s); it is not in the firmware yet. -->
+<html lang="en"><head><meta charset="utf-8"><title>Where the AI services run</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Kalam:wght@400;700&family=Patrick+Hand&display=swap">
+<style>
+html, body { margin: 0; background: #FBF4E4; }
+svg { display: block; }
+</style></head><body>
+<svg id="fig" width="1200" height="1410" viewBox="0 0 1200 1410" xmlns="http://www.w3.org/2000/svg"></svg>
+<script src="edgeos-ai-draw.js"></script>
+<script>
+const W = 1200, H = 1410;
+seed = 20261113;
+
+function draw() {
+  let y = heading(W, 'Where the AI services run',
+    'Every small AI model in EdgeOS runs as a service inside one worker task. The worker sits below every job ' +
+    'with a deadline, is admitted like a model, and never takes a lock that a job above it holds.');
+
+  text(60, 222, 'Status:', { size: 21 });
+  let cx = 134;
+  for (const k of ['board', 'mac', 'training', 'notship']) cx = chip(cx, 200, k)[1] + 12;
+
+  // ---- 1 priority stack ----
+  const r1 = 270, h1 = 420;
+  y = card(1, 40, r1, 380, h1, C.purple, 'Who preempts whom', 'FreeRTOS fixed priorities');
+  const bars = [
+    ['obd_poll', '5', 'core 1', C.orange],
+    ['ml: the E.V or R.E.V model', '3', 'core 1', C.blue],
+    ['ui: the screen', '2', 'core 0', C.purple],
+    ['rev: the R.E.V learner', '2', 'core 1', C.purple],
+  ];
+  let by = y + 22;
+  bars.forEach(([n, p, c, col]) => {
+    roughRect(110, by, 290, 40, 10, col, { sw: 1.8, amp: 0.7, fill: '#FFFFFF' });
+    text(124, by + 27, n, { size: 19 });
+    text(388, by + 27, `${p}`, { font: TITLE, weight: 700, size: 22, color: col, anchor: 'end' });
+    by += 50;
+  });
+  roughRect(110, by, 290, 66, 10, C.green, { sw: 3, amp: 0.8, fill: '#E5F2E8' });
+  text(124, by + 27, 'AI worker', { font: TITLE, weight: 700, size: 21, color: C.green });
+  text(388, by + 27, '1', { font: TITLE, weight: 700, size: 22, color: C.green, anchor: 'end' });
+  text(124, by + 53, 'core 1 on 13757fd: R 2.00 ms', { size: 18, color: C.green });
+  by += 76;
+  roughRect(110, by, 290, 32, 10, C.rule, { sw: 1.4, amp: 0.6, dash: '5 5' });
+  text(124, by + 22, 'idle', { size: 18, color: C.soft });
+  text(388, by + 22, '0', { size: 18, color: C.soft, anchor: 'end' });
+  roughLine([[80, y + 30], [80, by + 20]], C.ink, { sw: 2.2 });
+  const lbl = text(0, 0, 'preempts at any instruction', { size: 17, color: C.soft });
+  lbl.setAttribute('transform', `translate(68, ${by - 8}) rotate(-90)`);
+
+  // ---- 2 release table ----
+  y = card(2, 450, r1, 710, h1, C.blue, "The worker's release table", 'deadline-monotonic: the due service with the shortest deadline runs first');
+  const cols = [478, 690, 744, 798];
+  const hy = y + 40;
+  [['service', 0], ['T', 1], ['D', 2], ['cost per step', 3]].forEach(([s, i]) =>
+    text(cols[i], hy, s, { size: 18, color: C.soft }));
+  roughLine([[476, hy + 10], [1134, hy + 10]], C.rule, { arrow: false, sw: 1.4, bow: 0.002 });
+  // battery row
+  let ry = hy + 44;
+  text(cols[0], ry, 'bat_est', { font: TITLE, weight: 700, size: 21, color: C.green });
+  text(cols[0], ry + 24, 'battery charge and health', { size: 17, color: C.soft });
+  text(cols[1], ry, '1 s', { size: 20 }); text(cols[2], ry, '1 s', { size: 20 });
+  text(cols[3], ry, 'budget 2 ms, self-test 570 µs', { size: 19 });
+  chip(cols[3], ry + 12, 'board', { size: 16 });
+  // ids row
+  ry += 86;
+  text(cols[0], ry, 'ids', { font: TITLE, weight: 700, size: 21, color: C.blue });
+  text(cols[0], ry + 24, 'network intrusion detector', { size: 17, color: C.soft });
+  text(cols[1], ry, '5 s', { size: 20 }); text(cols[2], ry, '1 s', { size: 20 });
+  text(cols[3], ry, 'about 60 integer ops, shadow mode first', { size: 19 });
+  const [, ce] = chip(cols[3], ry + 12, 'mac', { size: 16 });
+  text(ce + 10, ry + 33, 'firmware service next', { size: 17, color: C.soft });
+  // future row
+  ry += 78;
+  roughRect(476, ry - 26, 658, 40, 10, C.rule, { sw: 1.6, amp: 0.6, dash: '6 6' });
+  text(cols[0] + 6, ry, 'future services plug in here: one table entry each, no new task', { size: 19, color: C.soft });
+  ry += 46;
+  wrap(478, ry, 'Admission treats the worker as one job: C is the sum of the budgets, T the shortest period and ' +
+    'D the shortest deadline. If R stays at or below that D, no service can wait past its own deadline.', 650, 24,
+    { size: 18.5, color: C.soft });
+
+  // ---- 3, 4 data in and out ----
+  const r2 = 730, h2 = 220;
+  roughLine([[40, r2 - 18], [W - 40, r2 - 18]], C.rule, { arrow: false, sw: 1.6, bow: 0.002, dash: '3 8' });
+  y = card(3, 40, r2, 350, h2, C.orange, 'In: snapshots', 'Inputs');
+  y = bullet(66, y + 32, 'gauge V, I and T, from the read the board task already does', 300, C.orange);
+  y = bullet(66, y + 28, 'radio counters, for the IDS', 300, C.orange);
+  bullet(66, y + 28, 'one writer, a seqlock: a reader never waits', 300, C.orange);
+
+  roughLine([[392, r2 + 110], [446, r2 + 110]], C.ink);
+  roughRect(450, r2 + 20, 300, 180, 16, C.green, { sw: 2.6, fill: '#F1F8F2' });
+  text(474, r2 + 58, 'One service step', { font: TITLE, weight: 700, size: 23, color: C.green });
+  let sy = r2 + 90;
+  for (const s of ['takes no mutex', 'waits on no queue', 'does no I/O', 'allocates nothing']) {
+    bullet(478, sy, s, 260, C.green); sy += 26;
+  }
+  roughLine([[752, r2 + 110], [806, r2 + 110]], C.ink);
+
+  y = card(4, 810, r2, 350, h2, C.blue, 'Out: results', 'Outputs');
+  y = bullet(836, y + 32, 'a lock-free result struct that the screen reads', 300, C.blue);
+  y = bullet(836, y + 28, 'log rows into a ring that drops and counts when full', 300, C.blue);
+  bullet(836, y + 28, 'the board task writes them to the NAND', 300, C.blue);
+
+  // ---- 5 ladder ----
+  const r3 = 1000;
+  roughLine([[40, r3 - 22], [W - 40, r3 - 22]], C.rule, { arrow: false, sw: 1.6, bow: 0.002, dash: '3 8' });
+  text(60, r3 + 14, 'When the model misses deadlines, the board steps down', { font: TITLE, weight: 700, size: 24 });
+  const rungs = [
+    ['1', 'AI services slowed', 'every service at a tenth of its rate, learned heads off', C.green, true],
+    ['2', 'UI slowed', 'the screen every 33 ms instead of 16 ms, AI services paused', C.purple],
+    ['3', 'learner paused', 'the R.E.V learner stops', C.purple],
+    ['4', 'model paused', 'inference stops, the drive log keeps running', C.red],
+  ];
+  rungs.forEach(([n, name, what, col, isNew], i) => {
+    const x = 60 + i * 272, yy = r3 + 44 + i * 36;
+    roughRect(x, yy, 254, 104, 14, col, { sw: isNew ? 3 : 2.2, fill: isNew ? '#E5F2E8' : C.card });
+    text(x + 16, yy + 32, `${n}. ${name}`, { font: TITLE, weight: 700, size: 20, color: col });
+    wrap(x + 16, yy + 58, what, 224, 22, { size: 17.5 });
+    if (i < 3) roughLine([[x + 256, yy + 40], [x + 274, yy + 70]], C.ink, { sw: 2 });
+  });
+  const ny = r3 + 44 + 3 * 36 + 104 + 36;
+  wrap(60, ny, 'Rung 1 is new in this build and is being checked on the board. A minute without misses climbs back ' +
+    'one rung. Misses of the screen or the AI services alone reach rung 1 only.', 520, 23, { size: 17.5, color: C.soft });
+  wrap(640, ny, 'An overrun finishes and skips its next release, so work never piles up. If neither core admits ' +
+    'the worker, the board runs without AI services and says why.', 500, 23, { size: 17.5, color: C.soft });
+
+  wrap(60, H - 24, 'Board, build 13757fd: boot health good at 68.9 s, worker admitted on core 1 with R 2.00 ms (998 ms margin), ' +
+    'battery self-test 570 µs, Wi-Fi released with 130,623 B free.', 1080, 22, { size: 17, color: C.soft });
+}
+start(draw, W, H);
+</script>
+</body></html>

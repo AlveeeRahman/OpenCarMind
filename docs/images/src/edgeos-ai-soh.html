@@ -1,0 +1,87 @@
+<!doctype html>
+<!-- OpenCarMind EdgeOS figure: battery state of health, hand-drawn like edgeos-runlevels.html.
+     Render with docs/images/render.sh. On-board parts from main/bat_est_core.c and main/bat_model.h (capacity between
+     two anchors at least 0.3 of z apart, DCIR from current steps). Results from the battery study on the Mac:
+     phase 1 (full-charge count 0.12 % on the 18650 set and 1.2 % on NASA, DCIR r = -0.88) and phase 3
+     (partial-charge ridge 1.45 %, DCIR trend 6.42 %, full ends 0.08 %, NASA 13.9-25.0 % vs 8.5-19.2 %,
+     forward CV ridge 0.83 %, GBDT 1.96 %, MLP 20 %, cost 8 MAC + 16 ops, 100 B). -->
+<html lang="en"><head><meta charset="utf-8"><title>Battery health estimate</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Kalam:wght@400;700&family=Patrick+Hand&display=swap">
+<style>
+html, body { margin: 0; background: #FBF4E4; }
+svg { display: block; }
+</style></head><body>
+<svg id="fig" width="1200" height="1050" viewBox="0 0 1200 1050" xmlns="http://www.w3.org/2000/svg"></svg>
+<script src="edgeos-ai-draw.js"></script>
+<script>
+const W = 1200, H = 1050;
+seed = 20261115;
+
+function draw() {
+  heading(W, 'How the battery health estimate works',
+    'State of health (SoH) is the capacity the cell still holds, as a share of its label capacity. The board ' +
+    'measures it with plain physics when a charge gives it the chance, and a small regressor covers partial charges.');
+
+  // ---- 1 capacity ----
+  const r1 = 220, h1 = 440, w1 = 350;
+  let y = card(1, 40, r1, w1, h1, C.green, 'Counted capacity', 'Physics');
+  chip(66, y + 16, 'board', { size: 16 });
+  y = wrap(66, y + 80, 'Two anchors at least 30 % of charge apart give one capacity sample: the charge counted ' +
+    'between them, divided by the change in z.', 300, 24, { size: 19 });
+  eq(66, y + 40, 'SoH = Q_{learnt} / Q_{label}', { size: 22 });
+  y = wrap(66, y + 84, 'A full charge counted down to the cutoff:', 300, 24, { size: 19, color: C.soft });
+  y = bullet(66, y + 30, '0.12 % error on the 18650 set', 300, C.green);
+  bullet(66, y + 28, '1.2 % on the NASA cells', 300, C.green);
+
+  // ---- 2 resistance ----
+  const x2 = 425;
+  y = card(2, x2, r1, w1, h1, C.green, 'DC resistance trend', 'Physics and statistics');
+  chip(x2 + 26, y + 16, 'board', { size: 16 });
+  y = wrap(x2 + 26, y + 80, 'A current step gives the DC resistance over 120 s. It rises as the cell loses capacity: ' +
+    'r = −0.88 against capacity on the 18650 set.', 300, 24, { size: 19 });
+  y = wrap(x2 + 26, y + 40, 'The board uses it as a flag, not as the SoH. As an SoH estimate on its own it is off by ' +
+    '6.42 % on held-out cycles.', 300, 24, { size: 19, color: C.soft });
+
+  // ---- 3 regressor ----
+  const x3 = 810;
+  y = card(3, x3, r1, w1, h1, C.blue, 'Partial-charge regressor', 'Learned from data');
+  chip(x3 + 26, y + 16, 'mac', { size: 16 });
+  y = wrap(x3 + 26, y + 80, 'Features from an ordinary charge, each relative to the cell\'s first 10 cycles:', 300, 24, { size: 19 });
+  for (const s of ['charge added between 3.9 and 4.1 V', 'dQ/dV peak height and position',
+                   'CV duration and taper constant', 'DC resistance over 120 s', 'mean temperature']) {
+    y = bullet(x3 + 26, y + 28, s, 300, C.blue);
+  }
+  y = wrap(x3 + 26, y + 40, 'Ridge regression: 8 multiply-adds and 16 ops, 100 B. Forward cross-validation picked it: ' +
+    'ridge 0.83 %, GBDT 1.96 %, an 8-unit MLP 20 %.', 300, 24, { size: 18, color: C.soft });
+
+  roughLine([[392, r1 + 230], [421, r1 + 230]], C.ink, { arrow: false, sw: 2 });
+  roughLine([[777, r1 + 230], [806, r1 + 230]], C.ink, { arrow: false, sw: 2 });
+
+  // ---- results ----
+  const r2 = 710;
+  roughLine([[40, r2 - 18], [W - 40, r2 - 18]], C.rule, { arrow: false, sw: 1.6, bow: 0.002, dash: '3 8' });
+  text(60, r2 + 18, 'Held-out cycles, forward in time: error of the SoH (MAPE)', { font: TITLE, weight: 700, size: 22 });
+  const cx = [60, 470, 720, 930];
+  const hy = r2 + 60;
+  ['test', 'partial-charge ridge', 'DCIR trend', 'full-charge count'].forEach((s, i) => text(cx[i], hy, s, { size: 18, color: C.soft }));
+  roughLine([[58, hy + 10], [1140, hy + 10]], C.rule, { arrow: false, sw: 1.4, bow: 0.002 });
+  const rows = [
+    ['18650 NMC cycling set', '1.45 %', '6.42 %', '0.08 %, needs a full cycle'],
+    ['NASA cells, discharge only', '13.9 to 25.0 %', '8.5 to 19.2 %', 'not compared'],
+  ];
+  rows.forEach((r, i) => {
+    const yy = hy + 44 + i * 36;
+    r.forEach((s, j) => text(cx[j], yy, s, { size: 20, color: j === 0 ? C.purple : (j === 1 ? C.blue : C.ink),
+      weight: j === 1 && i === 0 ? 700 : 400 }));
+  });
+  let ny = hy + 150;
+  ny = wrap(60, ny, 'The regressor passes on the cell it learned and does not transfer to cells it never saw charge. ' +
+    'It needs the board\'s own first charges as its reference. The plan: the count when there is a full cycle, ' +
+    'the regressor otherwise.', 1080, 25, { size: 19 });
+  wrap(60, ny + 40, 'Status: the capacity and the resistance trend run in the firmware on the board with placeholder ' +
+    'parameters. The regressor is trained and tested on the Mac and is not in the firmware yet.', 1080, 24,
+    { size: 18, color: C.soft });
+}
+start(draw, W, H);
+</script>
+</body></html>
