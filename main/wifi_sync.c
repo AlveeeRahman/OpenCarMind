@@ -423,6 +423,10 @@ static void s31_task(void *arg)
     (void)arg;
     (void)sync_task;                     /* the S3's loop, not used here */
     uint32_t wait_s = clock_is_set() && !uploader_wifi_enabled() ? CONFIG_SYNC_RESYNC_INTERVAL_H * 3600U : 0;
+    if (!wait_s) {                                          /* as the test line: the boot-time tasks take their RAM first */
+        radio_idle_down();
+        ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(20000));     /* a join or "Sync clock now" ends the wait early */
+    }
     for (;;) {
         radio_idle_down();                                  /* the boot start, or a round's driver, is not kept between rounds */
         if (wait_s) ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(wait_s * 1000U));   /* a join or wifi_sync_connect_now() wakes it */
