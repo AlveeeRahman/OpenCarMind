@@ -144,6 +144,11 @@ uint8_t os_rollback_decision(bool pending_verify, uint8_t verdict)
     return verdict == OS_H_BAD ? OS_RB_ROLLBACK : OS_RB_CONFIRM;
 }
 
+bool os_wifi_may_start(uint8_t verdict, bool owner)
+{
+    return owner || verdict == OS_H_GOOD || verdict == OS_H_DEGRADED;
+}
+
 const char *os_health_name(uint8_t v)
 {
     static const char *const N[4] = { "pending", "good", "degraded", "bad" };

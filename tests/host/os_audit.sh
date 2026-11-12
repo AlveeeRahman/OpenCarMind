@@ -35,5 +35,25 @@ t=$(grep -l -E 'define UM_(MIN_PER_ARM|MAX_PER_ARM|READY_PM)|UM_POL_N\] =' *.c *
 if grep -n -E 'um_decide|um_mw_z100|um_holm|um_gate_step|z100|MIN_PER_ARM' swipe_intent.c ui_prefetch.c >/dev/null; then
     echo "FAIL a feature runs its own gate:"; grep -n -E 'um_decide|um_mw_z100|um_holm|um_gate_step|z100|MIN_PER_ARM' swipe_intent.c ui_prefetch.c; fail=1
 fi
-[ $fail = 0 ] && echo "os audit: resets PASS ($n files go through sys_reset), runlevels PASS ($m services looked up, no own checks), feature gate PASS (thresholds in ui_metrics.c only)"
+# 4. Wi-Fi boot hold: app_main starts Wi-Fi only through OCM_WIFI_BOOT_START (the S31 holds it), the held start touches
+#    no netif, driver or task, the automatic start asks the verdict (wifi_up(false) only in wifi_sync_boot_release, which
+#    os.c calls only behind os_wifi_may_start(v, false)), and the screen's three owner paths use wifi_sync_up().
+if grep -n -E '^[^/*]*\bwifi_sync_start\(\)' app_main.c | grep -v 'OCM_WIFI_BOOT_START(wifi_sync_start())' >/dev/null; then
+    echo "FAIL app_main.c starts Wi-Fi without the boot hold:"; grep -n 'wifi_sync_start()' app_main.c; fail=1
+fi
+h=$(awk '/^esp_err_t wifi_sync_start_held\(void\)/,/^}/' wifi_sync.c)
+[ -n "$h" ] || { echo "FAIL wifi_sync_start_held() not found"; fail=1; }
+if echo "$h" | grep -E 'esp_wifi_|esp_netif_|esp_event_|xTaskCreate|s31_task_up|radio_' >/dev/null; then
+    echo "FAIL the held Wi-Fi start brings something up at boot:"; echo "$h" | grep -E 'esp_wifi_|esp_netif_|esp_event_|xTaskCreate|s31_task_up|radio_'; fail=1
+fi
+w=$(grep -c -E 'wifi_up\((true|false)\)' wifi_sync.c)
+o=$(grep -c -E 'wifi_up\(true\)' wifi_sync.c)
+[ "$w" = 2 ] && [ "$o" = 1 ] && grep -q -E '^bool wifi_sync_up\(void\) \{ return wifi_up\(true\); \}' wifi_sync.c || {
+    echo "FAIL wifi_up() callers: expected wifi_sync_up -> wifi_up(true) and the release -> wifi_up(false) only"; fail=1; }
+grep -q -E 'if \(os_wifi_may_start\(v, false\)\) wifi_sync_boot_release\(\);' os.c || { echo "FAIL os.c releases Wi-Fi without the verdict"; fail=1; }
+r=$(grep -l 'wifi_sync_boot_release()' *.c | tr '\n' ' ')
+[ "$r" = "os.c wifi_sync.c " ] || { echo "FAIL wifi_sync_boot_release() called from: $r"; fail=1; }
+u=$(grep -c 'wifi_sync_up()' mosaico_board.c)
+[ "$u" -ge 3 ] || { echo "FAIL the screen's owner paths (sync now, search, join) call wifi_sync_up() $u times"; fail=1; }
+[ $fail = 0 ] && echo "os audit: resets PASS ($n files go through sys_reset), runlevels PASS ($m services looked up, no own checks), feature gate PASS (thresholds in ui_metrics.c only), Wi-Fi boot hold PASS (held start brings nothing up, $u owner paths)"
 exit $fail

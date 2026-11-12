@@ -305,8 +305,11 @@ esp_err_t wifi_sync_start(void)
    pick_network() hands sync_once() a pointer into the wifi_creds list, so a forget or a join's save must not move the
    list while a round runs. sync_once() leaves the state at "scanning" when no saved network is in range; the round then
    ends idle, so the screen does not show a search that is not happening. With nothing saved a round does not scan.
-   When no network was known at boot the station is not started at boot (as before); wifi_sync_up() starts it the
-   first time the screen searches or joins, and it then stays up as it does for a board that booted with a network. */
+   Boot hold (mossREV 2.0.0): the S31 starts nothing of Wi-Fi at boot, not even with saved networks; app_main calls
+   wifi_sync_start_held() (os_hooks.h OCM_WIFI_BOOT_START) instead of wifi_sync_start(). The netif, the event handlers
+   and the Wi-Fi task come up in wifi_up(): automatically once the boot health verdict lets it (os.c calls
+   wifi_sync_boot_release(), os_wifi_may_start() decides), or at once when the owner searches, joins or asks for
+   "Sync clock now" on the screen (wifi_sync_up()). The driver itself stays on demand (radio_get/put). */
 #include "freertos/semphr.h"
 #include "wifi_ui_logic.h"
 
@@ -465,11 +468,22 @@ void wifi_sync_started(void)
     s_boot_done = true;
 }
 
-bool wifi_sync_up(void)
+esp_err_t wifi_sync_start_held(void)
+{
+    size_t n = wifi_creds_load();
+    set_wifi_state(n ? WIFI_ST_IDLE : WIFI_ST_DISABLED);
+    if (n) ESP_LOGI(TAG, "Wi-Fi held until the boot health check: %u networks saved, no driver at boot", (unsigned)n);
+    else ESP_LOGW(TAG, "no Wi-Fi networks known: search and join one in the Wi-Fi app; the clock stays unset");
+    return ESP_OK;
+}
+
+/* owner: the screen asked (always allowed); otherwise the boot health verdict decides (os_wifi_may_start) */
+static bool wifi_up(bool owner)
 {
     if (!s_boot_done || s_up_failed || !s_hold || !s_power) return false;
     if (s_task) return true;
-    if (!s_ev) {                         /* no network at boot: netif, event loop and handlers once; the driver on demand */
+    if (!os_wifi_may_start(os_health(NULL), owner)) return false;
+    if (!s_ev) {                         /* first start: netif, event loop and handlers once; the driver on demand */
         esp_err_t e = esp_netif_init();
         if (e == ESP_OK) { e = esp_event_loop_create_default(); if (e == ESP_ERR_INVALID_STATE) e = ESP_OK; }
         if (e == ESP_OK && !esp_netif_create_default_wifi_sta()) e = ESP_FAIL;
@@ -484,6 +498,17 @@ bool wifi_sync_up(void)
         set_wifi_state(WIFI_ST_IDLE);
     }
     return s31_task_up();
+}
+
+bool wifi_sync_up(void) { return wifi_up(true); }
+
+void wifi_sync_boot_release(void)
+{
+    if (s_task || !wifi_creds_count()) return;    /* the owner started it already, or nothing to sync with */
+    uint32_t free_b = (uint32_t)heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+    bool ok = wifi_up(false);
+    ESP_LOGI(TAG, "Wi-Fi released after the boot health check: task %s, internal RAM %lu B free before",
+             ok ? "started" : "not started", (unsigned long)free_b);
 }
 
 int wifi_sync_scan(wifi_seen_t *out, int max)
@@ -638,8 +663,10 @@ esp_err_t wifi_sync_start(void)
 bool wifi_sync_connected(void) { return false; }
 bool wifi_sync_connect_now(void) { return false; }
 #if BOARD_MOSAICO
+esp_err_t wifi_sync_start_held(void) { return wifi_sync_start(); }
 void wifi_sync_started(void) {}
 bool wifi_sync_up(void) { return false; }
+void wifi_sync_boot_release(void) {}
 int  wifi_sync_scan(wifi_seen_t *out, int max) { (void)out; (void)max; return -1; }
 bool wifi_sync_join(const char *ssid, const char *password, void (*done)(int result, void *ctx), void *ctx)
 {

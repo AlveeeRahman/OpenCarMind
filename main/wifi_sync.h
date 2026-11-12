@@ -17,11 +17,18 @@ bool      wifi_sync_connect_now(void);
    scans, joins the network the user chose and asks the time server for the time, nothing else. Network names and
    passwords never go to a log. All of these run in the board task (mosaico_board.c), never in the LVGL task. */
 typedef struct { char ssid[33]; int8_t rssi; uint8_t channel; bool secure; } wifi_seen_t;
-/* app_main, right after wifi_sync_start(): from now on the functions below may start the radio themselves */
+/* app_main on the S31, in place of wifi_sync_start() (os_hooks.h OCM_WIFI_BOOT_START): loads the saved networks and
+   starts nothing else, no netif, no driver, no Wi-Fi task (the mossREV 2.0.0 boot hold) */
+esp_err_t wifi_sync_start_held(void);
+/* app_main, right after the start: from now on the functions below may start the radio themselves */
 void      wifi_sync_started(void);
-/* Bring the station up when no network was known at boot (the board then booted without Wi-Fi), and start the Wi-Fi
-   task. False when Wi-Fi could not start (internal RAM) or app_main has not reached wifi_sync_started() yet. */
+/* The owner's start from the screen (Sync clock now, the Wi-Fi app's search and join): bring the station up and start
+   the Wi-Fi task, whatever the boot health verdict. False when Wi-Fi could not start (internal RAM) or app_main has not
+   reached wifi_sync_started() yet. */
 bool      wifi_sync_up(void);
+/* os.c, once the boot health verdict is formed: the automatic start (the Wi-Fi task and its first clock round), only
+   if os_wifi_may_start(verdict, false) allows it; a no-op when nothing is saved or the owner started it already */
+void      wifi_sync_boot_release(void);
 /* One active scan, strongest first, hidden networks left out. Waits up to 3 s for the Wi-Fi task to finish a round.
    Returns the count, or -1 (busy, driving, or the radio could not start). */
 int       wifi_sync_scan(wifi_seen_t *out, int max);

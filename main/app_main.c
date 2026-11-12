@@ -309,7 +309,7 @@ void app_main(void)
     ESP_LOGI(TAG, "internal heap before BLE: %u", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
     ESP_ERROR_CHECK(obd_ble_start());
     ESP_LOGI(TAG, "internal heap before Wi-Fi: %u", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
-    wifi_sync_start();
+    OCM_WIFI_BOOT_START(wifi_sync_start());   /* the S31 holds Wi-Fi until the boot health check (os_core.h, 3) */
 #if BOARD_MOSAICO
     wifi_sync_started();               /* the Wi-Fi app may start the radio from now on; before the USB door starts */
 #endif

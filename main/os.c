@@ -23,6 +23,7 @@
 #include "events.h"
 #include "ml_infer.h"
 #include "mosaico_ui.h"
+#include "wifi_sync.h"
 #if CONFIG_OCM_NAND_LOGS
 #include "nand_store.h"
 #endif
@@ -197,6 +198,12 @@ static void health_form(void)
     if (d == OS_RB_CONFIRM) ESP_LOGI(TAG, "app slot confirmed: %s", esp_ota_mark_app_valid_cancel_rollback() == ESP_OK ? "ok" : "FAILED");
     if (d == OS_RB_ROLLBACK) { sys_event(EV_ERROR, "Boot health bad: rolling back to the other app slot"); sys_reset(SYS_RESET_ROLLBACK, "health bad"); }
 #endif
+    /* the Wi-Fi boot hold (os_core.h section 3): app_main started no Wi-Fi; the verdict decides the automatic start */
+    if (os_wifi_may_start(v, false)) wifi_sync_boot_release();
+    else {
+        ESP_LOGW(TAG, "Wi-Fi held: boot health %s; the Wi-Fi app (Sync clock now, search, join) starts it", os_health_name(v));
+        sys_event(EV_WARN, "Wi-Fi held (boot health bad): start it in Wi-Fi");
+    }
 }
 
 /* ---------- degradation ladder ---------- */

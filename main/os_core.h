@@ -28,6 +28,11 @@
  *    self-test that differs or did not run, a repaired or damaged store, no NAND, touch failing, deadline misses or
  *    stalls, a failed response-time analysis, a slow first frame. Good is everything else. A damaged store is not
  *    Bad: older firmware would not repair the data, so it is no reason to go back to it.
+ *    The Wi-Fi boot hold: the boot window is the internal-RAM low point (R11b: 57.7 KB lowest while the Wi-Fi driver
+ *    started at boot), so the board starts no Wi-Fi at boot. The automatic start (the Wi-Fi task and its first clock
+ *    round) waits for the verdict and goes ahead on Good or Degraded, the verdicts that also confirm an A/B image (the
+ *    image runs); Pending and Bad hold it for this boot. The owner's own start (Sync clock now, the Wi-Fi app's search
+ *    and join) is never held.
  *
  * 4. Model admission by response-time analysis. Fixed-priority tasks i with worst-case CPU time C_i, period T_i and
  *    deadline D_i on one core. Task i's worst-case response time R_i is the smallest fixed point of
@@ -186,6 +191,8 @@ uint8_t os_health_verdict(const os_health_in_t *in, uint16_t *flags);    /* OS_H
    Degraded confirm it, Bad rolls back, Pending waits. Returns OS_RB_*. */
 enum { OS_RB_NOTHING = 0, OS_RB_CONFIRM, OS_RB_ROLLBACK };
 uint8_t os_rollback_decision(bool pending_verify, uint8_t verdict);
+/* The Wi-Fi boot hold: may Wi-Fi start now? owner = the owner asked from the screen (Settings, the Wi-Fi app). */
+bool os_wifi_may_start(uint8_t verdict, bool owner);
 const char *os_health_name(uint8_t verdict);                             /* "pending", "good", "degraded", "bad" */
 /* "good" or "degraded: model self-test differs, NAND not mounted" (truncated to n) */
 int os_health_text(uint8_t verdict, uint16_t flags, char *buf, size_t n);

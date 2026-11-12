@@ -173,6 +173,46 @@ static void test_health(void)
           "the rollback quiesces and is asked for (the old image must not inherit the crash count)");
 }
 
+/* ---------- 3b. the Wi-Fi boot hold ---------- */
+static void test_wifi_hold(void)
+{
+    CHECK(os_wifi_may_start(OS_H_GOOD, false), "verdict good: the automatic Wi-Fi start goes ahead");
+    CHECK(os_wifi_may_start(OS_H_DEGRADED, false), "verdict degraded: the image runs, Wi-Fi starts (as the rollback confirms it)");
+    CHECK(!os_wifi_may_start(OS_H_BAD, false), "verdict bad: the automatic start is refused");
+    CHECK(!os_wifi_may_start(OS_H_PENDING, false), "no verdict yet (the boot window): refused");
+    CHECK(!os_wifi_may_start(9, false), "an unknown verdict: refused");
+    for (int v = 0; v <= 9; v++) CHECK(os_wifi_may_start((uint8_t)v, true), "the owner's start from the screen works with verdict %d", v);
+    /* from the real inputs: every Bad cause holds Wi-Fi, every Degraded cause and Good let it start; the owner always can */
+    const os_health_in_t good = { .selftest = 1, .model_expected = true, .nor = 1, .nand = 1, .first_tick_ms = 1900,
+                                  .touch_ok = true, .schedulable = true };
+    unsigned seed = 12345, held = 0, started = 0;
+    for (int i = 0; i < 20000; i++) {
+        os_health_in_t in = good;
+        unsigned r = seed = seed * 1103515245u + 12345u;
+        if (r & 1) in.selftest = (int8_t)((r >> 1) % 3) - 1;
+        if (r & 8) in.nor = (int8_t)((r >> 4) % 3) - 1;
+        if (r & 64) in.nor_repairs = (uint16_t)((r >> 7) & 3);
+        if (r & 512) in.nor_warn = true;
+        if (r & 1024) in.nand = (int8_t)((r >> 11) % 4) - 1;
+        if ((r >> 13) % 7 == 0) in.first_tick_ms = 0;
+        else if ((r >> 13) % 7 == 1) in.first_tick_ms = OS_H_SLOW_FRAME_MS + 1;
+        if ((r >> 16) % 11 == 0) in.touch_ok = false;
+        if ((r >> 17) % 5 == 0) in.misses = (r >> 20) & 7;
+        if ((r >> 18) % 9 == 0) in.stalls = 1;
+        if ((r >> 19) % 13 == 0) in.schedulable = false;
+        if ((r >> 21) % 6 == 0) in.safe = true;
+        uint16_t f;
+        uint8_t v = os_health_verdict(&in, &f);
+        bool bad = (in.first_tick_ms == 0) || in.safe;
+        CHECK(os_wifi_may_start(v, false) == !bad, "input %d: verdict %d, held %d", i, v, bad);
+        CHECK(os_wifi_may_start(v, true), "input %d: the owner can start Wi-Fi", i);
+        if (bad) held++; else started++;
+    }
+    CHECK(held > 1000 && started > 1000, "both outcomes covered (%u held, %u started)", held, started);
+    printf("  wifi hold: 20000 random health inputs, %u held (bad), %u started (good or degraded), owner start always allowed\n",
+           held, started);
+}
+
 /* ---------- 4. response-time analysis ---------- */
 /* sched_mon.c's analyse() loop, copied as it is in 1.2.0, as a reference (it stops after 50 steps) */
 static uint32_t sched_mon_wcrt(const os_rt_task_t *t, int n, int i)
@@ -421,6 +461,7 @@ int main(void)
     test_reset_plans();
     test_runlevels();
     test_health();
+    test_wifi_hold();
     test_rta();
     test_contract();
     test_ups();

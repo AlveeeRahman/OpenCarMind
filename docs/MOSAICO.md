@@ -95,7 +95,7 @@ The launcher has a Home page and 16 apps on four more pages. Swipe left and righ
 
 **Wi-Fi search and join.** Search for networks runs one active scan and lists up to 20 networks, strongest first, with the signal bars and a padlock for secured ones. Tap a secured network to type its password on the on-screen keyboard (letter keys 44 x 59 px, every printable character on four layouts), or tap an open one to join it with no password. The board saves the network the same way the desktop app's Wi-Fi add does (up to 8), connects once, and says what happened: connected, wrong password, or can't reach it. A wrong password for a new network is not kept. The network names show on the screen only. The serial log writes `<network>` in their place.
 
-Wi-Fi still does one thing: it sets the board's clock from an HTTPS time server while the car is parked. It never runs while a drive is being logged. A board that booted with no saved network starts Wi-Fi the first time you search or join, and it then stays on until the next restart.
+Wi-Fi still does one thing: it sets the board's clock from an HTTPS time server while the car is parked. It never runs while a drive is being logged. The Wi-Fi radio is on only while it is used (a clock sync, a search or a join) and is switched off after. At boot the board starts no Wi-Fi at all until its boot health check (about a minute after boot, see [Boot health](#boot-health)) is good or degraded. When the clock is not set yet, the first clock sync follows about 20 s after that. Sync clock now, Search for networks and joining a network in the Wi-Fi app start it at any time.
 
 **Settings.** Every control is at least 64 x 64 px. A tap shows the new choice in the same frame. Saving waits until you stop tapping (500 ms after the last change, at most 3 seconds after the first), and a theme or Home-order change rebuilds the launcher once, after the taps. Before this redesign, a tap showed nothing new for 725 to 1,648 ms (measured on the board). App hiding is gone: every app is always on the launcher, and only the order can change. A board that had hidden apps shows them again after the update.
 
@@ -231,6 +231,8 @@ About a minute after boot the board gives itself one verdict: good, degraded or 
 - **Degraded** means it runs but something is off, for example a model self-test that does not match, a repaired store, no NAND, missed deadlines or a slow start.
 - **Good** is everything else.
 
+The verdict also lets Wi-Fi start. The boot is when the board has the least internal RAM free, so it starts no Wi-Fi before the verdict. On good or degraded the Wi-Fi task starts and syncs the clock. On bad, Wi-Fi stays off for this boot (the event list says "Wi-Fi held") until you start it in the Wi-Fi app.
+
 A damaged store counts as degraded, not bad, because older firmware would not fix the data. The verdict goes into the boot log, the events list and the Board page.
 
 ### Model admission
@@ -305,7 +307,7 @@ What the flashing would need:
 - **Flashing the merged image erases the NVS** (see [Flashing](#flashing)). That includes the NAND's "format in progress" flag, so do not flash while a format runs.
 - **The download door needs no pairing.** Anyone with the cable can open the port at 1200 baud and put the board into download mode. That is how flashing works without buttons.
 - **A theme switch pauses the screen once.** It rebuilds the launcher and the open app in one go. On the bench the launcher took 267 to 542 ms and the Settings page 249 to 714 ms. The switch waits while the Wi-Fi password page or the clock picker is open.
-- **Wi-Fi.** Enhanced-open (OWE) networks are shown as secured and ask for a password. WEP and WPA-TKIP-only networks end with "Can't join: the board does not support this network's security type." Wi-Fi started from the screen stays on until the next restart. There is no Wi-Fi upload of drives: they come over the USB cable.
+- **Wi-Fi.** Enhanced-open (OWE) networks are shown as secured and ask for a password. WEP and WPA-TKIP-only networks end with "Can't join: the board does not support this network's security type." The Wi-Fi radio is switched off between clock syncs, searches and joins. There is no Wi-Fi upload of drives: they come over the USB cable.
 - **The events list keeps the newest 10 events since boot**, in RAM. Each drive saves its own newest 24.
 - **LVGL is not pinned to one version** in the build, and two screen features depend on LVGL 9.5 internals.
 - **The Wi-Fi fixes of this release are for the Mosaico only for now:** the cleanup that could forget the network that just connected, the network names in the serial log, and the lock around adding and forgetting networks over USB. The S3 copies come with a later S3 release, because the S3 build stays byte-identical to the current S3 release.
