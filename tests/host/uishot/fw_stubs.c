@@ -139,9 +139,9 @@ static void demo_fill(void)
     o->adapter_voltage_v = 14.1f; o->adapter_v_valid = true;
     o->mil_on = false; o->status_valid = true;
     snprintf(o->protocol, sizeof o->protocol, "%s", "ISO 15765-4 CAN 11/500");
-    o->fuel_lph_calc = 2.1f; o->fuel_src = FUEL_LEARNED; o->trip_km = 21.4; o->trip_fuel_l = 1.35f;
+    o->fuel_lph_calc = 4.1f;   /* 64 km/h at 15.8 km/L = 4.05 L/h */ o->fuel_src = FUEL_LEARNED; o->trip_km = 21.4; o->trip_fuel_l = 1.35f;
     o->econ_trip_kpl = 15.8f; o->econ_inst_kpl = 15.8f;
-    o->fuel_lph_raw = 2.0f; o->fuel_cal = 1.04f; o->trip_fuel_raw_l = 1.30f;
+    o->fuel_lph_raw = 3.95f; o->fuel_cal = 1.04f; o->trip_fuel_raw_l = 1.30f;
     o->torque_nm = 85; o->torque_src = 4; o->tank_left_l = 23; o->tank_range_km = 310;
     fault_engine_analyse(o->dtcs, o->pending_dtcs, o->permanent_dtcs, false, &st->faults);   /* read, no codes */
     if (uishot_case.alarm) {                    /* a real misfire code for the alarm banner, not a bench test text */
@@ -270,7 +270,7 @@ void ml_get_stats(ml_stats_t *out)
     if (uishot_case.demo) {                     /* window 126 of this drive, Cruising 87 % sure */
         out->windows = 126; out->dropped = 0; out->failed = 0; out->last_us = 4210; out->max_us = 4472;
         out->last_class = 3; out->last_prob = 0.87f; out->last_est[0] = 6.3f; out->last_est[1] = 82; out->last_est[2] = 2.2f;
-        out->last_at_ms = 3719000; out->learned_lph = 2.1f; out->prior_lph = 2.3f; out->pass2_us = 1180; out->selftest_us = 2236;
+        out->last_at_ms = 3719000; out->learned_lph = 4.1f; out->prior_lph = 4.4f; out->pass2_us = 1180; out->selftest_us = 2236;
     }
 }
 int ml_model_active(void) { return uishot_case.model; }
