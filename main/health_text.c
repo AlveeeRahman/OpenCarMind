@@ -177,7 +177,7 @@ void hs_header(uint32_t mask, char *b, size_t n)
 
 const char *hs_issue_over(int issue)
 {
-    static const char *const T[HI_N] = { "Battery health back above 80 %", "Battery behaves normally again", "Block lifted",
+    static const char *const T[HI_N] = { "Battery no longer reads as worn", "Battery behaves normally again", "Block lifted",
                                          "Adapter check settled", "AI features running again" };
     return issue >= 0 && issue < HI_N ? T[issue] : "";
 }
