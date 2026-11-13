@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+Changes on `main` since the 2.5.1 release for the ESP32-S3, not yet in an S3 release. OpenCarMind EdgeOS for the ESP-Mosaico is built from the same `main`; its releases have their own entries below.
+
 A new brand, a screen made for the LCD, and a visible power-off.
 
 - **Connects on its own when a car is awkward**: on cars where several computers answer at once (engine and transmission, hybrid systems), the logger now picks the engine (7E8, or 18DAF110 on 29-bit CAN), checks that it answers RPM on its own address and polls it directly, so the supported-PID list and every reading come from the engine. With no engine data for a minute it searches by itself: every protocol, each computer on its own address, RPM on each, and keeps the one that works (once per connection; read-only, nothing is written to the car or the adapter). A BOOT double-click starts the same search at any time, or shows the link when it is working. With no adapter in range it lifts the saved-adapter lock for 90 s so a different adapter can be found; only devices that look like OBD adapters are tried. The result is on screen and in the session file (`search`, `poll_ecu`).
@@ -26,6 +28,27 @@ A new brand, a screen made for the LCD, and a visible power-off.
 - **Fixes**: the status LED no longer drops a frame when the button and the LED task update it at once ("RMT transaction is busy"). The boot log no longer lists the saved Wi-Fi networks. The model self-test log says plainly when the board differs from the PC simulation.
 - **Figures**: the seven workflow figures were redrawn with straight connectors and larger text, the three README GIFs re-rendered with the brand fonts, and the screen mock-ups and the Mosaico concept updated to the new colours.
 - **Model marks**: small variants for figures, tags and GIFs, and figures rendered at 3x, so the marks stay sharp when zoomed.
+
+## OpenCarMind EdgeOS 2.1.0 (ESP-Mosaico)
+
+For the ESP-Mosaico (ESP32-S31) only; the ESP32-S3 image is unchanged and stays on 2.5.1. Built from `main` at 1053f9d. Image: [EdgeOS 2.1.0 release](https://github.com/AlveeeRahman/OpenCarMind/releases/tag/edgeos-2.1.0). Manual: [docs/manual/edgeos-2.1.0.md](docs/manual/edgeos-2.1.0.md).
+
+- **Health app**: a new app after Board with three pages (Battery, Guard, AI). Each opens with one card in plain words: a colour, a word (Good, Learning, Check soon, Act now), what is wrong, what it means and what to do. The header counts the open issues, the Health icon gets a dot, and a banner with Open Health appears when a new issue starts. While you drive, amber issues are only listed. Read-only; the one button is Clear block.
+- **Battery charge and health** (built, being checked on the board): the charge from a filter on a cell model, and the health from a full count or from the shape of a deep charge. It learns your cell from its first 10 deep charges.
+- **Battery fault check** (built, being checked on the board): a small autoencoder learns your cell's normal over 24 hours, then names what looks unusual. It never switches anything off.
+- **Network guard** (built, being checked on the board): learns for two hours after a start, then blocks Bluetooth advert floods, address rotation, Wi-Fi beacon floods and deauth bursts. A block never cuts the car link, never pairs and never changes the clock. Settings > Network guard turns blocking off.
+- **AI services**: share one worker below the screen and the models and are admitted by response-time analysis. The admission self-test takes the fastest of five runs. When deadlines slip, the AI services slow down first.
+- **Fixes**: the guard no longer scores the first Wi-Fi scan after a start; Health compares response time with the deadline, not with a CPU budget; the battery at rest reads "resting, 0 mA"; the ladder's message and two labels fit their boxes.
+- **Checked on the board** (build 81017a5): boot health good at 68.8 s, the AI services admitted on core 1 (5.00 ms against a 1,000 ms deadline), a 10-minute soak with no restart and no missed AI deadline in 1,181 runs, internal RAM never below 78,003 B. Not yet checked: pairing your own adapter, a real drive, the battery unplugged, the guard in a busy car park, the health model and the fault check after their warm-ups.
+
+## OpenCarMind EdgeOS 2.0.0 (ESP-Mosaico)
+
+The ESP-Mosaico firmware (called mossREV up to 1.2.0) with a small operating-system layer on FreeRTOS. Not published as a release download; 2.1.0 replaces it. Manual: [docs/manual/edgeos-2.0.0.md](docs/manual/edgeos-2.0.0.md).
+
+- Everything in mossREV 1.2.0: 16 touch apps, light and dark themes, an alarm banner, CarMind R.E.V (the default) and E.V on the board, drive logs on the 128 MB NAND, Wi-Fi joined on the screen for the clock only, the desktop app over USB.
+- **OS layer**: a boot health check about 65 s after a start (good, degraded or bad), Wi-Fi held until the board is healthy, runlevels that refuse a model switch, the clock and a format during a drive, model admission by response-time analysis, a degradation ladder, battery protection, and one reset path that saves the logs first.
+- **Pairing safety**: a new adapter is offered only at -70 dBm or better and saved only after you say yes; driving starts only once the car's computer answers.
+- Board check on 4aeff43: boot, health good and bad, Wi-Fi hold, admission, runlevels, the ladder, battery protection at lowered test limits, internal RAM above 60 KB in all 9 phases and a 10-minute soak with 0 restarts.
 
 ## 2.5.1
 

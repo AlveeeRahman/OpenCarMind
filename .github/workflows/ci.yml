@@ -3,6 +3,12 @@ name: ci
 on:
   push:
     branches: [main]
+    # A change already passed these jobs on its pull request; skip the push rerun when only docs changed.
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "assets/**"
+      - "CITATION.cff"
   pull_request:
   workflow_dispatch:
 

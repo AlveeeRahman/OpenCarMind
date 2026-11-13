@@ -6,6 +6,12 @@ name: codeql
 on:
   push:
     branches: [main, rev-c2]
+    # A change already passed these jobs on its pull request; skip the push rerun when only docs changed.
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "assets/**"
+      - "CITATION.cff"
   pull_request:
   schedule:
     - cron: "15 3 * * 1"

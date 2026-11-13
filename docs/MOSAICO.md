@@ -1,10 +1,10 @@
 # OpenCarMind EdgeOS 2.1.0 on the ESP-Mosaico
 
-OpenCarMind EdgeOS 2.0.0 is the build of OpenCarMind for Espressif's ESP-Mosaico board. Up to version 1.2.0 it was called mossREV. It is not related to Ubiquiti's EdgeOS router software. It comes from the same source tree as the ESP32-S3 version and does the same job: it reads your car over a Bluetooth OBD-II adapter, logs every drive, and runs a small neural network on the chip. The Mosaico adds a 480 x 480 touch screen, more memory and a 128 MB store for the drive logs.
+OpenCarMind EdgeOS is the build of OpenCarMind for Espressif's ESP-Mosaico board. The current version is 2.1.0, which adds the Health app and its AI services to 2.0.0. Its image is on the [EdgeOS 2.1.0 release](https://github.com/AlveeeRahman/OpenCarMind/releases/tag/edgeos-2.1.0). Up to version 1.2.0 it was called mossREV. It is not related to Ubiquiti's EdgeOS router software. It comes from the same source tree as the ESP32-S3 version and does the same job: it reads your car over a Bluetooth OBD-II adapter, logs every drive, and runs a small neural network on the chip. The Mosaico adds a 480 x 480 touch screen, more memory and a 128 MB store for the drive logs.
 
 The OS layer does not change the S3 build. The pairing change merged after the board check is behind `CONFIG_OBD_BLE_PAIR_CONFIRM`, on for the Mosaico and off for the S3 by default, so the S3 image stays the tested one. For the Waveshare ESP32-S3 board, keep using the S3 releases and the main [README](../README.md).
 
-This guide is for building, flashing and checking the board. The [user manual](manual/edgeos-2.0.0.md) explains every screen and message for a driver.
+This guide is for building, flashing and checking the board. The [user manual](manual/edgeos-2.1.0.md) explains every screen and message for a driver ([2.0.0 manual](manual/edgeos-2.0.0.md)).
 
 ## Contents
 
@@ -44,7 +44,7 @@ There is no SD card slot. The drive logs live on the NAND, and the learned model
 
 ## Flashing
 
-You need the merged image `EdgeOS-2.0.0-esp32s31-merged.bin` (its SHA-256 is in the `.sha256` file next to it), a USB-C cable, Python with pyserial (`pip install pyserial`), and esptool 5.6.0 or later (`pip install "esptool>=5.6.0"`), the version this release was tested with.
+You need the merged image `OpenCarMind-EdgeOS-2.1.0-ESP-Mosaico-ESP32-S31-merged.bin` from the [EdgeOS 2.1.0 release](https://github.com/AlveeeRahman/OpenCarMind/releases/tag/edgeos-2.1.0) (check it against `SHA256SUMS` there), a USB-C cable, Python with pyserial (`pip install pyserial`), and esptool 5.6.0 or later (`pip install "esptool>=5.6.0"`), the version this release was tested with.
 
 **Before you flash, copy your drives off the board and expect to pair again.** The merged image starts at address 0x0 and covers the NVS partition (0x9000 to 0xF000). Flashing it erases the pairing with the desktop app, the saved Wi-Fi networks, the settings, the Smart swipe and Smart UI verdicts, the model choice and the session counter. The flash FAT (0xC40000) and the NAND are not written, and the next session number continues after the highest one found on the storage, so old drives are not overwritten. Import your drives first anyway. A flash that stops halfway is not covered by that.
 
@@ -59,12 +59,12 @@ You need the merged image `EdgeOS-2.0.0-esp32s31-merged.bin` (its SHA-256 is in 
 
    ```sh
    esptool --chip esp32s31 --port <ROM port> --before no-reset --after hard-reset \
-       write-flash --flash-mode dio --flash-freq 80m --flash-size 16MB 0x0 EdgeOS-2.0.0-esp32s31-merged.bin
+       write-flash --flash-mode dio --flash-freq 80m --flash-size 16MB 0x0 OpenCarMind-EdgeOS-2.1.0-ESP-Mosaico-ESP32-S31-merged.bin
    ```
 
-4. The board restarts into OpenCarMind EdgeOS. The console (115200 baud on the same port) prints `OpenCarMind EdgeOS 2.0.0 running`. Pair it again from the desktop app.
+4. The board restarts into OpenCarMind EdgeOS. The console (115200 baud on the same port) prints `OpenCarMind EdgeOS 2.1.0 running`. Pair it again from the desktop app.
 
-Measured on the board, OpenCarMind EdgeOS 2.0.0 4aeff43: the image `EdgeOS-2.0.0-esp32s31-merged.bin` (SHA-256 `a225125d27f3906c...`) printed `OpenCarMind EdgeOS 2.0.0 running` at 4.3 s and `boot health good` at 68.0 s. That image is not published yet. The merged branch tip (06ddf1d) has no released image yet. The release image will be rebuilt from the branch tip, with a new SHA-256.
+Measured on the board, OpenCarMind EdgeOS 2.0.0 4aeff43: the image `EdgeOS-2.0.0-esp32s31-merged.bin` (SHA-256 `a225125d27f3906c...`) printed `OpenCarMind EdgeOS 2.0.0 running` at 4.3 s and `boot health good` at 68.0 s. That 2.0.0 image was never published. The released 2.1.0 image is built from `main` at 1053f9d; its board checks are in the release notes and the README.
 
 To go back to mossREV 1.2.0, flash `mossREV-1.2.0-esp32s31-merged.bin` with the same steps. It erases the NVS again, so pair again after it. Going back is not yet verified on the board.
 
