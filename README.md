@@ -6,7 +6,7 @@
 <a href="https://scorecard.dev/viewer/?uri=github.com/AlveeeRahman/OpenCarMind"><img src="https://api.scorecard.dev/projects/github.com/AlveeeRahman/OpenCarMind/badge" alt="OpenSSF Scorecard"></a>
 <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
 <img src="https://img.shields.io/badge/ESP--IDF-v6.1-red.svg" alt="ESP-IDF v6.1">
-<img src="https://img.shields.io/badge/chip-ESP32--S3-lightgrey.svg" alt="ESP32-S3">
+<img src="https://img.shields.io/badge/chips-ESP32--S3%20%7C%20ESP32--S31-lightgrey.svg" alt="ESP32-S3 and ESP32-S31">
 </p>
 
 OpenCarMind is an open-source OBD2 logger and dashboard for the ESP32, with a pruned, knowledge-distilled multi-task 1D CNN that adapts its read-out on the device. Its newest firmware, OpenCarMind EdgeOS 2.1.0, is an AI-first operating system for the chip. It runs on FreeRTOS's preemptive scheduler and treats every model as a soft real-time job with a deadline. A model is admitted only when every deadline on its core still holds, and when deadlines slip the board steps down in a fixed order (screen rate, then learning, then the model) so the drive log keeps running. Version 2.1.0 adds AI services that estimate the battery's charge and health, check it for faults and guard Bluetooth and Wi-Fi, and a Health app that tells you in plain words what is wrong and what to do. OpenCarMind turns an ESP32 board and a Bluetooth OBD-II adapter into a car data logger that runs neural networks on the chip. It needs no phone, no account and no internet connection. Everything it records goes to the board's own storage (an SD card on the ESP32-S3 board, the 128 MB NAND on the ESP-Mosaico) and, if you pair the board, to the desktop app on your own computer.
@@ -16,7 +16,7 @@ It ships two on-board models, and you choose between them in the desktop app. Ca
 Licence: MIT. Website: <https://alveeerahman.github.io/OpenCarMind/>. Documentation: <https://alveeerahman.github.io/OpenCarMind/docs/>. Two release lines, both built from this `main`:
 
 - **ESP32-S3 board: OpenCarMind 2.5.1.** The firmware and the desktop app for Windows, macOS and Linux are on the [latest release](https://github.com/AlveeeRahman/OpenCarMind/releases/latest). A beta, [2.5.1b](https://github.com/AlveeeRahman/OpenCarMind/releases/tag/2.5.1b), has the S3 firmware with every change on `main` since 2.5.1. It is a pre-release, not yet checked on an S3 board as a whole.
-- **ESP-Mosaico: OpenCarMind EdgeOS 2.1.0.** The board image is on the [EdgeOS 2.1.0 release](https://github.com/AlveeeRahman/OpenCarMind/releases/tag/edgeos-2.1.0). Do not flash it on an S3.
+- **ESP-Mosaico (ESP32-S31, early-access board): OpenCarMind EdgeOS 2.1.0.** The board image is on the [EdgeOS 2.1.0 release](https://github.com/AlveeeRahman/OpenCarMind/releases/tag/edgeos-2.1.0). Do not flash it on an S3.
 
 The same firmware also runs on Espressif's ESP-Mosaico touch-screen board. Its newest version, [OpenCarMind EdgeOS 2.1.0](#opencarmind-edgeos-210-esp-mosaico), adds a small operating-system layer (a boot health check, refusals of risky changes while you drive, model admission by response-time analysis and battery protection) and, [new in 2.1.0](#new-in-opencarmind-edgeos-210), AI services for the battery and the radios with a Health app to show them. [User manuals](#user-manuals) for both boards are in [docs/manual](docs/manual).
 
