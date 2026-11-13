@@ -7,7 +7,7 @@ Two sources:
 - Board capture: taken on an ESP-Mosaico running EdgeOS 2.0.0 build 06ddf1d, on a bench with no car connected.
 - Host render of the 2.0.0 screen code: `tests/host/uishot`, the demo case. It builds the real `main/mosaico_display.c` and `main/mosaico_apps.c` with LVGL 9.5 on a computer and feeds them example values (a car connected at 64 km/h, R.E.V in use, no faults, clock 17:31). It is not a photo of the board. To refresh one: `cd tests/host && make uishot`, then copy `uishot/out/<name>.png` over the file.
 
-To swap a capture, write the new PNG over the file with the same name and run `python3 docs/manual/build.py`.
+To swap a capture, write the new PNG over the file with the same name. The documentation site picks it up on its next build.
 
 ## ESP-Mosaico (OpenCarMind EdgeOS 2.0.0 manual)
 

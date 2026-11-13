@@ -33,8 +33,8 @@ def check_models():
 def main():
     missing = check_models()
     for doc in sorted(ROOT.rglob("*.md")):
-        if ".git" in doc.parts:
-            continue
+        if ".git" in doc.parts or "docs-src" in doc.parts:
+            continue                      # docs-src pages link to pages the site build writes, and it checks them
         for match in LINK.finditer(doc.read_text()):
             target = (match.group(1) or match.group(2)).split("#")[0]
             if not target or re.match(r"[a-z]+:", target):

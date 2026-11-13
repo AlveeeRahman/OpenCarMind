@@ -1,0 +1,63 @@
+name: docs
+
+# Builds the documentation site (docs-src, Sphinx) on every pull request and on pushes to main that touch what
+# it is built from. Warnings fail the build. Links inside the site must resolve, outside links are reported. New
+# or changed pages must pass the prose check, and the packed site must work when served from a sub-path.
+on:
+  pull_request:
+  push:
+    branches: [main]
+    paths:
+      - "docs-src/**"
+      - "**.md"
+      - "docs/**"
+      - "main/**.h"
+      - "tools/**.py"
+      - "LICENSE"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - name: Install the pinned documentation tools
+        run: pip install --require-hashes -r docs-src/requirements.txt
+      - name: Build, warnings are errors
+        run: sphinx-build -W --keep-going -b html docs-src docs-src/_build/html
+      - name: Prose check on new and changed pages
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: python docs-src/check_prose.py --changed "$BASE_SHA"
+      - name: Prose check on every page
+        if: github.event_name != 'pull_request'
+        run: python docs-src/check_prose.py --all
+      - name: Link check (inside the site must pass, outside links are reported)
+        run: |
+          sphinx-build -q -b linkcheck docs-src docs-src/_build/linkcheck || true
+          python docs-src/check_links.py docs-src/_build/linkcheck/output.json
+      - name: Pack the site and serve it from a sub-path
+        run: |
+          python docs-src/package.py docs-src/_build/html "$RUNNER_TEMP/handoff"
+          python docs-src/package.py --check "$RUNNER_TEMP/handoff/opencarmind-docs.tar.gz" /docs/opencarmind/
+          cat "$RUNNER_TEMP/handoff/docs-version.json"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: opencarmind-docs
+          path: ${{ runner.temp }}/handoff
+          retention-days: 14

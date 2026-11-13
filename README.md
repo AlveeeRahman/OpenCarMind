@@ -13,7 +13,7 @@ OpenCarMind is an open-source OBD2 logger and dashboard for the ESP32, with a pr
 
 It ships two on-board models, and you choose between them in the desktop app. CarMind E.V is fixed and tested. CarMind R.E.V is my first model that keeps learning in your car: the board itself updates part of the model from what your car reports while you drive, with no computer or cloud in the loop.
 
-Licence: MIT. Website: <https://alveeerahman.github.io/OpenCarMind/>. Two release lines, both built from this `main`:
+Licence: MIT. Website: <https://alveeerahman.github.io/OpenCarMind/>. Documentation: <https://alveeerahman.github.io/OpenCarMind/docs/>. Two release lines, both built from this `main`:
 
 - **ESP32-S3 board: OpenCarMind 2.5.1.** The firmware and the desktop app for Windows, macOS and Linux are on the [latest release](https://github.com/AlveeeRahman/OpenCarMind/releases/latest). A beta, [2.5.1b](https://github.com/AlveeeRahman/OpenCarMind/releases/tag/2.5.1b), has the S3 firmware with every change on `main` since 2.5.1. It is a pre-release, not yet checked on an S3 board as a whole.
 - **ESP-Mosaico: OpenCarMind EdgeOS 2.1.0.** The board image is on the [EdgeOS 2.1.0 release](https://github.com/AlveeeRahman/OpenCarMind/releases/tag/edgeos-2.1.0). Do not flash it on an S3.
@@ -240,13 +240,13 @@ On first boot the board connects to the strongest nearby adapter that looks like
 
 ## User manuals
 
-Two user manuals for drivers and test users, each as Markdown here and as a page on the website:
+User manuals for drivers and test users, each as Markdown here and as pages in the [documentation](https://alveeerahman.github.io/OpenCarMind/docs/), one page per chapter:
 
-- [OpenCarMind 2.5.1 on the ESP32-S3 board](docs/manual/esp32-s3.md) ([web page](https://alveeerahman.github.io/OpenCarMind/manual/esp32-s3.html)): the five pages, the BOOT button, the two models, Wi-Fi for the clock and the desktop app.
-- [OpenCarMind EdgeOS 2.1.0 on the ESP-Mosaico](docs/manual/edgeos-2.1.0.md): everything in 2.0.0 plus the Health app, the pairing questions and the new messages.
-- [OpenCarMind EdgeOS 2.0.0 on the ESP-Mosaico](docs/manual/edgeos-2.0.0.md) ([web page](https://alveeerahman.github.io/OpenCarMind/manual/edgeos-2.0.0.html)): the 16 apps, Settings, Wi-Fi, the two models, the health check and every message the board shows.
+- [OpenCarMind 2.5.1 on the ESP32-S3 board](docs/manual/esp32-s3.md) ([web pages](https://alveeerahman.github.io/OpenCarMind/docs/manuals/esp32-s3/)): the five pages, the BOOT button, the two models, Wi-Fi for the clock and the desktop app.
+- [OpenCarMind EdgeOS 2.1.0 on the ESP-Mosaico](docs/manual/edgeos-2.1.0.md) ([web pages](https://alveeerahman.github.io/OpenCarMind/docs/manuals/edgeos-2.1.0/)): everything in 2.0.0 plus the Health app, the pairing questions and the new messages.
+- [OpenCarMind EdgeOS 2.0.0 on the ESP-Mosaico](docs/manual/edgeos-2.0.0.md) ([web pages](https://alveeerahman.github.io/OpenCarMind/docs/manuals/edgeos-2.0.0/)): the 16 apps, Settings, Wi-Fi, the two models, the health check and every message the board shows.
 
-The ESP32-S3 and EdgeOS 2.0.0 manuals come from one source each in [docs/manual/src](docs/manual/src), built by [docs/manual/build.py](docs/manual/build.py). The EdgeOS 2.1.0 manual is Markdown only for now.
+The Markdown files are the source. The documentation site in [docs-src](docs-src) is built from them with Sphinx, so the web pages and the Markdown cannot drift. The old manual addresses, `manual/esp32-s3.html` and `manual/edgeos-2.0.0.html`, now open the new pages.
 
 ## The models
 
@@ -888,7 +888,8 @@ The UJI Probes and IPIN2021 probe-request captures are © T. Bravenec, J. Torres
 | `desktop/` | the desktop app (Rust and Tauri) |
 | `dashboard/` | Docker Compose file and Dashy configuration |
 | `docs/` | configuration, model notes, field checks, screen designs and figures |
-| `docs/manual/` | the user manuals, their sources and the script that builds them |
+| `docs/manual/` | the user manuals in Markdown, the source of their pages on the documentation site |
+| `docs-src/` | the documentation site (Sphinx, MyST and pydata-sphinx-theme), built from the Markdown in this repository |
 
 ## Credits and licence
 

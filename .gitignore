@@ -105,3 +105,10 @@ tests/host/uishot_bin
 tests/host/uishot_bin.dSYM/
 tests/host/uishot/build/
 tests/host/uishot/out/
+# documentation site: build output and the pages docs-src/_ext/ocm_gen.py writes from the repository Markdown
+docs-src/_build/
+docs-src/_gen/
+docs-src/manuals/
+docs-src/release-notes/
+docs-src/reference/c-api/
+__pycache__/

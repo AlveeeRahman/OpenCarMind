@@ -14,6 +14,16 @@ idf.py set-target esp32s3 && idf.py build            # firmware
 cargo test --manifest-path desktop/app/src-tauri/Cargo.toml   # desktop app, needs Rust
 ```
 
+The documentation site needs Python 3.13:
+
+```sh
+pip install --require-hashes -r docs-src/requirements.txt
+sphinx-build -W --keep-going -b html docs-src docs-src/_build/html   # the site, warnings are errors
+python3 docs-src/check_prose.py --all                                # house style on the hand-written pages
+```
+
+The manuals, the changelog and most of the concept pages come from the Markdown in this repository (`docs/manual/*.md`, `CHANGELOG.md`, `README.md`), so edit those and the site follows. [docs-src/README.md](docs-src/README.md) explains how.
+
 If you change a file in `ml/onboard/`, regenerate `main/ml_params.h` with `python3 tools/gen_ml_params.py ml/onboard main/ml_params.h`; for `ml/onboard/rev/`, run `python3 tools/gen_ml_params.py ml/onboard/rev main/ml_params_rev.h MLR`. CI fails if a header and its files disagree.
 
 ## Sending a change
