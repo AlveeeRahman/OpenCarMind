@@ -189,6 +189,21 @@ def slug(text):
     return re.sub(r"[^\w\- ]", "", text.strip().lower()).replace(" ", "-")
 
 
+def drop_comments(lines):
+    """Lines without the HTML comments that stand on lines of their own (build notes, not text)."""
+    out, inside = [], False
+    for ln in lines:
+        stripped = ln.strip()
+        if not inside and stripped.startswith("<!--"):
+            inside = True
+        if inside:
+            if "-->" in stripped or "--!>" in stripped:
+                inside = False
+            continue
+        out.append(ln)
+    return out
+
+
 def read(rel):
     return (REPO / rel).read_text(encoding="utf-8")
 
@@ -327,7 +342,7 @@ def image_directive(src, attrs, out_dir, many):
 def convert(src, lines, here, site, prefix="", shift=0, drop_first_heading=False):
     """Turn source Markdown into MyST for the page `here` (a docname)."""
     out_dir = (SRC / here).parent
-    lines = [ln for ln in lines if not re.fullmatch(r"\s*<!--.*-->\s*", ln)]
+    lines = drop_comments(lines)
     mask = code_mask(lines)
     out, i, first = [], 0, True
     while i < len(lines):
@@ -459,7 +474,7 @@ def write(docname_or_path, lines):
 
 def split_manual(text):
     """(front lines, [(anchor id, chapter lines)]) from a manual's Markdown."""
-    lines = [ln for ln in text.split("\n") if not re.fullmatch(r"\s*<!--.*-->\s*", ln)]
+    lines = drop_comments(text.split("\n"))
     starts = [i for i, ln in enumerate(lines) if ANCHOR_LINE.match(ln) and i + 2 < len(lines)
               and lines[i + 2].startswith("## ")]
     front = lines[:starts[0]]
@@ -721,8 +736,9 @@ def write_c_api():
     for group, files in HEADERS.items():
         doc = "c-" + slug(group).replace("-and-", "-")
         index.append(f"/reference/c-api/{doc}")
-        out = [f"# {group}", "", "Every function each header declares, with the comment the header gives it. The "
-               "header's own opening comment is shown as written in the source.", ""]
+        intro = ("Every function each header declares, with the comment the header gives it. The header's own "
+                 "opening comment is shown as written in the source.")
+        out = [f"# {group}", "", intro, ""]
         for name in files:
             p = REPO / "main" / name
             if not p.is_file():
