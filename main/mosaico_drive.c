@@ -18,6 +18,9 @@
 #include "status.h"
 #include "events.h"
 #include "mosaico_board.h"
+#include "stop_core.h"
+#include "rev_task.h"
+#include "obd_ble.h"
 
 static const char *TAG = "drive";
 #define HARD_BRAKE_BAR 40.0f            /* model brake-pressure estimate counted as a hard brake (assumption, see report) */
@@ -28,6 +31,7 @@ EXT_RAM_BSS_ATTR static md_summary_t s_pub, s_work;
 EXT_RAM_BSS_ATTR static md_history_t s_hist, s_hist_work;
 EXT_RAM_BSS_ATTR static app_status_t s_st;
 static volatile bool s_end_req, s_start_req, s_hist_req, s_ending, s_auto_open;
+static volatile bool s_retry_req, s_turnoff_req;
 
 /* ---- one series with averaging decimation ---- */
 typedef struct { float *v; int n, step, acc_n; float acc; } series_t;
@@ -259,17 +263,78 @@ static void past_load(uint32_t session)
     xSemaphoreGive(s_mx);
 }
 
-static void end_sequence(void)
+/* ---- stop logging (OpenCarMind EdgeOS 2.1.1 field fix): every stop path ends READY (verified safe to unplug) or FAILED
+   inside bounded steps (stop_core.h). Logging stays off until Start logging or a restart. ---- */
+static stop_ctl_t s_stop;
+static bool s_close_ok, s_rev_flushed, s_turnoff;
+static int64_t s_ready_logged;
+
+static void stop_apply(unsigned act)
 {
-    s_ending = true;
-    sys_event(EV_INFO, "End drive pressed on the screen");
-    elm_request_stop();                                 /* the OBD task closes the drive: model, R.E.V, session saved */
-    bool stopped = elm_wait_stopped(8000);
-    ESP_LOGI(TAG, "end drive: poll loop %s", stopped ? "stopped, drive closed" : "still busy after 8 s");
-    if (R.on) { status_get(&s_st); rec_finish(); }
-    s_auto_open = true;
-    elm_resume();                                       /* the link may start the next drive (its own session) */
-    s_ending = false;
+    if ((act & STOP_DO_HALT) && !elm_user_stopped()) elm_user_stop(true);
+    if (act & STOP_DO_CLOSE) {
+        if (R.on) { status_get(&s_st); rec_finish(); }   /* the summary and the drives.csv line first */
+        if (!s_rev_flushed) { rev_flush(3000); s_rev_flushed = true; }   /* the learned fuel state of this drive */
+        s_close_ok = sdlog_stop_close(500);
+    }
+    if (act & STOP_DO_PAUSE) sdlog_writers_hold(true);
+    if (act & STOP_DO_SYNC) sdlog_sync_now();
+    if (act & STOP_DO_RELEASE) {
+        sdlog_writers_hold(false);
+        obd_ble_set_paused(false);
+        elm_user_stop(false);              /* the link may start the next drive (its own session) */
+    }
+}
+
+static void stop_tick(void)
+{
+    int64_t now = esp_timer_get_time() / 1000;
+    if (s_start_req) {
+        s_start_req = false;
+        if (s_stop.latched) {
+            stop_apply(stop_release(&s_stop, now));
+            s_turnoff = false;
+            sys_event(EV_INFO, "Logging started again");
+            ESP_LOGI(TAG, "stop: logging started again by the user");
+        }
+    }
+    if (s_end_req) {
+        s_end_req = false;
+        stop_state_t was = s_stop.st;
+        unsigned act = stop_request(&s_stop, now);
+        if (s_turnoff_req) { s_turnoff = true; s_turnoff_req = false; }
+        if (was == STOP_IDLE) {
+            s_close_ok = false;
+            s_rev_flushed = false;
+            sys_event(EV_INFO, s_turnoff ? "Turn off pressed: stopping logging" : "Stop logging pressed: saving the drive");
+            ESP_LOGI(TAG, "stop: requested (%s), drive %s", s_turnoff ? "turn off" : "stop logging", elm_drive_active() ? "running" : "not running");
+        }
+        stop_apply(act);
+    }
+    if (s_retry_req) { s_retry_req = false; s_close_ok = false; stop_apply(stop_retry(&s_stop, now)); }
+    if (s_stop.st == STOP_IDLE) return;
+    stop_state_t before = s_stop.st;
+    stop_in_t in = {
+        .poll_running = elm_drive_active(),
+        .session_open = sdlog_session_open(),
+        .closed_ok = s_close_ok || !sdlog_session_open(),
+        .saved = sdlog_saved() || !sdlog_session_open(),
+        .ms_since_write = sdlog_ms_since_any_write(),
+        .writers_paused = sdlog_writers_idle(),
+        .storage_ok = sdlog_ok(),
+    };
+    stop_apply(stop_step(&s_stop, &in, now));
+    if (s_stop.st != before) {
+        ESP_LOGI(TAG, "stop: %s after %lld ms%s%s", stop_state_text(&s_stop), (long long)(now - s_stop.t_req),
+                 s_stop.st == STOP_FAILED ? ": " : "", s_stop.st == STOP_FAILED ? stop_why_text(s_stop.why) : "");
+        if (s_stop.st == STOP_READY && s_ready_logged != s_stop.t_req) {
+            s_ready_logged = s_stop.t_req;
+            sys_event(EV_INFO, "Logging stopped: safe to unplug");
+            s_auto_open = !s_turnoff && s_pub.ok;          /* the drive summary, as after End drive before */
+            if (s_turnoff) obd_ble_set_paused(true);       /* Turn off: no adapter search while it waits for the unplug */
+        }
+        if (s_stop.st == STOP_FAILED) sys_event(EV_ERROR, "Stop failed: %s", stop_why_text(s_stop.why));
+    }
 }
 
 static void drive_task(void *arg)
@@ -277,13 +342,17 @@ static void drive_task(void *arg)
     (void)arg;
     history_load();
     if (s_hist.n) past_load(s_hist.d[s_hist.n - 1].session);
-    TickType_t release = xTaskGetTickCount();
+    int64_t last_rec = 0;
+    stop_init(&s_stop);
     for (;;) {
-        vTaskDelayUntil(&release, pdMS_TO_TICKS(1000));
-        if (s_end_req) { s_end_req = false; end_sequence(); continue; }
-        if (s_start_req) {
-            s_start_req = false;
-        }
+        /* 100 ms steps while a stop runs (its progress on the screen), the 1 s recording cadence otherwise */
+        vTaskDelay(pdMS_TO_TICKS(stop_active(&s_stop) || s_end_req || s_start_req || s_retry_req ? 100 : 250));
+        s_ending = stop_active(&s_stop);
+        stop_tick();
+        s_ending = stop_active(&s_stop);
+        int64_t now_ms = esp_timer_get_time() / 1000;
+        if (now_ms - last_rec < 1000) continue;
+        last_rec = now_ms;
         if (s_hist_req) { s_hist_req = false; history_load(); }
         bool active = elm_drive_active();
         status_get(&s_st);
@@ -296,12 +365,29 @@ static void drive_task(void *arg)
 void mosaico_drive_start(void)
 {
     s_mx = xSemaphoreCreateMutex();
-    xTaskCreatePinnedToCore(drive_task, "drive_rec", 4096, NULL, 1, NULL, 0);
+    xTaskCreatePinnedToCore(drive_task, "drive_rec", 6144, NULL, 1, NULL, 0);   /* 2.1.1: the stop closes and syncs files here */
 }
 
-void mosaico_drive_end_request(void) { if (!s_ending) s_end_req = true; }
+void mosaico_drive_end_request(void) { s_end_req = true; }
+void mosaico_drive_turn_off_request(void) { s_turnoff_req = true; s_end_req = true; }
+void mosaico_drive_stop_retry(void) { s_retry_req = true; }
 void mosaico_drive_start_request(void) { s_start_req = true; }
 bool mosaico_drive_ending(void) { return s_ending || s_end_req; }
+bool mosaico_drive_stopped(void) { return s_stop.latched && !s_ending && !s_end_req; }
+
+void mosaico_drive_stop_get(md_stop_t *out)
+{
+    memset(out, 0, sizeof *out);
+    stop_ctl_t c = s_stop;                 /* a byte-wise copy of a small struct: a torn read only delays one frame */
+    out->state = (uint8_t)c.st;
+    out->turn_off = s_turnoff;
+    out->requested = s_end_req;
+    int64_t now = esp_timer_get_time() / 1000;
+    out->secs = c.t_req ? (uint32_t)(((c.t_done ? c.t_done : now) - c.t_req) / 1000) : 0;
+    out->since_done_ms = c.t_done ? (uint32_t)(now - c.t_done) : 0;
+    snprintf(out->text, sizeof out->text, "%s", stop_state_text(&c));
+    snprintf(out->why, sizeof out->why, "%s", stop_why_text(c.why));
+}
 void mosaico_drive_history_request(void) { s_hist_req = true; }
 bool mosaico_drive_take_auto_open(void) { bool a = s_auto_open; s_auto_open = false; return a; }
 
