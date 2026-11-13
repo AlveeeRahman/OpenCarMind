@@ -293,13 +293,14 @@ static void log_drain(bool shutdown)
         while (ai_ring_peek(&s_ring)) { ai_ring_pop(&s_ring); s_log_skipped++; }
         return;
     }
+    if (!sdlog_writer_enter()) return;  /* a stop holds the writers (stop_core.h): the rows wait in the ring */
     if (!scanned) { log_scan(); scanned = true; }
     bool fresh = s_hi < 0 || s_cur >= FILE_CAP;
     if (fresh) { s_hi = s_hi < 0 ? 1 : s_hi + 1; s_cur = 0; if (s_lo < 0) s_lo = s_hi; }
     char p[64];
     log_path(p, sizeof p, s_hi);
     FILE *fp = fopen(p, "a");
-    if (!fp) { s_log_skipped++; return; }
+    if (!fp) { s_log_skipped++; sdlog_writer_exit(); return; }
     setvbuf(fp, NULL, _IONBF, 0);       /* no stdio buffer (internal RAM): FatFs's own sector buffer (PSRAM) collects the rows */
     if (fresh) { fputs(LOG_HEADER, fp); s_cur += sizeof LOG_HEADER - 1; s_total += sizeof LOG_HEADER - 1; }
     for (const char *l; (l = ai_ring_peek(&s_ring)) != NULL; ai_ring_pop(&s_ring)) {
@@ -318,6 +319,7 @@ static void log_drain(bool shutdown)
         if (stat(p, &st) == 0) { s_total -= (uint32_t)st.st_size < s_total ? (uint32_t)st.st_size : s_total; remove(p); }
         s_lo++;
     }
+    sdlog_writer_exit();
 }
 #endif
 

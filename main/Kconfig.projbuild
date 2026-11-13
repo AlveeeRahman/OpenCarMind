@@ -116,6 +116,13 @@ menu "OBD Logger Configuration"
             bool "Stall variant: freeze the UI so the ui-stall guard resets the board"
             depends on OCM_STORAGE_RESET_TEST
             default n
+        config OCM_STACK_USAGE
+            bool "Build: write stack frames and the call graph for tools/stack_check.py"
+            default n
+            help
+                Compiles main with -fstack-usage and -fcallgraph-info=su (GCC). tools/stack_check.py then adds up the
+                deepest call path of each long-running task (obd, drive_rec, board) and fails when it comes too close
+                to the task's stack. The code is the same with or without it. Not needed for a release build.
         config OCM_PINS_SAFE_DUMP
             bool "Bench: print every GPIO's configuration before and after the safe pin state"
             depends on IDF_TARGET_ESP32S31

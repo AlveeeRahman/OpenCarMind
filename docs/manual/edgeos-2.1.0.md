@@ -209,7 +209,7 @@ The live view for the road.
 - **AI sees:** the model's call on the last few seconds. Its four bars are S (stopped), B (braking), A (accelerating) and C (cruising). A mark at the right shows which model is in use.
 - **Brake, Torque, Fuel:** the model's three estimates. A tag says where each number comes from. MODEL is the model's estimate. LEARNED is a fuel figure R.E.V has learned in your car, shown only while R.E.V is in use.
 - **Tank:** the fuel level as a bar, and the range in km
-- **End drive:** hold it for 1 second. The drive ends and the Summary opens.
+- **End drive:** hold it for 1 second. Logging stops, the drive is saved and its files are closed. A sheet shows each step and ends with **Safe to unplug**, or with the reason if a step did not finish. Logging then stays off, even while the car still answers, until you tap **Start logging** or the board restarts. See [Stop logging and Turn off](#stop).
 
 ### AI
 
@@ -486,6 +486,7 @@ One scrolling list of everything you can change.
 - **Clock:** where the time came from, and Set clock
 - **Units:** economy in km/L or L/100 km
 - **Screen:** screen off after a time, and the order of the apps
+- **Logging and power:** Stop logging (Start logging once stopped) and Turn off
 - **OBD adapter:** Find OBD adapter and Forget adapter
 - **Storage:** Format storage
 - **Firmware:** the version, the chip, the flash and PSRAM size
@@ -537,6 +538,15 @@ Find OBD adapter searches for the adapter again. For 90 s it also offers a new a
 ### Smart swipe
 
 A status line shows how Smart swipe's test is going, and its verdict once it has one. It keeps itself only if it makes swipes faster.
+
+### Logging and power
+
+The first group in Settings. A line says what logging does now: logging this drive, ready, stopping, stopped and safe to unplug, or not safe yet with the reason.
+
+- **Stop logging** asks once, then stops logging the same way as holding End drive. Once logging is off, the same button reads **Start logging**.
+- **Turn off** asks once, stops logging, stops the adapter search and turns the screen off 5 seconds after **Safe to unplug**. A tap wakes the screen and the sheet is still there. Unplug the board then.
+
+[Stop logging and Turn off](#stop) says what each step checks.
 
 ### Network guard
 
@@ -760,11 +770,26 @@ When you pair the desktop app, the 6-digit pairing code shows in a green banner,
 
 There is no SD card. Without a working NAND, the board logs to the flash as before.
 
-### Safe to turn off
+<a id="stop"></a>
 
-The drive ends when you hold End drive for 1 second. It also ends by itself about 15 seconds after the car stops answering, when you switch the engine off.
+### Stop logging and Turn off
 
-Wait for the green **Safe to turn off** line in the events, then unplug the board. When it is not safe, a red "Not safe" line gives the reason.
+A drive ends by itself about 15 seconds after the car stops answering, when you switch the engine off. To stop logging yourself, hold End drive for 1 second, or use Settings > Stop logging or Turn off. All three take the same steps, and a sheet shows them:
+
+1. **Stopping the car link:** the board stops asking the car for data and starts no new drive. Up to 15 seconds, the time one slow request to the car can take.
+2. **Saving the drive:** the drive summary is written, what R.E.V learned is saved, and the drive files are closed. Up to 10 seconds.
+3. **Checking that everything is saved:** the battery log pauses, everything is flushed, and the board waits until nothing has been written for 1.5 seconds. Up to 10 seconds.
+
+Then the sheet says **Safe to unplug** in green. If a step runs out of time, it says **Not safe to unplug yet** in red with the reason, for example that the drive files did not close because the storage was busy. Logging stays off in both cases. Tap **Try again**, or wait and look again before you unplug.
+
+After a stop, logging stays off until you tap **Start logging** (on the sheet, on Home, or in Settings), or the board restarts. A car that still answers does not start a new drive. In OpenCarMind EdgeOS 2.1.0 before this fix, End drive saved the drive and then let the next drive start straight away, so logging seemed to keep going.
+
+The events list also shows the green **Safe to turn off** line after every periodic save. When it is not safe, a red "Not safe" line gives the reason.
+
+> [!WARNING]
+> **The POWER key cuts power at once**
+>
+> The key on the back of the ESP-Mosaico switches the whole board off or on at a single press (Espressif's user guide). It does not wait for the board to save. Stop logging or Turn off first, wait for **Safe to unplug**, then press POWER or unplug.
 
 The board saves its last known time at most once a minute. After a power cut it starts from that time, and Wi-Fi corrects it later.
 
@@ -836,6 +861,10 @@ Going back is not yet verified on the board.
 <a id="trouble"></a>
 
 ## When something looks wrong
+
+### The board restarts again and again
+
+OpenCarMind EdgeOS 2.1.0 restarted about 14 seconds after every start once a car answered and the pattern file from an earlier drive was on the board. The field fix removes the cause (see the README). If a board still restarts in a loop, unplug it from the car and connect it to a computer, where it starts normally. Then import with the desktop app: the drives of that day, `drives.csv`, the battery logs `b*.csv`, and `obd/resets.csv`. That file has one line per start with the reason for the restart, how long the run before it lasted, the task named in the crash record, and the battery's voltage and temperature.
 
 ### The Board page says health degraded or bad
 

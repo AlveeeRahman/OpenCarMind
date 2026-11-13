@@ -174,6 +174,30 @@ static void test_pattern(void)
     CHECK(m2.used == m.used && m2.n_windows == m.n_windows);
     CHECK(fabsf(m2.centroid[0][0] - m.centroid[0][0]) < 1e-3f);
     CHECK(!pattern_model_from_json(&m2, "{\"used\":99}"));
+
+    /* the ESP-Mosaico in-place loader (field fix 2.1.1) gives exactly the model pattern_model_from_json gives */
+    static pattern_model_t m3;
+    CHECK(pattern_model_load_json(&m3, buf));
+    CHECK(memcmp(&m3, &m2, sizeof m2) == 0);
+    /* a full model, 24 centroids as in the field file: every centroid and count survives the in-place parse */
+    static pattern_model_t full, back;
+    pattern_init(&full);
+    full.used = PATTERN_K;
+    full.n_windows = 156;
+    for (int k = 0; k < PATTERN_K; k++) {
+        full.count[k] = (uint32_t)(k + 1);
+        for (int f = 0; f < PATTERN_FEATURES; f++) full.centroid[k][f] = (f % 3 == 2) ? 0.0f : (float)(k - f) / 16.0f;
+    }
+    for (int f = 0; f < PATTERN_FEATURES; f++) { full.mean[f] = f; full.m2[f] = f * 10.0; }
+    CHECK(pattern_model_to_json(&full, buf, sizeof buf) > 0);
+    CHECK(pattern_model_load_json(&back, buf));
+    CHECK(back.used == PATTERN_K && back.n_windows == 156 && back.count[PATTERN_K - 1] == PATTERN_K);
+    CHECK(fabsf(back.centroid[PATTERN_K - 1][PATTERN_FEATURES - 2] - full.centroid[PATTERN_K - 1][PATTERN_FEATURES - 2]) < 1e-3f);
+    CHECK(pattern_model_from_json(&m2, buf) && memcmp(&m2, &back, sizeof back) == 0);
+    /* a broken file: false, and the model is reset to a fresh one (not left half filled) */
+    CHECK(!pattern_model_load_json(&back, "{\"used\":3,\"n_windows\":7,\"mean\":[1,2]}"));
+    CHECK(back.used == 0 && back.n_windows == 0 && fabsf(back.spawn_threshold - 2.5f) < 1e-6f);
+    CHECK(!pattern_model_load_json(&back, "{\"used\":99}"));
 }
 
 static void test_adapter_names(void)
