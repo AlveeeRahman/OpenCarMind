@@ -304,3 +304,9 @@ trademarks does not indicate endorsement of the trademark holder by Font
 Awesome, nor vice versa. **Please do not use brand logos for any purpose except
 to represent the company, product, or service to which they refer.**
 ```
+
+## Prose checker (docs-src/tools/check_draft.py)
+
+The style checker the documentation build runs on its pages comes from the owner's humanizer skill, which adapts
+the no-ai-slop skill by Peter Yang (https://github.com/petergyang/no-ai-slop). MIT License, Copyright (c) 2026
+Peter Yang. The MIT licence text is the one above under "Code: MIT License", with this copyright line.

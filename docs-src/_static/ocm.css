@@ -1,0 +1,57 @@
+/* OpenCarMind colours on top of pydata-sphinx-theme. Brand blue #2F5FD0 and navy #15202D, as on the landing page. */
+html[data-theme="light"] {
+  --pst-color-primary: #2f5fd0;
+  --pst-color-secondary: #a85a00;
+  --pst-color-link: #2f5fd0;
+  --pst-color-link-hover: #17212e;
+  --pst-color-background: #ffffff;
+  --pst-color-on-background: #f5f2eb;
+  --pst-color-surface: #f5f2eb;
+  --pst-color-text-base: #17212e;
+  --pst-color-text-muted: #57616f;
+  --pst-color-link-higher-contrast: #2a54b8;
+  --pst-color-inline-code: #8a3d00;
+  --pst-color-table-row-hover-bg: #e3e9f8;
+  --pst-color-primary-bg: #e3e9f8;
+  --pst-color-target: #fbe3c2;
+}
+html[data-theme="dark"] {
+  --pst-color-primary: #7fa2f0;
+  --pst-color-secondary: #f59a2e;
+  --pst-color-link: #8fb0f5;
+  --pst-color-link-hover: #f2ece1;
+  --pst-color-background: #15202d;
+  --pst-color-on-background: #1e2b3b;
+  --pst-color-surface: #1e2b3b;
+  --pst-color-text-base: #f2ece1;
+  --pst-color-text-muted: #9da8b8;
+  --pst-color-border: #2a3a4e;
+  --pst-color-link-higher-contrast: #a9c1f7;
+  --pst-color-inline-code: #f5b56a;
+  --pst-color-table-row-hover-bg: #26364a;
+  --pst-color-primary-bg: #24365a;
+  --pst-color-target: #4a3a1e;
+}
+
+/* Board captures and renders: screens sit side by side, wide figures fill the column. */
+.ocm-row { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: flex-start; margin: 1rem 0; }
+.ocm-row img.ocm-shot { margin: 0; }
+img.ocm-shot { max-width: 100%; height: auto; border-radius: 6px; }
+img.ocm-figure { width: 100%; height: auto; border-radius: 6px; margin: 0.5rem 0 1rem; }
+html[data-theme="light"] img.ocm-figure, html[data-theme="light"] img.ocm-shot { border: 1px solid #c9c1b3; }
+p.ocm-caption { font-size: 0.9rem; color: var(--pst-color-text-muted); }
+
+/* Tables: the theme already scrolls a wide table inside the page on a phone. */
+.bd-article table td, .bd-article table th { vertical-align: top; }
+
+/* The firmware versions menu in the top bar */
+.version-switcher__menu { min-width: 17rem; }
+.version-switcher__menu a { white-space: nowrap; }
+
+/* Home page cards */
+.ocm-hero { font-size: 1.15rem; line-height: 1.6; }
+.sd-card .sd-card-title { font-weight: 600; }
+.bd-article h1 { font-weight: 700; }
+
+/* Header comments and protocol listings wrap instead of scrolling sideways. */
+div.highlight-text pre { white-space: pre-wrap; }

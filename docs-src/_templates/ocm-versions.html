@@ -1,0 +1,15 @@
+{#- The firmware lines in the top bar. Each entry opens the page for that version. Links are relative (pathto). -#}
+{%- set button_id = unique_html_id("ocm-versions-button") -%}
+{%- set list_id = unique_html_id("ocm-versions-list") -%}
+<div class="version-switcher__container dropdown">
+  <button id="{{ button_id }}" type="button" class="version-switcher__button btn btn-sm dropdown-toggle"
+          data-bs-toggle="dropdown" aria-haspopup="listbox" aria-controls="{{ list_id }}" aria-label="Firmware versions">
+    Versions <span class="caret"></span>
+  </button>
+  <div id="{{ list_id }}" class="version-switcher__menu dropdown-menu list-group-flush py-0" role="listbox"
+       aria-labelledby="{{ button_id }}">
+    {%- for label, doc in ocm_versions %}
+    <a class="list-group-item list-group-item-action py-1" role="option" href="{{ pathto(doc) }}">{{ label }}</a>
+    {%- endfor %}
+  </div>
+</div>

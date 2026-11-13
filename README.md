@@ -13,7 +13,7 @@ OpenCarMind is an open-source OBD2 logger and dashboard for the ESP32, with a pr
 
 It ships two on-board models, and you choose between them in the desktop app. CarMind E.V is fixed and tested. CarMind R.E.V is my first model that keeps learning in your car: the board itself updates part of the model from what your car reports while you drive, with no computer or cloud in the loop.
 
-Licence: MIT. Website: <https://alveeerahman.github.io/OpenCarMind/>. Two release lines, both built from this `main`:
+Licence: MIT. Website: <https://alveeerahman.github.io/OpenCarMind/>. Documentation: <https://alveeerahman.github.io/OpenCarMind/docs/>. Two release lines, both built from this `main`:
 
 - **ESP32-S3 board: OpenCarMind 2.5.1.** The firmware and the desktop app for Windows, macOS and Linux are on the [latest release](https://github.com/AlveeeRahman/OpenCarMind/releases/latest). A beta, [2.5.1b](https://github.com/AlveeeRahman/OpenCarMind/releases/tag/2.5.1b), has the S3 firmware with every change on `main` since 2.5.1. It is a pre-release, not yet checked on an S3 board as a whole.
 - **ESP-Mosaico: OpenCarMind EdgeOS 2.1.0.** The board image is on the [EdgeOS 2.1.0 release](https://github.com/AlveeeRahman/OpenCarMind/releases/tag/edgeos-2.1.0). Do not flash it on an S3.
@@ -240,13 +240,13 @@ On first boot the board connects to the strongest nearby adapter that looks like
 
 ## User manuals
 
-Two user manuals for drivers and test users, each as Markdown here and as a page on the website:
+User manuals for drivers and test users, each as Markdown here and as pages in the [documentation](https://alveeerahman.github.io/OpenCarMind/docs/), one page per chapter:
 
-- [OpenCarMind 2.5.1 on the ESP32-S3 board](docs/manual/esp32-s3.md) ([web page](https://alveeerahman.github.io/OpenCarMind/manual/esp32-s3.html)): the five pages, the BOOT button, the two models, Wi-Fi for the clock and the desktop app.
-- [OpenCarMind EdgeOS 2.1.0 on the ESP-Mosaico](docs/manual/edgeos-2.1.0.md): everything in 2.0.0 plus the Health app, the pairing questions and the new messages.
-- [OpenCarMind EdgeOS 2.0.0 on the ESP-Mosaico](docs/manual/edgeos-2.0.0.md) ([web page](https://alveeerahman.github.io/OpenCarMind/manual/edgeos-2.0.0.html)): the 16 apps, Settings, Wi-Fi, the two models, the health check and every message the board shows.
+- [OpenCarMind 2.5.1 on the ESP32-S3 board](docs/manual/esp32-s3.md) ([web pages](https://alveeerahman.github.io/OpenCarMind/docs/manuals/esp32-s3/)): the five pages, the BOOT button, the two models, Wi-Fi for the clock and the desktop app.
+- [OpenCarMind EdgeOS 2.1.0 on the ESP-Mosaico](docs/manual/edgeos-2.1.0.md) ([web pages](https://alveeerahman.github.io/OpenCarMind/docs/manuals/edgeos-2.1.0/)): everything in 2.0.0 plus the Health app, the pairing questions and the new messages.
+- [OpenCarMind EdgeOS 2.0.0 on the ESP-Mosaico](docs/manual/edgeos-2.0.0.md) ([web pages](https://alveeerahman.github.io/OpenCarMind/docs/manuals/edgeos-2.0.0/)): the 16 apps, Settings, Wi-Fi, the two models, the health check and every message the board shows.
 
-The ESP32-S3 and EdgeOS 2.0.0 manuals come from one source each in [docs/manual/src](docs/manual/src), built by [docs/manual/build.py](docs/manual/build.py). The EdgeOS 2.1.0 manual is Markdown only for now.
+The Markdown files are the source. The documentation site in [docs-src](docs-src) is built from them with Sphinx, so the web pages and the Markdown cannot drift. The old manual addresses, `manual/esp32-s3.html` and `manual/edgeos-2.0.0.html`, now open the new pages.
 
 ## The models
 
@@ -553,14 +553,14 @@ A count from full to the cutoff needs the board to run its cell flat, which a bo
 | 18650 NMC cycling set | 1.45 % | 6.42 % | 0.08 %, needs a full cycle |
 | NASA cells<sup>[[26]](#ref-26)</sup>, discharge only | 13.9 to 25.0 % | 8.5 to 19.2 % | not compared |
 
-The regressor passes on the cell it learned and does not transfer to cells it never saw charge. It needs the board's own first charges as its reference. The plan is the count when there is a full cycle and the regressor otherwise. The regressor is trained and tested on the Mac, not in the firmware yet.
+The regressor passes on the cell it learned and does not transfer to cells it never saw charge. It needs the board's own first charges as its reference. The plan is the count when there is a full cycle and the regressor otherwise. The regressor is in the firmware since 2.1.0, where its C matches the Mac to 1.3e-7. It has not run on the board yet: it needs 10 deep charges of this cell as its reference, and in the 2.1.0 board check the cell stayed full (0 of 10).
 
 </details>
 
 <details>
 <summary><b>For experts: how the battery anomaly detector works</b> (figure, features, fault tests)</summary>
 
-<p align="center"><img src="docs/images/edgeos-ai-anomaly.png" width="900" alt="How the battery anomaly detector works, hand-drawn. Validated on the Mac, not in the firmware yet. Card 1, every 60 s, 9 features from the EKF and the gauge: innovation mean and RMS as slow averages, voltage drift and current at rest, temperature against a one-node heat model, voltage sag per C-rate against R0 at that temperature, the DC resistance ratio at a current step, load level and gauge read glitches. Card 2, three detectors: a 9-4-9 tanh autoencoder raises the alarm from its reconstruction error, a z-score with a frugal median and MAD and an online Gaussian are diagnostics only. False alarms on 388 h of held-out normal data: autoencoder 0.0026 per hour with a 95 percent upper bound of 0.012, z-score 0.245 and Gaussian 0.126, which drift with ageing. Card 3: a 24 h warm-up, learning only from clearly normal windows, an alarm after 3 windows in a row, a banner and a log line, and it never acts on power. Under 400 ops per window, 280 B of state and 640 B of parameters. Injected faults caught and median time: resistance plus 100 percent 92 percent in 72 min, temperature plus 15 C 83 percent in 164 min, soft short 5 percent per hour 75 percent in 176 min, resistance plus 30 percent 25 percent, soft short 0.5 percent per hour 8 percent, current offset 8 percent, intermittent reads 0 to 8 percent, temperature plus 5 C, current gain error and extra drain 0 percent."></p>
+<p align="center"><img src="docs/images/edgeos-ai-anomaly.png" width="900" alt="How the battery anomaly detector works, hand-drawn. Validated on the Mac, in the firmware since 2.1.0. Card 1, every 60 s, 9 features from the EKF and the gauge: innovation mean and RMS as slow averages, voltage drift and current at rest, temperature against a one-node heat model, voltage sag per C-rate against R0 at that temperature, the DC resistance ratio at a current step, load level and gauge read glitches. Card 2, three detectors: a 9-4-9 tanh autoencoder raises the alarm from its reconstruction error, a z-score with a frugal median and MAD and an online Gaussian are diagnostics only. False alarms on 388 h of held-out normal data: autoencoder 0.0026 per hour with a 95 percent upper bound of 0.012, z-score 0.245 and Gaussian 0.126, which drift with ageing. Card 3: a 24 h warm-up, learning only from clearly normal windows, an alarm after 3 windows in a row, a banner and a log line, and it never acts on power. Under 400 ops per window, 280 B of state and 640 B of parameters. Injected faults caught and median time: resistance plus 100 percent 92 percent in 72 min, temperature plus 15 C 83 percent in 164 min, soft short 5 percent per hour 75 percent in 176 min, resistance plus 30 percent 25 percent, soft short 0.5 percent per hour 8 percent, current offset 8 percent, intermittent reads 0 to 8 percent, temperature plus 5 C, current gain error and extra drain 0 percent."></p>
 
 The detector learns what normal looks like for this cell and raises an alarm when 60 s windows stop looking like it. Nobody labels a fault for it. Each window has 9 features from the EKF and the gauge: the innovation's mean and RMS as slow averages, the voltage drift and the current at rest, the temperature against a one-node heat model, the voltage sag per C-rate against R₀ at that temperature, the DC resistance ratio at a current step, the load level and the gauge's read glitches.
 
@@ -577,7 +577,7 @@ Three detectors ran side by side. One is a z-score against a frugal streaming me
 | Intermittent reads | 0 to 8 % | |
 | Temperature +5 °C, current gain error, extra drain | 0 % | |
 
-It catches large faults only. The thresholds were learned on public cell data, so they have to be learned again on the board's own cell before an alarm means anything there. An alarm shows a banner and writes a log line. It never acts on power: the fixed battery protection above stays in charge of that. The cost is under 400 ops a window, with 280 B of state and 640 B of parameters. It is trained and tested on the Mac, not in the firmware yet.
+It catches large faults only. The thresholds were learned on public cell data, so they have to be learned again on the board's own cell before an alarm means anything there. An alarm shows a banner and writes a log line. It never acts on power: the fixed battery protection above stays in charge of that. The cost is under 400 ops a window, with 280 B of state and 640 B of parameters. It is in the firmware since 2.1.0, within 1.05e-6 of the Mac, and the 2.1.0 board check admitted it and started its 24 h warm-up. A real fault has not been seen in use yet. The worn and fault cards shown so far come from a test build that writes a state into the Health screen only.
 
 </details>
 
@@ -609,7 +609,7 @@ The data: a public BLE scanner data set, used for local testing only (nothing fi
 | Wi-Fi floods of fake access points with rotating addresses | 15 / 15 on both captures |
 | Cost | 40 B of state and 512 B of bitmaps per head, about 60 integer ops a window |
 
-On the Mac the detector is bit-exact against its Python reference on 21,601 test windows. It is not in the firmware yet. Its service row is ready (T 5 s, D 1 s), and it will start in shadow mode, logging and never blocking, until a week of logs from real car parks shows its false-block rate on the board.
+On the Mac the detector is bit-exact against its Python reference on 21,601 test windows. It is in the firmware since 2.1.0 as the network guard (T 5 s, D 1 s), and after every start it spends 2 h in shadow mode, logging and never blocking. In the 2.1.0 board check it scored 0 to 34 of 256 over 112 shadow windows with 0 blocks. A real block has not been seen in use yet. The block card shown so far comes from the test build, and a week of logs from real car parks will show its false-block rate on the board.
 
 </details>
 
@@ -888,7 +888,8 @@ The UJI Probes and IPIN2021 probe-request captures are © T. Bravenec, J. Torres
 | `desktop/` | the desktop app (Rust and Tauri) |
 | `dashboard/` | Docker Compose file and Dashy configuration |
 | `docs/` | configuration, model notes, field checks, screen designs and figures |
-| `docs/manual/` | the user manuals, their sources and the script that builds them |
+| `docs/manual/` | the user manuals in Markdown, the source of their pages on the documentation site |
+| `docs-src/` | the documentation site (Sphinx, MyST and pydata-sphinx-theme), built from the Markdown in this repository |
 
 ## Credits and licence
 
