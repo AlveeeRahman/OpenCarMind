@@ -36,7 +36,9 @@ def load(build):
         return t.rsplit(":", 1)[-1] if t.startswith("/") else t
 
     for f in glob.glob(build + "/**/__idf_main.dir/**/*.ci", recursive=True):
-        for line in open(f, errors="replace"):
+        with open(f, errors="replace") as fh:
+            lines = fh.readlines()
+        for line in lines:
             m = re.match(r'node: \{ title: "([^"]+)" label: "([^"]*)"', line)
             if m:
                 s = re.search(r"\\n(\d+) bytes \(", m.group(2))
