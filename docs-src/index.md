@@ -7,10 +7,26 @@ html_theme.sidebar_secondary.remove: true
 {.ocm-hero}
 OpenCarMind is an open-source OBD2 logger and dashboard for the ESP32. It reads your car through a Bluetooth LE OBD-II adapter, runs small neural networks on the chip and keeps every drive on the board's own storage. It needs no phone, no account and no internet connection.
 
-```{image} ../docs/assets/banner.png
-:alt: OpenCarMind, an open-source OBD2 logger for the ESP32 with TinyML on the board.
-:class: ocm-figure
+:::{container} ocm-row
+```{image} ../docs/images/mosaico/health-battery-dark.png
+:alt: Health app, Battery page, captured on the board. A blue Learning card says the board is learning the battery and needs 10 more full charges to judge its health. The header says All good.
+:class: ocm-shot
+:width: 240px
 ```
+```{image} ../docs/images/mosaico/health-guard-dark.png
+:alt: Health app, Guard page, captured on the board. The network guard is learning this place in the first 2 hours after a start and blocks nothing yet.
+:class: ocm-shot
+:width: 240px
+```
+```{image} ../docs/images/mosaico/health-ai-dark.png
+:alt: Health app, AI page, captured on the board. Every AI feature on time.
+:class: ocm-shot
+:width: 240px
+```
+:::
+
+{.ocm-caption}
+The Health app of OpenCarMind EdgeOS 2.1.0, captured on the ESP-Mosaico after a fresh start: the battery still learning, the guard learning the place, every AI feature on time.
 
 ## Two boards, one source tree
 

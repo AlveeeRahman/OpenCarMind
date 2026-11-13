@@ -17,6 +17,4 @@ The ESP-Mosaico has a small cell and a fuel gauge. OpenCarMind EdgeOS 2.1.0 esti
 ```{include} ../_gen/readme-anomaly.md
 ```
 
-:::{note}
-The status of each model on the board is in the table on [AI services](ai-services.md). Where the expert text above and that table differ, the table is the newer one: since 2.1.0 the partial-charge regressor and the anomaly detector are in the firmware.
-:::
+The status of each model on the board is in the table on [AI services](ai-services.md).

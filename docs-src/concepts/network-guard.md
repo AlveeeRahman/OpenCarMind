@@ -7,6 +7,4 @@ The network guard watches the Bluetooth and Wi-Fi traffic the board already rece
 ```{include} ../_gen/readme-ids.md
 ```
 
-:::{note}
-Since 2.1.0 the rotation detector is in the firmware as the network guard, bit-exact against the Mac. See the status table on [AI services](ai-services.md).
-:::
+The status of each AI service on the board is in the table on [AI services](ai-services.md).

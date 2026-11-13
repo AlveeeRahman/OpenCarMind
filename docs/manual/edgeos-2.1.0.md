@@ -49,11 +49,11 @@ A small neural network, called the model, watches the last few seconds of drivin
 > [!NOTE]
 > **What 2.1.0 adds**
 >
-> Version 2.1.0 adds a Health app with three pages: the battery, the network guard and the AI services. Three new AI services run on the chip: a state-of-health estimate from your charges, a battery anomaly detector and a network guard for Bluetooth and Wi-Fi. They only watch and warn. The battery detector never touches the power, and the guard never cuts your car link or transmits anything. Section 04 explains the Health app and section 08 the guard's messages. These parts are built and checked on a computer and are being checked on the board.
+> Version 2.1.0 adds a Health app with three pages: the battery, the network guard and the AI services. Three new AI services run on the chip: a state-of-health estimate from your charges, a battery anomaly detector and a network guard for Bluetooth and Wi-Fi. They only watch and warn. The battery detector never touches the power, and the guard never cuts your car link or transmits anything. [The 17 apps](#apps) explains the Health app and [Health checks and messages](#os) the guard's messages. These parts are built and checked on a computer and are being checked on the board.
 
 > **What 2.0.0 added**
 >
-> Version 2.0.0 adds a small operating-system layer. You do not have to set anything up for it. About a minute after every start the board rates its own health and shows it on the Board page. While you drive it refuses changes that could spoil the drive, such as a model switch, and tells you why. It watches the battery's temperature and voltage. It pairs a new OBD adapter only when you say yes. Section 08 explains every line and message it shows.
+> Version 2.0.0 adds a small operating-system layer. You do not have to set anything up for it. About a minute after every start the board rates its own health and shows it on the Board page. While you drive it refuses changes that could spoil the drive, such as a model switch, and tells you why. It watches the battery's temperature and voltage. It pairs a new OBD adapter only when you say yes. [Health checks and messages](#os) explains every line and message it shows.
 
 > [!NOTE]
 > **Local first**
@@ -119,7 +119,7 @@ A press counts when you let go within 1 second. A longer hold does nothing.
 ### Before the first drive
 
 1. Check that Settings > FIRMWARE AND BOARD shows OpenCarMind EdgeOS 2.1.0.
-2. Wait about a minute after the start. The top right of the Board page then says "Parked, health good" in green. See section 08 if it says something else.
+2. Wait about a minute after the start. The top right of the Board page then says "Parked, health good" in green. See [Health checks and messages](#os) if it says something else.
 3. Check that Settings > MODEL shows R.E.V.
 4. Set the clock. Join Wi-Fi, or use Settings > Set clock. The clock line then says "From Wi-Fi" or "Set by hand".
 5. Open Files and check that the storage bar shows the 128 MB NAND.
@@ -266,7 +266,7 @@ The last drive, and the board's events.
 - **History:** charts of the last drives, oldest at the left: L/100 km and km per drive
 - **Recent events:** the board's event list, newest first. Errors are red, warnings amber, and "Safe to turn off" is green.
 
-**The events log.** Tap the events card to open the full list. Filter it with the chips All, Warnings, Errors, Wi-Fi and Drive. Tap a row to open its detail. The list keeps the newest 10 events since the board started. Each drive also keeps its own newest 24 events in its files, so the Drive filter still shows them after a long drive or a restart. The health check and the battery protection write their messages here too (see section 08).
+**The events log.** Tap the events card to open the full list. Filter it with the chips All, Warnings, Errors, Wi-Fi and Drive. Tap a row to open its detail. The list keeps the newest 10 events since the board started. Each drive also keeps its own newest 24 events in its files, so the Drive filter still shows them after a long drive or a restart. The health check and the battery protection write their messages here too (see [Health checks and messages](#os)).
 
 After a restart the Summary shows the last drive again, read back from its files. The charts are not kept.
 
@@ -369,11 +369,11 @@ The board's own health, for checks and bug reports. The page scrolls: the RAM an
 
 - **Firmware:** the firmware version, and the chip with its revision ("S31 rev" and a number)
 - **RAM free:** free internal memory in KB, the lowest it has been since start, and free PSRAM in MB
-- **Battery:** the cell's voltage in V, its current in mA, "on USB" or "on battery", and the temperature the fuel gauge measures, in °C. The line below says "uncalibrated" with the charge cycle count until the gauge is set up for this cell. It shows a battery protection state instead when one is active (see section 08).
+- **Battery:** the cell's voltage in V, its current in mA, "on USB" or "on battery", and the temperature the fuel gauge measures, in °C. The line below says "uncalibrated" with the charge cycle count until the gauge is set up for this cell. It shows a battery protection state instead when one is active (see [Health checks and messages](#os)).
 - **Log storage:** free space on the NAND in MB, and on the flash in KB
 - **Soft deadlines:** the scheduler's job table: each job's runs, its worst run and how many times it missed its deadline. "All jobs on time" means no misses.
 - **Touch errors:** how often the touch controller failed to answer
-- **Header:** at the top right, the board state and its health, for example "Parked, health good". Green means good, amber degraded, red bad. During the first minute after a start it says "health pending". Section 08 explains it.
+- **Header:** at the top right, the board state and its health, for example "Parked, health good". Green means good, amber degraded, red bad. During the first minute after a start it says "health pending". [Health checks and messages](#os) explains it.
 - **Footer:** two centred lines at the end of the scroll: the firmware version and the touch errors
 
 ### Health
@@ -471,7 +471,7 @@ Search, join and the clock sync. The radio is off unless one of these is running
 - **Search for networks:** lists the networks in range so you can join one
 - **Saved networks:** the networks the board knows (up to 8), each with Forget. The note under the list says "The board uses them only to set its clock."
 
-Section 06 covers searching and joining.
+[Wi-Fi](#wifi) covers searching and joining.
 
 ### Settings
 
@@ -490,7 +490,7 @@ One scrolling list of everything you can change.
 - **Storage:** Format storage
 - **Firmware:** the version, the chip, the flash and PSRAM size
 
-Section 05 goes through each one.
+[Settings](#settings) goes through each one.
 
 <a id="settings"></a>
 
@@ -532,7 +532,7 @@ Each app has Up and Down buttons that move it one place. The launcher follows th
 
 ### OBD adapter
 
-Find OBD adapter searches for the adapter again. For 90 s it also offers a new adapter with a strong signal, so you can switch. Forget adapter drops the saved one. Either way, the board asks before it pairs (see Pairing your OBD adapter in section 02).
+Find OBD adapter searches for the adapter again. For 90 s it also offers a new adapter with a strong signal, so you can switch. Forget adapter drops the saved one. Either way, the board asks before it pairs (see Pairing your OBD adapter in [Getting started](#start)).
 
 ### Smart swipe
 
@@ -540,7 +540,7 @@ A status line shows how Smart swipe's test is going, and its verdict once it has
 
 ### Network guard
 
-Network guard: blocking on or off. On by default. With blocking on, the guard acts after its two-hour shadow. With blocking off it still watches and writes "would block" into the events, but changes nothing. Section 08 says what a block does.
+Network guard: blocking on or off. On by default. With blocking on, the guard acts after its two-hour shadow. With blocking off it still watches and writes "would block" into the events, but changes nothing. [Health checks and messages](#os) says what a block does.
 
 ### Storage and firmware
 
@@ -560,7 +560,7 @@ The board has no battery-backed clock chip, so Wi-Fi is how it learns the time. 
 > [!NOTE]
 > **No Wi-Fi in the first minute after a start**
 >
-> The first minute after a start is when the board has the least memory to spare, so it keeps Wi-Fi off until its health check (section 08). When the check says good or degraded, the automatic clock sync goes ahead. If the clock is not set yet, the first sync follows about 20 seconds later. When the check says bad, Wi-Fi stays off until you start it, and the events say "Wi-Fi held (boot health bad): start it in Wi-Fi". Sync clock now, Search for networks and Join always work, at any time while parked.
+> The first minute after a start is when the board has the least memory to spare, so it keeps Wi-Fi off until its health check ([Health checks and messages](#os)). When the check says good or degraded, the automatic clock sync goes ahead. If the clock is not set yet, the first sync follows about 20 seconds later. When the check says bad, Wi-Fi stays off until you start it, and the events say "Wi-Fi held (boot health bad): start it in Wi-Fi". Sync clock now, Search for networks and Join always work, at any time while parked.
 
 ### Search and join
 
@@ -756,7 +756,7 @@ When you pair the desktop app, the 6-digit pairing code shows in a green banner,
 
 - **128 MB NAND:** the drive logs, and the clock file
 - **Flash files:** what R.E.V learned, the settings files and the Wi-Fi list
-- **Internal settings:** the pairing with the desktop app, the saved networks, the settings, the model choice and the session counter. Flashing a new firmware image erases these (see section 11).
+- **Internal settings:** the pairing with the desktop app, the saved networks, the settings, the model choice and the session counter. Flashing a new firmware image erases these (see [Desktop app and updates](#desktop)).
 
 There is no SD card. Without a working NAND, the board logs to the flash as before.
 
@@ -778,7 +778,7 @@ Format storage erases the 128 MB NAND in about 15 seconds and removes drive logs
 
 The board has a small 3.7 V, 65 mAh cell with a fuel gauge, and it is meant to run on the car's USB power. The status bar shows the cell's voltage. The Board page shows its current and temperature and marks the gauge as uncalibrated, because the gauge is not set up for this cell yet.
 
-Battery protection is on (section 08). Running on the battery when the car's USB power drops, and finishing the save before turning off, is prepared but switched off in this release.
+Battery protection is on ([Health checks and messages](#os)). Running on the battery when the car's USB power drops, and finishing the save before turning off, is prepared but switched off in this release.
 
 > [!NOTE]
 > **Dark saves power on an AMOLED**
@@ -839,11 +839,11 @@ Going back is not yet verified on the board.
 
 ### The Board page says health degraded or bad
 
-Open the events list on the Summary page. The "Boot health" line names the reason. Section 08 says what each one means. A restart often clears a one-off problem. If it comes back, send a photo of the Board page and the events.
+Open the events list on the Summary page. The "Boot health" line names the reason. [Health checks and messages](#os) says what each one means. A restart often clears a one-off problem. If it comes back, send a photo of the Board page and the events.
 
 ### A change says "Not now"
 
-The board refuses changes while it drives, starts, formats or saves power. The message names the reason. Park, wait for the drive to end, then try again (section 08).
+The board refuses changes while it drives, starts, formats or saves power. The message names the reason. Park, wait for the drive to end, then try again ([Health checks and messages](#os)).
 
 ### Wi-Fi did not start after a restart
 
