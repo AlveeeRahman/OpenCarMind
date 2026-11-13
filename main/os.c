@@ -267,7 +267,7 @@ static void reset_log_boot(void)
     s_rtc_up_s = 0;
 }
 
-static void reset_log_write(void)
+__attribute__((noinline)) static void reset_log_write(void)   /* off os_tick's frame: the board task calls os_tick every pass */
 {
     if (!sdlog_ok()) return;
     sched_system_t sys;

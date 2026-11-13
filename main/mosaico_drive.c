@@ -266,7 +266,7 @@ static void past_load(uint32_t session)
 /* ---- stop logging (OpenCarMind EdgeOS 2.1.1 field fix): every stop path ends READY (verified safe to unplug) or FAILED
    inside bounded steps (stop_core.h). Logging stays off until Start logging or a restart. ---- */
 static stop_ctl_t s_stop;
-static bool s_close_ok, s_rev_flushed, s_turnoff;
+static bool s_close_ok, s_rev_flushed, s_turnoff, s_ble_paused;
 static int64_t s_ready_logged;
 
 static void stop_apply(unsigned act)
@@ -281,7 +281,7 @@ static void stop_apply(unsigned act)
     if (act & STOP_DO_SYNC) sdlog_sync_now();
     if (act & STOP_DO_RELEASE) {
         sdlog_writers_hold(false);
-        obd_ble_set_paused(false);
+        if (s_ble_paused) { obd_ble_set_paused(false); s_ble_paused = false; }   /* only the pause Turn off made */
         elm_user_stop(false);              /* the link may start the next drive (its own session) */
     }
 }
@@ -302,7 +302,11 @@ static void stop_tick(void)
         s_end_req = false;
         stop_state_t was = s_stop.st;
         unsigned act = stop_request(&s_stop, now);
-        if (s_turnoff_req) { s_turnoff = true; s_turnoff_req = false; }
+        if (s_turnoff_req) {
+            s_turnoff_req = false;
+            if (!s_turnoff && s_stop.st == STOP_READY) s_stop.t_done = now;   /* already stopped: 5 s of the sheet, then dark */
+            s_turnoff = true;
+        }
         if (was == STOP_IDLE) {
             s_close_ok = false;
             s_rev_flushed = false;
@@ -331,10 +335,11 @@ static void stop_tick(void)
             s_ready_logged = s_stop.t_req;
             sys_event(EV_INFO, "Logging stopped: safe to unplug");
             s_auto_open = !s_turnoff && s_pub.ok;          /* the drive summary, as after End drive before */
-            if (s_turnoff) obd_ble_set_paused(true);       /* Turn off: no adapter search while it waits for the unplug */
         }
         if (s_stop.st == STOP_FAILED) sys_event(EV_ERROR, "Stop failed: %s", stop_why_text(s_stop.why));
     }
+    /* Turn off (also after a Stop logging that is already READY): no adapter search while it waits for the unplug */
+    if (s_turnoff && s_stop.st == STOP_READY && !s_ble_paused) { obd_ble_set_paused(true); s_ble_paused = true; }
 }
 
 static void drive_task(void *arg)

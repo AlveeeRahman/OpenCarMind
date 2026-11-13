@@ -665,7 +665,10 @@ static void stop_sheet_refresh(void)
     mosaico_drive_stop_get(&st);
     bool active = st.state == STOP_LINK || st.state == STOP_CLOSE || st.state == STOP_SYNC || (st.requested && st.state == STOP_IDLE);
     if (st.state == STOP_IDLE && !st.requested) { stop_close(); s_stop_closed_for = -1; s_stop_dark = false; return; }
-    if (active) s_stop_closed_for = -1;
+    if (active || st.requested) s_stop_closed_for = -1;              /* a new request shows the sheet again */
+    /* Turn off: dark 5 s after READY, once per READY, even with the sheet closed (a tap wakes it: the panel's own path) */
+    if (st.state == STOP_READY && st.turn_off && st.since_done_ms > 5000 && !s_stop_dark) { s_stop_dark = true; s_req_off = true; }
+    if (st.state != STOP_READY) s_stop_dark = false;
     if (!active && s_stop_closed_for == st.state) return;            /* the user closed this result */
     if (!s_stop_sheet) {
         stop_sheet_build();
@@ -698,9 +701,6 @@ static void stop_sheet_refresh(void)
     if (key == 1) ui_set_fmt(s_stop_line, "%s... %lu s", st.text, (unsigned long)st.secs);
     else if (key == 2) ui_set_fmt(s_stop_line, "Logging stopped in %lu s.", (unsigned long)st.secs);
     else ui_set_fmt(s_stop_line, "%s.", st.why);
-    /* Turn off: dark 5 s after READY, once per READY (a tap wakes it: the panel's own wake path) */
-    if (key == 2 && st.turn_off && st.since_done_ms > 5000 && !s_stop_dark) { s_stop_dark = true; s_req_off = true; }
-    if (key != 2) s_stop_dark = false;
 }
 
 /* ---------- End drive / Start drive control: a 64 px ring with a stop icon, held 1 s (the ring fills) to end a drive,
