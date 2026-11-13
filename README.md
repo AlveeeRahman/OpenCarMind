@@ -15,7 +15,7 @@ It ships two on-board models, and you choose between them in the desktop app. Ca
 
 Licence: MIT. Website: <https://alveeerahman.github.io/OpenCarMind/>. Two release lines, both built from this `main`:
 
-- **ESP32-S3 board: OpenCarMind 2.5.1.** The firmware and the desktop app for Windows, macOS and Linux are on the [latest release](https://github.com/AlveeeRahman/OpenCarMind/releases/latest).
+- **ESP32-S3 board: OpenCarMind 2.5.1.** The firmware and the desktop app for Windows, macOS and Linux are on the [latest release](https://github.com/AlveeeRahman/OpenCarMind/releases/latest). A beta, [2.5.1b](https://github.com/AlveeeRahman/OpenCarMind/releases/tag/2.5.1b), has the S3 firmware with every change on `main` since 2.5.1. It is a pre-release, not yet checked on an S3 board as a whole.
 - **ESP-Mosaico: OpenCarMind EdgeOS 2.1.0.** The board image is on the [EdgeOS 2.1.0 release](https://github.com/AlveeeRahman/OpenCarMind/releases/tag/edgeos-2.1.0). Do not flash it on an S3.
 
 The same firmware also runs on Espressif's ESP-Mosaico touch-screen board. Its newest version, [OpenCarMind EdgeOS 2.1.0](#opencarmind-edgeos-210-esp-mosaico), adds a small operating-system layer (a boot health check, refusals of risky changes while you drive, model admission by response-time analysis and battery protection) and, [new in 2.1.0](#new-in-opencarmind-edgeos-210), AI services for the battery and the radios with a Health app to show them. [User manuals](#user-manuals) for both boards are in [docs/manual](docs/manual).
