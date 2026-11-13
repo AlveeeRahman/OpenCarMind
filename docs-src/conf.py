@@ -36,9 +36,9 @@ suppress_warnings = []
 exclude_patterns = ["_build", "_gen", "README.md", "Thumbs.db", ".DS_Store"]
 templates_path = ["_templates"]
 
-# The canonical address of the site. The GitHub Pages build serves it here. Set OCM_DOCS_BASE_URL to build the
+# The canonical address of the site: BuildForPeople serves this build there, and GitHub Pages serves a copy. Set OCM_DOCS_BASE_URL to build the
 # same pages for another address: every link inside the site is relative, only <link rel="canonical"> uses this.
-html_baseurl = os.environ.get("OCM_DOCS_BASE_URL", "https://alveeerahman.github.io/OpenCarMind/docs/")
+html_baseurl = os.environ.get("OCM_DOCS_BASE_URL", "https://buildforpeople.dev/docs/opencarmind/")
 
 html_theme = "pydata_sphinx_theme"
 html_title = "OpenCarMind documentation"
