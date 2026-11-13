@@ -48,6 +48,7 @@ def masked(text):
             fence = m.group(1)
             out.append("")
             continue
+        line = re.sub(r"&(?:[a-z]+|#\d+);", "x", line)        # an HTML entity's ; is not a semicolon
         out.append("" if MYST_LINE.match(line) else line)
     return "\n".join(out)
 
