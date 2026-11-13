@@ -13,7 +13,10 @@ OpenCarMind is an open-source OBD2 logger and dashboard for the ESP32, with a pr
 
 It ships two on-board models, and you choose between them in the desktop app. CarMind E.V is fixed and tested. CarMind R.E.V is my first model that keeps learning in your car: the board itself updates part of the model from what your car reports while you drive, with no computer or cloud in the loop.
 
-Version 2.5.1. Licence: MIT. Website: <https://alveeerahman.github.io/OpenCarMind/>. Downloads for the firmware and the desktop app are on the [Releases page](https://github.com/AlveeeRahman/OpenCarMind/releases/latest).
+Licence: MIT. Website: <https://alveeerahman.github.io/OpenCarMind/>. Two release lines, both built from this `main`:
+
+- **ESP32-S3 board: OpenCarMind 2.5.1.** The firmware and the desktop app for Windows, macOS and Linux are on the [latest release](https://github.com/AlveeeRahman/OpenCarMind/releases/latest).
+- **ESP-Mosaico: OpenCarMind EdgeOS 2.1.0.** The board image is on the [EdgeOS 2.1.0 release](https://github.com/AlveeeRahman/OpenCarMind/releases/tag/edgeos-2.1.0). Do not flash it on an S3.
 
 The same firmware also runs on Espressif's ESP-Mosaico touch-screen board. Its newest version, [OpenCarMind EdgeOS 2.1.0](#opencarmind-edgeos-210-esp-mosaico), adds a small operating-system layer (a boot health check, refusals of risky changes while you drive, model admission by response-time analysis and battery protection) and, [new in 2.1.0](#new-in-opencarmind-edgeos-210), AI services for the battery and the radios with a Health app to show them. [User manuals](#user-manuals) for both boards are in [docs/manual](docs/manual).
 
@@ -88,7 +91,7 @@ The same firmware also runs on Espressif's ESP-Mosaico touch-screen board. Its n
 | Steady cruising with your foot on the gas | can be shown as braking | corrected in 2.5.1 |
 | Fill-up calibration | yes | yes |
 | Best for | a fixed, tested model | older cars, roughly pre-2020, that have no fuel-rate PID and can lose the airflow (MAF) reading |
-| On the ESP-Mosaico (OpenCarMind EdgeOS 2.0.0, mossREV 1.2.0) | included, switch in Settings > MODEL | included, the default on a new board |
+| On the ESP-Mosaico (OpenCarMind EdgeOS 2.1.0, as in 2.0.0 and mossREV 1.2.0) | included, switch in Settings > MODEL | included, the default on a new board |
 
 <p align="center"><img src="docs/images/ev-to-rev.gif" width="900" alt="Animated, from CarMind E.V to CarMind R.E.V in seven steps: E.V with 38,679 parameters, 89 KB and 3.5 ms per run. Structured pruning removes whole channels, down to 19,815 parameters. Knowledge distillation, E.V teaching R.E.V. Quantised for the chip: 66 KB and 2.9 ms. Learns in your car: fuel R2 from 0.709 to 0.867 on 31 unseen cars with the airflow hidden. Explainable AI fix: cruising called right on my drives from 10.7 to 87.5 percent. Shrugs off bad data: with 1 percent bad labels fuel R2 stays 0.867, where 2.5.0 fell to 0.696"></p>
 
@@ -243,7 +246,7 @@ Two user manuals for drivers and test users, each as Markdown here and as a page
 - [OpenCarMind EdgeOS 2.1.0 on the ESP-Mosaico](docs/manual/edgeos-2.1.0.md): everything in 2.0.0 plus the Health app, the pairing questions and the new messages.
 - [OpenCarMind EdgeOS 2.0.0 on the ESP-Mosaico](docs/manual/edgeos-2.0.0.md) ([web page](https://alveeerahman.github.io/OpenCarMind/manual/edgeos-2.0.0.html)): the 16 apps, Settings, Wi-Fi, the two models, the health check and every message the board shows.
 
-Both come from one source each in [docs/manual/src](docs/manual/src), built by [docs/manual/build.py](docs/manual/build.py).
+The ESP32-S3 and EdgeOS 2.0.0 manuals come from one source each in [docs/manual/src](docs/manual/src), built by [docs/manual/build.py](docs/manual/build.py). The EdgeOS 2.1.0 manual is Markdown only for now.
 
 ## The models
 
@@ -400,7 +403,7 @@ OpenCarMind also runs on Espressif's ESP-Mosaico<sup>[[12]](#ref-12)</sup>, an E
 
 OpenCarMind EdgeOS comes from the same source tree as the S3 version and keeps everything mossREV 1.2.0 has: both models (CarMind R.E.V, the default on a new board, and CarMind E.V, each re-quantized for the S31), the 16 apps on the touch screen with Wi-Fi search and join, a light and a dark theme, and per-drive event logs. What 2.0.0 adds is a small operating-system layer, described below. The image above is rendered on a computer from the 2.0.0 screen code (`tests/host/uishot`, the same LVGL code the board runs) with example values. It is not a photo of the board. The OS layer does not change the S3 build. Up to 4aeff43, every byte the S3 chip loads was the same as in the mossREV 1.2.0 tree. The pairing change merged after the board check is behind one switch, `CONFIG_OBD_BLE_PAIR_CONFIRM`, which is off for the S3 by default. With it off, the S3 image built from this source equals the 4aeff43 S3 image except the build time, the ELF SHA-256 and the image's checksum and hash (see [Changes after the board check](#changes-after-the-board-check)).
 
-OpenCarMind EdgeOS 2.0.0 finished its board check, including a 10-minute soak, and 2.1.0 passed the checks listed above. The Releases page has no Mosaico download yet, so you build it from this repository with the steps in [docs/MOSAICO.md](docs/MOSAICO.md). The [status table](#what-is-verified-on-the-board) at the end of this section says what the board showed.
+OpenCarMind EdgeOS 2.0.0 finished its board check, including a 10-minute soak, and 2.1.0 passed the checks listed above. The 2.1.0 image is on the [EdgeOS 2.1.0 release](https://github.com/AlveeeRahman/OpenCarMind/releases/tag/edgeos-2.1.0), built from `main` at 1053f9d. You can also build it from this repository with the steps in [docs/MOSAICO.md](docs/MOSAICO.md). The [status table](#what-is-verified-on-the-board) at the end of this section says what the board showed.
 
 The full guide is [docs/MOSAICO.md](docs/MOSAICO.md): the hardware, flashing, every app, the two models, Smart swipe and Smart UI, the storage, the NAND, the OS layer and the known limits. The [OpenCarMind EdgeOS user manual](docs/manual/edgeos-2.1.0.md) explains every screen and message for a driver.
 
@@ -717,7 +720,7 @@ The saved adapter used to be known by its Bluetooth address alone. A device that
 
 Flashing needs no buttons. Open the board's USB port at 1200 baud, then write the merged image with esptool 5.6.0 or later. [docs/MOSAICO.md](docs/MOSAICO.md#flashing) has the commands. The merged image erases the NVS partition, so the pairing with the desktop app, the saved Wi-Fi networks and the settings go, and you pair again. The drive logs on the NAND and the flash FAT's state files are not written.
 
-The board-checked image is `EdgeOS-2.0.0-esp32s31-merged.bin`, built from 4aeff43, with a SHA-256 that starts `a225125d27f3906c`. It is not published yet. The merged branch tip (06ddf1d) has no released image yet. The release image will be rebuilt from the branch tip, and it gets a new SHA-256.
+The released image is `OpenCarMind-EdgeOS-2.1.0-ESP-Mosaico-ESP32-S31-merged.bin` on the [EdgeOS 2.1.0 release](https://github.com/AlveeeRahman/OpenCarMind/releases/tag/edgeos-2.1.0), with an app-only image and `SHA256SUMS` beside it. To keep the pairing and settings, write only the app parts, as the release notes say. The 2.0.0 board check ran on `EdgeOS-2.0.0-esp32s31-merged.bin`, built from 4aeff43 (SHA-256 starts `a225125d27f3906c`), which was never published.
 
 To go back, flash the mossREV 1.2.0 merged image the same way. Going back is not yet verified on the board.
 

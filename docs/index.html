@@ -26,16 +26,16 @@
   "@context": "https://schema.org",
   "@type": "SoftwareSourceCode",
   "name": "OpenCarMind",
-  "description": "Open-source OBD-II car data logger for the ESP32-S3 with a neural network that runs on the chip. Reads a Bluetooth LE ELM327 adapter and saves every drive to an SD card.",
+  "description": "Open-source OBD-II car data logger for the ESP32-S3 and the ESP-Mosaico (ESP32-S31) with a neural network that runs on the chip. Reads a Bluetooth LE ELM327 adapter and saves every drive to the board's own storage. On the ESP-Mosaico it runs OpenCarMind EdgeOS 2.1.0.",
   "url": "https://alveeerahman.github.io/OpenCarMind/",
   "codeRepository": "https://github.com/AlveeeRahman/OpenCarMind",
   "programmingLanguage": ["C", "C++", "Rust", "Python"],
-  "runtimePlatform": "ESP32-S3 with ESP-IDF v6.1",
+  "runtimePlatform": "ESP32-S3 and ESP32-S31 (ESP-Mosaico) with ESP-IDF v6.1",
   "applicationCategory": "Automotive data logger",
   "keywords": "OBD2 logger, OBD2 data logger, OBD2 dashboard, car data logger, open source OBD2, ESP32 OBD2, ESP32-S31, ESP-Mosaico, OBD-II logger, ESP32-S3, ELM327 BLE, Bluetooth LE OBD adapter, TinyML, edge AI, on-device inference, ESP-DL, car diagnostics, open source",
   "license": "https://github.com/AlveeeRahman/OpenCarMind/blob/main/LICENSE",
   "version": "2.5.1",
-  "dateModified": "2026-11-05",
+  "dateModified": "2026-11-13",
   "downloadUrl": "https://github.com/AlveeeRahman/OpenCarMind/releases/latest",
   "author": {"@type": "Person", "name": "Alvee Rahman", "url": "https://github.com/AlveeeRahman"}
 }
@@ -46,7 +46,7 @@
   "@type": "SoftwareApplication",
   "name": "OpenCarMind",
   "applicationCategory": "UtilitiesApplication",
-  "operatingSystem": "ESP32-S3 firmware; desktop app for macOS, Windows, Linux",
+  "operatingSystem": "ESP32-S3 firmware; OpenCarMind EdgeOS for the ESP-Mosaico; desktop app for macOS, Windows, Linux",
   "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"},
   "url": "https://alveeerahman.github.io/OpenCarMind/",
   "downloadUrl": "https://github.com/AlveeeRahman/OpenCarMind/releases/latest",
@@ -67,11 +67,11 @@
     {"@type": "Question", "name": "What does the on-board AI model do?",
      "acceptedAnswer": {"@type": "Answer", "text": "It classifies the last 5 seconds of driving as stopped, braking, accelerating or cruising, and estimates brake pressure, flywheel torque and fuel rate, which the OBD port does not report. CarMind R.E.V is about 66 KB, runs in about 2.9 ms per row and keeps learning your car: its fuel use and the engine size its torque estimate uses. CarMind E.V is the fixed 89 KB model."}},
     {"@type": "Question", "name": "Does OpenCarMind need a phone, an account or the internet?",
-     "acceptedAnswer": {"@type": "Answer", "text": "No. Drives are saved to an SD card in the car as CSV, JSON and text. Wi-Fi is optional: it sets the clock and, once you pair the board with the desktop app over USB, sends new drives to that app on your own computer every 10 seconds while the car is parked. Nothing goes to a cloud."}},
+     "acceptedAnswer": {"@type": "Answer", "text": "No. Drives are saved on the board as CSV, JSON and text: on an SD card on the ESP32-S3, on the 128 MB NAND on the ESP-Mosaico. Wi-Fi is optional and only sets the clock. Drives reach the desktop app on your own computer over the USB cable while the Wi-Fi upload is reworked. Nothing goes to a cloud."}},
     {"@type": "Question", "name": "Which board does it run on?",
-     "acceptedAnswer": {"@type": "Answer", "text": "The Waveshare ESP32-S3-LCD-1.47B, with a FAT-formatted SD card. Other ESP32-S3 boards need the pin map in main/board.h edited. The desktop app can flash the firmware with a bundled esptool, so no ESP-IDF install is needed."}},
-    {"@type": "Question", "name": "Will OpenCarMind run on the ESP32-S31 and ESP-Mosaico?",
-     "acceptedAnswer": {"@type": "Answer", "text": "That is the next port. The S31 runs different machine code from the S3, but both use ESP-IDF, and OpenCarMind already compiles and links for the S31 with only the pin map and one wakeup call changed. The model needs a fresh export for the S31. Nothing has run on a real Mosaico yet."}},
+     "acceptedAnswer": {"@type": "Answer", "text": "The Waveshare ESP32-S3-LCD-1.47B, with a FAT-formatted SD card, and Espressif's ESP-Mosaico (ESP32-S31), which runs OpenCarMind EdgeOS. Other ESP32-S3 boards need the pin map in main/board.h edited. The desktop app can flash the S3 firmware with a bundled esptool, so no ESP-IDF install is needed."}},
+    {"@type": "Question", "name": "Does OpenCarMind run on the ESP32-S31 and ESP-Mosaico?",
+     "acceptedAnswer": {"@type": "Answer", "text": "Yes. OpenCarMind EdgeOS 2.1.0 runs on the ESP-Mosaico and is on the Releases page. It is built from the same source tree as the S3 firmware, with both models re-quantized for the S31, 17 touch apps, a small operating-system layer and a Health app for the battery and the radios. Do not flash the Mosaico image on an S3."}},
     {"@type": "Question", "name": "Is OpenCarMind free?",
      "acceptedAnswer": {"@type": "Answer", "text": "Yes. It is open source under the MIT licence, with no account and no paid tier."}}
   ]
@@ -138,7 +138,7 @@
       <a href="#how">How it works</a>
       <a href="#adapters">Adapters</a>
       <a href="#model">Models</a>
-      <a href="#next">Next board</a>
+      <a href="#mosaico">ESP-Mosaico</a>
       <a href="#install">Install</a>
       <a href="#questions">Questions</a>
       <a href="https://github.com/AlveeeRahman/OpenCarMind">GitHub</a>
@@ -147,9 +147,10 @@
 
   <header class="hero">
     <h1>An open-source OBD2 logger with TinyML on the chip</h1>
-    <p class="tag">OpenCarMind turns an ESP32-S3 board and a Bluetooth LE OBD-II adapter into a car data logger with a neural network on board that keeps learning your car. It needs no phone, no account and no internet. Every drive goes to an SD card in the car, and to the desktop app on your own computer if you pair it.</p>
+    <p class="tag">OpenCarMind turns an ESP32-S3 board and a Bluetooth LE OBD-II adapter into a car data logger with a neural network on board that keeps learning your car. It needs no phone, no account and no internet. Every drive goes to an SD card in the car, and to the desktop app on your own computer if you pair it. On Espressif's ESP-Mosaico touch-screen board it runs as OpenCarMind EdgeOS 2.1.0, with a Health app for the battery and the radios.</p>
     <div class="ctas">
-      <a class="cta primary" href="https://github.com/AlveeeRahman/OpenCarMind/releases/latest">Download 2.5.1</a>
+      <a class="cta primary" href="https://github.com/AlveeeRahman/OpenCarMind/releases/latest">Download 2.5.1 for the ESP32-S3</a>
+      <a class="cta" href="https://github.com/AlveeeRahman/OpenCarMind/releases/tag/edgeos-2.1.0">EdgeOS 2.1.0 for the ESP-Mosaico</a>
       <a class="cta" href="https://github.com/AlveeeRahman/OpenCarMind">Source on GitHub</a>
       <a class="cta" href="#adapters">Check your adapter</a>
     </div>
@@ -211,19 +212,25 @@
     <p>Trained on public data, the HCRL Driving Dataset (Kwak, Woo and Kim, PST 2016)<sup><a href="#r2">[2]</a></sup> and the Vehicle Energy Dataset (Oh, LeBlanc and Peng, 2020, Apache-2.0)<sup><a href="#r3">[3]</a></sup>, plus drives from my own car.</p>
   </section>
 
-  <section id="next">
-    <h2>Next board: ESP-Mosaico with the ESP32-S31</h2>
-    <figure class="fig"><img src="images/mosaico-rev.png" alt="Concept: OpenCarMind with CarMind R.E.V on ESP-Mosaico, three 480 by 480 screens in the dark, light and dark themes: drive gauges, what R.E.V sees and estimates, and what it has learned" loading="lazy" width="3200" height="1480"></figure>
+  <section id="mosaico">
+    <span id="next"></span>
+    <h2>ESP-Mosaico: OpenCarMind EdgeOS 2.1.0</h2>
+    <div class="screens">
+      <img src="images/mosaico/health-battery-dark.png" alt="Health app, Battery page, captured on the board: a blue Learning card says the board is learning the battery and needs 10 more full charges to judge its health. The header says All good." loading="lazy" width="480" height="480">
+      <img src="images/mosaico/health-guard-dark.png" alt="Health app, Guard page, captured on the board: the network guard is learning this place in its first 2 hours and blocks nothing yet." loading="lazy" width="480" height="480">
+      <img src="images/mosaico/health-ai-dark.png" alt="Health app, AI page, captured on the board: every AI feature on time." loading="lazy" width="480" height="480">
+      <img src="images/mosaico/health-issue-worn-light.png" alt="Health app in the light theme, from a test build that writes a state into the Health screen only: an amber Check soon card says the battery is wearing out, holds 76 % of its rated charge, plan to replace the cell." loading="lazy" width="480" height="480">
+    </div>
     <div class="narrow">
-      <p>I have an ESP-Mosaico on order<sup><a href="#r4">[4]</a></sup>. Its ESP32-S31 has two RISC-V cores at 320 MHz with a 128-bit SIMD path, Wi-Fi 6, and Bluetooth 5.4 with both LE and Classic<sup><a href="#r5">[5]</a></sup>. For a car logger that means a 2.16-inch 480 × 480 AMOLED touch screen, Classic adapters such as the OBDLink MX+ within reach, CAN through TWAI and a transceiver, an IMU and magnetometer, a 65 mAh battery to finish the last save, and 16 MB of PSRAM<sup><a href="#r6">[6]</a>,<a href="#r7">[7]</a></sup>. It has no microSD slot, so drives would go to its 128 MB NAND.</p>
-      <p>If you build with the ESP32, this is a good board to get, and the port goes faster with more people testing it. The Vision Combo Kit is 59 USD on the <a href="https://store.mosaico.ai/products/esp-mosaico">ESP-Mosaico Store</a> (pre-order, about 15 days to dispatch, as of 3 November 2026). Found something on yours? Open an issue or a pull request on <a href="https://github.com/AlveeeRahman/OpenCarMind">GitHub</a>.</p>
-      <p class="ctas" style="justify-content:flex-start"><a class="cta primary" href="https://store.mosaico.ai/products/esp-mosaico">Get an ESP-Mosaico</a></p>
-      <p>The S3 and S31 do not share machine code (Xtensa against RISC-V), but they share ESP-IDF. OpenCarMind was built for the S31 with ESP-IDF v6.1's preview target: every library compiled unchanged, and only the board pin map and one sleep-wakeup call needed changing before it linked. The model must be exported again for the S31, from the same weights. The full comparison is in the <a href="https://github.com/AlveeeRahman/OpenCarMind/blob/rev-c2/README.md#how-the-s3-and-the-s31-are-compatible">README</a>.</p>
+      <p>OpenCarMind runs on Espressif's ESP-Mosaico<sup><a href="#r4">[4]</a></sup>, an ESP32-S31 board with two RISC-V cores at 320 MHz, a 2.16-inch 480 × 480 AMOLED touch screen, 32 MB of PSRAM (the chip reports 32 MB; the board guide says 16 MB), a small battery and a 128 MB NAND for the drive logs<sup><a href="#r5">[5]</a>–<a href="#r7">[7]</a></sup>. That build is called OpenCarMind EdgeOS (mossREV up to 1.2.0). It is not related to Ubiquiti's EdgeOS router software.</p>
+      <p>It comes from the same source tree as the S3 firmware and keeps what the S3 has: both models (CarMind R.E.V, the default on a new board, and CarMind E.V, each re-quantized for the S31), Bluetooth LE to the adapter, Wi-Fi for the clock only, and the desktop app over USB. It adds 17 touch apps (the 16 of 2.0.0 and Health), light and dark themes, and a small operating-system layer on FreeRTOS: a boot health check, Wi-Fi held until the board is healthy, refusals of risky changes while you drive, model admission by response-time analysis, and battery protection.</p>
+      <h3>New in 2.1.0: the Health app</h3>
+      <p>Three pages, Battery, Guard and AI, each opening with one card in plain words: what is wrong, what it means and what to do. Behind them are three small AI services: the battery's charge and health, a battery fault check that learns your cell's normal over 24 hours, and a network guard that blocks Bluetooth and Wi-Fi floods without ever cutting your car link. They share one worker below the screen and the models, and the board slows them first when it is busy.</p>
+      <p>Checked on the board (build 81017a5): boot health good at 68.8 s, the AI services admitted with a worst-case response of 5.00 ms against a 1,000 ms deadline, a 10-minute soak with no restart and no missed AI deadline in 1,181 runs, and internal RAM never below 78,003 B. Not checked yet: pairing your own adapter, a real drive, the battery unplugged, and the battery health and fault models after their warm-ups. The four screens above are captures from the board; the amber card comes from a test build that writes a state into the Health screen only.</p>
+      <p class="ctas" style="justify-content:flex-start"><a class="cta primary" href="https://github.com/AlveeeRahman/OpenCarMind/releases/tag/edgeos-2.1.0">Download EdgeOS 2.1.0</a> <a class="cta" href="https://github.com/AlveeeRahman/OpenCarMind/blob/main/docs/MOSAICO.md">Full guide</a> <a class="cta" href="https://store.mosaico.ai/products/esp-mosaico">Get an ESP-Mosaico</a></p>
       <h3>Continual learning on the S31</h3>
-      <p>On today's board, CarMind R.E.V already learns in a narrow way: the network stays frozen and only its fuel read-out refits in plain C from your drives, checked against a holdout before it goes live. That code should move to the S31 unchanged. The classifier and the other estimates have no labels in the car, so they stay fixed today.</p>
-      <p>On a Mosaico they could learn. The accelerometer labels stopped, braking, accelerating and cruising, and PIDs 0x5E, 0x62 and 0x63 label fuel rate and torque on cars that report them. ESP-DL runs inference only, so the int8 trunk stays frozen and the heads, a few hundred weights, update in plain C<sup><a href="#r8">[8]</a>,<a href="#r9">[9]</a></sup>. The 16 MB of PSRAM and the 128 MB NAND hold a replay buffer of past windows against forgetting<sup><a href="#r10">[10]</a></sup>, and the battery lets an update finish after the ignition is off. Both chips have single-precision float hardware only, so the S31's gains are clock, memory, battery and the motion sensor.</p>
-      <p><strong>OpenCarMind will ship a release for the ESP-Mosaico.</strong> It builds from the same source tree as the S3 version, which stays supported. Work starts when the author's board arrives.</p>
-      <p>Keep the adapter in the car and carry the Mosaico with you. Get in, and it finds the adapter it already paired with and starts logging. Walk back inside, and it sends the drive to the desktop app over your Wi-Fi. For long drives, power it from the car's USB port or the Mosaico Battery Module.</p>
+      <p>CarMind R.E.V already learns in a narrow way: the network stays frozen and only its fuel read-out refits in plain C from your drives, checked against a holdout before it goes live. The classifier and the other estimates have no labels in the car, so they stay fixed today.</p>
+      <p>On the Mosaico they could learn next. The accelerometer could label stopped, braking, accelerating and cruising, and PIDs 0x5E, 0x62 and 0x63 label fuel rate and torque on cars that report them. ESP-DL runs inference only, so the int8 trunk would stay frozen and the heads, a few hundred weights, update in plain C<sup><a href="#r8">[8]</a>,<a href="#r9">[9]</a></sup>. The PSRAM and the NAND could hold a replay buffer of past windows against forgetting<sup><a href="#r10">[10]</a></sup>. This is planned work, not built.</p>
     </div>
   </section>
 
@@ -237,8 +244,14 @@ idf.py set-target esp32s3
 idf.py build
 idf.py -p /dev/cu.usbmodemXXXX flash</code></pre>
     <p>You need ESP-IDF v6.1, a Waveshare ESP32-S3-LCD-1.47B and a FAT-formatted SD card. Settings and file formats are in <a href="https://github.com/AlveeeRahman/OpenCarMind/blob/main/docs/CONFIGURATION.md">docs/CONFIGURATION.md</a>.</p>
+    <h3>On the ESP-Mosaico</h3>
+    <p>Download the merged image from the <a href="https://github.com/AlveeeRahman/OpenCarMind/releases/tag/edgeos-2.1.0">EdgeOS 2.1.0 release</a> and check it against <code>SHA256SUMS</code>. You need esptool 5.6.0 or later and pyserial, and no buttons. Open the board's USB port at 1200 baud and close it again, then write the image to the new port that appears:</p>
+<pre><code>python -c "import serial; serial.Serial('/dev/cu.usbmodemXXXX', 1200).close()"
+esptool --chip esp32s31 --port &lt;ROM port&gt; --before no-reset --after hard-reset write-flash \
+    --flash-mode dio --flash-freq 80m --flash-size 16MB 0x0 OpenCarMind-EdgeOS-2.1.0-ESP-Mosaico-ESP32-S31-merged.bin</code></pre>
+    <p>The merged image erases the pairing, the saved Wi-Fi networks and the settings, not the drive logs on the NAND. Pair again from the desktop app afterwards. The full steps are in <a href="https://github.com/AlveeeRahman/OpenCarMind/blob/main/docs/MOSAICO.md#flashing">docs/MOSAICO.md</a>.</p>
     <h3>User manuals</h3>
-    <p>Two manuals for drivers and test users: <a href="manual/esp32-s3.html">OpenCarMind 2.5.1 on the ESP32-S3 board</a> and <a href="manual/edgeos-2.0.0.html">OpenCarMind EdgeOS 2.0.0 on the ESP-Mosaico</a>.</p>
+    <p>Manuals for drivers and test users: <a href="manual/esp32-s3.html">OpenCarMind 2.5.1 on the ESP32-S3 board</a>, <a href="https://github.com/AlveeeRahman/OpenCarMind/blob/main/docs/manual/edgeos-2.1.0.md">OpenCarMind EdgeOS 2.1.0 on the ESP-Mosaico</a> and the earlier <a href="manual/edgeos-2.0.0.html">EdgeOS 2.0.0 manual</a>.</p>
   </section>
 
   <section class="narrow">
@@ -246,9 +259,9 @@ idf.py -p /dev/cu.usbmodemXXXX flash</code></pre>
     <details><summary>Can an ESP32 read OBD-II data over Bluetooth?</summary><p>Yes, from a Bluetooth LE adapter that speaks the ELM327 command set. The ESP32-S3 has no Classic Bluetooth radio, so Classic-only adapters (Bluetooth 3.0, SPP) cannot connect. OpenCarMind finds the adapter, picks its serial characteristics, pairs only when the adapter asks, and polls every Mode 01 field the car reports.</p></details>
     <details><summary>Which OBD2 adapters work with OpenCarMind?</summary><p>The LELink has been tested on the board. Veepeak OBDCheck BLE and BLE+, OBDLink CX, Carista, Vgate iCar Pro BLE 4.0 and vLinker MC+ are expected to work from their published Bluetooth layouts. OBDLink MX+, OBDLink LX and other Classic-only adapters will not work. See the <a href="#adapters">table above</a>.</p></details>
     <details><summary>What does the on-board AI model do?</summary><p>It classifies the last 5 seconds of driving as stopped, braking, accelerating or cruising, and estimates brake pressure, flywheel torque and fuel rate, which the OBD port does not report. CarMind R.E.V is about 66 KB, runs in about 2.9 ms per row and keeps learning your car: its fuel use and the engine size its torque estimate uses. CarMind E.V is the fixed 89 KB model.</p></details>
-    <details><summary>Does it need a phone, an account or the internet?</summary><p>No. Drives are saved to an SD card in the car. Wi-Fi is optional: it sets the clock and, once paired, sends new drives to the desktop app on your own computer while the car is parked. Nothing goes to a cloud.</p></details>
-    <details><summary>Which board does it run on?</summary><p>The Waveshare ESP32-S3-LCD-1.47B. Other ESP32-S3 boards need the pin map in <code>main/board.h</code> edited.</p></details>
-    <details><summary>Will OpenCarMind run on the ESP32-S31 and ESP-Mosaico?</summary><p>That is the next port. The S31 runs different machine code from the S3, but both use ESP-IDF, and OpenCarMind already compiles and links for the S31 with only the pin map and one wakeup call changed. The model needs a fresh export for the S31. Nothing has run on a real Mosaico yet.</p></details>
+    <details><summary>Does it need a phone, an account or the internet?</summary><p>No. Drives are saved on the board: an SD card on the ESP32-S3, the 128 MB NAND on the ESP-Mosaico. Wi-Fi is optional and only sets the clock. Drives reach the desktop app on your own computer over the USB cable while the Wi-Fi upload is reworked. Nothing goes to a cloud.</p></details>
+    <details><summary>Which board does it run on?</summary><p>The Waveshare ESP32-S3-LCD-1.47B, and Espressif's ESP-Mosaico (ESP32-S31), which runs <a href="#mosaico">OpenCarMind EdgeOS 2.1.0</a>. Other ESP32-S3 boards need the pin map in <code>main/board.h</code> edited.</p></details>
+    <details><summary>Does OpenCarMind run on the ESP32-S31 and ESP-Mosaico?</summary><p>Yes. OpenCarMind EdgeOS 2.1.0 runs on the ESP-Mosaico and is on the Releases page. It is built from the same source tree as the S3 firmware, with both models re-quantized for the S31, 17 touch apps, a small operating-system layer and a Health app for the battery and the radios. Do not flash the Mosaico image on an S3.</p></details>
     <details><summary>Is OpenCarMind free?</summary><p>Yes. It is open source under the MIT licence, with no account and no paid tier.</p></details>
   </section>
 
@@ -269,7 +282,7 @@ idf.py -p /dev/cu.usbmodemXXXX flash</code></pre>
   </section>
 
   <footer>
-    OpenCarMind is open source under the MIT licence. Version 2.5.1. Also by me: <a href="https://alveeerahman.github.io/mr-usage/">Mr. Usage</a>, <a href="https://alveeerahman.github.io/llm-dogfight/">LLM Dogfight</a>, <a href="https://alveeerahman.github.io/skill-vision/">Skill Vision</a>, <a href="https://alveeerahman.github.io/agent-oracle/">Agent Oracle</a>, <a href="https://alveeerahman.github.io/research-hound/">Research Hound</a>.
+    OpenCarMind is open source under the MIT licence. Version 2.5.1 for the ESP32-S3, OpenCarMind EdgeOS 2.1.0 for the ESP-Mosaico. Also by me: <a href="https://alveeerahman.github.io/mr-usage/">Mr. Usage</a>, <a href="https://alveeerahman.github.io/llm-dogfight/">LLM Dogfight</a>, <a href="https://alveeerahman.github.io/skill-vision/">Skill Vision</a>, <a href="https://alveeerahman.github.io/agent-oracle/">Agent Oracle</a>, <a href="https://alveeerahman.github.io/research-hound/">Research Hound</a>.
   </footer>
 </div>
 </body>
