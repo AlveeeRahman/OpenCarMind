@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased
+## 2.5.1b
 
-Changes on `main` since the 2.5.1 release for the ESP32-S3, not yet in an S3 release. OpenCarMind EdgeOS for the ESP-Mosaico is built from the same `main`; its releases have their own entries below.
+Beta for the ESP32-S3, built from `main`: every change on `main` since the 2.5.1 release for the S3. The 2.5.1 release stays the tested S3 download. OpenCarMind EdgeOS for the ESP-Mosaico is built from the same `main`; its releases have their own entries below.
 
 A new brand, a screen made for the LCD, and a visible power-off.
 
