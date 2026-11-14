@@ -55,3 +55,33 @@ p.ocm-caption { font-size: 0.9rem; color: var(--pst-color-text-muted); }
 
 /* Header comments and protocol listings wrap instead of scrolling sideways. */
 div.highlight-text pre { white-space: pre-wrap; }
+
+/* Top bar: keep it on one row from the theme's desktop breakpoint (992px) up.
+   The theme lets the header items wrap, which pushed search, versions and the
+   icons onto a second row on iPad landscape and small laptops. */
+@media (min-width: 992px) {
+  .bd-header .navbar-header-items { flex-wrap: nowrap; }
+  .bd-header .navbar-header-items__center { min-width: 0; }
+  .bd-header .navbar-header-items__center .navbar-nav { flex-wrap: nowrap; }
+  .bd-header .navbar-header-items__center .nav-link { white-space: nowrap; }
+  .bd-header .navbar-header-items__end { flex-shrink: 0; flex-wrap: nowrap; }
+}
+
+/* Under 1280px the search field shrinks to its icon. Ctrl+K still opens it. */
+@media (min-width: 992px) and (max-width: 1279.98px) {
+  .bd-header .search-button-field { width: 2.4rem; height: 2.4rem; padding: 0; justify-content: center; border-radius: 0.5rem; }
+  .bd-header .search-button-field .search-button__default-text,
+  .bd-header .search-button-field .search-button__kbd-shortcut { display: none; }
+}
+
+/* Between 992px and 1100px the links sit a little closer, so the row never touches the edge. */
+@media (min-width: 992px) and (max-width: 1099.98px) {
+  .bd-header .navbar-header-items__center ul.navbar-nav > li.nav-item > .nav-link { padding-inline: 0.25rem; }
+}
+
+/* The collapse-sidebar control is a quiet button, not an underlined link. */
+.bd-sidebar-primary #pst-collapse-sidebar-button { gap: 0.45rem; padding: 0.2rem 0.5rem; border-radius: 0.4rem; color: var(--pst-color-text-muted); font-size: 0.85rem; }
+.bd-sidebar-primary #pst-collapse-sidebar-button .pst-icon,
+.bd-sidebar-primary #pst-collapse-sidebar-button .pst-collapse-sidebar-label,
+.bd-sidebar-primary #pst-collapse-sidebar-button .pst-expand-sidebar-label { color: inherit; text-decoration: none; }
+.bd-sidebar-primary #pst-collapse-sidebar-button:hover { color: var(--pst-color-text-base); background-color: var(--pst-color-surface); }
