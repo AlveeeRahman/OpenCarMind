@@ -57,7 +57,8 @@ html_theme_options = {
     "navbar_center": ["navbar-nav"],
     "navbar_end": ["ocm-versions", "theme-switcher", "navbar-icon-links"],
     "navbar_persistent": ["search-button-field"],
-    "header_links_before_dropdown": 6,
+    # Four section links and "More" fit on one row down to 992px (see _static/ocm.css).
+    "header_links_before_dropdown": 4,
     "icon_links": [
         {"name": "GitHub", "url": "https://github.com/AlveeeRahman/OpenCarMind", "icon": "fa-brands fa-github"},
         {"name": "Releases", "url": "https://github.com/AlveeeRahman/OpenCarMind/releases",
