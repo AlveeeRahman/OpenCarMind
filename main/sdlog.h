@@ -101,6 +101,20 @@ void sdlog_prepare_sleep(void);
    the reset hits. Never returns the lock; the caller resets right after. Not for the panic handler. */
 void sdlog_quiesce_for_reset(void);
 #if CONFIG_IDF_TARGET_ESP32S31
+/* Stop logging (stop_core.h, OpenCarMind EdgeOS 2.1.1): the open session's files flushed, synced and closed, waiting at
+   most timeout_ms for the logger's lock (false: busy, try again). A session with no rows is closed and its header-only
+   files removed. True when no session is open afterwards. */
+bool    sdlog_session_open(void);
+bool    sdlog_stop_close(uint32_t timeout_ms);
+/* Background writers (the battery log): sdlog_writer_enter() is false while a stop holds them; a true needs a matching
+   sdlog_writer_exit(). sdlog_writers_idle(): held and none inside a write. */
+void    sdlog_writers_hold(bool on);
+bool    sdlog_writers_idle(void);
+bool    sdlog_writer_enter(void);
+void    sdlog_writer_exit(void);
+int64_t sdlog_ms_since_any_write(void);   /* sdlog_ms_since_write() or the last background write, the newer */
+#endif
+#if CONFIG_IDF_TARGET_ESP32S31
 /* mossREV OS boot health: the flash FAT's state (1 mounted, 0 not, -1 damaged), FAT sectors repaired, audit warning */
 int  sdlog_flash_health(uint16_t *repairs, bool *audit_warn);
 #endif

@@ -28,6 +28,11 @@
 #include "nand_store.h"
 #endif
 #include "ai_svc.h"
+#include <time.h>
+#include <sys/stat.h>
+#include "esp_core_dump.h"
+#include "mosaico_board.h"
+#include "version.h"
 
 static const char *TAG = "os";
 
@@ -41,6 +46,7 @@ static volatile uint8_t s_updates;                      /* formats in progress (
 #define RTC_OS_MAGIC 0x05A5E7u                          /* low 24 bits; the reason sits in the top byte */
 static RTC_NOINIT_ATTR uint32_t s_rtc_last;             /* the reset the previous run asked for */
 static RTC_NOINIT_ATTR char     s_rtc_detail[16];
+static char s_last_plan[20];                            /* the plan name of that reset, for the reset history */
 
 /* SYS_RESET_POWER_OFF's last step: GPIO57 open-drain low is the SAM8108's power-off request (Mosaico V1.2 user guide);
    the safe pin state holds that pin, so the hold comes off first. If the board is still up, deep sleep with no wake
@@ -103,7 +109,10 @@ void os_boot_done(void)
     if ((v & 0xFFFFFFu) != RTC_OS_MAGIC) return;
     const os_reset_plan_t *p = os_reset_plan((sys_reset_reason_t)(v >> 24));
     s_rtc_detail[sizeof s_rtc_detail - 1] = 0;
-    if (p) ESP_LOGI(TAG, "the last run ended with sys_reset(%s%s%s)", p->name, s_rtc_detail[0] ? ": " : "", s_rtc_detail);
+    if (p) {
+        ESP_LOGI(TAG, "the last run ended with sys_reset(%s%s%s)", p->name, s_rtc_detail[0] ? ": " : "", s_rtc_detail);
+        snprintf(s_last_plan, sizeof s_last_plan, "%s", p->name);
+    }
 }
 
 /* ---------- runlevels ---------- */
@@ -240,8 +249,73 @@ static void ladder_window(void)
 #endif
 }
 
+/* ---------- reset history (OpenCarMind EdgeOS 2.1.1 field fix) ----------
+   The field reboot loop left only a core dump behind: the event log is in RAM. One line per boot goes to
+   SDLOG_DIR/resets.csv on the flash FAT (kept when the NAND is formatted): the reset reason, how long the run before it
+   lasted (an RTC counter that survives software resets, panics and watchdogs), the crash in the core dump when this boot
+   follows one, and the battery's voltage and temperature. 16 KB, then the file is renamed .old.csv and starts again. */
+#define RESETS_CSV  SDLOG_DIR "/resets.csv"
+#define RESETS_OLD  SDLOG_DIR "/resets.old.csv"
+#define RTC_UP_MAGIC 0x0B5E7A11u
+static RTC_NOINIT_ATTR uint32_t s_rtc_up_magic, s_rtc_up_s, s_rtc_boots;
+static uint32_t s_prev_up_s = UINT32_MAX;          /* the run before this boot: seconds up, UINT32_MAX = unknown */
+
+static void reset_log_boot(void)
+{
+    if (s_rtc_up_magic == RTC_UP_MAGIC && esp_reset_reason() != ESP_RST_POWERON) { s_prev_up_s = s_rtc_up_s; s_rtc_boots++; }
+    else { s_rtc_up_magic = RTC_UP_MAGIC; s_rtc_boots = 1; }
+    s_rtc_up_s = 0;
+}
+
+__attribute__((noinline)) static void reset_log_write(void)   /* off os_tick's frame: the board task calls os_tick every pass */
+{
+    if (!sdlog_ok()) return;
+    sched_system_t sys;
+    sched_get_system(&sys);
+    esp_reset_reason_t r = esp_reset_reason();
+    char panic[48] = "";
+#if CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH
+    if (r == ESP_RST_PANIC || r == ESP_RST_INT_WDT || r == ESP_RST_TASK_WDT || r == ESP_RST_WDT) {
+        EXT_RAM_BSS_ATTR static esp_core_dump_summary_t sum;      /* 1.2 KB with its stack copy: not on the board stack */
+        if (esp_core_dump_image_check() == ESP_OK && esp_core_dump_get_summary(&sum) == ESP_OK) {
+            sum.exc_task[sizeof sum.exc_task - 1] = 0;
+            snprintf(panic, sizeof panic, "%s pc 0x%08lx cause %lu", sum.exc_task, (unsigned long)sum.exc_pc,
+                     (unsigned long)sum.ex_info.mcause);
+        } else snprintf(panic, sizeof panic, "no core dump");
+    }
+#endif
+    mosaico_gauge_t g = {0};
+    bool gok = mosaico_gauge_read(&g) && g.ok;
+    time_t now = time(NULL);
+    struct stat st;
+    if (stat(RESETS_CSV, &st) == 0 && st.st_size > 16 * 1024) { remove(RESETS_OLD); rename(RESETS_CSV, RESETS_OLD); }
+    bool fresh = stat(RESETS_CSV, &st) != 0;
+    FILE *f = fopen(RESETS_CSV, "a");
+    if (!f) return;
+    if (fresh) fputs("boots_in_row,epoch_s,reset,abnormal_in_row,safe_mode,prev_run_s,last_sys_reset,panic,bat_mv,bat_c,bat_ma,firmware\n", f);
+    char prev[16] = "";
+    if (s_prev_up_s != UINT32_MAX) snprintf(prev, sizeof prev, "%lu", (unsigned long)s_prev_up_s);
+    char bat[40] = ",,";
+    if (gok) snprintf(bat, sizeof bat, "%d,%.1f,%d", g.mv, g.temp_dc / 10.0, g.ma);
+    fprintf(f, "%lu,%lld,%s,%lu,%d,%s,%s,%s,%s,%s\n", (unsigned long)s_rtc_boots, now > 1600000000 ? (long long)now : 0LL,
+            sys.last_reset, (unsigned long)sys.boot_abnormal, sys.safe_mode ? 1 : 0, prev, s_last_plan, panic, bat,
+            CARMIND_FW_STRING);
+    fclose(f);
+    ESP_LOGI(TAG, "reset history: %s, %lu abnormal in a row, previous run %s s%s%s", sys.last_reset,
+             (unsigned long)sys.boot_abnormal, prev[0] ? prev : "?", panic[0] ? ", crash: " : "", panic);
+}
+
 void os_tick(void)
 {
+    static bool logged, booted;
+    static int64_t up_next_us;
+    if (!booted) { booted = true; reset_log_boot(); }
+    if (esp_timer_get_time() >= up_next_us) { up_next_us = esp_timer_get_time() + 1000000; s_rtc_up_s = (uint32_t)(esp_timer_get_time() / 1000000); }
+    /* the boot's line once the storage and the first gauge reading are there (or 8 s up, without the gauge) */
+    if (!logged && !s_boot && sdlog_ok()) {
+        mosaico_gauge_t g;
+        if ((mosaico_gauge_read(&g) && g.ok) || esp_timer_get_time() > 8000000) { logged = true; reset_log_write(); }
+    }
     static uint8_t last = 0xFF;
     static int64_t next_ladder_us = (int64_t)OS_DL_WINDOW_MS * 1000;
     int64_t now_us = esp_timer_get_time();

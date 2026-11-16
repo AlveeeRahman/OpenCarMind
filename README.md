@@ -13,7 +13,7 @@ OpenCarMind is an open-source OBD2 logger and dashboard for the ESP32, with a pr
 
 It ships two on-board models, and you choose between them in the desktop app. CarMind E.V is fixed and tested. CarMind R.E.V is my first model that keeps learning in your car: the board itself updates part of the model from what your car reports while you drive, with no computer or cloud in the loop.
 
-Licence: MIT. Website: <https://alveeerahman.github.io/OpenCarMind/>. Documentation: <https://alveeerahman.github.io/OpenCarMind/docs/>. Two release lines, both built from this `main`:
+Licence: MIT. Website: <https://alveeerahman.github.io/OpenCarMind/>. Documentation: <https://buildforpeople.dev/docs/opencarmind/> (also on [GitHub Pages](https://alveeerahman.github.io/OpenCarMind/docs/)). Two release lines, both built from this `main`:
 
 - **ESP32-S3 board: OpenCarMind 2.5.1.** The firmware and the desktop app for Windows, macOS and Linux are on the [latest release](https://github.com/AlveeeRahman/OpenCarMind/releases/latest). A beta, [2.5.1b](https://github.com/AlveeeRahman/OpenCarMind/releases/tag/2.5.1b), has the S3 firmware with every change on `main` since 2.5.1. It is a pre-release, not yet checked on an S3 board as a whole.
 - **ESP-Mosaico (ESP32-S31, early-access board): OpenCarMind EdgeOS 2.1.0.** The board image is on the [EdgeOS 2.1.0 release](https://github.com/AlveeeRahman/OpenCarMind/releases/tag/edgeos-2.1.0). Do not flash it on an S3.
@@ -240,11 +240,11 @@ On first boot the board connects to the strongest nearby adapter that looks like
 
 ## User manuals
 
-User manuals for drivers and test users, each as Markdown here and as pages in the [documentation](https://alveeerahman.github.io/OpenCarMind/docs/), one page per chapter:
+User manuals for drivers and test users, each as Markdown here and as pages in the [documentation](https://buildforpeople.dev/docs/opencarmind/), one page per chapter:
 
-- [OpenCarMind 2.5.1 on the ESP32-S3 board](docs/manual/esp32-s3.md) ([web pages](https://alveeerahman.github.io/OpenCarMind/docs/manuals/esp32-s3/)): the five pages, the BOOT button, the two models, Wi-Fi for the clock and the desktop app.
-- [OpenCarMind EdgeOS 2.1.0 on the ESP-Mosaico](docs/manual/edgeos-2.1.0.md) ([web pages](https://alveeerahman.github.io/OpenCarMind/docs/manuals/edgeos-2.1.0/)): everything in 2.0.0 plus the Health app, the pairing questions and the new messages.
-- [OpenCarMind EdgeOS 2.0.0 on the ESP-Mosaico](docs/manual/edgeos-2.0.0.md) ([web pages](https://alveeerahman.github.io/OpenCarMind/docs/manuals/edgeos-2.0.0/)): the 16 apps, Settings, Wi-Fi, the two models, the health check and every message the board shows.
+- [OpenCarMind 2.5.1 on the ESP32-S3 board](docs/manual/esp32-s3.md) ([web pages](https://buildforpeople.dev/docs/opencarmind/manuals/esp32-s3/)): the five pages, the BOOT button, the two models, Wi-Fi for the clock and the desktop app.
+- [OpenCarMind EdgeOS 2.1.0 on the ESP-Mosaico](docs/manual/edgeos-2.1.0.md) ([web pages](https://buildforpeople.dev/docs/opencarmind/manuals/edgeos-2.1.0/)): everything in 2.0.0 plus the Health app, the pairing questions and the new messages.
+- [OpenCarMind EdgeOS 2.0.0 on the ESP-Mosaico](docs/manual/edgeos-2.0.0.md) ([web pages](https://buildforpeople.dev/docs/opencarmind/manuals/edgeos-2.0.0/)): the 16 apps, Settings, Wi-Fi, the two models, the health check and every message the board shows.
 
 The Markdown files are the source. The documentation site in [docs-src](docs-src) is built from them with Sphinx, so the web pages and the Markdown cannot drift. The old manual addresses, `manual/esp32-s3.html` and `manual/edgeos-2.0.0.html`, now open the new pages.
 
@@ -398,6 +398,12 @@ Version 2.1.0 adds small AI services that look after the board itself, and a Hea
 <p align="center"><sub>Issue cards and the banner on the board. A test build wrote each state into the Health screen only, so the battery and its gauge were never touched.</sub></p>
 
 Checked on the board with the release build 81017a5: boot health good at 68.8 s, the battery estimator, the fault check and the guard all admitted (worst-case response 5.00 ms against a 1,000 ms deadline), a 614 s soak with 0 crashes, 0 screen misses and 0 AI misses, internal RAM never below 78,003 B, and the button-free download door working from the new build. Still to check in real use: pairing your own adapter, a drive, a run on battery with USB unplugged (the first charge and health readings), and a car park for the guard's first 2 hours. The worn, fault, block and changed-adapter cards have only been shown by the test build so far.
+
+#### Field fix after the first drive (proposed as 2.1.1)
+
+The owner's first drive with 2.1.0 ended in a restart loop. The core dump left on the board, decoded against the release ELF, says "A stack overflow in task obd". The task that talks to the car had used 5,104 B of its 8,192 B stack in its own frame, and the first logged row after every start loaded the pattern model file through a function with a 4,016 B frame. The bytes found past the end of the stack are the board's own pattern centroids, value for value. Once that file existed, every start with the car answering crashed about 14 seconds in, and the boot-loop safe mode did not stop it, because the pattern layer was not one of the parts it switches off. On the bench, with a simulated car and the same file, 2.1.0 crashed on every start, five in a row. The fix keeps the connection helpers off that task's stack and reads the pattern file in place: the deepest path inside the firmware dropped from 9,168 B to 4,416 B (`tools/stack_check.py`). The pattern layer now also stays off in safe mode, and every start writes one line to `obd/resets.csv` with the reset reason, how long the run before it lasted and the crashed task, so the next problem leaves evidence on the board.
+
+End drive, Settings > Stop logging and Turn off now share one stop. It latches the car link off, writes the summary, closes the drive files, pauses the battery log and checks that nothing more is written. It always ends in **Safe to unplug** or in a named failure, within 35 seconds, and logging stays off until you tap Start logging or the board restarts. In 2.1.0, End drive saved the drive and then let the next one start at once, and a busy link could leave the drive open. The ESP-Mosaico's POWER key switches the board off at once without saving, so Turn off comes first. Details are in the [user manual](docs/manual/edgeos-2.1.0.md#stop).
 
 OpenCarMind also runs on Espressif's ESP-Mosaico<sup>[[12]](#ref-12)</sup>, an ESP32-S31 board with a 480 × 480 AMOLED touch screen, 32 MB of PSRAM and a 128 MB NAND for the drive logs. Up to version 1.2.0 that build was called mossREV. Version 2.0.0 is called OpenCarMind EdgeOS 2.0.0. It is not related to Ubiquiti's EdgeOS router software.
 

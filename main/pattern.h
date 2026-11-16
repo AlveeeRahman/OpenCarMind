@@ -45,4 +45,7 @@ bool pattern_feed(pattern_model_t *m, int64_t now_ms, const float signals[PATTER
 /* Serialise / parse the model as JSON text (centroids, counts, stats). */
 int  pattern_model_to_json(const pattern_model_t *m, char *buf, size_t n);
 bool pattern_model_from_json(pattern_model_t *m, const char *json);
+/* The same parse straight into *m, with no copy of the model on the stack (pattern_model_from_json needs about 4 KB of
+   the caller's stack). On a parse error *m is reset with pattern_init(), so the layer starts fresh. */
+bool pattern_model_load_json(pattern_model_t *m, const char *json);
 const char *pattern_signal_name(int i);

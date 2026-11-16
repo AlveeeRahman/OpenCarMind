@@ -26,6 +26,7 @@
 #endif
 #include "mosaico_files.h"
 #include "mosaico_drive.h"
+#include "stop_core.h"
 #include "fault_engine.h"
 /* Model marks: every model mark and model name on the screens follows the model in use (ui_snap_t.model), E.V or R.E.V.
    The R.E.V and E.V apps keep their own tile and mark: each is the page of its model, whichever model runs, with the
@@ -3326,6 +3327,24 @@ static void format_cb(lv_event_t *e)
     ui_confirm("Erase all drive logs and summaries on this board?", "Continue", format_again, NULL);
 }
 
+/* LOGGING AND POWER (2.1.1): the second stop path next to Hold: End drive, and Turn off (stop_core.h) */
+static lv_obj_t *g_logst, *g_logbtn;
+static void do_stop_logging(void *arg) { (void)arg; mosaico_drive_end_request(); }
+static void do_turn_off(void *arg) { (void)arg; mosaico_drive_turn_off_request(); }
+static void stop_logging_cb(lv_event_t *e)
+{
+    (void)e;
+    if (mosaico_drive_stopped()) { mosaico_drive_start_request(); return; }    /* the same button starts logging again */
+    ui_confirm("Stop logging now? The drive is saved and the files closed. Logging stays off until you start it again.",
+               "Stop logging", do_stop_logging, NULL);
+}
+static void turn_off_cb(lv_event_t *e)
+{
+    (void)e;
+    ui_confirm("Turn off? Logging stops and everything is saved, then the screen goes dark. Unplug once it says Safe to "
+               "unplug. A tap wakes the screen.", "Turn off", do_turn_off, NULL);
+}
+
 static void do_forget(void *arg) { (void)arg; mosaico_board_request(MB_BLE_FORGET, 0); }
 static void forget_cb(lv_event_t *e) { (void)e; ui_confirm("Forget the paired OBD adapter? The board then searches for one again.", "Forget", do_forget, NULL); }
 static void search_cb(lv_event_t *e) { (void)e; mosaico_board_request(MB_BLE_SEARCH, 0); }
@@ -3399,6 +3418,20 @@ static void settings_fill(void)
     ui_settings_t s;
     ui_settings_get(&s);
     int y = 0;
+    at(ui_caption(g_list, "LOGGING AND POWER"), 0, y); y += 22;
+    g_logst = at(ui_label(g_list, F16, UI_TEXT, "--"), 0, y);
+    lv_obj_set_width(g_logst, ST_W);
+    lv_label_set_long_mode(g_logst, LV_LABEL_LONG_WRAP);
+    y += 2 * lv_font_get_line_height(F16) + 6;
+    {
+        int hw = (ST_W - ST_GAP) / 2;
+        g_logbtn = text_btn(g_list, mosaico_drive_stopped() ? LV_SYMBOL_PLAY " Start logging" : LV_SYMBOL_STOP " Stop logging",
+                            0, y, hw, UI_ORANGE, stop_logging_cb);
+        text_btn(g_list, LV_SYMBOL_POWER " Turn off", hw + ST_GAP, y, hw, UI_RED, turn_off_cb);
+    }
+    y += ST_H + 6;
+    y += st_h(st_note(g_list, y, "Turn off saves and closes everything, then darkens the screen: unplug once it says Safe "
+                                 "to unplug. The POWER key on the back cuts power at once, without saving.")) + 10;
     at(ui_caption(g_list, "BRIGHTNESS"), 0, y);
     g_bright_val = ui_label(g_list, F14, UI_MUTED, "");
     lv_obj_align(g_bright_val, LV_ALIGN_TOP_RIGHT, -(432 - ST_W), y);
@@ -3529,7 +3562,7 @@ static void settings_create(lv_obj_t *p)
 static void settings_destroy(void)
 {
     g_keep_y = ui_theme_reopening() && g_list ? lv_obj_get_scroll_y(g_list) : 0;
-    g_list = g_ble = g_bright_sl = g_bright_val = g_store = g_swipe = g_clk_time = g_clk_src = g_model = NULL;
+    g_list = g_ble = g_bright_sl = g_bright_val = g_store = g_swipe = g_clk_time = g_clk_src = g_model = g_logst = g_logbtn = NULL;
     g_mseg[0] = g_mseg[1] = NULL;
     memset(g_seg, 0, sizeof g_seg);
     g_ord_n = 0;
@@ -3560,6 +3593,17 @@ static void settings_update(const ui_snap_t *s)
 #endif
         if (s->fat.ok) ui_set_fmt(g_store, "%lu of %lu KB free", (unsigned long)s->fat.free_kb, (unsigned long)s->fat.total_kb);
         else ui_set_text(g_store, "measuring");
+    }
+    if (g_logst) {
+        md_stop_t ms;
+        mosaico_drive_stop_get(&ms);
+        bool stopped = mosaico_drive_stopped();
+        if (ms.state == STOP_READY) ui_set_text(g_logst, "Logging stopped. Safe to unplug.");
+        else if (ms.state == STOP_FAILED) ui_set_fmt(g_logst, "Logging off, not safe yet: %s", ms.why);
+        else if (mosaico_drive_ending()) ui_set_fmt(g_logst, "%s... %lu s", ms.text, (unsigned long)ms.secs);
+        else ui_set_text(g_logst, s->drive_active ? "Logging this drive" : "Ready to log when the car answers");
+        lv_obj_t *bl = g_logbtn ? lv_obj_get_child(g_logbtn, 0) : NULL;
+        if (bl) ui_set_text(bl, stopped ? LV_SYMBOL_PLAY " Start logging" : LV_SYMBOL_STOP " Stop logging");
     }
     clock_show(st);
     model_poll(false);

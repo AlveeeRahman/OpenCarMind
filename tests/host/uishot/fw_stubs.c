@@ -75,8 +75,10 @@ void vTaskDelay(TickType_t t) { (void)t; }
 void vTaskDelete(TaskHandle_t t) { (void)t; }
 BaseType_t xTaskCreatePinnedToCore(TaskFunction_t f, const char *n, uint32_t s, void *a, UBaseType_t p, TaskHandle_t *h, BaseType_t c)
 { (void)f; (void)n; (void)s; (void)a; (void)p; (void)c; if (h) *h = NULL; return pdPASS; }
-BaseType_t xSemaphoreTake(SemaphoreHandle_t s, TickType_t t) { (void)s; (void)t; return pdTRUE; }
-BaseType_t xSemaphoreGive(SemaphoreHandle_t s) { (void)s; return pdTRUE; }
+/* A held-lock count, so the stubs behave like real lock calls (taken and given in pairs) */
+static volatile int s_sem_held;
+BaseType_t xSemaphoreTake(SemaphoreHandle_t s, TickType_t t) { (void)s; (void)t; s_sem_held++; return pdTRUE; }
+BaseType_t xSemaphoreGive(SemaphoreHandle_t s) { (void)s; s_sem_held--; return pdTRUE; }
 esp_err_t spi_bus_initialize(spi_host_device_t h, const spi_bus_config_t *c, int d) { (void)h; (void)c; (void)d; return ESP_OK; }
 esp_err_t esp_lcd_new_panel_io_spi(esp_lcd_spi_bus_handle_t b, const esp_lcd_panel_io_spi_config_t *c, esp_lcd_panel_io_handle_t *io) { (void)b; (void)c; *io = NULL; return ESP_OK; }
 esp_err_t esp_lcd_new_panel_io_i2c(esp_lcd_i2c_bus_handle_t b, const esp_lcd_panel_io_i2c_config_t *c, esp_lcd_panel_io_handle_t *io) { (void)b; (void)c; *io = NULL; return ESP_OK; }
@@ -374,6 +376,10 @@ mclk_result_t mosaico_clock_result(void) { return (mclk_result_t)0; }
 clock_src_t mosaico_clock_source(const app_status_t *st) { (void)st; return (clock_src_t)1; }
 
 void mosaico_drive_end_request(void) {}
+void mosaico_drive_turn_off_request(void) {}
+void mosaico_drive_stop_retry(void) {}
+bool mosaico_drive_stopped(void) { return false; }
+void mosaico_drive_stop_get(md_stop_t *out) { if (out) memset(out, 0, sizeof *out); }   /* idle: no stop in progress */
 bool mosaico_drive_ending(void) { return false; }
 void mosaico_drive_get_history(md_history_t *out)
 {

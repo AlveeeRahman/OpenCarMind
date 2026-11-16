@@ -1324,3 +1324,74 @@ int sdlog_flash_health(uint16_t *repairs, bool *audit_warn)
     return s_unreadable ? -1 : s_ok ? 1 : 0;
 }
 #endif
+
+#if BOARD_MOSAICO
+/* ---------- stop logging (OpenCarMind EdgeOS 2.1.1 field fix, stop_core.h) ---------- */
+static volatile uint8_t s_hold;                 /* writers paused by a stop */
+static volatile uint8_t s_writers;              /* background writers inside a write now */
+static volatile int64_t s_bg_write_ms = -1;     /* the last background write's end */
+static portMUX_TYPE s_hold_mux = portMUX_INITIALIZER_UNLOCKED;
+
+bool sdlog_session_open(void) { return s_ok && s_open; }
+
+bool sdlog_stop_close(uint32_t timeout_ms)
+{
+    if (!s_ok) return false;
+    if (xSemaphoreTake(s_lock, pdMS_TO_TICKS(timeout_ms)) != pdTRUE) return false;   /* busy: the caller tries again */
+    if (!s_open) { xSemaphoreGive(s_lock); return true; }
+    uint32_t id = s_session, rows = s_rows;
+    if (rows > 0) {
+        if (cJSON_HasObjectItem(s_meta, "ended_uptime_ms"))
+            cJSON_ReplaceItemInObject(s_meta, "ended_uptime_ms", cJSON_CreateNumber((double)(esp_timer_get_time() / 1000)));
+        else cJSON_AddNumberToObject(s_meta, "ended_uptime_ms", (double)(esp_timer_get_time() / 1000));
+        sync_all_locked();
+    }
+    FILE **files[] = {&s_csv, &s_raw, &s_pat, &s_ml};
+    for (size_t i = 0; i < sizeof files / sizeof files[0]; i++)
+        if (*files[i]) { fflush(*files[i]); fsync(fileno(*files[i])); fclose(*files[i]); *files[i] = NULL; }
+    if (rows == 0) {                               /* a session with no rows yet: header-only files, not a drive */
+        remove(s_csv_path);
+        remove(s_json_path);
+    }
+    s_open = false;
+    s_unsaved = false;
+    xSemaphoreGive(s_lock);
+    if (rows) sys_event(EV_INFO, "Drive s%06lu saved (%lu rows)", (unsigned long)id, (unsigned long)rows);
+    ESP_LOGI(TAG, "stop: session %lu closed (%lu rows)%s", (unsigned long)id, (unsigned long)rows, rows ? "" : ", empty files removed");
+    return true;
+}
+
+void sdlog_writers_hold(bool on)
+{
+    portENTER_CRITICAL(&s_hold_mux);
+    s_hold = on;
+    portEXIT_CRITICAL(&s_hold_mux);
+}
+
+bool sdlog_writers_idle(void) { return s_hold && s_writers == 0; }
+
+bool sdlog_writer_enter(void)
+{
+    bool ok;
+    portENTER_CRITICAL(&s_hold_mux);
+    ok = !s_hold;
+    if (ok) s_writers++;
+    portEXIT_CRITICAL(&s_hold_mux);
+    return ok;
+}
+
+void sdlog_writer_exit(void)
+{
+    portENTER_CRITICAL(&s_hold_mux);
+    if (s_writers) s_writers--;
+    s_bg_write_ms = esp_timer_get_time() / 1000;
+    portEXIT_CRITICAL(&s_hold_mux);
+}
+
+int64_t sdlog_ms_since_any_write(void)
+{
+    int64_t a = sdlog_ms_since_write(), t = s_bg_write_ms;
+    int64_t b = t < 0 ? INT64_MAX : esp_timer_get_time() / 1000 - t;
+    return a < b ? a : b;
+}
+#endif

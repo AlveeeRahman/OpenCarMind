@@ -57,11 +57,37 @@ EXT_RAM_BSS_ATTR static pattern_model_t s_pattern;      /* ~12 KB, in PSRAM */
 static bool s_pattern_loaded;
 #define PATTERNS_PATH SDLOG_DIR "/patterns.json"
 
+/* ESP-Mosaico field fix (2.1.1): the helpers that run once per connection keep their buffers off the obd task's stack
+   while it polls. Inlined into obd_task they made its frame 5,104 B of the 8,192 B stack, and the first row of a boot then
+   called pattern_model_from_json (4,016 B more): the stack overflow in the field core dump. tools/stack_check.py checks it. */
+#define OBD_STACK 8192
+#if BOARD_MOSAICO
+#define OBD_COLD __attribute__((noinline, cold))
+#else
+#define OBD_COLD
+#endif
+/* the attribute goes on these declarations, so the definitions below read as before */
+OBD_COLD static void pattern_load(void);
+OBD_COLD static void pattern_save(void);
+OBD_COLD static void read_supported(void);
+OBD_COLD static void probe_resp_count(const char *protocol);
+OBD_COLD static void poll_dtcs(void);
+OBD_COLD static bool try_protocols(char *resp, size_t sz);
+OBD_COLD static void pick_engine_ecu(void);
+OBD_COLD static bool elm_initialise(void);
+OBD_COLD static void end_drive(sched_job_t poll_job);
+OBD_COLD static void run_explore(void);
+
 static void pattern_load(void)
 {
     EXT_RAM_BSS_ATTR static char buf[12288];
     pattern_init(&s_pattern);
+#if BOARD_MOSAICO
+    /* parsed in place (PSRAM): pattern_model_from_json keeps a 3.5 KB copy of the model on the caller's stack */
+    if (sdlog_load_text(PATTERNS_PATH, buf, sizeof buf) && pattern_model_load_json(&s_pattern, buf))
+#else
     if (sdlog_load_text(PATTERNS_PATH, buf, sizeof buf) && pattern_model_from_json(&s_pattern, buf))
+#endif
         ESP_LOGI(TAG, "pattern model loaded: %u centroids, %lu windows", s_pattern.used, (unsigned long)s_pattern.n_windows);
     else ESP_LOGI(TAG, "pattern model: starting fresh");
     s_pattern_loaded = true;
@@ -76,6 +102,9 @@ static void pattern_save(void)
 /* One sample per logged row: rpm, speed, load, maf, throttle, stft, ltft, coolant, iat, map. */
 static void pattern_step(const obd_values_t *v)
 {
+#if BOARD_MOSAICO
+    if (sched_safe_mode()) return;                       /* boot-loop safe mode: the pattern layer stays off too */
+#endif
     if (!s_pattern_loaded) pattern_load();
     static const obd_field_t fields[PATTERN_SIGNALS] = {F_rpm, F_speed, F_load, F_maf, F_throttle, F_stft1, F_ltft1, F_coolant, F_iat, F_map};
     float sig[PATTERN_SIGNALS];
@@ -622,8 +651,19 @@ static bool elm_initialise(void)
         obd_ble_guard_elm(ati, at1);
     }
 #endif
+#if BOARD_MOSAICO
+    /* only the adapter's name and address: a copy of the whole status (status_get) is 3.6 KB of the obd task's stack */
+    char st_name[sizeof g_status.adapter_name], st_addr[sizeof g_status.adapter_addr];
+    STATUS_LOCK();
+    memcpy(st_name, g_status.adapter_name, sizeof st_name);
+    memcpy(st_addr, g_status.adapter_addr, sizeof st_addr);
+    STATUS_UNLOCK();
+    st_name[sizeof st_name - 1] = 0;
+    st_addr[sizeof st_addr - 1] = 0;
+#else
     app_status_t st;
     status_get(&st);
+#endif
 
     int tries = 0;
     do {
@@ -639,7 +679,11 @@ static bool elm_initialise(void)
     if (!s_link_up || s_halt || tries >= 20) { if (s_link_up && !s_halt) sys_event(EV_WARN, "ECU not answering: ignition off?"); return false; }
 
     sdlog_begin_drive();                   /* the ECU answered: a new session if the last drive was closed */
+#if BOARD_MOSAICO
+    sdlog_meta_set_adapter(st_name, st_addr, ati, batch);
+#else
     sdlog_meta_set_adapter(st.adapter_name, st.adapter_addr, ati, batch);
+#endif
 #if CONFIG_OBD_BLE_PAIR_CONFIRM && BOARD_MOSAICO
     obd_ble_guard_meta();                  /* the session says whether this adapter matched its fingerprint */
 #endif
@@ -702,6 +746,12 @@ static void end_drive(sched_job_t poll_job)
     if (g_status.ble == BLE_ST_LOGGING) g_status.ble = BLE_ST_ELM_INIT;
     memset(g_status.obd.valid, 0, sizeof g_status.obd.valid);
     STATUS_UNLOCK();
+#if BOARD_MOSAICO
+    /* the field core dump was a stack overflow in this task: every drive reports how much of its stack was never used */
+    unsigned free_b = (unsigned)uxTaskGetStackHighWaterMark(NULL);
+    ESP_LOGI(TAG, "obd stack: %u B of %u B never used this boot", free_b, OBD_STACK);
+    if (free_b < 1024) sys_event(EV_WARN, "OBD task stack low: %u B left", free_b);
+#endif
 }
 
 void elm_request_stop(void) { s_halt = true; }
@@ -714,8 +764,25 @@ bool elm_wait_stopped(uint32_t timeout_ms)
     return !s_in_drive;
 }
 
+#if BOARD_MOSAICO
+/* the user's stop (stop_core.h): held until elm_user_stop(false), whatever else asks to resume */
+static volatile bool s_user_stop;
+
+void elm_user_stop(bool on)
+{
+    s_user_stop = on;
+    s_halt = on;
+    if (!on && s_link_up) xEventGroupSetBits(s_ev, LINK_UP_BIT);
+}
+
+bool elm_user_stopped(void) { return s_user_stop; }
+#endif
+
 void elm_resume(void)
 {
+#if BOARD_MOSAICO
+    if (s_user_stop) return;           /* stopped by the user: only Start logging (or a restart) brings the link back */
+#endif
     s_halt = false;
     if (s_link_up) xEventGroupSetBits(s_ev, LINK_UP_BIT);
 }
@@ -1080,5 +1147,5 @@ void elm_init(void)
     s_rx = xStreamBufferCreate(2048, 1);
     s_ev = xEventGroupCreate();
     s_txn_lock = xSemaphoreCreateMutex();
-    xTaskCreatePinnedToCore(obd_task, "obd", 8192, NULL, 5, NULL, 1);
+    xTaskCreatePinnedToCore(obd_task, "obd", OBD_STACK, NULL, 5, NULL, 1);
 }

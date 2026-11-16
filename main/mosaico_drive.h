@@ -7,9 +7,12 @@
  * obd/drives.csv and publishes the summary for the Drive summary app. The UI only reads copies (a mutex held for the
  * copy) and never waits for a file.
  *
- * End drive: the screen asks (mosaico_drive_end_request); this task stops the OBD poll (elm_request_stop, so the OBD
- * task closes the drive through its own end_drive path: model, R.E.V and session saved), builds the summary, then lets
- * the link run again (elm_resume): the next drive opens its own session. */
+ * End drive / Stop logging / Turn off (OpenCarMind EdgeOS 2.1.1): the screen asks (mosaico_drive_end_request); this task
+ * runs the stop state machine (stop_core.h): the OBD poll is latched off (elm_user_stop, so the OBD task closes the drive
+ * through its own end_drive path), the summary is built, the session files are closed and synced, the battery log is
+ * paused and a quiet storage is confirmed. It ends READY ("Logging stopped. Safe to unplug.") or FAILED with the
+ * reason, in bounded time. Logging stays off until Start logging or a restart: the car still answering does not start a
+ * new drive (2.1.0 resumed the link at once, so the drive started again). */
 #pragma once
 #include "sdkconfig.h"
 #include <stdbool.h>
@@ -43,10 +46,25 @@ typedef struct {
     struct { uint32_t session; float km, fuel_l, l100; } d[MD_HIST];
 } md_history_t;
 
+/* Stop logging (stop_core.h): the state for the screen */
+typedef struct {
+    uint8_t  state;                    /* stop_state_t */
+    bool     turn_off;                 /* asked by Turn off: the screen goes dark once READY */
+    bool     requested;                /* a request is queued for the drive task */
+    uint32_t secs;                     /* since the request (to READY or FAILED once there) */
+    uint32_t since_done_ms;            /* since READY or FAILED */
+    char     text[40];                 /* stop_state_text */
+    char     why[48];                  /* stop_why_text, FAILED only */
+} md_stop_t;
+
 void mosaico_drive_start(void);
-void mosaico_drive_end_request(void);          /* UI: the End drive control was held 1 s */
-void mosaico_drive_start_request(void);        /* UI: Start drive */
-bool mosaico_drive_ending(void);               /* the end sequence is running */
+void mosaico_drive_end_request(void);          /* UI: Hold: End drive, or Stop logging: stop and verify (stop_core.h) */
+void mosaico_drive_turn_off_request(void);     /* UI: Turn off: the same stop, then the screen dark and no adapter search */
+void mosaico_drive_stop_retry(void);           /* UI: Try again after a failed stop */
+void mosaico_drive_start_request(void);        /* UI: Start logging: the latch comes off, the link may start a drive */
+bool mosaico_drive_ending(void);               /* a stop is running */
+bool mosaico_drive_stopped(void);              /* logging is held off by a stop (READY or FAILED) */
+void mosaico_drive_stop_get(md_stop_t *out);
 void mosaico_drive_get_summary(md_summary_t *out);
 void mosaico_drive_get_history(md_history_t *out);
 void mosaico_drive_history_request(void);

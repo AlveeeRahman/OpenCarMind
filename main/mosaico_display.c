@@ -43,6 +43,7 @@
 #include "obd_ble.h"
 #include "obd_pair.h"
 #include "mosaico_drive.h"
+#include "stop_core.h"
 #include "sdlog.h"
 #include "fault_engine.h"
 #include "econ.h"
@@ -602,10 +603,110 @@ static void pair_sheet_refresh(void)
     ui_set_fmt(s_pair_left, "Nothing is saved unless you choose. %d s", left);
 }
 
+/* ---------- stop logging sheet (OpenCarMind EdgeOS 2.1.1): the progress of every stop, then "Safe to unplug" or the
+   reason it failed. It cannot be closed while a stop runs. Turn off: the screen goes dark 5 s after READY, a tap wakes it
+   and the sheet is still there. ---------- */
+static lv_obj_t *s_stop_sheet, *s_stop_title, *s_stop_line, *s_stop_note, *s_stop_b1, *s_stop_b2;
+static int64_t s_stop_closed_for = -1;          /* the request (its secs-free key: state + turn_off) the user closed */
+static uint8_t s_stop_shown = 0xFF;
+static bool s_stop_dark;
+
+static void stop_close(void)
+{
+    if (s_stop_sheet) { lv_obj_delete_async(s_stop_sheet); s_stop_sheet = NULL; }
+    s_stop_shown = 0xFF;
+}
+static void stop_start_cb(lv_event_t *e) { (void)e; mosaico_drive_start_request(); mosaico_board_request(MB_BUZZ, 0); stop_close(); }
+static void stop_retry_cb(lv_event_t *e) { (void)e; mosaico_drive_stop_retry(); }
+static void stop_hide_cb(lv_event_t *e)
+{
+    (void)e;
+    md_stop_t st;
+    mosaico_drive_stop_get(&st);
+    s_stop_closed_for = st.state;
+    stop_close();
+}
+
+static void stop_sheet_build(void)
+{
+    s_stop_sheet = lv_obj_create(lv_layer_top());
+    lv_obj_remove_style_all(s_stop_sheet);
+    lv_obj_set_size(s_stop_sheet, UI_W, UI_H);
+    lv_obj_set_style_bg_color(s_stop_sheet, lv_color_hex(UI_THEME.scrim), 0);
+    lv_obj_set_style_bg_opa(s_stop_sheet, LV_OPA_80, 0);
+    lv_obj_add_flag(s_stop_sheet, LV_OBJ_FLAG_CLICKABLE);          /* swallows taps behind it */
+    lv_obj_t *c = ui_card(s_stop_sheet, UI_MARGIN, UI_H - 260 - UI_MARGIN, UI_W - 2 * UI_MARGIN, 260, UI_BORDER);
+    int w = UI_W - 2 * UI_MARGIN - 2 * UI_THEME.pad_card - 4;
+    s_stop_title = ui_label(c, UI_THEME.f_value, UI_TEXT, "");
+    lv_obj_set_pos(s_stop_title, 2, 2);
+    s_stop_line = ui_label(c, UI_THEME.f_body, UI_TEXT, "");
+    lv_obj_set_width(s_stop_line, w);
+    lv_label_set_long_mode(s_stop_line, LV_LABEL_LONG_WRAP);
+    lv_obj_set_pos(s_stop_line, 2, 44);
+    s_stop_note = ui_label(c, UI_THEME.f_label, UI_MUTED, "");
+    lv_obj_set_width(s_stop_note, w);
+    lv_label_set_long_mode(s_stop_note, LV_LABEL_LONG_WRAP);
+    lv_obj_set_pos(s_stop_note, 2, 100);
+    s_stop_b1 = s_stop_b2 = NULL;
+}
+
+static void stop_buttons(const char *b1, uint32_t bg1, lv_event_cb_t cb1, const char *b2, lv_event_cb_t cb2)
+{
+    if (s_stop_b1) { lv_obj_delete(s_stop_b1); s_stop_b1 = NULL; }
+    if (s_stop_b2) { lv_obj_delete(s_stop_b2); s_stop_b2 = NULL; }
+    lv_obj_t *c = lv_obj_get_child(s_stop_sheet, 0);
+    if (b2) s_stop_b2 = modal_button(c, b2, UI_THEME.track, UI_TEXT, cb2, LV_ALIGN_BOTTOM_LEFT);
+    if (b1) s_stop_b1 = modal_button(c, b1, bg1, UI_BG, cb1, LV_ALIGN_BOTTOM_RIGHT);
+}
+
+static void stop_sheet_refresh(void)
+{
+    md_stop_t st;
+    mosaico_drive_stop_get(&st);
+    bool active = st.state == STOP_LINK || st.state == STOP_CLOSE || st.state == STOP_SYNC || (st.requested && st.state == STOP_IDLE);
+    if (st.state == STOP_IDLE && !st.requested) { stop_close(); s_stop_closed_for = -1; s_stop_dark = false; return; }
+    if (active || st.requested) s_stop_closed_for = -1;              /* a new request shows the sheet again */
+    /* Turn off: dark 5 s after READY, once per READY, even with the sheet closed (a tap wakes it: the panel's own path) */
+    if (st.state == STOP_READY && st.turn_off && st.since_done_ms > 5000 && !s_stop_dark) { s_stop_dark = true; s_req_off = true; }
+    if (st.state != STOP_READY) s_stop_dark = false;
+    if (!active && s_stop_closed_for == st.state) return;            /* the user closed this result */
+    if (!s_stop_sheet) {
+        stop_sheet_build();
+        lv_display_trigger_activity(s_disp);                         /* a stop shows at once, the screen wakes */
+    }
+    uint8_t key = (uint8_t)(active ? 1 : st.state == STOP_READY ? 2 : 3);
+    if (key != s_stop_shown) {
+        s_stop_shown = key;
+        if (key == 1) {
+            ui_set_text(s_stop_title, st.turn_off ? "Turning off" : "Stopping logging");
+            ui_set_color(s_stop_title, UI_WARN);
+            ui_set_text(s_stop_note, "Don't unplug yet. The drive is being saved and the files closed.");
+            stop_buttons(NULL, 0, NULL, NULL, NULL);
+        } else if (key == 2) {
+            ui_set_text(s_stop_title, "Safe to unplug");
+            ui_set_color(s_stop_title, UI_GREEN);
+            ui_set_text(s_stop_note, st.turn_off ? "Everything is saved and closed. The screen turns off in 5 s, a tap wakes it. "
+                                                   "Logging stays off until you start it or the board restarts."
+                                                 : "Everything is saved and closed. Logging stays off until you start it or the "
+                                                   "board restarts.");
+            stop_buttons("Start logging", UI_THEME.section[SEC_GREEN], stop_start_cb, "Close", stop_hide_cb);
+            mosaico_board_request(MB_BUZZ, 0);
+        } else {
+            ui_set_text(s_stop_title, "Not safe to unplug yet");
+            ui_set_color(s_stop_title, UI_RED);
+            ui_set_text(s_stop_note, "Logging stays off. Try again, or wait and check this screen before you unplug.");
+            stop_buttons("Try again", UI_ORANGE, stop_retry_cb, "Close", stop_hide_cb);
+        }
+    }
+    if (key == 1) ui_set_fmt(s_stop_line, "%s... %lu s", st.text, (unsigned long)st.secs);
+    else if (key == 2) ui_set_fmt(s_stop_line, "Logging stopped in %lu s.", (unsigned long)st.secs);
+    else ui_set_fmt(s_stop_line, "%s.", st.why);
+}
+
 /* ---------- End drive / Start drive control: a 64 px ring with a stop icon, held 1 s (the ring fills) to end a drive,
    so a brush of the glass never ends one; after an End drive it offers Start drive (a tap) until the car moves ---------- */
 enum { CTL_HIDDEN = 0, CTL_END, CTL_START, CTL_BUSY };
-typedef struct { lv_obj_t *arc, *icon, *label, *fill, *pill; uint32_t t0; bool fired; uint32_t red; } ctl_t;
+typedef struct { lv_obj_t *arc, *icon, *label, *fill, *pill; uint32_t t0; bool fired, down; uint32_t red; } ctl_t;
 
 /* hold progress 0..100: the ring fills, or the pill fills from the left */
 static void ctl_progress(ctl_t *k, int v)
@@ -625,19 +726,34 @@ static void ctl_event(lv_event_t *e)
         return;
     }
     if (mode != CTL_END) return;
-    if (code == LV_EVENT_PRESSED) { k->t0 = lv_tick_get(); k->fired = false; }
-    else if (code == LV_EVENT_PRESSING && !k->fired) {
+    /* 2.1.1: the hold counts from the press on the clock, so a slow UI frame never loses it. A release after 1 s fires
+       too (2.1.0 fired only on a PRESSING event past 1 s, and a release between two slow frames lost it), and the
+       control keeps its press when the finger drifts (no scroll or gesture handover: ui_drive_hold_flags). */
+    if (code == LV_EVENT_PRESSED) { k->t0 = lv_tick_get(); k->fired = false; k->down = true; }
+    else if ((code == LV_EVENT_PRESSING || code == LV_EVENT_RELEASED) && k->down && !k->fired) {
         uint32_t ms = lv_tick_elaps(k->t0);
         ctl_progress(k, (int)(ms >= 1000 ? 100 : ms / 10));
         if (ms >= 1000) {
             k->fired = true;
             mosaico_drive_end_request();
             mosaico_board_request(MB_BUZZ, 0);
-            ESP_LOGI(TAG, "End drive held 1 s");
+            ESP_LOGI(TAG, "End drive held %lu ms", (unsigned long)ms);
         }
-    } else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
+    }
+    if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
+        if (code == LV_EVENT_PRESS_LOST && k->down && !k->fired) ESP_LOGI(TAG, "End drive hold lost after %lu ms", (unsigned long)lv_tick_elaps(k->t0));
+        k->down = false;
         if (!k->fired) ctl_progress(k, 0);
     }
+}
+
+/* the hold control keeps its press: no scroll of the page or launcher, no app-to-app swipe while the finger is on it */
+static void ui_drive_hold_flags(lv_obj_t *c)
+{
+    lv_obj_remove_flag(c, LV_OBJ_FLAG_GESTURE_BUBBLE);
+    lv_obj_remove_flag(c, LV_OBJ_FLAG_SCROLL_CHAIN_HOR);
+    lv_obj_remove_flag(c, LV_OBJ_FLAG_SCROLL_CHAIN_VER);
+    lv_obj_add_flag(c, LV_OBJ_FLAG_PRESS_LOCK);
 }
 
 static void ctl_free(lv_event_t *e) { lv_free(lv_event_get_user_data(e)); }
@@ -652,6 +768,7 @@ lv_obj_t *ui_drive_ctl(lv_obj_t *parent, int cx, int y)
     lv_obj_set_pos(c, cx - 100, y);
     lv_obj_add_flag(c, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_remove_flag(c, LV_OBJ_FLAG_SCROLLABLE);
+    ui_drive_hold_flags(c);
     k->arc = lv_arc_create(c);
     lv_obj_set_size(k->arc, 64, 64);
     lv_obj_set_pos(k->arc, 0, 0);
@@ -694,6 +811,7 @@ lv_obj_t *ui_drive_pill(lv_obj_t *parent, int x, int y, int w, int h)
     lv_obj_set_style_clip_corner(c, true, 0);
     lv_obj_add_flag(c, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_remove_flag(c, LV_OBJ_FLAG_SCROLLABLE);
+    ui_drive_hold_flags(c);
     if (UI_THEME.gradients) { ui_grad(c, UI_THEME.end_g1, UI_THEME.end_g2); lv_obj_set_style_border_width(c, 0, 0); }
     k->fill = ui_rect(c, 2, 2, 0, h - 4, UI_THEME.gradients ? 0xFFFFFF : UI_THEME.section[SEC_RED], LV_RADIUS_CIRCLE);
     lv_obj_set_style_bg_opa(k->fill, LV_OPA_40, 0);
@@ -713,7 +831,8 @@ void ui_drive_ctl_refresh(lv_obj_t *c, const ui_snap_t *s)
     if (!c) return;
     lv_obj_t *first = lv_obj_get_child(c, 0);
     ctl_t *k = (ctl_t *)lv_obj_get_user_data(first);
-    int mode = mosaico_drive_ending() ? CTL_BUSY : s->drive_active ? CTL_END : CTL_HIDDEN;
+    /* 2.1.1: after a stop the control offers Start logging (a tap) until logging runs again */
+    int mode = mosaico_drive_ending() ? CTL_BUSY : mosaico_drive_stopped() ? CTL_START : s->drive_active ? CTL_END : CTL_HIDDEN;
     int was = (int)(intptr_t)lv_obj_get_user_data(c);
     if (mode == was) return;
     lv_obj_set_user_data(c, (void *)(intptr_t)mode);
@@ -725,20 +844,20 @@ void ui_drive_ctl_refresh(lv_obj_t *c, const ui_snap_t *s)
         lv_obj_set_style_arc_color(k->arc, lv_color_hex(col), LV_PART_INDICATOR);
         ui_set_color(k->icon, col);
         ui_set_text(k->icon, mode == CTL_START ? LV_SYMBOL_PLAY : LV_SYMBOL_STOP);
-        ui_set_text(k->label, mode == CTL_END ? "End drive\n(hold 1 s)" : mode == CTL_START ? "Start drive" : "Saving...");
+        ui_set_text(k->label, mode == CTL_END ? "End drive\n(hold 1 s)" : mode == CTL_START ? "Start logging" : "Saving...");
     } else if (UI_THEME.gradients) {
         ui_grad(c, mode == CTL_START ? 0x4CE27A : UI_THEME.end_g1, mode == CTL_START ? 0x16A34A : UI_THEME.end_g2);
         ui_set_bg(k->icon, 0xFFFFFF);
         lv_obj_set_style_radius(k->icon, mode == CTL_START ? LV_RADIUS_CIRCLE : 2, 0);
         ui_set_color(k->label, 0xFFFFFF);
-        ui_set_text(k->label, mode == CTL_END ? "Hold: End drive" : mode == CTL_START ? "Start drive" : "Saving...");
+        ui_set_text(k->label, mode == CTL_END ? "Hold: End drive" : mode == CTL_START ? "Start logging" : "Saving...");
     } else {
         lv_obj_set_style_border_color(c, lv_color_hex(col), 0);
         ui_set_bg(k->icon, col);
         ui_set_bg(k->fill, col);
         lv_obj_set_style_radius(k->icon, mode == CTL_START ? LV_RADIUS_CIRCLE : 2, 0);
         ui_set_color(k->label, col);
-        ui_set_text(k->label, mode == CTL_END ? "Hold: End drive" : mode == CTL_START ? "Start drive" : "Saving...");
+        ui_set_text(k->label, mode == CTL_END ? "Hold: End drive" : mode == CTL_START ? "Start logging" : "Saving...");
     }
     ctl_progress(k, mode == CTL_BUSY ? 100 : 0);
 }
@@ -2848,6 +2967,7 @@ static void tick_cb(lv_timer_t *t)
         if (!s_panel_on) panel_power(true);
         else go_home_tile();
     }
+    stop_sheet_refresh();                                 /* 2.1.1: before the panel request, so Turn off can darken it now */
     if (s_req_off) { s_req_off = false; panel_power(false); }
     /* a theme change from Settings: one check (and at most one launcher rebuild) once the taps stopped */
     if (s_theme_deb.pending && lv_display_get_inactive_time(s_disp) >= OCM_IDLE_FINGER_MS &&

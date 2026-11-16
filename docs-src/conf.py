@@ -36,9 +36,9 @@ suppress_warnings = []
 exclude_patterns = ["_build", "_gen", "README.md", "Thumbs.db", ".DS_Store"]
 templates_path = ["_templates"]
 
-# The canonical address of the site. The GitHub Pages build serves it here. Set OCM_DOCS_BASE_URL to build the
+# The canonical address of the site: BuildForPeople serves this build there, and GitHub Pages serves a copy. Set OCM_DOCS_BASE_URL to build the
 # same pages for another address: every link inside the site is relative, only <link rel="canonical"> uses this.
-html_baseurl = os.environ.get("OCM_DOCS_BASE_URL", "https://alveeerahman.github.io/OpenCarMind/docs/")
+html_baseurl = os.environ.get("OCM_DOCS_BASE_URL", "https://buildforpeople.dev/docs/opencarmind/")
 
 html_theme = "pydata_sphinx_theme"
 html_title = "OpenCarMind documentation"
@@ -57,7 +57,8 @@ html_theme_options = {
     "navbar_center": ["navbar-nav"],
     "navbar_end": ["ocm-versions", "theme-switcher", "navbar-icon-links"],
     "navbar_persistent": ["search-button-field"],
-    "header_links_before_dropdown": 6,
+    # Four section links and "More" fit on one row down to 992px (see _static/ocm.css).
+    "header_links_before_dropdown": 4,
     "icon_links": [
         {"name": "GitHub", "url": "https://github.com/AlveeeRahman/OpenCarMind", "icon": "fa-brands fa-github"},
         {"name": "Releases", "url": "https://github.com/AlveeeRahman/OpenCarMind/releases",

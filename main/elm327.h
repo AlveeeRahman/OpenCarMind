@@ -24,6 +24,11 @@ int  elm_transact(const char *cmd, char *resp, size_t resp_sz, uint32_t timeout_
 void elm_request_stop(void);
 bool elm_wait_stopped(uint32_t timeout_ms);
 void elm_resume(void);
+#if CONFIG_IDF_TARGET_ESP32S31
+/* Stop logging (stop_core.h): on = no polling and no new drive until elm_user_stop(false); elm_resume() cannot undo it. */
+void elm_user_stop(bool on);
+bool elm_user_stopped(void);
+#endif
 
 /* Connection search: elm_explore() is the user's (Find OBD, a BOOT double-click), elm_explore_auto() the automatic one
    (after a minute without engine data). With no adapter linked, the user's search lets a new adapter be offered for 90 s

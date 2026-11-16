@@ -1,6 +1,6 @@
 CC ?= cc
 CFLAGS = -std=c11 -Wall -Wextra -O1 -I../../main -Istubs -D_GNU_SOURCE
-SRCS = test_main.c ../../main/custom_pids.c ../../main/fault_engine.c ../../main/pattern.c ../../main/adapter_match.c ../../main/econ.c ../../main/obd_fresh.c ../../main/harden.c ../../main/power_state.c ../../main/ecu_select.c
+SRCS = test_main.c ../../main/custom_pids.c ../../main/fault_engine.c ../../main/pattern.c ../../main/pattern_load.c ../../main/adapter_match.c ../../main/econ.c ../../main/obd_fresh.c ../../main/harden.c ../../main/power_state.c ../../main/ecu_select.c
 
 run: carmind_tests
 	./carmind_tests
@@ -34,6 +34,13 @@ logstore_tests: test_log_store.c ../../main/log_store.c ../../main/log_store.h .
 # which resets count toward the boot-loop safe mode (main/reset_class.c)
 reset: reset_tests
 	./reset_tests
+
+# stop logging: the verified safe-to-unplug state machine with injected failures (main/stop_core.c, 2.1.1)
+stop: stop_tests
+	./stop_tests
+
+stop_tests: test_stop.c ../../main/stop_core.c ../../main/stop_core.h
+	$(CC) $(CFLAGS) -o $@ test_stop.c ../../main/stop_core.c
 
 reset_tests: test_reset_class.c ../../main/reset_class.c ../../main/reset_class.h
 	$(CC) $(CFLAGS) -o $@ test_reset_class.c ../../main/reset_class.c
@@ -230,9 +237,9 @@ health_tests: test_health_text.c ../../main/health_text.c ../../main/health_text
 FORCE:
 
 clean:
-	rm -f carmind_tests rev_tests tank_tests session_tests reset_tests swipe_tests clock_tests uimetrics_tests prefetch_tests logstore_tests nandfat_tests settings_tests wifi_tests events_tests theme_tests wificreds_tests rows_tests ppa_tests os_tests pair_tests pair_gate_tests pair_gate_off.inc pair_gate_on.inc uishot_bin ai_tests bat_tests guard_tests soh_tests anom_tests ids_tests health_tests
+	rm -f carmind_tests rev_tests tank_tests session_tests reset_tests swipe_tests clock_tests uimetrics_tests prefetch_tests logstore_tests nandfat_tests settings_tests wifi_tests events_tests theme_tests wificreds_tests rows_tests ppa_tests os_tests pair_tests pair_gate_tests pair_gate_off.inc pair_gate_on.inc uishot_bin ai_tests bat_tests guard_tests soh_tests anom_tests ids_tests health_tests stop_tests
 	rm -rf uishot_bin.dSYM
-.PHONY: run rev session reset swipe clock uimetrics prefetch logstore clean settings wifi events theme wificreds rows eventtext ppa os pair textfit uishot uishot_lvgl ai bat guard soh anom ids idsaudit health FORCE
+.PHONY: run rev session reset stop swipe clock uimetrics prefetch logstore clean settings wifi events theme wificreds rows eventtext ppa os pair textfit uishot uishot_lvgl ai bat guard soh anom ids idsaudit health FORCE
 
 # ESP-Mosaico screens rendered on the Mac: text fit, corners, the 16 px floor (uishot/uishot.mk)
 include uishot/uishot.mk
