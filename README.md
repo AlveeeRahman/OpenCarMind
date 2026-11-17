@@ -361,9 +361,10 @@ Status: the rules run in simulation only. The board code, the buffer in PSRAM an
 
 ## In the works
 
-Two things run on my ESP-Mosaico in test builds. Neither is in a release or on `main` yet.
+Three things run on my ESP-Mosaico in test builds. Neither is in a release or on `main` yet.
 
 - **Active E.V (A.E.V).** The next model for the ESP-Mosaico: a student of about 28,000 parameters that learns more of your car than E.V. Its classifier head got a targeted correction for cars it had not seen, and on the board its answers match the desktop simulation on 95 to 97 % of windows.
+- **Brake pad wear.** The Brakes app estimates how much of the pads is used from the friction energy of your braking, the way pad wear is usually modelled: wear grows with the work the pads do. From the car's speed the board works out how hard you slow down, takes away what drag and engine braking do on their own, and adds up the rest while you brake. You tap **Record pad change** when new pads go on; each change you record turns the guessed pad life into a measured one for your car and your driving. The app shows the share used, kilometres since the change, hard brakes and an estimate of the kilometres left, with Check soon at 70 % and Replace soon at 90 %. Until you record a change it is an estimate, and it has not been checked against a real pad measurement yet.
 - **A neural health check.** One small network of about 25,000 parameters reads the last 64 seconds of the battery gauge, the Bluetooth and Wi-Fi guard's counters and the car's readings together. Every 16 seconds it gives the battery's health, the guard's state and the current manoeuvre, in about 6 ms on the board. It is a second opinion next to the EdgeOS 2.1.0 AI services, not a replacement: it never raises a banner or acts, and the Health app's AI page shows it as experimental. Its battery-health output got a targeted correction so that a running guard no longer pulls the reading down. On my board it now reads 93 to 101 % where the board's own estimator says about 98 %, and the guard reads normal with no false alarms. Its battery-fault output is not reliable yet. Each start, the board checks the network against the quantised reference on a test input before it uses it. Before a release it still has to pass real drives and a run on battery.
 
 ## Status
