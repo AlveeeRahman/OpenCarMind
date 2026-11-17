@@ -448,21 +448,6 @@ The rules live in one plain C file, `main/os_core.c`, with no ESP-IDF calls in i
 
 <p align="center"><img src="docs/images/edgeos-runlevels.png" width="900" alt="How the OS decides what may run, drawn as a hand-drawn flow. Step 1, inputs the OS reads: fresh on every check, from start-up, the count of abnormal resets, the drive log and the car link, the battery gauge and USB power, and the reset path and the format, read in rl_inputs() in main/os.c. Step 2, it sets the active runlevels: Boot when start-up has not finished, Safe after 3 abnormal resets in a row, Driving when a drive is recorded or the car's computer answers, Saving when the battery is hot or over-voltage or USB is lost (UPS option, off), Update when a reset, a door entry or a format is running, and Parked when none of these holds. Several can hold at once, for example Safe while Driving. Step 3, a service asks to run: model switch, clock, format, Wi-Fi edit, Wi-Fi radio, USB door, model or R.E.V learner, one mask each in MASK[] in main/os_core.c. Step 4, os_allows(service): every active runlevel must allow the service, and one that does not is enough to stop it. Step 5, yes: the service runs. No: refused with the phrase of the highest blocking runlevel, highest first: Update, an update or format is running. Saving, the board is saving power. Driving, a drive is running, or the car link is up when only the link is on. Safe, safe mode is on. Boot, the board is starting. Parked never blocks, because every service allows it. Separately, once per boot: step 6, boot health at 65 s rates the board good, degraded or bad. Step 7, good or degraded: the Wi-Fi task starts. Bad: Wi-Fi is held until you start it, and a start you make yourself in the Wi-Fi app is never held."></p>
 
-Which runlevels each service may run in, from the mask table in `main/os_core.c`:
-
-| Service | Boot | Safe | Parked | Driving | Saving | Update |
-|---|---|---|---|---|---|---|
-| Model switch (screen, desktop app) | no | no | yes | no | no | no |
-| Set the clock by hand | yes | yes | yes | no | no | no |
-| Format storage | no | yes | yes | no | no | no |
-| Add or forget a Wi-Fi network | yes | yes | yes | no | no | no |
-| Wi-Fi radio (search, join, clock sync) | yes | yes | yes | no | no | no |
-| USB door commands after pairing | yes | yes | yes | no | no | no |
-| Load the model at boot | yes | no | yes | yes | yes | no |
-| R.E.V learner | yes | no | yes | yes | no | no |
-
-Safe still allows a format, the clock, the door and Wi-Fi, so a board in safe mode can always be repaired.
-
 ### Model admission by response-time analysis
 
 A model is a real-time job. It has to answer once per second while the OBD poll and the learner share its core. When a model loads at boot or on a switch, the OS takes its self-test run time, doubles it (one measured run is not a worst case), and uses that as the model's worst-case CPU time C. Then it runs the response-time analysis of Joseph and Pandya<sup>[[5]](#ref-5)</sup> for every job on that core:
@@ -479,17 +464,7 @@ On the board, the first boot of a 2.0.0 build before the rename (09ec8f5) logged
 
 <p align="center"><img src="docs/images/edgeos-scheduler.png" width="900" alt="Scheduler budgets per core, drawn as Gantt lanes. Core 1, one 1,000 ms window on an axis broken at 40 ms: obd_poll, priority 5, period 1,000 ms, deadline 30,000 ms, not run on the bench. The ml job, priority 3, period and deadline 1,000 ms, self-test 2.1 ms doubled to a budget of 4.2 ms, admitted with R 4.2 ms on 4aeff43. The rev job, the R.E.V learner, priority 2, period 1,000 ms, deadline 30,000 ms, a 2 % share of 20 ms per second with bursts of at most 30 ms, no run on the bench. Core 0, one 100 ms window: the ui screen job, priority 2, period and deadline 50 ms, worst response 7.8 ms and worst CPU 4.98 ms over 9,597 runs in the 10-minute soak on 06ddf1d, 0 misses. The LVGL refresh every 16 ms. Slow jobs over the first 120 s: boot on 4aeff43 with Wi-Fi held from 4.3 s, the health verdict due at 65 s and good at 68.0 s, the Wi-Fi driver up from 88.1 to 106.5 s and the clock synced at 98.0 s. The learner's 30 s deadline windows and 60 s stall limit. The model's 10 s stall limit. The link_search, obd_poll and ecu_pick deadlines are of 90, 30 and 10 s. The board task every 2 s and the scheduler summary every 60 s."></p>
 
-Every timed job registers a period T and a deadline D with the scheduler monitor. The task it runs in sets its core and priority. The chart takes those from the code and puts the board's measurements inside them. The model gets 1,000 ms and its admission budget is 4.2 ms, so the first 40 ms of the core 1 axis are drawn 23 times wider, or the bar would be thinner than a pixel. No car was connected on the bench, so the OBD jobs, the model and the learner never ran as periodic jobs there. Their bars are the code's budgets. The measured ones are the model's self-test at admission and the screen job over the soak.
-
-| Job | Task, core, priority | T | D | Budget in the code | On the board |
-|---|---|---|---|---|---|
-| `obd_poll` | OBD, core 1, 5 | 1,000 ms | 30,000 ms | none | not run, no car |
-| `link_search`, `ecu_pick` | OBD, core 1, 5 | 90 s, 10 s | 90 s, 10 s | one run per search or connect | not run |
-| `ml` | model, core 1, 3 | 1,000 ms | 1,000 ms | C = 2 × self-test, stall 10 s | self-test 2.1 ms, C 4.2 ms, R 4.2 ms, admitted (4aeff43) |
-| `rev` | learner, core 1, 2 | 1,000 ms | 30,000 ms | 20 per mille of a core in 30 ms bursts, stall 60 s | contract logged, no runs (4aeff43) |
-| `ui` | screen, core 0, 2 | 50 ms | 50 ms | none | 9,597 runs, worst response 7.8 ms, worst CPU 4.98 ms, 0 misses (06ddf1d) |
-
-The screen job's 7.8 ms is wall time from the start of a run to its end, and 4.98 ms is the CPU the screen task used in it. The difference is time the task waited for other tasks on core 0. The response-time analysis counts only registered jobs, so it reports 4.98 ms for `ui`. The board task (every 2 s), the Wi-Fi task and the scheduler monitor run on core 0 outside the job table.
+Every timed job registers a period T and a deadline D with the scheduler monitor. The task it runs in sets its core and priority. The chart takes those from the code and puts the board's measurements inside them. The model gets 1,000 ms and its admission budget is 4.2 ms, so the first 40 ms of the core 1 axis are drawn 23 times wider, or the bar would be thinner than a pixel. No car was connected on the bench, so the OBD jobs, the model and the learner never ran as periodic jobs there. Their bars are the code's budgets. Two were measured. The model's self-test at admission took 2.1 ms, doubled to that 4.2 ms budget, and the model was admitted with a response time of 4.2 ms. The screen job ran 9,597 times over the soak with no missed deadline. Its worst response, the wall time from the start of a run to its end, was 7.8 ms, while the screen task itself used at most 4.98 ms of CPU; the difference is time it waited for other tasks on core 0. The response-time analysis counts only registered jobs, so it reports 4.98 ms for `ui`. The board task (every 2 s), the Wi-Fi task and the scheduler monitor run on core 0 outside the registered jobs.
 
 <a id="ai-services-and-the-battery-estimator"></a>
 
