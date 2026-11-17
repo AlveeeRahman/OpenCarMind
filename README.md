@@ -64,7 +64,7 @@ The same firmware also runs on Espressif's ESP-Mosaico touch-screen board. Its n
 <li><a href="#model-admission-by-response-time-analysis">Model admission by response-time analysis</a></li>
 <li><a href="#scheduler-budgets-per-core">Scheduler budgets per core</a></li>
 <li><a href="#ai-services-in-opencarmind-edgeos">AI services in OpenCarMind EdgeOS</a></li>
-<li><a href="#what-it-costs">What it costs</a></li>
+<li><a href="#internal-ram-at-run-time">Internal RAM at run time</a></li>
 <li><a href="#what-you-see-on-the-board">What you see on the board</a></li>
 <li><a href="#changes-after-the-board-check">Changes after the board check</a></li>
 <li><a href="#pairing-safety-built-not-yet-checked-on-the-board">Pairing safety (built, not yet checked on the board)</a></li>
@@ -643,18 +643,7 @@ The two studies came out opposite ways. For the intrusion detector, the general 
 
 </details>
 
-### What it costs
-
-Measured with `idf.py size` on the S31 build of the release (920318e, the firmware in main), against mossREV 1.2.0 rc3 (8b0b96f):
-
-| | OpenCarMind EdgeOS 2.0.0 | mossREV 1.2.0 rc3 | Change |
-|---|---|---|---|
-| App image | 4,778,560 B, 76.0 % of the 6 MB app slot (24 % free) | 4,752,720 B | +25,840 B |
-| Static internal RAM (DIRAM) | 194,198 B of 503,744 B (38.6 %) | 192,124 B | +2,074 B: PPA and 2D-DMA +2,380 B (mostly IRAM code), the pairing change +184 B, the OS parts and fixes +100 B, the feature gate −590 B |
-| Static PSRAM | 291,200 B | 289,664 B | +1,536 B, mostly the admission's buffers (1,352 B) |
-| Tasks | the same tasks as 1.2.0 | | none added: the OS layer runs inside the existing tasks |
-
-At 09ec8f5 the graphics work had added 37,312 B to the app image and the OS parts together about 9 KB. The 16 px text floor later saved 24,304 B by dropping the 12 and 14 px fonts, so the release is 25,840 B larger overall. With the UPS option switched on, the deep-sleep path alone would add about 12 KB of IRAM, which is one reason that option stays off.
+### Internal RAM at run time
 
 The target for internal RAM at run time is more than 60 KB free in every phase. This was measured on the board, OpenCarMind EdgeOS 2.0.0 4aeff43, with a debug build of that code that adds a RAM monitor. Each figure is the lowest free internal RAM in that phase, all internal heaps added up:
 
