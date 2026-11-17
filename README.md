@@ -54,6 +54,7 @@ The same firmware also runs on Espressif's ESP-Mosaico touch-screen board. Its n
 <li><a href="#edge-learning-rev-picks-what-to-learn">Edge learning: R.E.V picks what to learn</a></li>
 </ol>
 </li>
+<li><a href="#in-the-works">In the works</a></li>
 <li><a href="#status">Status</a></li>
 <li><a href="#opencarmind-edgeos-210-esp-mosaico">OpenCarMind EdgeOS 2.1.0 (ESP-Mosaico)</a>
 <ol type="A">
@@ -357,6 +358,13 @@ Three ideas of mine failed, and each was meant to be the new part:
 - Learning only from high-loss windows, which are mostly the board's mistakes. At a 5 % budget it reached 0.927 against 0.943 for margin. A learner that sees mostly its own errors gets a skewed sample, the sampling bias Dasgupta describes for active learning<sup>[[20]](#ref-20)</sup>.
 
 Status: the rules run in simulation only. The board code, the buffer in PSRAM and the drift alarm are not written, and none of this is in the firmware on `main`.
+
+## In the works
+
+Two things run on my ESP-Mosaico in test builds. Neither is in a release or on `main` yet.
+
+- **Active E.V (A.E.V).** The next model for the ESP-Mosaico: a student of about 28,000 parameters that learns more of your car than E.V. Its classifier head got a targeted correction for cars it had not seen, and on the board its answers match the desktop simulation on 95 to 97 % of windows.
+- **A neural health check.** One small network of about 25,000 parameters reads the last 64 seconds of the battery gauge, the Bluetooth and Wi-Fi guard's counters and the car's readings together. Every 16 seconds it gives the battery's health, the guard's state and the current manoeuvre, in about 6 ms on the board. It is a second opinion next to the EdgeOS 2.1.0 AI services, not a replacement: it never raises a banner or acts, and the Health app's AI page shows it as experimental. Its battery-health output got a targeted correction so that a running guard no longer pulls the reading down. On my board it now reads 93 to 101 % where the board's own estimator says about 98 %, and the guard reads normal with no false alarms. Its battery-fault output is not reliable yet. Each start, the board checks the network against the quantised reference on a test input before it uses it. Before a release it still has to pass real drives and a run on battery.
 
 ## Status
 
