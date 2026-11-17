@@ -764,57 +764,6 @@ The ladder drops the screen rate first and the model last, and climbs back one r
 
 Every phase stays above the 60 KB target. The lowest is 80.9 KB, with an adapter search and a clock sync running at once.
 
-<details><summary><b>Full board results table</b> (all 36 rows, with the build each one ran on)</summary>
-
-| Part | Result | What the board showed | Build |
-|---|---|---|---|
-| Boot and name | VERIFIED | `OpenCarMind EdgeOS 2.0.0 running` at 4.3 s after a power-on, 0 USB drops in 185 s | 4aeff43 |
-| Boot health, good | VERIFIED | `boot health good \| model self-test 1, flash FAT 1 (0 repaired), NAND 1, first UI tick 1365 ms, touch ok, 0 misses, 0 stalls, schedulable, runlevel Parked` at 68.0 s | 4aeff43 |
-| Boot health, bad | VERIFIED | `boot health bad: safe mode`, then `Wi-Fi held: boot health bad`. Sync clock now still started Wi-Fi by hand | scratch, forced bad |
-| Wi-Fi boot hold | VERIFIED | held at 4.3 s with no driver, released at 68.0 s with 131,975 B of internal RAM free, driver up at 88.1 s and down again at 106.5 s | 4aeff43 |
-| No addresses in the log | VERIFIED | no access-point address and no board address in the boot and Wi-Fi log | 4aeff43 |
-| Model admission, admitted | VERIFIED | `C 4248 us (self-test 2124 us x 2.0) on core 1, R: ml 4.2/1000 ms, margin 995.8 ms (ml): admitted` | 4aeff43 |
-| Model admission, refused | VERIFIED | the boot load logged `REFUSED`, and a switch to E.V got `ERR CarMind E.V refused: ml would miss its deadline` while R.E.V stayed | scratch, safety factor raised from 2 to 2,000 |
-| Service contract | VERIFIED | `service R.E.V learner: job rev, T 1000 ms, D 30000 ms, stall 60000 ms, CPU 20 per mille in 30 ms bursts, prio 2 core 1` | 4aeff43 |
-| Runlevels and refusals during a drive | VERIFIED | `runlevel Driving (active 0x08)` and back to `runlevel Parked`. The USB door answered `ERR busy: a drive is running, try again when parked`. The screen showed "Not now: a drive is running. Try again later." for the clock sync and Format | scratch, forced drive |
-| Degradation ladder | VERIFIED | events "UI slowed (2 misses)" at 110.6 s, "learner paused (6 misses)" at 122.6 s, "model paused (10 misses)" at 134.6 s, then one step back at a time to "normal" at 348.6 s. One model load in the whole run | scratch, extra model load |
-| Battery protection | VERIFIED, test limits | "Battery hot (34.2 C on USB): load shed" with Wi-Fi off, the learner paused and the screen dimmed, runlevel Saving, then "Battery cooled (33.7 C)" and Parked, and "Battery over-voltage (4188 mV): charger fault, stopped". The real limits (45 °C, 60 °C, 4.25 V) were not reached | scratch, test limits |
-| Desktop app | VERIFIED | connect with `fw=EdgeOS-2.0.0`, a wrong token refused, a model switch both ways, two files read at their listed sizes | 4aeff43 |
-| Internal RAM above 60 KB | VERIFIED | lowest 82,883 B over 9 phases (see [What it costs](#what-it-costs)) | debug build of 4aeff43 |
-| PPA and 2D-DMA | PARTLY | on at boot, `failures dma 0 ppa 0` in all 18 reports. A clean A/B on the same build: composing one slide frame takes 5.5 ms with the accelerator and 8.4 to 9.0 ms without, but a whole slide runs at 8.4 to 9.0 fps with it and 11.7 to 12.5 fps without, and its slowest frame is about 45 ms longer. Under investigation | 06ddf1d |
-| Resets through `sys_reset` | VERIFIED | `the last run ended with sys_reset(REBOOT: door REBOOT)` after a door REBOOT, and `the last run ended with sys_reset(door: USB door)` after a download-door entry | 4aeff43, 06ddf1d |
-| Feature gate | PARTLY | the gate starts and Smart swipe's warm-up runs. No verdict yet | 4aeff43 |
-| Version on screen | VERIFIED | `OpenCarMind EdgeOS 2.0.0` in the boot line, on the Board page and in Settings, and `fw=EdgeOS-2.0.0` over USB | 4aeff43, 06ddf1d |
-| 10-minute soak | VERIFIED | 10 min 02 s on the release: 0 restarts, 0 USB drops, 0 UI misses, every job within its deadline. The Wi-Fi round ran on the next boot: clock synced, internal RAM 90,959 B free at its low | 06ddf1d |
-| Critical battery stop | VERIFIED, test limit | with the limit lowered to 26 °C: `Battery too hot (28 C): stopped` and `logs flushed, storage stopped`, no power-off. The real 60 °C was not reached | scratch, lowered limit |
-| Where the gauge temperature comes from | VERIFIED | the gauge chip's own sensor: `Temperature()` equals `InternalTemperature()` in all 25 readings (28.1 to 31.4 °C). The board has no thermistor on the cell, so this is the temperature next to the cell, not of the cell | debug builds |
-| Board page "lowest" after the fix | PARTLY | the Board page reads 108 KB, the all-internal figure (110,631 B) and no longer 32 KB low. Not shown after a Wi-Fi round | debug build of 06ddf1d |
-| Wi-Fi with no known network in reach | NOT | not run | |
-| Going back to mossREV 1.2.0 | NOT | not tried | |
-| A/B rollback, UPS, GPIO57 power-off | NOT | off in this release | |
-| Pairing: a weak adapter is ignored | VERIFIED | over the soak and the next boot: 0 connection tries, 0 pairing questions and 0 Driving spells, `automatic adapter search: not paired, strong signal only` | 06ddf1d |
-| Pairing: offering and saving your adapter | NOT | needs the owner's adapter next to the board | |
-| Model names and 16 px text on screen | VERIFIED | 37 board captures: "active-estimator" and "ev-frozen" on the model pages, no text under 16 px, nothing in a 60 px corner. One overlap on Home (fixed in ce58ca7, host-checked) | 06ddf1d |
-| The download door in every state | VERIFIED | the 1200-baud door entered the ROM download mode on the release, in Saving, during a forced drive and after a battery safety stop | 4aeff43, 06ddf1d, scratch |
-| Boot health, with the AI services | VERIFIED | rated good at 68.9 s | 13757fd |
-| Wi-Fi boot hold, with the AI services | VERIFIED | Wi-Fi released after the good verdict with 130,623 B of internal RAM free | 13757fd |
-| AI worker admission | VERIFIED | admitted on core 1 with R 2.00 ms against its 1,000 ms deadline, a margin of 998 ms | 13757fd |
-| Battery estimator self-test | VERIFIED | 570 µs against its 2 ms budget | 13757fd |
-| Battery SoC and SoH on the Board page | BEING CHECKED | built, being checked on the board. The parameters are placeholders until the cell's curve is fitted | 13757fd |
-| Ladder rung "AI services slowed" | BEING CHECKED | built, being checked on the board | 13757fd |
-| Pairing safety: fingerprint, no silent re-pair, clock jump guard | BEING CHECKED | built, being checked on the board | 13757fd |
-| Network intrusion detector | BEING CHECKED | in the firmware since 2.1.0 as the network guard, see the 2.1.0 rows | 73db232 |
-| 2.1.0: boot health and AI admission | VERIFIED | health good at 68.8 s; bat, banom and ids admitted on core 1, R 5.00 ms against 1,000 ms, margin 995 ms; self-tests (fastest of 5) 229, 19 and 58 µs, the IDS self-test replays 64 vectors | 73db232 |
-| 2.1.0: 10-minute soak | VERIFIED | 640 s, 0 restarts, 0 USB drops, 0 UI misses in 64 windows, 0 scheduler misses; bat 536, banom 537 and ids 108 runs, 0 deadline misses, worst response 12.9, 13.0 and 11.9 ms | 73db232 |
-| 2.1.0: network guard in its shadow | VERIFIED | scan score 0 to 34 of 256 over 112 windows (22,585 adverts), 0 blocks, 0 "would block"; the first Wi-Fi scan (15 networks) scored 256, at the threshold, not over it; no pairing prompt; the clock sync was accepted | 73db232 |
-| 2.1.0: internal RAM, lowest per phase | VERIFIED | debug build of 73db232 with the RAM monitor: 122,795 B at the boot verdict, 109,643 B as the AI services and the guard start, 78,227 B over a Wi-Fi round with the Health app open (13757fd round: 81,531 B), 108,327 B on Board and Settings; all above 60 KB. The AI worker's stack never used 2,648 of its 4,096 B | 73db232 |
-| 2.1.0: Health app on the board | VERIFIED | 3 pages in both themes captured from the board, no overlap, 16 px text | 73db232 |
-| 2.1.0: Health in plain words | VERIFIED | real states on the board (battery learning, guard learning this place, AI on time) and, on a debug build that puts a state into the Health view only, battery good, worn, three anomaly reasons, guard watching, blocking and adapter mismatch, AI slowed, in both themes. The banner with Open Health opened the right page, a swipe closed it. The first Wi-Fi scan after a start is no longer scored (0 scans, "no data", 73db232 showed 290 of 256) | 81017a5 |
-| 2.1.0: battery anomaly detector | BEING CHECKED | admitted, in its 24 h warm-up | 73db232 |
-| 2.1.0: SoH regressor, counted SoH and DCIR | NOT | the cell stayed full at 0 mA, so no charge cycle, no capacity sample and no DCIR sample yet (0 of 10 reference cycles) | 73db232 |
-
-</details>
-
 ## Limitations and future work
 
 - **Torque is a physics estimate, not a measurement**, checked against one public car and for petrol engines only. R.E.V learns the engine size it uses, about 2.1 L from my car's last two drives, but not the torque itself. Cars that report torque (PIDs 0x62 and 0x63) could give a learned torque read-out its label, the way the fuel read-out learns now, and then the physics would not be needed. That is planned, not built or tested. My Sentra and most pre-2020 cars report no torque, so there is no label, and physics, or the ESP-Mosaico's accelerometer as a label, stays needed there.

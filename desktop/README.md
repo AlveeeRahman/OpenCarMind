@@ -61,7 +61,7 @@ One window, native frame, resizable down to 480 by 360. Below 640 px the margins
 ## Contents
 
 - `app/`: the Tauri app (`src-tauri` for Rust, `ui` for the window).
-- `icons/`: the app icon in the sizes Tauri expects (`32x32.png`, `128x128.png`, `128x128@2x.png`, `icon.png`, `icon.icns`, `icon.ico`), the 1024 px master, and the tray glyphs (`tray-template` is black on transparent so macOS can tint it, `tray-light` is white for dark panels).
+- `icons/`: the app icon in the sizes Tauri expects (`32x32.png`, `128x128.png`, `128x128@2x.png`, `icon.png`, `icon.icns`, `icon.ico`), and the 1024 px master.
 
 ## The health states
 
