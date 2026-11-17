@@ -484,7 +484,7 @@ A service reads copies of its inputs and writes its results without a lock, so i
 | Battery anomaly detector | an alarm when 60 s windows stop looking normal for this cell. The Health card names the feature with the largest error in plain words, for example "warms up more than usual" | under 400 ops a window, 920 B | in the firmware since 2.1.0 (1.05e-6 against the Mac). Admitted on the board, in its 24 h warm-up |
 | Network intrusion detector: rotation detector | scores each 5 s of Bluetooth and Wi-Fi traffic for address-rotation floods | about 60 integer ops, 552 B per head | in the firmware since 2.1.0 as the network guard (bit-exact against the Mac). Admitted on the board, in its 2 h shadow |
 | Pairing rules R1, R2 and R6 | adapter fingerprint, no silent re-pair, clock jump guard ([Pairing safety](#pairing-safety-built-not-yet-checked-on-the-board)) | one compare per link or clock sync, 48 B in NVS | on the board, being checked |
-| Residual MLP, 3-state EKF, neural ECM, KalmanNet-lite, pure MLP, general IDS learners | learned replacements or corrections | | tested, not shipped (see the last dropdown) |
+| Residual MLP, 3-state EKF, neural ECM, KalmanNet-lite, pure MLP, general IDS learners | learned replacements or corrections | | tested, not shipped |
 
 <details>
 <summary><b>For experts: how the battery charge estimator works</b> (figure, equations, test results)</summary>
@@ -619,27 +619,6 @@ Overruns do not pile up. A step that runs past its budget may finish, and that s
 The worker cannot deadlock either. A deadlock needs a cycle of tasks, each holding something the next one waits for. A service step takes no mutex, waits on no queue, does no I/O and allocates nothing. Its input is a copy of the latest sample in a single-writer seqlock: the reader retries a torn copy at most four times, then keeps the last good one, and never waits. Its result goes out the same way, and the screen reads it without a lock. Rows for storage go into a single-producer, single-consumer ring that drops and counts when full. The board task drains it, since it already owns NVS and the file writes. The only lock on a step's path is the scheduler monitor's spinlock, held for a few field copies and never nested. So the worker never holds one resource while it waits for another, and the cycle cannot form through it.
 
 On the Board page, the AI SERVICES card shows each service's period, deadline, budget, runs, misses, skips and worst response.
-
-</details>
-
-<details>
-<summary><b>For experts: the models we tested and did not ship</b> (what each was for, and why it lost)</summary>
-
-| Model | What it tried | Result on the Mac | Why it is not shipped |
-|---|---|---|---|
-| Residual MLP, phase 2 (10 → 12 tanh → 1, 375 multiply-add equivalents, 984 B) | learn the EKF's remaining SoC error | RMSE 0.49 % middle and 0.21 % late life against the EKF's 0.53 and 0.33 %, but a worst error of 6.49 % on the forward test against 3.96 %, and NASA 12.1 % against 12.9 % | better in some places, worse in others. The gate was to beat the EKF everywhere |
-| Residual MLP, phase 3 (11 → 12 tanh → 1, trained with 120 simulated cells of random OCV shape, capacity, resistance and offset, with a confidence gate) | make the correction hold on other cells | the gate switched it off, or it raised the worst error | it did not pass |
-| EKF with a third state for the current offset | cancel a current-sensor offset | under +0.01C offset, RMSE 5.3 % down to 0.27 to 0.79 %. On clean data the early-life worst error rose from 4.0 % to 7.5 % | kept for boards whose measured offset is above about 0.003C (0.2 mA on 65 mAh), not the default |
-| UKF with one or two RC pairs<sup>[[22]](#ref-22)</sup> | a better nonlinear filter | the same RMSE as the EKF, a higher worst error (5.8 % against 2.5 % in middle life), 360 against 90 multiply-add equivalents | linearisation was not the limit |
-| Neural ECM | a network in place of the cell's voltage map | 62 % RMSE on the NASA cells | it learned one cell's voltage map |
-| Pure MLP | SoC straight from V, I and T | 32 % on the NASA cells, worst 10.8 % early in life, and no recovery from a wrong start | no physics to fall back on |
-| KalmanNet-lite, a small KalmanNet<sup>[[23]](#ref-23)</sup> | a learned Kalman gain | worse than the EKF everywhere, for example 3.51 % RMSE early in life against 0.45 %, after a short training run | it lost on every test |
-| SoH: GBDT and an 8-unit MLP | other SoH regressors | 1.96 % and 20 % MAPE in forward cross-validation, against 0.83 % for ridge | ridge was better and smaller |
-| Battery anomaly: z-score and online Gaussian as alarms | simple baselines | 0.245 and 0.126 false alarms per hour on normal data, against a target of 0.05 | ageing moved them. They only log |
-| IDS: z-score on all six features, diagonal Gaussian, Mahalanobis, online k-means, Half-Space Trees<sup>[[24]](#ref-24)</sup>, a tiny autoencoder | learn normal traffic, block anything unusual | 0.10 to 0.16 false blocks per hour on stable data (the autoencoder 0.009). After a move from a quiet place to a busy one, stuck blocking 33 to 100 % of the time | they learned the crowd's size, and the guard against poisoning froze them in the new place |
-| IDS: paired-adapter signal strength as a clone detector | spot a second transmitter on the paired address | 0 / 60 clones found at z = 6 | the public data has no fixed transmitter, so it could not answer. Clones stay with rule R1 |
-
-The two studies came out opposite ways. For the intrusion detector, the general learners failed and a baseline built for one pattern, address rotation, passed. For the battery anomaly detector, the simple baselines failed on ageing drift and the autoencoder passed.
 
 </details>
 
