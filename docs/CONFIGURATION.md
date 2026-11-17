@@ -23,7 +23,7 @@ A new session starts at every power cycle. Everything is flushed to the card at 
 
 ## Wi-Fi networks
 
-Wi-Fi sets the clock and, once the board is paired with the desktop app, carries new drive data to it. The desktop app can write these files for you. To do it by hand, put a file called `wifi.csv` in `/sdcard/obd/` with one network per line:
+On the S3 firmware, Wi-Fi only sets the clock. Drives reach the desktop app over the USB cable. The desktop app can write these files for you. To do it by hand, put a file called `wifi.csv` in `/sdcard/obd/` with one network per line:
 
 ```
 My Home Wifi,my-wifi-password
