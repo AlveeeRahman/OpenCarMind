@@ -7,7 +7,7 @@ The ESP-Mosaico build is OpenCarMind EdgeOS 2.1.0. It comes from the same source
 ```{include} ../_gen/mosaico-hardware.md
 ```
 
-You also need a Bluetooth LE OBD-II adapter, a USB-C cable, Python with pyserial and esptool 5.6.0 or later. The board needs no SD card: the drives go to its NAND.
+You also need a Bluetooth LE OBD-II adapter, a USB-C cable, Python with pyserial and esptool 5.6.0 or later. The board needs no SD card, because the drives go to its NAND.
 
 ## Flash the firmware
 

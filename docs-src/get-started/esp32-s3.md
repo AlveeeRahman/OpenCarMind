@@ -5,7 +5,7 @@ The S3 build runs on the Waveshare ESP32-S3-LCD-1.47B, and its tested release is
 ## What you need
 
 - the board, a Waveshare ESP32-S3-LCD-1.47B,
-- a Bluetooth LE OBD-II adapter that speaks ELM327 commands (Classic-only adapters will not pair, because the S3 has no Classic radio, see [Adapters](../hardware/adapters.md)),
+- a Bluetooth LE OBD-II adapter that speaks ELM327 commands (Classic-only adapters will not pair, because the S3 has no Classic radio. See [Adapters](../hardware/adapters.md).),
 - a FAT-formatted SD card,
 - a USB cable from the car's USB port, which also powers the board.
 

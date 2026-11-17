@@ -27,8 +27,8 @@ Put the file named in each row on the SD card at `obd/`, boot the board and read
 | Check | Do this | Expected | Firmware and app | Computer | Result |
 |---|---|---|---|---|---|
 | HTTPS clock | park near a known Wi-Fi network after a boot | page 2 shows Clock: synced, and the session JSON has `"clock": "https"` | | | |
-| Your time server | set Time server on the Board page to a host you run, restart | the clock still syncs; a host without a valid certificate is refused | | | |
-| R.E.V torque and tank | drive with R.E.V selected, then open the Fuel page | torque shows on page 5 in amber (idle when stopped); the Fuel page shows the tank learning progress | | | |
+| Your time server | set Time server on the Board page to a host you run, restart | the clock still syncs, and a host without a valid certificate is refused | | | |
+| R.E.V torque and tank | drive with R.E.V selected, then open the Fuel page | torque shows on page 5 in amber (idle when stopped), and the Fuel page shows the tank learning progress | | | |
 
 ## Wi-Fi upload to the desktop app (not in 2.5.0)
 

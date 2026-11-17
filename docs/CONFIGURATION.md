@@ -19,11 +19,11 @@ The board writes everything under `/sdcard/obd/`.
 | `custom_pids.csv` | up to 8 custom PIDs (you create it) |
 | `clock.txt` | the time at the last save, so the clock can resume after a power cut |
 
-A new session starts at every power cycle. Everything is flushed to the card at least every 10 seconds (`SDLOG_SYNC_PERIOD_S`). The newest save line on page 3 shows live whether you can cut the power (`main/power_state.c`): green "Safe to turn off" once no car data has arrived for 5 seconds, the last of it is on the card and no upload is running, and red "Not safe: logging", "Not safe: saving" or "Not safe: upload" until then. The AI model runs once per row of car data, so it has stopped by the time the line turns green.
+A new session starts at every power cycle. Everything is flushed to the card at least every 10 seconds (`SDLOG_SYNC_PERIOD_S`). The newest save line on page 3 shows live whether you can cut the power (`main/power_state.c`). It shows green "Safe to turn off" once no car data has arrived for 5 seconds, the last of it is on the card and no upload is running. Until then it shows red "Not safe: logging", "Not safe: saving" or "Not safe: upload". The AI model runs once per row of car data, so it has stopped by the time the line turns green.
 
 ## Wi-Fi networks
 
-Wi-Fi sets the clock and, once the board is paired with the desktop app, carries new drive data to it. The desktop app can write these files for you. To do it by hand, put a file called `wifi.csv` in `/sdcard/obd/` with one network per line:
+On the S3 firmware, Wi-Fi only sets the clock. Drives reach the desktop app over the USB cable. The desktop app can write these files for you. To do it by hand, put a file called `wifi.csv` in `/sdcard/obd/` with one network per line:
 
 ```
 My Home Wifi,my-wifi-password
@@ -36,18 +36,18 @@ The board connects only while parked. It scans, connects, reads the time, stays 
 
 ## The clock
 
-The board has no battery for its clock. Every save writes the time to `/sdcard/obd/clock.txt`. After a power cut the clock resumes from that file, behind by the time the car was off, and the screen shows it in amber until the next Wi-Fi sync corrects it. Each session JSON says where its time came from in the `clock` field: `https` (set over Wi-Fi from the time server; `sntp` in versions before 2.5.0), `rtc` (kept through a reset), `resumed` (from the card, an estimate) or `unset`. Rows also carry `uptime_ms`, and `time_sync` in the JSON maps uptime to real time, so a session can be re-timed once the clock was corrected.
+The board has no battery for its clock. Every save writes the time to `/sdcard/obd/clock.txt`. After a power cut the clock resumes from that file, behind by the time the car was off, and the screen shows it in amber until the next Wi-Fi sync corrects it. Each session JSON says where its time came from in the `clock` field: `https` (set over Wi-Fi from the time server, called `sntp` in versions before 2.5.0), `rtc` (kept through a reset), `resumed` (from the card, an estimate) or `unset`. Rows also carry `uptime_ms`, and `time_sync` in the JSON maps uptime to real time, so a session can be re-timed once the clock was corrected.
 
 ## Setup over USB with the desktop app
 
 With the desktop app, the SD card can stay in the board. The app talks to it over the USB cable through an authenticated door (`main/usb_door.h`), prepares everything itself, and sends the board only finished values to store or apply:
 
-- Pairing: the first time, the board shows a 6-digit code on its screen and you type it into the app (3 tries per code, a new code at most every 5 seconds). The app then sends its address, port, certificate and token. Later connections prove themselves with an HMAC of a fresh random challenge, keyed with that token: the app computes this code itself, and the board answers nothing else until it is right. The screen code only pairs: after it, the board accepts PAIR and nothing more.
+- Pairing: the first time, the board shows a 6-digit code on its screen and you type it into the app (3 tries per code, a new code at most every 5 seconds). The app then sends its address, port, certificate and token. Later connections prove themselves with an HMAC of a fresh random challenge, keyed with that token. The app computes this code itself, and the board answers nothing else until it is right. The screen code only pairs. After it, the board accepts PAIR and nothing more.
 - Wi-Fi networks, the time zone and the settings in the table below.
 - Reading the session files from the card, so drives can be imported over the cable.
 - Flashing: the app carries the matching firmware image and Espressif's `esptool`. Flashing keeps the Wi-Fi networks and the pairing, which live in a separate flash partition.
 
-The board refuses all of this while the car link is up. In 2.5.0 the board sends no drive data over Wi-Fi: import drives over the USB cable. Wi-Fi only sets the clock, with one HTTPS request to the time server (`time_host` in `config.json`, or Time server on the app's Board page; default `www.google.com`, `""` for the default). The server's certificate must chain to a trusted root and name that host, and a time outside 2026 to 2099 is refused.
+The board refuses all of this while the car link is up. In 2.5.0 the board sends no drive data over Wi-Fi: import drives over the USB cable. Wi-Fi only sets the clock, with one HTTPS request to the time server. You choose the server with `time_host` in `config.json` or with Time server on the app's Board page. It defaults to `www.google.com`, and `""` selects the default. The server's certificate must chain to a trusted root and name that host, and a time outside 2026 to 2099 is refused.
 
 The card files below (`wifi.csv`, `config.json`, `custom_pids.csv`) still work for anyone who prefers them.
 

@@ -53,7 +53,7 @@ Scores of the version on the chip, on data held out from training:
 
 ## CarMind R.E.V
 
-R.E.V reads the same inputs and gives the same answers as E.V, from a model about half the size (about 64 KB on the chip). What it adds is learning on the board, for fuel only:
+R.E.V reads the same inputs and gives the same answers as E.V, from a model about half the size (about 64 KB on the chip). It adds learning on the board, for fuel only:
 
 - While the car reports its fuel rate or its airflow, R.E.V checks how its own fuel estimate would have done without the airflow reading, and slowly adjusts that estimate to your car. A change is kept only if it does better on the most recent part of the drive, and it goes back to the factory setting if it ever does worse.
 - On cars that report engine load, it also learns how much air your engine takes in, which gives a second fuel estimate.

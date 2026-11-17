@@ -9,7 +9,7 @@
 <img src="https://img.shields.io/badge/chips-ESP32--S3%20%7C%20ESP32--S31-lightgrey.svg" alt="ESP32-S3 and ESP32-S31">
 </p>
 
-OpenCarMind is an open-source OBD2 logger and dashboard for the ESP32, with a pruned, knowledge-distilled multi-task 1D CNN that adapts its read-out on the device. Its newest firmware, OpenCarMind EdgeOS 2.1.0, is an AI-first operating system for the chip. It runs on FreeRTOS's preemptive scheduler and treats every model as a soft real-time job with a deadline. A model is admitted only when every deadline on its core still holds, and when deadlines slip the board steps down in a fixed order (screen rate, then learning, then the model) so the drive log keeps running. Version 2.1.0 adds AI services that estimate the battery's charge and health, check it for faults and guard Bluetooth and Wi-Fi, and a Health app that tells you in plain words what is wrong and what to do. OpenCarMind turns an ESP32 board and a Bluetooth OBD-II adapter into a car data logger that runs neural networks on the chip. It needs no phone, no account and no internet connection. Everything it records goes to the board's own storage (an SD card on the ESP32-S3 board, the 128 MB NAND on the ESP-Mosaico) and, if you pair the board, to the desktop app on your own computer.
+OpenCarMind is an open-source OBD2 logger and dashboard for the ESP32. It turns an ESP32 board and a Bluetooth OBD-II adapter into a car data logger that runs neural networks on the chip. It needs no phone, no account and no internet connection. Everything it records goes to the board's own storage (an SD card on the ESP32-S3 board, the 128 MB NAND on the ESP-Mosaico) and, if you pair the board, to the desktop app on your own computer.
 
 It ships two on-board models, and you choose between them in the desktop app. CarMind E.V is fixed and tested. CarMind R.E.V is my first model that keeps learning in your car: the board itself updates part of the model from what your car reports while you drive, with no computer or cloud in the loop.
 
@@ -20,11 +20,19 @@ Licence: MIT. Website: <https://alveeerahman.github.io/OpenCarMind/>. Documentat
 
 The same firmware also runs on Espressif's ESP-Mosaico touch-screen board. Its newest version, [OpenCarMind EdgeOS 2.1.0](#opencarmind-edgeos-210-esp-mosaico), adds a small operating-system layer (a boot health check, refusals of risky changes while you drive, model admission by response-time analysis and battery protection) and, [new in 2.1.0](#new-in-opencarmind-edgeos-210), AI services for the battery and the radios with a Health app to show them. [User manuals](#user-manuals) for both boards are in [docs/manual](docs/manual).
 
+<details>
+<summary><b>Stats for nerds</b> (the model and the EdgeOS scheduler)</summary>
+
+The model on the chip is a pruned, knowledge-distilled multi-task 1D CNN that adapts its read-out on the device. The newest firmware, OpenCarMind EdgeOS 2.1.0, is an AI-first operating system for the chip. It runs on FreeRTOS's preemptive scheduler and treats every model as a soft real-time job with a deadline. A model is admitted only when every deadline on its core still holds. When deadlines slip, the board steps down in a fixed order (in EdgeOS 2.1.0 the AI services first, then the screen rate, learning and the model) so the drive log keeps running. Version 2.1.0 adds AI services that estimate the battery's charge and health, check it for faults and guard Bluetooth and Wi-Fi. It also adds a Health app that tells you in plain words what is wrong and what to do.
+
+</details>
+
 ## Contents
 
 <ol type="I">
 <li><a href="#choose-your-model">Choose your model</a></li>
 <li><a href="#what-you-get">What you get</a></li>
+<li><a href="#things-people-ask">Things people ask</a></li>
 <li><a href="#local-first">Local-first</a></li>
 <li><a href="#how-it-works">How it works</a>
 <ol type="A">
@@ -64,7 +72,7 @@ The same firmware also runs on Espressif's ESP-Mosaico touch-screen board. Its n
 <li><a href="#model-admission-by-response-time-analysis">Model admission by response-time analysis</a></li>
 <li><a href="#scheduler-budgets-per-core">Scheduler budgets per core</a></li>
 <li><a href="#ai-services-in-opencarmind-edgeos">AI services in OpenCarMind EdgeOS</a></li>
-<li><a href="#what-it-costs">What it costs</a></li>
+<li><a href="#internal-ram-at-run-time">Internal RAM at run time</a></li>
 <li><a href="#what-you-see-on-the-board">What you see on the board</a></li>
 <li><a href="#changes-after-the-board-check">Changes after the board check</a></li>
 <li><a href="#pairing-safety-built-not-yet-checked-on-the-board">Pairing safety (built, not yet checked on the board)</a></li>
@@ -82,6 +90,11 @@ The same firmware also runs on Espressif's ESP-Mosaico touch-screen board. Its n
 
 ## Choose your model
 
+R.E.V suits older cars, roughly pre-2020, that have no fuel-rate PID and can lose the airflow (MAF) reading. E.V suits you if you want a fixed, tested model.
+
+<details>
+<summary><b>Stats for nerds</b> (size, speed and what each model learns)</summary>
+
 | | CarMind E.V | CarMind R.E.V |
 |---|---|---|
 | Status | released in 2.4.0, the default in the 2.5.1 release | new in 2.5.0, improved in 2.5.1, the default on a new board with the firmware from `main` |
@@ -93,6 +106,8 @@ The same firmware also runs on Espressif's ESP-Mosaico touch-screen board. Its n
 | Fill-up calibration | yes | yes |
 | Best for | a fixed, tested model | older cars, roughly pre-2020, that have no fuel-rate PID and can lose the airflow (MAF) reading |
 | On the ESP-Mosaico (OpenCarMind EdgeOS 2.1.0, as in 2.0.0 and mossREV 1.2.0) | included, switch in Settings > MODEL | included, the default on a new board |
+
+</details>
 
 <p align="center"><img src="docs/images/ev-to-rev.gif" width="900" alt="Animated, from CarMind E.V to CarMind R.E.V in seven steps: E.V with 38,679 parameters, 89 KB and 3.5 ms per run. Structured pruning removes whole channels, down to 19,815 parameters. Knowledge distillation, E.V teaching R.E.V. Quantised for the chip: 66 KB and 2.9 ms. Learns in your car: fuel R2 from 0.709 to 0.867 on 31 unseen cars with the airflow hidden. Explainable AI fix: cruising called right on my drives from 10.7 to 87.5 percent. Shrugs off bad data: with 1 percent bad labels fuel R2 stays 0.867, where 2.5.0 fell to 0.696"></p>
 
@@ -121,13 +136,50 @@ Renders, not photos, with example values. Left: page 5 with E.V. Middle: page 5 
 - **On the ESP-Mosaico, a Health app** (OpenCarMind EdgeOS 2.1.0): the battery's charge and health, a battery fault check and a guard for Bluetooth and Wi-Fi, each explained in plain words with what to do.
 - **A desktop app** for Windows, macOS and Linux that imports drives, charts them, shows fuel per drive, switches the model and takes your fill-ups.
 
+## Things people ask
+
+<details>
+<summary><b>"Bro, just get Apple CarPlay."</b></summary>
+
+CarPlay mirrors your phone. OpenCarMind reads the car itself over OBD-II, runs its models on the chip and logs every drive to the board's own storage. It needs no phone, no account and no internet connection, so your phone is free to do phone things.
+
+</details>
+
+<details>
+<summary><b>"A neural network on an ESP32? Cute."</b></summary>
+
+Cute, and quantised. R.E.V has 19,815 parameters, takes about 66 KB on the chip and runs in about 2.9 ms in the car (median). E.V is the bigger one, about 89 KB and about 3.5 ms. Whichever you pick runs in its own task, so logging never waits for it.
+
+</details>
+
+<details>
+<summary><b>"So where does my driving data go?"</b></summary>
+
+Onto a card you hold. Drives are plain CSV, JSON and text on the SD card (the 128 MB NAND on the ESP-Mosaico), plus the desktop app on your own computer if you pair the board. Wi-Fi is optional and only asks one HTTPS time server for the time. It sends nothing else and listens on no port.
+
+</details>
+
+<details>
+<summary><b>"Will this work with my cheap Bluetooth adapter?"</b></summary>
+
+If it speaks ELM327 over Bluetooth LE, it should. Only the LELink has been driven with this board, and the rest of the adapter table comes from vendor documents and other open-source OBD projects. Classic Bluetooth adapters will not, because the S3 has no classic radio. For a cheap ELM327 clone, buy one whose listing says Bluetooth LE for iOS.
+
+</details>
+
+<details>
+<summary><b>"What does the AI actually do, though?"</b></summary>
+
+With every OBD row it looks at the last 5 seconds and says whether you are stopped, braking, accelerating or cruising. It also estimates three values the OBD port does not report: brake pressure, flywheel torque and fuel rate. R.E.V goes further and refits its fuel read-out from your car's own readings, and a refit goes live only if it beats the current one.
+
+</details>
+
 ## Local-first
 
 <p align="center"><img src="docs/images/workflow/local-first.png" width="900" alt="Local-first: no account, no cloud, AI on the chip, your SD card, optional Wi-Fi, your choice of dashboard"></p>
 
 Most car loggers stream your driving to a server and do the thinking there. OpenCarMind does the thinking on the board, the way TinyML work runs networks on microcontrollers<sup>[[1]](#ref-1)–[[3]](#ref-3)</sup>. R.E.V's learning also happens on the board, and what it learns stays on your SD card. Your data is plain CSV, JSON and text on a card you hold.
 
-Wi-Fi is optional and does one thing: while the car is parked on a known network, the board asks one HTTPS time server for the time. It checks the server's certificate, sends nothing else, and listens on no port. You can compile Wi-Fi out with `OCM_WIFI_CLOCK_SYNC`. On the ESP-Mosaico you can also search for a network and join it from the touch screen, for the same clock sync.
+Wi-Fi is optional and does one thing. While the car is parked on a known network, the board asks one HTTPS time server for the time. It checks the server's certificate, sends nothing else, and listens on no port. You can compile Wi-Fi out with `OCM_WIFI_CLOCK_SYNC`. On the ESP-Mosaico you can also search for a network and join it from the touch screen, for the same clock sync.
 
 ## How it works
 
@@ -202,7 +254,12 @@ The app in [desktop/](desktop/README.md) runs on Windows, macOS and Linux. Over 
 
 ### Adapter compatibility
 
-Only the LELink has been driven with this board. The other rows come from vendor documents and other open-source OBD projects. [docs/ADAPTERS.md](docs/ADAPTERS.md) has prices and sources. The Amazon links are plain product pages with no affiliate tag, all opened on 3 November 2026.
+Only the LELink has been driven with this board. Many others are expected to work, and Classic-only adapters will not.
+
+<details>
+<summary><b>Stats for nerds</b> (every adapter checked, with profiles and Amazon links)</summary>
+
+The other rows come from vendor documents and other open-source OBD projects. [docs/ADAPTERS.md](docs/ADAPTERS.md) has prices and sources. The Amazon links are plain product pages with no affiliate tag, all opened on 3 November 2026.
 
 | Adapter | Bluetooth | Built-in profile | Status | Amazon |
 |---|---|---|---|---|
@@ -222,6 +279,8 @@ Only the LELink has been driven with this board. The other rows come from vendor
 | V800 full-system scanners (Panlong PL-V800 and white-label copies) | Bluetooth | private app (INNOOBD+) | not expected. The title says "Engine Transmission ABS SRS", not V800 | [B0GQ3D57PK](https://www.amazon.com/dp/B0GQ3D57PK) |
 | OBDLink MX+, OBDLink LX, KONNWEI KW902 | Classic only (LX: Bluetooth 3.0, KW902: Android and Windows only) | none | will not work. The KW902 listing showed "currently unavailable" on 3 Nov 2026 | [B07JFRFJG6](https://www.amazon.com/dp/B07JFRFJG6), [B00H9S71LW](https://www.amazon.com/dp/B00H9S71LW), [B073F57QT3](https://www.amazon.com/dp/B073F57QT3) |
 
+</details>
+
 ## Build and flash
 
 You need ESP-IDF v6.1 and Python 3.
@@ -237,7 +296,14 @@ For the ESP-Mosaico, build with `idf.py --preview set-target esp32s31` and flash
 
 The first build downloads ESP-DL, LVGL, led_strip and cJSON through the IDF component manager. If you built an earlier version in the same folder, delete `sdkconfig` first. If the board stays in download mode after flashing, reset it with `python -m esptool --chip esp32s3 -p <port> --after watchdog-reset chip-id`.
 
-On first boot the board connects to the strongest nearby adapter that looks like an OBD adapter and remembers it. A later S3 release will ask first: a new adapter offered only at -70 dBm or better, and saved only when you tap BOOT within 5 s. It is in this source but off for the S3 by default (`CONFIG_OBD_BLE_PAIR_CONFIRM`). To try it, add `CONFIG_OBD_BLE_PAIR_CONFIRM=y` to `sdkconfig.defaults.esp32s3` and delete `sdkconfig` before you build. It is host-checked, not yet tested on a board. If yours is not found, add its name to `OBD_BLE_NAME_PREFIXES` in `idf.py menuconfig` under OBD Logger Configuration. Settings, SD card files, the Wi-Fi list and the CSV columns are in [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
+On first boot the board connects to the strongest nearby adapter that looks like an OBD adapter and remembers it. If yours is not found, add its name to `OBD_BLE_NAME_PREFIXES` in `idf.py menuconfig` under OBD Logger Configuration. Settings, SD card files, the Wi-Fi list and the CSV columns are in [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
+
+<details>
+<summary><b>Stats for nerds</b> (the pairing prompt coming to the S3)</summary>
+
+A later S3 release will ask first. It will offer a new adapter only at -70 dBm or better and save it only when you tap BOOT within 5 s. It is in this source but off for the S3 by default (`CONFIG_OBD_BLE_PAIR_CONFIRM`). To try it, add `CONFIG_OBD_BLE_PAIR_CONFIRM=y` to `sdkconfig.defaults.esp32s3` and delete `sdkconfig` before you build. It is host-checked, not yet tested on a board.
+
+</details>
 
 ## User manuals
 
@@ -247,7 +313,7 @@ User manuals for drivers and test users, each as Markdown here and as pages in t
 - [OpenCarMind EdgeOS 2.1.0 on the ESP-Mosaico](docs/manual/edgeos-2.1.0.md) ([web pages](https://buildforpeople.dev/docs/opencarmind/manuals/edgeos-2.1.0/)): everything in 2.0.0 plus the Health app, the pairing questions and the new messages.
 - [OpenCarMind EdgeOS 2.0.0 on the ESP-Mosaico](docs/manual/edgeos-2.0.0.md) ([web pages](https://buildforpeople.dev/docs/opencarmind/manuals/edgeos-2.0.0/)): the 16 apps, Settings, Wi-Fi, the two models, the health check and every message the board shows.
 
-The Markdown files are the source. The documentation site in [docs-src](docs-src) is built from them with Sphinx, so the web pages and the Markdown cannot drift. The old manual addresses, `manual/esp32-s3.html` and `manual/edgeos-2.0.0.html`, now open the new pages.
+The Markdown files are the source. Sphinx builds the documentation site in [docs-src](docs-src) from them, so the web pages and the Markdown cannot drift. The old manual addresses, `manual/esp32-s3.html` and `manual/edgeos-2.0.0.html`, now open the new pages.
 
 ## The models
 
@@ -259,7 +325,7 @@ The [model card](MODEL_CARD.md) puts every step from E.V to the final R.E.V in o
 
 ### The test drives
 
-Two additional drives serve as a held-out test set. They cover frequent stops, an extended idle, steady cruising with and without cruise control, and hard acceleration and braking. No model on `main` saw these drives during training or tuning. They are scored as data from an unseen vehicle: no per-vehicle settings carry over, and every learner starts from its factory state.
+Two additional drives are a held-out test set. They cover frequent stops, an extended idle, steady cruising with and without cruise control, and hard acceleration and braking. No model on `main` saw these drives during training or tuning. They are scored as data from an unseen vehicle: no per-vehicle settings carry over, and every learner starts from its factory state.
 
 <p align="center"><img src="docs/images/test-drives-timeline.png" width="900" alt="Two held-out test drives: speed, throttle, accelerator pedal and engine rpm over time, with bands for stops, an extended stop, steady holds and holds with the pedal released"></p>
 
@@ -269,11 +335,16 @@ Method and a comparison with routine driving: [docs/TEST_DRIVES.md](docs/TEST_DR
 
 <p align="center"><img src="docs/images/leaders.png" width="900" alt="CarMind model leaders: the models on main, tested on two drives they never saw, scored as an unknown car. R.E.V: 94.5 percent of windows right, cruising 88.9, braking 98.4, accelerating 87.7, stopped 99.4, earlier held-out drives 95.1, KIA test 87.1, fuel R squared 0.867 learned on 31 cars. R.E.V (old): 71.8 percent, cruising 7.9. E.V: 73.5 percent, cruising 14.6, does not learn"></p>
 
-<p align="center"><img src="docs/images/board-bench.png" width="900" alt="On-board benchmark on two unseen test drives, 1,119 labelled windows, every number measured on the ESP32-S3. Accuracy, average recall over the four classes, macro-F1 and ROC-AUC: CarMind R.E.V 93.8 percent accuracy, 92.9 average recall, macro-F1 0.917, ROC-AUC 0.995; MLP 81.0; TCN 80.2; CarMind E.V 73.5; CarMind R.E.V (old) 71.8; GRU 40.7"></p>
+R.E.V's learners have been tested in replay on recorded drives from public test cars, through the firmware's own code with faulty readings mixed in, and on two drives in my car. On cars it never saw, learning in the car made its fuel estimate clearly better than the factory one when the airflow reading was missing. The tables are in the [detailed README](https://github.com/AlveeeRahman/OpenCarMind/blob/rev-c2/README.md#carmind-rev-results-so-far).
+
+<details>
+<summary><b>Stats for nerds</b> (on-board benchmark and fuel-learner leaderboard)</summary>
+
+<p align="center"><img src="docs/images/board-bench.png" width="900" alt="On-board benchmark on two unseen test drives, 1,119 labelled windows, every number measured on the ESP32-S3. Accuracy, average recall over the four classes, macro-F1 and ROC-AUC: CarMind R.E.V 93.8 percent accuracy, 92.9 average recall, macro-F1 0.917, ROC-AUC 0.995. MLP 81.0. TCN 80.2. CarMind E.V 73.5. CarMind R.E.V (old) 71.8. GRU 40.7"></p>
 
 <p align="center"><img src="docs/images/learner-board.png" width="900" alt="Fuel learner leaderboard on 31 unseen VED cars with the airflow hidden, ranked by R squared with 1 percent bad labels: Huber RLS (R.E.V) 0.867, ANIL 0.774, no learning 0.709, Plain RLS (R.E.V old) 0.696, Meta-SGD 0.151"></p>
 
-R.E.V's learners have been tested in replay on recorded drives from public test cars, through the firmware's own code with faulty readings mixed in, and on two drives in my car. On cars it never saw, learning in the car made its fuel estimate clearly better than the factory one when the airflow reading was missing. The tables are in the [detailed README](https://github.com/AlveeeRahman/OpenCarMind/blob/rev-c2/README.md#carmind-rev-results-so-far).
+</details>
 
 ### How the models are made
 
@@ -287,6 +358,9 @@ E.V is trained so that the version on the chip scores like the one on a computer
 
 The network itself never changes in the car, which protects it from forgetting what it learned in training<sup>[[9]](#ref-9)</sup>. Small parts on top of it learn, each only from something the car gives it to check against.
 
+<details>
+<summary><b>Stats for nerds</b> (what each output learns from)</summary>
+
 | Output | In the car | Learns from |
 |---|---|---|
 | Fuel rate | learns | the car's own fuel rate, or fuel worked out from the airflow sensor |
@@ -297,15 +371,24 @@ The network itself never changes in the car, which protects it from forgetting w
 | Manoeuvre class | fixed | nothing yet: the car gives no label for it |
 | Brake pressure | fixed | nothing: no car reports it |
 
+</details>
+
 ### How R.E.V learns on the board
 
 <p align="center"><img src="docs/images/rev-learner.gif" width="900" alt="Animated, R.E.V's fuel learner in five steps: the network stays frozen and only the 65-weight fuel read-out learns, every label passes a gate that drops implausible ones, unusual labels count less and old drives fade, a refit every 30 windows goes live only if it wins on the last 150, and the learned estimate follows the true fuel rate better than the factory one"></p>
 
-The last layer, which turns the network's features into a fuel rate, is refit from your car's own readings. A refit goes live only if it beats the current one on recent driving, and the board goes back to the factory version if learning ever makes things worse. Since 2.5.1 the learner ignores implausible readings and gives less weight to unusual ones<sup>[[10]](#ref-10)</sup>, so a faulty sensor cannot spoil what it learned. When the car reports neither fuel rate nor airflow, the board uses whichever estimate has been most accurate on your car so far and shows it in amber. What R.E.V learned is saved to the SD card while you drive.
+The last layer, which turns the network's features into a fuel rate, is refit from your car's own readings. A refit goes live only if it beats the current one on recent driving. If learning ever makes things worse, the board goes back to the factory version.
+
+<details>
+<summary><b>Stats for nerds</b> (bad readings, fallbacks and saving)</summary>
+
+Since 2.5.1 the learner ignores implausible readings and gives less weight to unusual ones<sup>[[10]](#ref-10)</sup>, so a faulty sensor cannot spoil what it learned. When the car reports neither fuel rate nor airflow, the board uses whichever estimate has been most accurate on your car so far and shows it in amber. What R.E.V learned is saved to the SD card while you drive.
+
+</details>
 
 ### Looking inside R.E.V with explainable AI
 
-On R.E.V's first drives in my car, the screen said "braking" while I held a steady speed with my foot on the gas. E.V does the same. I opened up R.E.V with explainable-AI methods, Grad-CAM<sup>[[11]](#ref-11)</sup> and a probe on its internal features, and found that the network's features already told cruising from braking. Only the last layer that picks the class had it wrong. Correcting that one layer fixed it, and everything R.E.V had already learned in the car stayed valid.
+On R.E.V's first drives in my car, the screen said "braking" while I held a steady speed with my foot on the gas. E.V does the same. I looked inside R.E.V with explainable-AI methods, Grad-CAM<sup>[[11]](#ref-11)</sup> and a probe on its internal features, and found that the network's features already told cruising from braking. Only the last layer that picks the class had it wrong. Correcting that one layer fixed it, and everything R.E.V had already learned in the car stayed valid.
 
 <p align="center"><img src="docs/images/rev-pca.png" width="900" alt="R.E.V's 64-value embedding of my drives drawn with PCA, with the first and the corrected classifier head side by side. Accelerating, braking and foot-on-gas cruising sit in their own regions. The first head gets most of the cruising region wrong, and the corrected head gets few windows wrong"></p>
 
@@ -328,6 +411,11 @@ The numbers for each step are in the [detailed README](https://github.com/Alveee
 
 R.E.V's classifier does not learn in the car yet. Edge learning is how I plan to change that, and I am preparing it now. It is active learning that runs on the board itself: the board decides which windows are worth learning from, and which few are worth your time later. Nobody in the car labels anything, and no computer takes part while you drive.
 
+Status: the rules run in simulation only. The board code, the buffer in PSRAM and the drift alarm are not written, and none of this is in the firmware on `main`.
+
+<details>
+<summary><b>Stats for nerds</b> (how the four rules work)</summary>
+
 The phrase "edge learning" already exists as a broad term for training models on edge devices<sup>[[15]](#ref-15)</sup>. Here I use it as the name for one specific method, four rules built for a microcontroller whose teacher is free, late and sometimes silent.
 
 The teacher is a physics judge. About 5 seconds after a window, what the speed, throttle and rpm did next usually shows whether the car was stopped, braking, accelerating or cruising. Sometimes it cannot tell, and the window stays undecided. ESP-DL runs the network but does not train it<sup>[[6]](#ref-6)</sup>, so the learning happens in the class read-out, refit by least squares in C, the way the fuel read-out learns today.
@@ -339,6 +427,11 @@ The four rules:
 3. Learn from a window when its margin is under τ, or when the judge's verdict shows the board was wrong. The update is a ridge refit of the class read-out, with a holdout gate and one saved state per car, like the fuel learner.
 4. Keep undecided windows by margin. These are the only windows where a label costs anything, because a person has to give it. The board will write up to 40 per drive to the SD card, at least 5 s apart because windows overlap, and the desktop tools turn them into a label sheet.
 
+</details>
+
+<details>
+<summary><b>Stats for nerds</b> (the simulation, and three ideas that failed)</summary>
+
 To test the rules before writing them for the board, I copied the board's read-out learner into Python and streamed seven drives from a second car, one R.E.V never trained on, in the order they were driven. It started from the shipped R.E.V. Each window was scored first and learned from afterwards, so no window graded a model that had already seen it.
 
 | Rule, at a 10 % learn budget | Judged windows learned | Macro recall over the stream |
@@ -349,7 +442,7 @@ To test the rules before writing them for the board, I copied the board's read-o
 | Margin only | 5.5 % | 0.944 |
 | Margin or mistake (edge learning) | 5.7 % | 0.953 |
 
-Margin or mistake matched learning from every judged window while learning from about a tenth as many, so the board runs the solver about ten times less often. Two cautions. This is one stream of seven drives with one run of each margin rule, so the gap to random is about two standard deviations. That is a good sign, not a settled result. And a read-out adapted to the new car scored lower on other cars' validation windows, KIA from 0.778 to 0.728 and my car from 0.969 to 0.935. One saved state per car is there so that this adaptation never reaches another car's read-out.
+Margin or mistake matched learning from every judged window while learning from about a tenth as many, so the board runs the solver about ten times less often. Two cautions. This is one stream of seven drives with one run of each margin rule, so the gap to random is about two standard deviations. That is a good sign but not a settled result. And a read-out adapted to the new car scored lower on other cars' validation windows, KIA from 0.778 to 0.728 and my car from 0.969 to 0.935. One saved state per car is there so that this adaptation never reaches another car's read-out.
 
 Three ideas of mine failed, and each was meant to be the new part:
 
@@ -357,15 +450,24 @@ Three ideas of mine failed, and each was meant to be the new part:
 - A loss predictor after Yoo and Kweon<sup>[[19]](#ref-19)</sup>, trained on the board by the judge's late verdicts. AUROC 0.908, still below margin.
 - Learning only from high-loss windows, which are mostly the board's mistakes. At a 5 % budget it reached 0.927 against 0.943 for margin. A learner that sees mostly its own errors gets a skewed sample, the sampling bias Dasgupta describes for active learning<sup>[[20]](#ref-20)</sup>.
 
-Status: the rules run in simulation only. The board code, the buffer in PSRAM and the drift alarm are not written, and none of this is in the firmware on `main`.
+</details>
 
 ## In the works
 
-Three things run on my ESP-Mosaico in test builds. Neither is in a release or on `main` yet.
+Three things run on my ESP-Mosaico in test builds. None of them is in a release or on `main` yet.
 
 - **Active E.V (A.E.V).** The next model for the ESP-Mosaico: a student of about 28,000 parameters that learns more of your car than E.V. Its classifier head got a targeted correction for cars it had not seen, and on the board its answers match the desktop simulation on 95 to 97 % of windows.
-- **Brake pad wear.** The Brakes app estimates how much of the pads is used from the friction energy of your braking, the way pad wear is usually modelled: wear grows with the work the pads do. From the car's speed the board works out how hard you slow down, takes away what drag and engine braking do on their own, and adds up the rest while you brake. You tap **Record pad change** when new pads go on; each change you record turns the guessed pad life into a measured one for your car and your driving. The app shows the share used, kilometres since the change, hard brakes and an estimate of the kilometres left, with Check soon at 70 % and Replace soon at 90 %. Until you record a change it is an estimate, and it has not been checked against a real pad measurement yet.
-- **A neural health check.** One small network of about 25,000 parameters reads the last 64 seconds of the battery gauge, the Bluetooth and Wi-Fi guard's counters and the car's readings together. Every 16 seconds it gives the battery's health, the guard's state and the current manoeuvre, in about 6 ms on the board. It is a second opinion next to the EdgeOS 2.1.0 AI services, not a replacement: it never raises a banner or acts, and the Health app's AI page shows it as experimental. Its battery-health output got a targeted correction so that a running guard no longer pulls the reading down. On my board it now reads 93 to 101 % where the board's own estimator says about 98 %, and the guard reads normal with no false alarms. Its battery-fault output is not reliable yet. Each start, the board checks the network against the quantised reference on a test input before it uses it. Before a release it still has to pass real drives and a run on battery.
+- **Brake pad wear.** The Brakes app estimates how much of the pads is used from the friction energy of your braking, the way pad wear is usually modelled: wear grows with the work the pads do. You tap **Record pad change** when new pads go on. Each change you record turns the guessed pad life into a measured one for your car and your driving. Until you record a change it is an estimate, and it has not been checked against a real pad measurement yet.
+- **A neural health check.** One small network of about 25,000 parameters reads the last 64 seconds of the battery gauge, the Bluetooth and Wi-Fi guard's counters and the car's readings together. It is a second opinion next to the EdgeOS 2.1.0 AI services and does not replace them. It never raises a banner or acts, and the Health app's AI page shows it as experimental. Its battery-fault output is not reliable yet, and before a release it still has to pass real drives and a run on battery.
+
+<details>
+<summary><b>Stats for nerds</b> (how the brake estimate and the health network work)</summary>
+
+**Brake pad wear.** From the car's speed the board works out how hard you slow down, takes away what drag and engine braking do on their own, and adds up the rest while you brake. The app shows the share used, kilometres since the change, hard brakes and an estimate of the kilometres left, with Check soon at 70 % and Replace soon at 90 %.
+
+**A neural health check.** Every 16 seconds it gives the battery's health, the guard's state and the current manoeuvre, in about 6 ms on the board. Its battery-health output got a targeted correction so that a running guard no longer pulls the reading down. On my board it now reads 93 to 101 % where the board's own estimator says about 98 %, and the guard reads normal with no false alarms. At each start, the board checks the network against the quantised reference on a test input before it uses it.
+
+</details>
 
 ## Status
 
@@ -406,19 +508,40 @@ Version 2.1.0 adds small AI services that look after the board itself, and a Hea
 </p>
 <p align="center"><sub>Issue cards and the banner on the board. A test build wrote each state into the Health screen only, so the battery and its gauge were never touched.</sub></p>
 
+The release build 81017a5 passed its board check. Pairing your own adapter, a drive, a run on battery and the guard's first 2 hours in a car park are still to check in real use.
+
+<details>
+<summary><b>Stats for nerds</b> (the 2.1.0 board check in numbers)</summary>
+
 Checked on the board with the release build 81017a5: boot health good at 68.8 s, the battery estimator, the fault check and the guard all admitted (worst-case response 5.00 ms against a 1,000 ms deadline), a 614 s soak with 0 crashes, 0 screen misses and 0 AI misses, internal RAM never below 78,003 B, and the button-free download door working from the new build. Still to check in real use: pairing your own adapter, a drive, a run on battery with USB unplugged (the first charge and health readings), and a car park for the guard's first 2 hours. The worn, fault, block and changed-adapter cards have only been shown by the test build so far.
+
+</details>
 
 #### Field fix after the first drive (proposed as 2.1.1)
 
-The owner's first drive with 2.1.0 ended in a restart loop. The core dump left on the board, decoded against the release ELF, says "A stack overflow in task obd". The task that talks to the car had used 5,104 B of its 8,192 B stack in its own frame, and the first logged row after every start loaded the pattern model file through a function with a 4,016 B frame. The bytes found past the end of the stack are the board's own pattern centroids, value for value. Once that file existed, every start with the car answering crashed about 14 seconds in, and the boot-loop safe mode did not stop it, because the pattern layer was not one of the parts it switches off. On the bench, with a simulated car and the same file, 2.1.0 crashed on every start, five in a row. The fix keeps the connection helpers off that task's stack and reads the pattern file in place: the deepest path inside the firmware dropped from 9,168 B to 4,416 B (`tools/stack_check.py`). The pattern layer now also stays off in safe mode, and every start writes one line to `obd/resets.csv` with the reset reason, how long the run before it lasted and the crashed task, so the next problem leaves evidence on the board.
+The owner's first drive with 2.1.0 ended in a restart loop, caused by a stack overflow in the task that talks to the car. The fix uses less of that task's stack, keeps the pattern layer off in safe mode, and writes the reason for every restart to `obd/resets.csv` on the board.
+
+<details>
+<summary><b>Stats for nerds</b> (the core dump, the cause and the fix)</summary>
+
+Decoded against the release ELF, the core dump left on the board says "A stack overflow in task obd". The task that talks to the car had used 5,104 B of its 8,192 B stack in its own frame, and the first logged row after every start loaded the pattern model file through a function with a 4,016 B frame. The bytes found past the end of the stack are the board's own pattern centroids, value for value. Once that file existed, every start with the car answering crashed about 14 seconds in, and the boot-loop safe mode did not stop it, because the pattern layer was not one of the parts it switches off. On the bench, with a simulated car and the same file, 2.1.0 crashed on every start, five in a row. The fix keeps the connection helpers off that task's stack and reads the pattern file in place: the deepest path inside the firmware dropped from 9,168 B to 4,416 B (`tools/stack_check.py`). The pattern layer now also stays off in safe mode, and every start writes one line to `obd/resets.csv` with the reset reason, how long the run before it lasted and the crashed task, so the next problem leaves evidence on the board.
+
+</details>
 
 End drive, Settings > Stop logging and Turn off now share one stop. It latches the car link off, writes the summary, closes the drive files, pauses the battery log and checks that nothing more is written. It always ends in **Safe to unplug** or in a named failure, within 35 seconds, and logging stays off until you tap Start logging or the board restarts. In 2.1.0, End drive saved the drive and then let the next one start at once, and a busy link could leave the drive open. The ESP-Mosaico's POWER key switches the board off at once without saving, so Turn off comes first. Details are in the [user manual](docs/manual/edgeos-2.1.0.md#stop).
 
 OpenCarMind also runs on Espressif's ESP-Mosaico<sup>[[12]](#ref-12)</sup>, an ESP32-S31 board with a 480 × 480 AMOLED touch screen, 32 MB of PSRAM and a 128 MB NAND for the drive logs. Up to version 1.2.0 that build was called mossREV. Version 2.0.0 is called OpenCarMind EdgeOS 2.0.0. It is not related to Ubiquiti's EdgeOS router software.
 
-OpenCarMind EdgeOS comes from the same source tree as the S3 version and keeps everything mossREV 1.2.0 has: both models (CarMind R.E.V, the default on a new board, and CarMind E.V, each re-quantized for the S31), the 16 apps on the touch screen with Wi-Fi search and join, a light and a dark theme, and per-drive event logs. What 2.0.0 adds is a small operating-system layer, described below. The image above is rendered on a computer from the 2.0.0 screen code (`tests/host/uishot`, the same LVGL code the board runs) with example values. It is not a photo of the board. The OS layer does not change the S3 build. Up to 4aeff43, every byte the S3 chip loads was the same as in the mossREV 1.2.0 tree. The pairing change merged after the board check is behind one switch, `CONFIG_OBD_BLE_PAIR_CONFIRM`, which is off for the S3 by default. With it off, the S3 image built from this source equals the 4aeff43 S3 image except the build time, the ELF SHA-256 and the image's checksum and hash (see [Changes after the board check](#changes-after-the-board-check)).
+OpenCarMind EdgeOS comes from the same source tree as the S3 version and keeps everything mossREV 1.2.0 has: both models (CarMind R.E.V, the default on a new board, and CarMind E.V, each re-quantized for the S31), the 16 apps on the touch screen with Wi-Fi search and join, a light and a dark theme, and per-drive event logs. Version 2.0.0 adds a small operating-system layer, described below. The image above is rendered on a computer from the 2.0.0 screen code (`tests/host/uishot`, the same LVGL code the board runs) with example values. It is not a photo of the board. The OS layer does not change the S3 build.
 
-OpenCarMind EdgeOS 2.0.0 finished its board check, including a 10-minute soak, and 2.1.0 passed the checks listed above. The 2.1.0 image is on the [EdgeOS 2.1.0 release](https://github.com/AlveeeRahman/OpenCarMind/releases/tag/edgeos-2.1.0), built from `main` at 1053f9d. You can also build it from this repository with the steps in [docs/MOSAICO.md](docs/MOSAICO.md). The [status table](#what-is-verified-on-the-board) at the end of this section says what the board showed.
+<details>
+<summary><b>Stats for nerds</b> (how the S3 image stays the same)</summary>
+
+Up to 4aeff43, every byte the S3 chip loads was the same as in the mossREV 1.2.0 tree. The pairing change merged after the board check is behind one switch, `CONFIG_OBD_BLE_PAIR_CONFIRM`, which is off for the S3 by default. With it off, the S3 image built from this source equals the 4aeff43 S3 image except the build time, the ELF SHA-256 and the image's checksum and hash (see [Changes after the board check](#changes-after-the-board-check)).
+
+</details>
+
+OpenCarMind EdgeOS 2.0.0 finished its board check, including a 10-minute soak, and 2.1.0 passed the checks listed above. The 2.1.0 image is on the [EdgeOS 2.1.0 release](https://github.com/AlveeeRahman/OpenCarMind/releases/tag/edgeos-2.1.0), built from `main` at 1053f9d. You can also build it from this repository with the steps in [docs/MOSAICO.md](docs/MOSAICO.md). The [board results](#what-is-verified-on-the-board) at the end of this section say what the board showed.
 
 The full guide is [docs/MOSAICO.md](docs/MOSAICO.md): the hardware, flashing, every app, the two models, Smart swipe and Smart UI, the storage, the NAND, the OS layer and the known limits. The [OpenCarMind EdgeOS user manual](docs/manual/edgeos-2.1.0.md) explains every screen and message for a driver.
 
@@ -430,6 +553,11 @@ The rules live in one plain C file, `main/os_core.c`, with no ESP-IDF calls in i
 
 ### The parts and why each exists
 
+The OS layer decides what may run in each state of the board and rates its own health after every start. It refuses a model that would make jobs miss their deadlines, slows the least important work first when the model misses deadlines, and watches the battery.
+
+<details>
+<summary><b>Stats for nerds</b> (what each of the 11 parts does and why it is there)</summary>
+
 | Part | What it does | Why it is there |
 |---|---|---|
 | One service table | Eight services (model switch, clock, format, Wi-Fi edit, Wi-Fi radio, the USB door's commands, the model, the R.E.V learner) each have a mask of the runlevels they may run in. Each model and learner also declares its period, deadline, stall limit, CPU share, self-test and fallback model in one contract table. | Before 2.0.0 these rules were separate `if` checks spread over the screen, the USB door and the board task. Now one table holds them, and a source audit in the host tests fails if a file decides a refusal by itself. |
@@ -437,12 +565,14 @@ The rules live in one plain C file, `main/os_core.c`, with no ESP-IDF calls in i
 | Boot health check | About 65 s after a start the board rates itself good, degraded or bad from the model self-test, the flash FAT check, the NAND, the first screen update, the touch controller and the scheduler's misses, stalls and response times. | It gives you one line to read on the Board page. It is also the signal an A/B rollback needs to keep or reject a new image. |
 | Model admission | A model loads only if response-time analysis says every job on its core still meets its deadline (see [below](#model-admission-by-response-time-analysis)). | A model that is too slow would make the OBD poll or the learner miss deadlines. The check refuses it before it loads, and the old model stays. |
 | Degradation ladder | When the model misses deadlines, the board steps down: first the AI services slow to a tenth of their rate with their learned heads off (new, being checked on the board), then the screen refreshes every 33 ms instead of 16 ms and the AI services pause, then the R.E.V learner pauses, then the model's inference pauses. A minute without misses steps back up, in reverse order. Misses of the screen or the AI services alone reach the first rung only. | Estimates such as the battery SoC, screen frames and learning are worth less than the log and the model during a drive, so they go first. The ladder never swaps models. |
-| AI services | Small periodic AI jobs, the battery SoC and SoH estimator first, in one worker task below the screen and the models, admitted by the same response-time analysis (see [below](#ai-services-in-opencarmind-edgeos)). On build 13757fd the board admitted the worker on core 1 with R 2.00 ms. The estimates are being checked. | More small models are coming, a Bluetooth and Wi-Fi intrusion detector next. Each one gets a deadline, a CPU budget and a place on the ladder, instead of its own task and its own rules. |
+| AI services | Small periodic AI jobs, the battery SoC and SoH estimator first, in one worker task below the screen and the models, admitted by the same response-time analysis (see [below](#ai-services-in-opencarmind-edgeos)). On build 13757fd the board admitted the worker on core 1 with R 2.00 ms. The estimates are being checked. | In EdgeOS 2.1.0 the battery fault check and the network guard (the Bluetooth and Wi-Fi intrusion detector) joined the battery estimator. Each one gets a deadline, a CPU budget and a place on the ladder, instead of its own task and its own rules. |
 | Battery protection | Every 2 s it reads the gauge's voltage, current and temperature. At 45 °C on USB it sheds load, at 60 °C it stops safely, and at 4.25 V or more it reports a charger fault and stops. | The TP4057 charger has no enable pin and no thermistor input, and its supply comes from USB through diodes. The firmware cannot stop charging, so it watches and stops cleanly instead. The thresholds are placeholders until the cell's datasheet is known. |
 | Wi-Fi boot hold | No Wi-Fi starts at boot. The automatic start waits for the health verdict and goes ahead on good or degraded. Your own start in the Wi-Fi app is never held. | On mossREV 1.2.0 rc3 the boot window was the internal-RAM low point, 57.7 KB free while the Wi-Fi driver started (measured on the board). |
 | One reset path | Every reset the firmware asks for goes through `sys_reset(reason)`: mark it as asked for, flush and lock the flash FAT and the NAND, then reset. The screen stall guard and the hung-job restart skip the mark, so three of them in a row still start safe mode. | A reset between a sector's erase and its write had torn the FAT and lost the whole volume twice on the bench, before the storage fixes. Now no asked-for reset skips the flush. |
 | Feature gate | One OS service runs the A/B test for Smart swipe and the Smart UI prefetch: the 50/50 split, the Mann-Whitney test, the Holm correction and the verdict per firmware version. | Each feature had its own copy of the same statistics. Now the thresholds sit in one place that no feature can change, and Smart swipe gave back 776 bytes of internal RAM. |
 | PPA and 2D-DMA graphics | The launcher slide's window copies, the page pictures' byte swap and large opaque LVGL fills and image copies run on the S31's pixel-processing accelerator and 2D-DMA, with a CPU fallback. | The CPU did these copies row by row. The chip has engines for them. A full frame still needs 23.6 ms on the panel's QSPI link, so the gain is in composing, not in sending. |
+
+</details>
 
 ### Services and runlevels
 
@@ -450,7 +580,12 @@ The rules live in one plain C file, `main/os_core.c`, with no ESP-IDF calls in i
 
 ### Model admission by response-time analysis
 
-A model is a real-time job. It has to answer once per second while the OBD poll and the learner share its core. When a model loads at boot or on a switch, the OS takes its self-test run time, doubles it (one measured run is not a worst case), and uses that as the model's worst-case CPU time C. Then it runs the response-time analysis of Joseph and Pandya<sup>[[5]](#ref-5)</sup> for every job on that core:
+A model is a real-time job. It has to answer once per second while the OBD poll and the learner share its core. If loading it would make any job on that core miss its deadline, the board refuses it.
+
+<details>
+<summary><b>Stats for nerds</b> (the response-time test, its equation and the board log)</summary>
+
+When a model loads at boot or on a switch, the OS takes its self-test run time, doubles it (one measured run is not a worst case), and uses that as the model's worst-case CPU time C. Then it runs the response-time analysis of Joseph and Pandya<sup>[[5]](#ref-5)</sup> for every job on that core:
 
 $$
 R_i = C_i + \sum_{j \in hp(i)} \left\lceil \frac{R_i}{T_j} \right\rceil C_j
@@ -460,21 +595,35 @@ R<sub>i</sub> is job i's worst-case response time, the longest it can take from 
 
 On the board, the first boot of a 2.0.0 build before the rename (09ec8f5) logged `admission CarMind R.E.V: C 4472 us (self-test 2236 us x 2.0) on core 1, R: ml 4.5/1000 ms, margin 995.5 ms (ml): admitted`. The log lists only the `ml` job: the other jobs on core 1 had no measured run yet at 4.3 s, so this first check held the model alone. Host tests pass for the textbook three-job set (C 3, 3, 5 and T 7, 12, 20 give R 3, 6, 20) and for 90,013 random job sets compared with the scheduler monitor's own loop.
 
+</details>
+
 ### Scheduler budgets per core
 
 <p align="center"><img src="docs/images/edgeos-scheduler.png" width="900" alt="Scheduler budgets per core, drawn as Gantt lanes. Core 1, one 1,000 ms window on an axis broken at 40 ms: obd_poll, priority 5, period 1,000 ms, deadline 30,000 ms, not run on the bench. The ml job, priority 3, period and deadline 1,000 ms, self-test 2.1 ms doubled to a budget of 4.2 ms, admitted with R 4.2 ms on 4aeff43. The rev job, the R.E.V learner, priority 2, period 1,000 ms, deadline 30,000 ms, a 2 % share of 20 ms per second with bursts of at most 30 ms, no run on the bench. Core 0, one 100 ms window: the ui screen job, priority 2, period and deadline 50 ms, worst response 7.8 ms and worst CPU 4.98 ms over 9,597 runs in the 10-minute soak on 06ddf1d, 0 misses. The LVGL refresh every 16 ms. Slow jobs over the first 120 s: boot on 4aeff43 with Wi-Fi held from 4.3 s, the health verdict due at 65 s and good at 68.0 s, the Wi-Fi driver up from 88.1 to 106.5 s and the clock synced at 98.0 s. The learner's 30 s deadline windows and 60 s stall limit. The model's 10 s stall limit. The link_search, obd_poll and ecu_pick deadlines are of 90, 30 and 10 s. The board task every 2 s and the scheduler summary every 60 s."></p>
 
-Every timed job registers a period T and a deadline D with the scheduler monitor. The task it runs in sets its core and priority. The chart takes those from the code and puts the board's measurements inside them. The model gets 1,000 ms and its admission budget is 4.2 ms, so the first 40 ms of the core 1 axis are drawn 23 times wider, or the bar would be thinner than a pixel. No car was connected on the bench, so the OBD jobs, the model and the learner never ran as periodic jobs there. Their bars are the code's budgets. Two were measured. The model's self-test at admission took 2.1 ms, doubled to that 4.2 ms budget, and the model was admitted with a response time of 4.2 ms. The screen job ran 9,597 times over the soak with no missed deadline. Its worst response, the wall time from the start of a run to its end, was 7.8 ms, while the screen task itself used at most 4.98 ms of CPU; the difference is time it waited for other tasks on core 0. The response-time analysis counts only registered jobs, so it reports 4.98 ms for `ui`. The board task (every 2 s), the Wi-Fi task and the scheduler monitor run on core 0 outside the registered jobs.
+Every timed job registers a period T and a deadline D with the scheduler monitor. Its core and priority come from the task it runs in. The chart takes those from the code and puts the board's measurements inside them.
+
+<details>
+<summary><b>Stats for nerds</b> (how the chart is drawn and what was measured)</summary>
+
+The model gets 1,000 ms and its admission budget is 4.2 ms, so the first 40 ms of the core 1 axis are drawn 23 times wider, or the bar would be thinner than a pixel. No car was connected on the bench, so the OBD jobs, the model and the learner never ran as periodic jobs there. Their bars are the code's budgets. Two were measured. The model's self-test at admission took 2.1 ms, doubled to that 4.2 ms budget, and the model was admitted with a response time of 4.2 ms. The screen job ran 9,597 times over the soak with no missed deadline. Its worst response, the wall time from the start of a run to its end, was 7.8 ms, while the screen task itself used at most 4.98 ms of CPU. It spent the difference waiting for other tasks on core 0. The response-time analysis counts only registered jobs, so it reports 4.98 ms for `ui`. The board task (every 2 s), the Wi-Fi task and the scheduler monitor run on core 0 outside the registered jobs.
+
+</details>
 
 <a id="ai-services-and-the-battery-estimator"></a>
 
 ### AI services in OpenCarMind EdgeOS
 
-OpenCarMind EdgeOS runs its small AI models as services. Since 2.1.0 there are three: the battery estimator, which gives the cell's state of charge (SoC) and state of health (SoH, now with the partial-charge regressor), the battery anomaly detector, and a network guard for Bluetooth and Wi-Fi. The Health app shows all three in plain words. Each of its pages opens with one status card: a colour, an icon and a word (Good, Learning, Check soon, Act now), a headline such as "Battery is wearing out", what it means and what to do. The header counts the issues ("All good", "1 thing to check"), a new issue raises the banner with Open Health, and the Health icon on Home gets an amber or red dot. The scores and counters stay below the card for experts. All services share one worker task at FreeRTOS priority 1, below the screen, the R.E.V learner, the model and the OBD poll, so any of those can preempt a service at any instruction. The worker is admitted by the same response-time analysis as the models. On build 13757fd the board admitted it on core 1 with a worst-case response of 2.00 ms against a 1,000 ms deadline, and the battery estimator's self-test took 570 µs of its 2 ms budget.
+OpenCarMind EdgeOS runs its small AI models as services. Since 2.1.0 there are three: the battery estimator, which gives the cell's state of charge (SoC) and state of health (SoH, now with the partial-charge regressor), the battery anomaly detector, and a network guard for Bluetooth and Wi-Fi. The Health app shows all three in plain words. Each of its pages opens with one status card: a colour, an icon and a word (Good, Learning, Check soon, Act now), a headline such as "Battery is wearing out", what it means and what to do. The header counts the issues ("All good", "1 thing to check"), a new issue raises the banner with Open Health, and the Health icon on Home gets an amber or red dot. The scores and counters stay below the card for experts.
 
-A service reads copies of its inputs and writes its results without a lock, so it cannot hold up the jobs above it. No service acts on power, and none cuts the car link during a drive. When the model misses deadlines, the AI services are the first thing the board slows. On 13757fd the boot health check rated the board good at 68.9 s and released Wi-Fi with 130,623 B of internal RAM free. The estimates themselves, the new ladder rung and the pairing rules are built and being checked on the board now.
+No service acts on power, and none cuts the car link during a drive. When the model misses deadlines, the AI services are the first thing the board slows. The estimates themselves, the new ladder rung and the pairing rules are built and being checked on the board now.
 
 <p align="center"><img src="docs/images/edgeos-ai-services.png" width="900" alt="Where the AI services run, hand-drawn. Step 1, who preempts whom, FreeRTOS fixed priorities: obd_poll 5, the ml model 3, the ui screen 2 on core 0, the R.E.V learner 2, the AI worker 1, on core 1 on build 13757fd with R 2.00 ms, then idle. Step 2, the worker's release table, deadline-monotonic: bat_est for battery charge and health, T 1 s, D 1 s, budget 2 ms, self-test 570 microseconds, on the board. ids, the network intrusion detector, T 5 s, D 1 s, about 60 integer ops, shadow mode first, validated on the Mac, firmware service next. Future services plug in as one table entry each, with no new task. Admission treats the worker as one job with C the sum of the budgets, T the shortest period and D the shortest deadline. Step 3, in: snapshots of the gauge's V, I and T and the radio counters, one writer and a seqlock, so a reader never waits. One service step takes no mutex, waits on no queue, does no I/O and allocates nothing. Step 4, out: a lock-free result struct the screen reads, and log rows into a ring the board task writes to the NAND. The ladder when the model misses deadlines: 1, AI services slowed to a tenth of their rate with learned heads off, new in this build and being checked on the board. 2, UI slowed to 33 ms and AI services paused. 3, learner paused. 4, model paused, while the drive log keeps running. An overrun finishes and skips its next release. Board, build 13757fd: boot health good at 68.9 s, worker admitted on core 1 with R 2.00 ms and a 998 ms margin, battery self-test 570 microseconds, Wi-Fi released with 130,623 B free."></p>
+
+<details>
+<summary><b>Stats for nerds</b> (where the services run, and each model's cost and status)</summary>
+
+All services share one worker task at FreeRTOS priority 1, below the screen, the R.E.V learner, the model and the OBD poll, so any of those can preempt a service at any instruction. The worker is admitted by the same response-time analysis as the models. On build 13757fd the board admitted it on core 1 with a worst-case response of 2.00 ms against a 1,000 ms deadline, and the battery estimator's self-test took 570 µs of its 2 ms budget. A service reads copies of its inputs and writes its results without a lock, so it cannot hold up the jobs above it. On 13757fd the boot health check rated the board good at 68.9 s and released Wi-Fi with 130,623 B of internal RAM free.
 
 | Model | What it does | Cost per step | Status |
 |---|---|---|---|
@@ -484,7 +633,9 @@ A service reads copies of its inputs and writes its results without a lock, so i
 | Battery anomaly detector | an alarm when 60 s windows stop looking normal for this cell. The Health card names the feature with the largest error in plain words, for example "warms up more than usual" | under 400 ops a window, 920 B | in the firmware since 2.1.0 (1.05e-6 against the Mac). Admitted on the board, in its 24 h warm-up |
 | Network intrusion detector: rotation detector | scores each 5 s of Bluetooth and Wi-Fi traffic for address-rotation floods | about 60 integer ops, 552 B per head | in the firmware since 2.1.0 as the network guard (bit-exact against the Mac). Admitted on the board, in its 2 h shadow |
 | Pairing rules R1, R2 and R6 | adapter fingerprint, no silent re-pair, clock jump guard ([Pairing safety](#pairing-safety-built-not-yet-checked-on-the-board)) | one compare per link or clock sync, 48 B in NVS | on the board, being checked |
-| Residual MLP, 3-state EKF, neural ECM, KalmanNet-lite, pure MLP, general IDS learners | learned replacements or corrections | | tested, not shipped (see the last dropdown) |
+| Residual MLP, 3-state EKF, neural ECM, KalmanNet-lite, pure MLP, general IDS learners | learned replacements or corrections | | tested, not shipped |
+
+</details>
 
 <details>
 <summary><b>For experts: how the battery charge estimator works</b> (figure, equations, test results)</summary>
@@ -523,7 +674,7 @@ Tested on the Mac, held out from fitting:
 | Current offset of +0.01C (0.65 mA on 65 mAh) | RMSE 5.3 % | the 3-state EKF: 0.27 to 0.79 % |
 | Cost per step | 111 flops and 1 exp, 324 B | |
 
-I checked where the EKF's remaining error comes from. It is a slow drift of about ±0.3 % from counting charge, and it does not sit at the low-charge knee, in the CV taper or with heat. An unscented Kalman filter<sup>[[22]](#ref-22)</sup> with one or two RC pairs gave the same RMSE. Neither the linearisation nor the model order is the limit. The biggest risk is a current offset, which the 3-state EKF in the last dropdown is kept ready for.
+I checked where the EKF's remaining error comes from. It is a slow drift of about ±0.3 % from counting charge, and it does not sit at the low-charge knee, in the CV taper or with heat. An unscented Kalman filter<sup>[[22]](#ref-22)</sup> with one or two RC pairs gave the same RMSE. Neither the linearisation nor the model order is the limit. The biggest risk is a current offset, which the 3-state EKF is kept ready for.
 
 </details>
 
@@ -543,7 +694,7 @@ A count from full to the cutoff needs the board to run its cell flat, which a bo
 | 18650 NMC cycling set | 1.45 % | 6.42 % | 0.08 %, needs a full cycle |
 | NASA cells<sup>[[26]](#ref-26)</sup>, discharge only | 13.9 to 25.0 % | 8.5 to 19.2 % | not compared |
 
-The regressor passes on the cell it learned and does not transfer to cells it never saw charge. It needs the board's own first charges as its reference. The plan is the count when there is a full cycle and the regressor otherwise. The regressor is in the firmware since 2.1.0, where its C matches the Mac to 1.3e-7. It has not run on the board yet: it needs 10 deep charges of this cell as its reference, and in the 2.1.0 board check the cell stayed full (0 of 10).
+The regressor passes on the cell it learned and does not transfer to cells it never saw charge. It needs the board's own first charges as its reference. The plan is the count when there is a full cycle and the regressor otherwise. The regressor has been in the firmware since 2.1.0, where its C matches the Mac to 1.3e-7. It has not run on the board yet: it needs 10 deep charges of this cell as its reference, and in the 2.1.0 board check the cell stayed full (0 of 10).
 
 </details>
 
@@ -567,7 +718,7 @@ Three detectors ran side by side. One is a z-score against a frugal streaming me
 | Intermittent reads | 0 to 8 % | |
 | Temperature +5 °C, current gain error, extra drain | 0 % | |
 
-It catches large faults only. The thresholds were learned on public cell data, so they have to be learned again on the board's own cell before an alarm means anything there. An alarm shows a banner and writes a log line. It never acts on power: the fixed battery protection above stays in charge of that. The cost is under 400 ops a window, with 280 B of state and 640 B of parameters. It is in the firmware since 2.1.0, within 1.05e-6 of the Mac, and the 2.1.0 board check admitted it and started its 24 h warm-up. A real fault has not been seen in use yet. The worn and fault cards shown so far come from a test build that writes a state into the Health screen only.
+It catches large faults only. The thresholds were learned on public cell data, so they have to be learned again on the board's own cell before an alarm means anything there. An alarm shows a banner and writes a log line. It never acts on power: the fixed battery protection above stays in charge of that. The cost is under 400 ops a window, with 280 B of state and 640 B of parameters. It has been in the firmware since 2.1.0, within 1.05e-6 of the Mac, and the 2.1.0 board check admitted it and started its 24 h warm-up. A real fault has not been seen in use yet. The worn and fault cards shown so far come from a test build that writes a state into the Health screen only.
 
 </details>
 
@@ -599,7 +750,7 @@ The data: a public BLE scanner data set, used for local testing only (nothing fi
 | Wi-Fi floods of fake access points with rotating addresses | 15 / 15 on both captures |
 | Cost | 40 B of state and 512 B of bitmaps per head, about 60 integer ops a window |
 
-On the Mac the detector is bit-exact against its Python reference on 21,601 test windows. It is in the firmware since 2.1.0 as the network guard (T 5 s, D 1 s), and after every start it spends 2 h in shadow mode, logging and never blocking. In the 2.1.0 board check it scored 0 to 34 of 256 over 112 shadow windows with 0 blocks. A real block has not been seen in use yet. The block card shown so far comes from the test build, and a week of logs from real car parks will show its false-block rate on the board.
+On the Mac the detector is bit-exact against its Python reference on 21,601 test windows. It has been in the firmware since 2.1.0 as the network guard (T 5 s, D 1 s), and after every start it spends 2 h in shadow mode, logging and never blocking. In the 2.1.0 board check it scored 0 to 34 of 256 over 112 shadow windows with 0 blocks. A real block has not been seen in use yet. The block card shown so far comes from the test build, and a week of logs from real car parks will show its false-block rate on the board.
 
 </details>
 
@@ -622,41 +773,14 @@ On the Board page, the AI SERVICES card shows each service's period, deadline, b
 
 </details>
 
+### Internal RAM at run time
+
+The target for internal RAM at run time is more than 60 KB free in every phase. The lowest is 82,883 B, about 81 KB, with an adapter search and a clock sync running at once. Every phase stays above 60 KB.
+
 <details>
-<summary><b>For experts: the models we tested and did not ship</b> (what each was for, and why it lost)</summary>
+<summary><b>Stats for nerds</b> (RAM per phase, and a fix to the Board page's figure)</summary>
 
-| Model | What it tried | Result on the Mac | Why it is not shipped |
-|---|---|---|---|
-| Residual MLP, phase 2 (10 → 12 tanh → 1, 375 multiply-add equivalents, 984 B) | learn the EKF's remaining SoC error | RMSE 0.49 % middle and 0.21 % late life against the EKF's 0.53 and 0.33 %, but a worst error of 6.49 % on the forward test against 3.96 %, and NASA 12.1 % against 12.9 % | better in some places, worse in others. The gate was to beat the EKF everywhere |
-| Residual MLP, phase 3 (11 → 12 tanh → 1, trained with 120 simulated cells of random OCV shape, capacity, resistance and offset, with a confidence gate) | make the correction hold on other cells | the gate switched it off, or it raised the worst error | it did not pass |
-| EKF with a third state for the current offset | cancel a current-sensor offset | under +0.01C offset, RMSE 5.3 % down to 0.27 to 0.79 %. On clean data the early-life worst error rose from 4.0 % to 7.5 % | kept for boards whose measured offset is above about 0.003C (0.2 mA on 65 mAh), not the default |
-| UKF with one or two RC pairs<sup>[[22]](#ref-22)</sup> | a better nonlinear filter | the same RMSE as the EKF, a higher worst error (5.8 % against 2.5 % in middle life), 360 against 90 multiply-add equivalents | linearisation was not the limit |
-| Neural ECM | a network in place of the cell's voltage map | 62 % RMSE on the NASA cells | it learned one cell's voltage map |
-| Pure MLP | SoC straight from V, I and T | 32 % on the NASA cells, worst 10.8 % early in life, and no recovery from a wrong start | no physics to fall back on |
-| KalmanNet-lite, a small KalmanNet<sup>[[23]](#ref-23)</sup> | a learned Kalman gain | worse than the EKF everywhere, for example 3.51 % RMSE early in life against 0.45 %, after a short training run | it lost on every test |
-| SoH: GBDT and an 8-unit MLP | other SoH regressors | 1.96 % and 20 % MAPE in forward cross-validation, against 0.83 % for ridge | ridge was better and smaller |
-| Battery anomaly: z-score and online Gaussian as alarms | simple baselines | 0.245 and 0.126 false alarms per hour on normal data, against a target of 0.05 | ageing moved them. They only log |
-| IDS: z-score on all six features, diagonal Gaussian, Mahalanobis, online k-means, Half-Space Trees<sup>[[24]](#ref-24)</sup>, a tiny autoencoder | learn normal traffic, block anything unusual | 0.10 to 0.16 false blocks per hour on stable data (the autoencoder 0.009). After a move from a quiet place to a busy one, stuck blocking 33 to 100 % of the time | they learned the crowd's size, and the guard against poisoning froze them in the new place |
-| IDS: paired-adapter signal strength as a clone detector | spot a second transmitter on the paired address | 0 / 60 clones found at z = 6 | the public data has no fixed transmitter, so it could not answer. Clones stay with rule R1 |
-
-The two studies came out opposite ways. For the intrusion detector, the general learners failed and a baseline built for one pattern, address rotation, passed. For the battery anomaly detector, the simple baselines failed on ageing drift and the autoencoder passed.
-
-</details>
-
-### What it costs
-
-Measured with `idf.py size` on the S31 build of the release (920318e, the firmware in main), against mossREV 1.2.0 rc3 (8b0b96f):
-
-| | OpenCarMind EdgeOS 2.0.0 | mossREV 1.2.0 rc3 | Change |
-|---|---|---|---|
-| App image | 4,778,560 B, 76.0 % of the 6 MB app slot (24 % free) | 4,752,720 B | +25,840 B |
-| Static internal RAM (DIRAM) | 194,198 B of 503,744 B (38.6 %) | 192,124 B | +2,074 B: PPA and 2D-DMA +2,380 B (mostly IRAM code), the pairing change +184 B, the OS parts and fixes +100 B, the feature gate −590 B |
-| Static PSRAM | 291,200 B | 289,664 B | +1,536 B, mostly the admission's buffers (1,352 B) |
-| Tasks | the same tasks as 1.2.0 | | none added: the OS layer runs inside the existing tasks |
-
-At 09ec8f5 the graphics work had added 37,312 B to the app image and the OS parts together about 9 KB. The 16 px text floor later saved 24,304 B by dropping the 12 and 14 px fonts, so the release is 25,840 B larger overall. With the UPS option switched on, the deep-sleep path alone would add about 12 KB of IRAM, which is one reason that option stays off.
-
-The target for internal RAM at run time is more than 60 KB free in every phase. This was measured on the board, OpenCarMind EdgeOS 2.0.0 4aeff43, with a debug build of that code that adds a RAM monitor. Each figure is the lowest free internal RAM in that phase, all internal heaps added up:
+This was measured on the board, OpenCarMind EdgeOS 2.0.0 4aeff43, with a debug build of that code that adds a RAM monitor. Each figure is the lowest free internal RAM in that phase, all internal heaps added up:
 
 | Phase | Lowest free internal RAM |
 |---|---|
@@ -670,9 +794,11 @@ The target for internal RAM at run time is more than 60 KB free in every phase. 
 | A switch to E.V | 102,383 B |
 | A launcher slide | 112,599 B |
 
-The lowest is 82,883 B, about 81 KB, with an adapter search and a clock sync running at once. Every phase stays above 60 KB. Two parts of that total were never used in any phase: the 32 KB internal reserve (32,031 B free) and the LP RAM (31,948 B free). The main heap alone went down to 18,900 B.
+Two parts of that total were never used in any phase: the 32 KB internal reserve (32,031 B free) and the LP RAM (31,948 B free). The main heap alone went down to 18,900 B.
 
 Before 4aeff43, the Board page's "lowest" read 32 KB too low. A photo showed 49 KB. ESP-IDF sets the minimum of a heap added after start-up to 0 (`heap_caps_init.c`, lines 325 to 332, in ESP-IDF 6.1). The 32 KB internal reserve is added that way, so the summed minimum always counted that pool as empty. 4aeff43 restarts the minimum count early in the boot. RAM use stays the same. Only the figure changes.
+
+</details>
 
 ### What you see on the board
 
@@ -687,28 +813,40 @@ The [user manual](docs/manual/edgeos-2.1.0.md#os) lists every message with what 
 
 ### Changes after the board check
 
-Four changes were merged after the board check, at 06ddf1d. Each is built and host-checked, not yet seen on the board.
+Four changes were merged after the board check, at 06ddf1d. Each is built and host-checked, not yet seen on the board. Pairing now asks you first and only at a strong signal, Driving starts only when the car's computer answers, the screen names the models instead of showing a hash, and no text is smaller than 16 px.
+
+<details>
+<summary><b>Stats for nerds</b> (the four changes in detail)</summary>
 
 - **Pairing asks you first, and only at a strong signal.** On the bench, the board kept trying a neighbour's adapter at -88 to -90 dBm: 35 connect attempts in about 16 minutes, all failed. With no saved adapter, the old rule took any device that looked like an OBD adapter at -90 dBm or better and saved the first one that answered. Now a new adapter is offered only at -70 dBm or better (`CONFIG_OBD_BLE_PAIR_MIN_RSSI`), and nothing is saved until you say yes. The Mosaico shows "OBD adapter found: <name>, signal strong. Use this adapter?" with "Not this one" and "Use this adapter", and counts down 30 s. The automatic search never replaces a saved adapter. The paired adapter still connects down to -90 dBm, so it works at the edge of range. All of this sits behind one Kconfig switch, `CONFIG_OBD_BLE_PAIR_CONFIRM`. It is on by default for the Mosaico and off for the ESP32-S3, which keeps its tested rule until the owner tests the new prompt on an S3. With the switch off, the pairing code is compiled out, and the S3 image equals the 4aeff43 S3 image except the build time, the ELF SHA-256 and the image's checksum and hash (host-checked on the Mac by a section-by-section compare, 68 bytes of the .bin differ, all in those fields). For the S3 the prompt is planned for a later release: "Use <name>?" and "Strong. Tap = use it", with a BOOT tap within 5 s as the yes. To try it, add `CONFIG_OBD_BLE_PAIR_CONFIRM=y` to `sdkconfig.defaults.esp32s3`. `make -C tests/host pair` checks the rule with the switch off and on.
 - **Driving starts only when the car's computer answers.** The same neighbour's adapter kept putting the board into Driving for short spells, a median of about 4 s and at most 14 s, because connect attempts counted as Driving. Now the board is Driving only once the car's computer answers and rows are logged. Searching, connecting and an adapter in a parked car with the engine off keep it Parked.
 - **Model names on the screen.** The model's file shows as "ev-frozen" for E.V and "active-estimator" for R.E.V, where the screen showed a 12-character hash before. The hash stays in the logs, the session files and the USB door.
 - **No text smaller than 16 px.** The screen used 12 px and 14 px text in places. NHTSA's driver-interface guidance (DOT HS 812 360)<sup>[[14]](#ref-14)</sup>, following ISO 15008, asks for capital letters of at least 16 arcminutes for urgent text and 12 arcminutes for the rest, with 20 arcminutes as the best size. On this 2.16 inch, 480 × 480 screen, 16 px text has capitals about 1 mm tall. At about 65 cm from your eyes, that is about 5 arcminutes. So 16 px is the smallest size the screen uses, and even that is small for a driver. That is why the Drive screen and the alarm banner keep a few big items. The alarm banner's headline is now 32 px. The Board page now scrolls.
 
+</details>
+
 <a id="pairing-safety-built-not-yet-checked-on-the-board"></a>
 
 ### Pairing safety
 
-The saved adapter used to be known by its Bluetooth address alone. A device that copies that address could connect with no question, and the Bluetooth stack paired it again by itself when it claimed to have lost its key. Three rules close that on the Mosaico. The S3 build does not change.
+The saved adapter used to be known by its Bluetooth address alone. A device that copies that address could connect with no question, and the Bluetooth stack paired it again by itself when it claimed to have lost its key. Three rules close that on the Mosaico. The S3 build does not change. The board keeps a fingerprint of your adapter, asks you before it pairs again, and refuses a Wi-Fi time that jumps more than 24 hours ahead or 10 minutes back.
+
+<details>
+<summary><b>Stats for nerds</b> (the three rules and their tests)</summary>
 
 - **Adapter fingerprint.** On the first link after you say yes to an adapter, the board saves a fingerprint in NVS. It is one 32-bit hash each for the address type, the advertised name, service UUIDs and maker id, the serial line it uses, and the ATI and AT@1 replies. The car's protocol is kept too, as a soft field. The VIN is not part of it. No raw reply is stored or logged, only an 8-digit hash id. On every later link the board compares. A match changes nothing. A difference keeps the drive logged, marks it `"adapter_check": {"result": "changed"}` in its session file, and gives the R.E.V learner and the pattern model none of its rows. When parked, the board asks "This adapter looks different. Use it?" Use it saves the new fingerprint. Not this one drops the link and leaves the saved adapter alone for 10 minutes. While driving the link is never cut, and the question waits until you park. Fields that change on their own are left out or compared only when both sides have them: the signal, the advert flags, the bytes after the maker id, which packet kind carried a field (advert or scan response), case and spaces in the replies, and a missing AT@1 reply. A different protocol alone (the adapter moved to another car) is noted, not counted as a change.
 - **No silent re-pair.** In ESP-IDF 6.1 the NimBLE stack starts a new pairing by itself when the adapter refuses the saved key (`BLE_RESTART_PAIR` is fixed at 1 in `esp_nimble_cfg.h`), and the `BLE_GAP_EVENT_REPEAT_PAIRING` event the old code handled never reaches a central. So the board copies the saved key when the link comes up and compares it after encryption. A new key is a re-pair. When parked, the board holds the link with no data and asks "The adapter asks to pair again. Allow?" Allow keeps the new key. Don't allow, or no answer in 30 s, puts the old key back, drops the link and waits 10 minutes. While driving, the board puts the old key back, keeps the link, marks the rows and logs "Re-pair refused (driving)". The event handler follows the same table. The session file counts the events.
 - **Clock jump guard.** When the clock came from Wi-Fi, a new network time more than 24 hours ahead or more than 10 minutes behind is refused, and the events say "Clock sync refused: N min ahead" (or behind). A clock set by hand, an estimated clock and no clock at all are not guarded. The 2026 to 2099 range check stays.
 
-`make -C tests/host guard` checks the fingerprint, both decision tables and the question, and audits the glue in the sources. `make -C tests/host clock` checks the jump guard. Pairing with a real LELink has not been checked on this board yet.
+`make -C tests/host guard` checks the fingerprint, both decision tables and the question, and audits the glue in the sources. `make -C tests/host clock` checks the jump guard.
+
+</details>
+
+Pairing with a real LELink has not been checked on this board yet.
 
 ### Flash it, or go back to mossREV 1.2.0
 
-Flashing needs no buttons. Open the board's USB port at 1200 baud, then write the merged image with esptool 5.6.0 or later. [docs/MOSAICO.md](docs/MOSAICO.md#flashing) has the commands. The merged image erases the NVS partition, so the pairing with the desktop app, the saved Wi-Fi networks and the settings go, and you pair again. The drive logs on the NAND and the flash FAT's state files are not written.
+Flashing needs no buttons. Open the board's USB port at 1200 baud, then write the merged image with esptool 5.6.0 or later. [docs/MOSAICO.md](docs/MOSAICO.md#flashing) has the commands. The merged image erases the NVS partition, so the pairing with the desktop app, the saved Wi-Fi networks and the settings go, and you pair again. It does not write the drive logs on the NAND or the flash FAT's state files.
 
 The released image is `OpenCarMind-EdgeOS-2.1.0-ESP-Mosaico-ESP32-S31-merged.bin` on the [EdgeOS 2.1.0 release](https://github.com/AlveeeRahman/OpenCarMind/releases/tag/edgeos-2.1.0), with an app-only image and `SHA256SUMS` beside it. To keep the pairing and settings, write only the app parts, as the release notes say. The 2.0.0 board check ran on `EdgeOS-2.0.0-esp32s31-merged.bin`, built from 4aeff43 (SHA-256 starts `a225125d27f3906c`), which was never published.
 
@@ -716,16 +854,26 @@ To go back, flash the mossREV 1.2.0 merged image the same way. Going back is not
 
 ### Prepared but off: A/B rollback and the battery as a UPS
 
-Two parts are built into 2.0.0 and switched off by default.
+Two parts are built into 2.0.0 and switched off by default. A/B rollback waits for a change to the flashing flow, and the battery as a UPS waits until the board's real draw and the gauge's current sign are measured.
+
+<details>
+<summary><b>Stats for nerds</b> (how each would work and why it is off)</summary>
 
 - A/B rollback (`CONFIG_OCM_APP_ROLLBACK`). The flash has two 6 MB app slots. With ESP-IDF's app rollback, a new image gets one boot to confirm itself. A good or degraded health verdict would confirm it, and a bad one would reset into the other slot through `sys_reset`. It stays off because today's flashing writes slot 0 with esptool and leaves otadata erased, so no image is ever in the state that arms the rollback. Turning it on needs a change to the flashing flow first, and that is the owner's decision.
 - The battery as a UPS (`CONFIG_OCM_UPS`). Two gauge readings in a row at or below −20 mA would mean USB is gone: flush the logs, dim the screen, refuse changes, and wait 15 s, because cranking the engine drops the car's USB for a few seconds. Then quiesce the storage and pull GPIO57 low, the board's power-switch request. At 3.4 V on battery it would act at once. It stays off until the board's real draw and the gauge's current sign are measured. The power-off through GPIO57 for the battery protection (`CONFIG_OCM_BATSAFE_POWER_OFF`) waits for the same check.
 
+</details>
+
 ### What is verified on the board
 
-Two board passes ran. The first on OpenCarMind EdgeOS 2.0.0 4aeff43 (SHA-256 `a225125d27f3906c...`), the second on 06ddf1d, which adds the pairing change, the 16 px text and the model names (merged image SHA-256 `4cc402a76a53edc2...`). The release image in this branch is rebuilt from its tip, whose Mosaico code equals 06ddf1d apart from the Home card fix in ce58ca7. VERIFIED means a board log line shows it. Some rows ran on a scratch build of the 2.0.0 code with one test switch on, and the row says so. A scratch build is never shipped. Host tests pass for every part: `make os` (41,635 checks at 4aeff43, 41,719 with the pairing change), `make pair`, `make ppa`, `make uimetrics` and the source audits in `tests/host/os_audit.sh`.
+Two board passes ran. VERIFIED means a board log line shows it. Of the 28 rows from those two passes, 21 are VERIFIED (6 of those on a scratch build), 3 PARTLY and 4 NOT: not run yet, or switched off in this release. The three figures below show the main results. A third pass is running on build 13757fd, which adds the AI services and pairing safety. Of its 8 rows, 4 are VERIFIED so far, 3 are being checked, and 1 is for the intrusion detector, which was not in the firmware at that build. It ships in EdgeOS 2.1.0 as the network guard.
 
-Of the 28 rows from those two passes, 21 are VERIFIED (6 of those on a scratch build), 3 PARTLY and 4 NOT: not run yet, or switched off in this release. The three figures below show the main results. A third pass is running on build 13757fd, which adds the AI services and pairing safety. Its 8 rows are at the end of the table: 4 VERIFIED so far, 3 being checked, and 1 for the intrusion detector, which is not in the firmware yet. The full table is folded under the figures.
+<details>
+<summary><b>Stats for nerds</b> (the builds checked, their hashes and the host tests)</summary>
+
+The first ran on OpenCarMind EdgeOS 2.0.0 4aeff43 (SHA-256 `a225125d27f3906c...`), the second on 06ddf1d, which adds the pairing change, the 16 px text and the model names (merged image SHA-256 `4cc402a76a53edc2...`). The release image in this branch is rebuilt from its tip, whose Mosaico code equals 06ddf1d apart from the Home card fix in ce58ca7. Some rows ran on a scratch build of the 2.0.0 code with one test switch on, and the row says so. A scratch build is never shipped. Host tests pass for every part: `make os` (41,635 checks at 4aeff43, 41,719 with the pairing change), `make pair`, `make ppa`, `make uimetrics` and the source audits in `tests/host/os_audit.sh`.
+
+</details>
 
 <p align="center"><img src="docs/images/edgeos-boot.png" width="900" alt="Boot and runlevels on the board. The release boot on 4aeff43, in seconds after power-on: running at 4.3 s with Wi-Fi held, boot health good at 68.0 s with Wi-Fi released and 128.9 KB of internal RAM free, the Wi-Fi driver up at 88.1 s, the clock synced at 98.0 s, the driver down at 106.5 s. If health is bad, on a scratch build forced bad: safe mode, Wi-Fi held, and Sync clock now still starts it by hand. The runlevels seen in the tests: Parked. Driving on a forced drive. Saving when the battery was hot at 34.2 °C, back to Parked when it cooled to 33.7 °C. Safe mode on a forced bad health check. Refused while Driving: the USB door answered ERR busy, and the screen said Not now: a drive is running for the clock sync and Format."></p>
 
@@ -733,7 +881,7 @@ The release boot holds Wi-Fi until the health check says the board is good, then
 
 <p align="center"><img src="docs/images/edgeos-ladder-battery.png" width="900" alt="Degradation ladder and battery protection, both forced tests on scratch builds. Ladder with extra model load, in seconds after power-on: UI slowed at 110.6 s after 2 misses, learner paused at 122.6 s after 6, model paused at 134.6 s after 10, then one rung back at a time: model back at 214.6 s, learner back at 278.6 s, normal at 348.6 s. Battery protection at test limits: at boot on USB, 34.2 °C sheds load into Saving with Wi-Fi off, the learner paused and the screen dimmed, and 33.7 °C returns to Parked. 4,188 mV from Parked stops the board as a charger fault with the logs flushed and the storage stopped. With the limit lowered to 26 °C, 28 °C stops it as critical, with no power-off. The real limits of 45 °C, 60 °C and 4.25 V were not reached."></p>
 
-The ladder drops the screen rate first and the model last, and climbs back one rung per minute without misses. The battery figures are test limits. The real 45 °C, 60 °C and 4.25 V were not reached.
+In this EdgeOS 2.0.0 test the ladder dropped the screen rate first and the model last, and climbed back one rung per minute without misses. In EdgeOS 2.1.0 the AI services slow before the screen. The battery figures are test limits, and the real 45 °C, 60 °C and 4.25 V were not reached.
 
 <p align="center"><img src="docs/images/edgeos-ram.png" width="900" alt="Internal RAM per phase, the lowest free internal RAM in each of 9 phases on a debug build of 4aeff43, in KB: first minute before Wi-Fi 124.4, first Wi-Fi round with the adapter search 81.0, adapter search alone 110.3, adapter search and Sync clock now together 80.9, Sync clock now alone 81.0, Wi-Fi search 86.7, theme switch 110.2, switch to E.V 100.0, launcher slide 110.0, all above the 60 KB target. Below it, the 28 rows of the board table: 21 verified, 3 partly, 4 not run or off in this release."></p>
 

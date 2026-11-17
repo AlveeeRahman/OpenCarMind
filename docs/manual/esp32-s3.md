@@ -60,7 +60,7 @@ Your drives are plain CSV, JSON and text files on a card you hold. At home the d
 > [!WARNING]
 > **Which firmware this manual covers.**
 >
-> This manual follows the firmware on the repository's main branch. That build still reports version 2.5.1, but it is newer than the 2.5.1 release on the Releases page. The 2.5.1 release has no BOOT double-click or automatic connection search and no "Turning off" screen, and a new board starts on CarMind E.V instead of R.E.V.
+> This manual follows the firmware on the repository's main branch. That build still reports version 2.5.1, but it is newer than the 2.5.1 release on the Releases page. The 2.5.1 release has no BOOT double-click, no automatic connection search and no "Turning off" screen. On that release a new board starts on CarMind E.V instead of R.E.V.
 
 <a id="hardware"></a>
 
@@ -201,7 +201,7 @@ The board has one button for you, BOOT. How you press it decides what it does.
 
 ### The connection search
 
-Some cars have several computers that answer at once, such as the engine and the transmission. The board picks the engine computer. With no engine data for a minute, it searches by itself. It tries every protocol and each computer in turn, and keeps the one that works. It only reads. Nothing is written to the car or the adapter. With no adapter in range, it lets a different adapter be found for 90 seconds.
+Some cars have several computers that answer at once, such as the engine and the transmission. The board picks the engine computer. With no engine data for a minute, it searches by itself. It tries every protocol and each computer in turn, and keeps the one that works. It only reads. Nothing is written to the car or the adapter. With no adapter in range, it can find a different adapter for 90 seconds.
 
 <a id="themes"></a>
 

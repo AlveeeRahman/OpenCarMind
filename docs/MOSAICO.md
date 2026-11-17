@@ -1,6 +1,6 @@
 # OpenCarMind EdgeOS 2.1.0 on the ESP-Mosaico
 
-OpenCarMind EdgeOS is the build of OpenCarMind for Espressif's ESP-Mosaico board. The current version is 2.1.0, which adds the Health app and its AI services to 2.0.0. Its image is on the [EdgeOS 2.1.0 release](https://github.com/AlveeeRahman/OpenCarMind/releases/tag/edgeos-2.1.0). Up to version 1.2.0 it was called mossREV. It is not related to Ubiquiti's EdgeOS router software. It comes from the same source tree as the ESP32-S3 version and does the same job: it reads your car over a Bluetooth OBD-II adapter, logs every drive, and runs a small neural network on the chip. The Mosaico adds a 480 x 480 touch screen, more memory and a 128 MB store for the drive logs.
+OpenCarMind EdgeOS is the build of OpenCarMind for Espressif's ESP-Mosaico board. The current version is 2.1.0, which adds the Health app and its AI services to 2.0.0. Its image is on the [EdgeOS 2.1.0 release](https://github.com/AlveeeRahman/OpenCarMind/releases/tag/edgeos-2.1.0). Up to version 1.2.0 it was called mossREV. Ubiquiti's EdgeOS router software is unrelated. It comes from the same source tree as the ESP32-S3 version and does the same job: it reads your car over a Bluetooth OBD-II adapter, logs every drive, and runs a small neural network on the chip. The Mosaico adds a 480 x 480 touch screen, more memory and a 128 MB store for the drive logs.
 
 The OS layer does not change the S3 build. The pairing change merged after the board check is behind `CONFIG_OBD_BLE_PAIR_CONFIRM`, on for the Mosaico and off for the S3 by default, so the S3 image stays the tested one. For the Waveshare ESP32-S3 board, keep using the S3 releases and the main [README](../README.md).
 
@@ -64,11 +64,11 @@ You need the merged image `OpenCarMind-EdgeOS-2.1.0-ESP-Mosaico-ESP32-S31-merged
 
 4. The board restarts into OpenCarMind EdgeOS. The console (115200 baud on the same port) prints `OpenCarMind EdgeOS 2.1.0 running`. Pair it again from the desktop app.
 
-Measured on the board, OpenCarMind EdgeOS 2.0.0 4aeff43: the image `EdgeOS-2.0.0-esp32s31-merged.bin` (SHA-256 `a225125d27f3906c...`) printed `OpenCarMind EdgeOS 2.0.0 running` at 4.3 s and `boot health good` at 68.0 s. That 2.0.0 image was never published. The released 2.1.0 image is built from `main` at 1053f9d; its board checks are in the release notes and the README.
+Measured on the board, OpenCarMind EdgeOS 2.0.0 4aeff43: the image `EdgeOS-2.0.0-esp32s31-merged.bin` (SHA-256 `a225125d27f3906c...`) printed `OpenCarMind EdgeOS 2.0.0 running` at 4.3 s and `boot health good` at 68.0 s. That 2.0.0 image was never published. The released 2.1.0 image is built from `main` at 1053f9d. Its board checks are in the release notes and the README.
 
 To go back to mossREV 1.2.0, flash `mossREV-1.2.0-esp32s31-merged.bin` with the same steps. It erases the NVS again, so pair again after it. Going back is not yet verified on the board.
 
-To build it yourself, use ESP-IDF 6.1. The S31 is a preview target there, hence `--preview`:
+To build it yourself, use ESP-IDF 6.1. The S31 is a preview target there, so setting the target needs `--preview`:
 
 ```sh
 . $IDF_PATH/export.sh
@@ -80,7 +80,7 @@ The board's settings are in `sdkconfig.defaults.esp32s31` and its partition tabl
 
 ## Using the desktop app with the Mosaico
 
-The desktop app talks to the Mosaico over the same USB protocol as the S3: pairing, the drive list and import, the model switch and adding Wi-Fi networks all work the same way. Two things in the app are written for the S3. Its **Flash firmware** button is for the ESP32-S3 only (it runs esptool with `--chip esp32s3`), so do not use it for the Mosaico and follow [Flashing](#flashing) instead. And where the app says "SD card", on the Mosaico it means the board's own storage: the drive logs are on the NAND and the learned model state is in the flash, and nothing has to come out of the board.
+The desktop app talks to the Mosaico over the same USB protocol as the S3: pairing, the drive list and import, the model switch and adding Wi-Fi networks all work the same way. Two things in the app are written for the S3. Its **Flash firmware** button is for the ESP32-S3 only (it runs esptool with `--chip esp32s3`), so do not use it for the Mosaico and follow [Flashing](#flashing) instead. And where the app says "SD card", on the Mosaico it means the board's own storage: the drive logs are on the NAND and the learned model state is in the flash. Nothing has to come out of the board.
 
 ## The apps
 
@@ -120,7 +120,7 @@ OpenCarMind EdgeOS carries both on-board models, each re-quantized by ESP-PPQ fo
 
 On the screen, the model's file shows by name: "active-estimator" for R.E.V and "ev-frozen" for E.V. The version hash above stays in the logs, the session files and the USB door. (The names were merged after the board check and are not yet seen on the board.)
 
-Both files are exported without ESP-PPQ's int16 lookup table (`int16_lut_step=-1`). ESP-DL reads a stepped int16 table by nearest neighbour while ESP-PPQ's simulator computes the exact ReLU, and that was the whole gap between the chip and the PC.
+Both files are exported without ESP-PPQ's int16 lookup table (`int16_lut_step=-1`). ESP-DL reads a stepped int16 table by nearest neighbour, while ESP-PPQ's simulator computes the exact ReLU. That difference was the whole gap between the chip and the PC.
 
 A new board starts on R.E.V. To switch, tap Use in the R.E.V or E.V app, open Settings > MODEL and tap R.E.V or E.V, or use the desktop app's model switch. A switch needs the car to be parked: during a drive the board says "A drive is active. End the drive first, then switch models." When the car's computer answers but no drive is recorded yet, it says "Not now: the car link is up. Try again later." The board keeps the choice after a restart. Every model mark and name on the screen follows the model in use, and what R.E.V learned stays on the board while E.V runs. One model is loaded at a time.
 
@@ -130,13 +130,13 @@ A new board starts on R.E.V. To switch, tap Use in the R.E.V or E.V app, open Se
 
 **Smart UI** measures every touch interaction the same way, by class: app opens, Back, in-app controls and list scrolls. Its first helper is a press-time prefetch: it starts building the app you are opening, or the launcher you are going back to, when your finger goes down instead of when it lifts.
 
-Both follow the owner's rule, and the rule is decided by your real use, not by a bench script (a learner trained on a script only learns the script). Per class, the board measures the time from the finger lifting to the page settling. A helper stays on only if the 95th-percentile time drops and the predicted page was ready more than 80 % of the time, with at least 50 interactions on each side of a random A/B split, a one-sided Mann-Whitney test with z above 1.645, and a Holm correction across the classes. Otherwise it switches itself off. The verdicts are kept in NVS and tested again after a firmware update. Until there is a verdict, a helper does not act.
+Both follow the owner's rule, and the rule is decided by your real use, not by a bench script (a learner trained on a script only learns the script). Per class, the board measures the time from the finger lifting to the page settling. A helper stays on only if the 95th-percentile time drops and the predicted page was ready more than 80 % of the time. The check uses at least 50 interactions on each side of a random A/B split, a one-sided Mann-Whitney test with z above 1.645, and a Holm correction across the classes. Otherwise it switches itself off. The verdicts are kept in NVS and tested again after a firmware update. Until there is a verdict, a helper does not act.
 
-Measured in the owner's real use before any helper acted (95th percentile, lift to settled): app opens 973 ms, Back 561 ms, launcher swipes 1,055 ms. A scripted bench gave the app prefetch no gain (828 ms with and without it), and that bench result was reset on purpose: real use decides. Smart swipe now measures from 0 to 3 seconds. Its first version stopped at 475 ms, below the owner's real 95th percentile, so it could never have passed.
+Measured in the owner's real use before any helper acted (95th percentile, lift to settled): app opens 973 ms, Back 561 ms, launcher swipes 1,055 ms. A scripted bench gave the app prefetch no gain (828 ms with and without it), and that bench result was reset on purpose, because real use decides. Smart swipe now measures from 0 to 3 seconds. Its first version stopped at 475 ms, below the owner's real 95th percentile, so it could never have passed.
 
 ## Clock, brightness and theme
 
-The board has no battery-backed clock chip. The clock comes from Wi-Fi (an HTTPS time server), or you set it by hand in Settings > Set clock, and the chip's RTC keeps it through a soft reset. The Settings clock line says where the time came from: "Not set", "Estimated, not synced", "Set by hand" or "From Wi-Fi". The board saves the last known time to a file at most once a minute (on the NAND when it is mounted), so after a power cut it starts from that time and Wi-Fi corrects it later.
+The board has no battery-backed clock chip. The clock comes from Wi-Fi (an HTTPS time server), or you set it by hand in Settings > Set clock, and the chip's RTC keeps it through a soft reset. In Settings, the clock line says where the time came from: "Not set", "Estimated, not synced", "Set by hand" or "From Wi-Fi". The board saves the last known time to a file at most once a minute (on the NAND when it is mounted), so after a power cut it starts from that time and Wi-Fi corrects it later.
 
 Brightness is a slider in Settings. The panel's brightness is a command to the AMOLED, not a backlight.
 
@@ -218,7 +218,7 @@ The rules live in one plain C file (`main/os_core.c`) that the host tests check.
 
 ### One reset path
 
-Every reset the firmware asks for goes through `sys_reset(reason)`: the REBOOT command, the USB download door, the restart after a format, the screen stall guard, the scheduler's restart of a hung job and, when enabled, the battery power-off and the rollback. Each one runs the same steps in the same order. First the "asked for" mark, so the next boot does not count it as a crash. Then the flash FAT and the NAND are flushed and locked. Then the reset itself. The stall guard and the hung-job restart leave the mark out on purpose, because three of those in a row should still put the board into safe mode. The next boot says in the log which reset ended the last run.
+Every reset the firmware asks for goes through `sys_reset(reason)`: the REBOOT command, the USB download door, the restart after a format, the screen stall guard, the scheduler's restart of a hung job and, when enabled, the battery power-off and the rollback. Each one runs the same steps in the same order. First it sets the "asked for" mark, so the next boot does not count it as a crash. Then it flushes and locks the flash FAT and the NAND, and only then does it reset. The stall guard and the hung-job restart leave the mark out on purpose, because three of those in a row should still put the board into safe mode. The next boot says in the log which reset ended the last run.
 
 ### Runlevels
 
@@ -247,11 +247,11 @@ A damaged store counts as degraded, not bad, because older firmware would not fi
 
 ### Model admission
 
-A model is a real-time job, not just a function call. When a model loads at boot or on a switch, its measured run time from the self-test, doubled for safety, is checked with response-time analysis. The analysis asks: if every job on that core starts at the same moment, does each job still finish before its deadline? For a job i with run time C, period T and deadline D, its worst-case response time R solves
+A model is a real-time job, not a plain function call. When a model loads at boot or on a switch, its measured run time from the self-test, doubled for safety, is checked with response-time analysis. The analysis asks: if every job on that core starts at the same moment, does each job still finish before its deadline? For a job i with run time C, period T and deadline D, its worst-case response time R solves
 
 R = C_i + sum of ceil(R / T_j) x C_j over the higher-priority jobs j on the same core,
 
-and every job needs R <= D. If any job would miss, the model is refused and the old one stays. The log shows each job's R and the margin. The doubling is there because one measured run is not a worst case.
+and every job needs R ≤ D. If any job would miss, the model is refused and the old one stays. The log shows each job's R and the margin. The doubling is there because one measured run is not a worst case.
 
 ### Service contracts
 
@@ -261,7 +261,7 @@ Each model and learner declares in one table: how often it runs, its deadline, h
 
 If the model starts missing its deadlines, the board gives up comfort before function, one step every 10 s while misses continue:
 
-1. The AI services run at a tenth of their rate with their learned heads off; the network guard evaluates every 4th 5 s window. Checked on the board for the estimator (13757fd); the guard's rate is built, being checked on the board.
+1. The AI services run at a tenth of their rate with their learned heads off, and the network guard evaluates every 4th 5 s window. Checked on the board for the estimator (13757fd). The guard's rate is built and is being checked on the board.
 2. The screen draws half as many frames, and the AI services pause.
 3. The R.E.V learner pauses. What it learned is kept.
 4. The model's inference pauses. The same model stays loaded.
@@ -270,7 +270,7 @@ Misses of the screen or of the AI services alone reach step 1 only. A minute wit
 
 ### Feature gate
 
-Smart swipe and the Smart UI prefetch are features that must prove themselves on the board. They are now run by one OS service. A feature tells the OS its class (which kind of touch it helps), its action, and which measurement judges it. The OS splits the touches 50/50 between "feature on" and "feature off", compares the finger-lift-to-settled times with a Mann-Whitney test, corrects for testing several features at once (Holm), saves the verdict for each firmware version, and switches the feature on or off. The feature cannot see or change the thresholds. The rule is still the owner's: keep a feature only if its slow cases (the 95th percentile) get faster and it was ready more than 80 % of the time.
+Smart swipe and the Smart UI prefetch are features that must prove themselves on the board. They are now run by one OS service. A feature tells the OS its class (which kind of touch it helps), its action, and which measurement judges it. The OS splits the touches 50/50 between "feature on" and "feature off", compares the finger-lift-to-settled times with a Mann-Whitney test, corrects for testing several features at once (Holm), saves the verdict for each firmware version, and switches the feature on or off. A feature cannot see or change the thresholds. The rule is still the owner's: keep a feature only if its slow cases (the 95th percentile) get faster and it was ready more than 80 % of the time.
 
 ### Battery as a UPS (off by default)
 
@@ -280,7 +280,7 @@ The board can run on its small battery when the car's USB goes away. With the UP
 
 The Mosaico has a small 3.7 V, 65 mAh cell. It is charged by a TP4057 at about 65 mA (set by a 15 kOhm resistor) and watched by a BQ27220 fuel gauge.
 
-What the firmware cannot do: stop or limit charging. The TP4057 has no enable pin and no temperature input, its two status pins only drive the charge LED, and its supply comes straight from USB through diodes, with no switch the firmware could open. So whenever USB is plugged in, the cell is charged to full and held there.
+The firmware cannot stop or limit charging. The TP4057 has no enable pin and no temperature input, its two status pins only drive the charge LED, and its supply comes straight from USB through diodes, with no switch the firmware could open. So whenever USB is plugged in, the cell is charged to full and held there.
 
 What the firmware does, every 2 seconds:
 
@@ -317,7 +317,7 @@ Three services share the AI worker (priority 1, admitted by response-time analys
 
 - **bat**: the battery SoC estimator and, new, the SoH ridge regressor (`main/bat_soh.c`, `main/bat_soh_model.h`). It computes the regressor's charge features on the samples the estimator already gets and learns the cell's reference from its first 10 usable cycles (NVS "ocm_bat"/"soh"). A usable cycle needs a charge from 3.60 V or lower into the CV part and a discharge from full to 30 %, so a top-up gives no sample. A count from nearly empty to full wins over the model.
 - **banom**: the battery anomaly detector (`main/bat_anom.c`, `main/bat_anom_core.c`): 60 s windows of the 2 s gauge samples, 9 features, the autoencoder alarm only, a 24 h warm-up kept in NVS, statistics updated only on clean windows. An alarm writes an event and shows the banner. It never acts on power.
-- **ids**: the network guard (`main/ids_svc.c`, `main/ids_core.c`, `main/ids_model.h`). The radio callbacks only count and set bitmap bits (`main/ids_hooks.h`, audited by `tests/host/ids_audit.sh`). Every 5 s the step runs the BLE scan's rotation detector, the car link's timing head (advisory) and the Wi-Fi round's scan and deauth rules. Two hours of shadow, then a block stops pairing offers and re-pair requests, narrows the scan to the paired adapter through the controller's accept list, stops the Wi-Fi round with the clock kept and keeps rows out of the learners. It never cuts the paired link, transmits, pairs or sets the clock, and lifts 10 min after the last anomalous window. Settings > Network guard: blocking on or off.
+- **ids**: the network guard (`main/ids_svc.c`, `main/ids_core.c`, `main/ids_model.h`). The radio callbacks only count and set bitmap bits (`main/ids_hooks.h`, audited by `tests/host/ids_audit.sh`). Every 5 s the step runs the BLE scan's rotation detector, the car link's timing head (advisory) and the Wi-Fi round's scan and deauth rules. After two hours of shadow, a block stops pairing offers and re-pair requests, narrows the scan to the paired adapter through the controller's accept list, stops the Wi-Fi round with the clock kept, and keeps rows out of the learners. The guard never cuts the paired link, transmits, pairs or sets the clock. A block lifts 10 min after the last anomalous window. Settings > Network guard: blocking on or off.
 
 The admission self-test of every service runs 5 times and the fastest run decides, with one retry 30 s later, because one wall-clock run can be preempted (one boot of 7 on 13757fd measured 26,089 us).
 

@@ -1,6 +1,6 @@
 # Desktop app
 
-Status: preview, version 2.5.1, released together with the firmware of the same number. The app imports drives from the board over the USB cable and shows them. It can also open an SD card directly. In 2.5.x the board's Wi-Fi only sets its clock: the Wi-Fi upload is being reworked (see the main README, Limitations and future work), so the app opens no network port.
+Status: preview, version 2.5.1, released together with the firmware of the same number. The app imports drives from the board over the USB cable and shows them. It can also open an SD card directly. In 2.5.x the board's Wi-Fi only sets its clock. The Wi-Fi upload is being reworked (see the main README, Limitations and future work), so the app opens no network port.
 
 Built with Rust and Tauri for Windows, macOS (Apple silicon and Intel) and Linux. All the setup lives in the app: it writes the board's Wi-Fi networks, settings and pairing file to the SD card. The board itself has no console and accepts no incoming connections.
 
@@ -25,7 +25,7 @@ Each build runs the Rust unit tests on its own system first. They check the sess
 
 1. Install the app and connect the board to the computer with its USB cable. Open the Board page, pick the port (the app marks the one that looks like the board) and choose Connect.
 2. The first time, choose Show a code on the board, type the 6-digit code from the board's screen, and choose Pair. Later connections need no code.
-3. Add your Wi-Fi network, check the time zone the app filled in, optionally type a time server you trust (an HTTPS host name; "default" for the built-in one), and send them to the board. The board uses Wi-Fi only to set its clock.
+3. Add your Wi-Fi network, check the time zone the app filled in, optionally type a time server you trust (an HTTPS host name, or "default" for the built-in one), and send them to the board. The board uses Wi-Fi only to set its clock.
 4. After a drive, connect the board again and choose Import drives over USB.
 
 More on the Board page, all over the cable:

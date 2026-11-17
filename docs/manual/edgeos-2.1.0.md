@@ -428,7 +428,7 @@ Battery details: the charge level and mode (resting, on battery, charging, toppi
 | Car link answers slower than usual | Its data is kept out of learning | Nothing |
 | Saw a flood of ... | Blocking is off in Settings, so nothing was paused | Turn on blocking in Settings to pause it |
 
-Guard details: the mode, adapter checks, re-pair requests refused, clock jumps refused and blocks today, one score bar per check (Bluetooth, car link, Wi-Fi, the mark is the limit, "no data" when the check has nothing right now), and the guard log with its last three messages. The first Wi-Fi scan after a start has nothing to compare with, so it is not scored.
+Guard details: the mode, adapter checks, re-pair requests refused, clock jumps refused and blocks today, one score bar per check (Bluetooth, car link, Wi-Fi), and the guard log with its last three messages. On each bar the mark is the limit, and "no data" means the check has nothing right now. The first Wi-Fi scan after a start has nothing to compare with, so it is not scored.
 
 **AI: what the card can say**
 
@@ -440,9 +440,9 @@ Guard details: the mode, adapter checks, re-pair requests refused, clock jumps r
 | Some AI features are off (amber) | One of them did not pass its start check | Restart the board once |
 | AI features starting | They start once the board has booted well, about a minute after a start | Nothing |
 
-AI details: the degradation ladder, the worker's core, and one card per feature (Battery charge, Battery check, Network guard) with its runs, late runs and skipped runs, "worst time 12.9 ms (limit 1,000 ms)", the longest a run took from its start time to its end, against its deadline, and "work per run 0.23 ms (budget 2 ms)", the longest a run computed, against its time budget.
+AI details: the degradation ladder, the worker's core, and one card per feature (Battery charge, Battery check, Network guard). Each card shows its runs, late runs and skipped runs. Its "worst time 12.9 ms (limit 1,000 ms)" is the longest a run took from its start time to its end, against its deadline. Its "work per run 0.23 ms (budget 2 ms)" is the longest a run computed, against its time budget.
 
-**The banner.** When a battery wear, a battery alarm, a guard block or an adapter question starts, the banner shows "Check soon" or "Act now", the headline and **Open Health**. Tap it to open the right page. Swipe it away to just close it. While you drive, amber issues only go into the list, and red ones show for 10 seconds. On Home, the Health icon gets an amber or red dot while an issue is active.
+**The banner.** When a battery wear, a battery alarm, a guard block or an adapter question starts, the banner shows "Check soon" or "Act now", the headline and **Open Health**. Tap it to open the right page. Swipe it away to close it without opening Health. While you drive, amber issues only go into the list, and red ones show for 10 seconds. On Home, the Health icon gets an amber or red dot while an issue is active.
 
 ### Files
 
@@ -550,7 +550,7 @@ The first group in Settings. A line says what logging does now: logging this dri
 
 ### Network guard
 
-Network guard: blocking on or off. On by default. With blocking on, the guard acts after its two-hour shadow. With blocking off it still watches and writes "would block" into the events, but changes nothing. [Health checks and messages](#os) says what a block does.
+Network guard turns blocking on or off. Blocking is on by default. With blocking on, the guard acts after its two-hour shadow. With blocking off it still watches and writes "would block" into the events, but changes nothing. [Health checks and messages](#os) says what a block does.
 
 ### Storage and firmware
 
@@ -619,7 +619,7 @@ During a drive the board refuses and says "A drive is active. End the drive firs
 
 A model has to give its answer within 1 second, while the board also reads the car and R.E.V learns. Before it loads a model, the board takes the model's measured run time from its self-test, doubles it for safety, and checks that every job on that core still finishes on time. If one would not, the board keeps the model it has and says, for example, "Not switched: CarMind E.V refused: ml would miss its deadline." Here "ml" is the name of the model's job.
 
-You should not see this with the two models that ship. Measured on the board, OpenCarMind EdgeOS 2.0.0 4aeff43: the check gave R.E.V a worst case of 4.2 ms against its 1,000 ms deadline.
+You should not see this with the two models that ship. On the board, with OpenCarMind EdgeOS 2.0.0 4aeff43, the check gave R.E.V a worst case of 4.2 ms against its 1,000 ms deadline.
 
 <a id="os"></a>
 
@@ -699,7 +699,7 @@ Every 2 seconds the board reads the cell's voltage, current and temperature from
 - **"Battery too hot (60 C): stopped":** at 60 °C the board saves its logs and stops writing. After 30 seconds at 57 °C or below it restarts by itself.
 - **"Battery over-voltage (4250 mV): charger fault, stopped":** the cell reached 4.25 V or more, which points to a charger fault. The board saves and stops until you restart it. Unplug it and have the board checked.
 
-These limits are placeholders until the cell's datasheet is known. The board cannot stop or limit charging: the charger has no control line. A cell kept full in a hot car ages faster, so keep the board out of direct sun.
+These limits are placeholders until the cell's datasheet is known. The board cannot stop or limit charging, because the charger has no control line. A cell kept full in a hot car ages faster, so keep the board out of direct sun.
 
 ### One safe restart
 
@@ -752,7 +752,7 @@ Faults that are not critical never pop up. They show in the Faults app and on th
 
 ### The Health banner
 
-When a new health issue starts, the same banner shows it with an amber edge ("Check soon") or a red one ("Act now"), the plain headline, for example "Battery is wearing out", and **Open Health**. Tap it to open Health on the right page. Swipe it up or sideways, or press the orange key, to just close it. It shows for a battery that wears out, a battery alarm, a guard block and an adapter that looks different. While you drive, amber issues only go into Health's recent list, and red ones show for 10 seconds so they never stay over the Drive screen. When the issue ends, its banner goes too.
+When a new health issue starts, the same banner shows it with an amber edge ("Check soon") or a red one ("Act now"), the plain headline, for example "Battery is wearing out", and **Open Health**. Tap it to open Health on the right page. Swipe it up or sideways, or press the orange key, to close it without opening Health. It shows for a battery that wears out, a battery alarm, a guard block and an adapter that looks different. While you drive, amber issues only go into Health's recent list, and red ones show for 10 seconds so they never stay over the Drive screen. When the issue ends, its banner goes too.
 
 ### The green banner
 
@@ -795,13 +795,13 @@ The board saves its last known time at most once a minute. After a power cut it 
 
 ### Storage that repairs itself
 
-Before every restart the board finishes its writes. At start it checks its storage and repairs a damaged copy from the good one. It never formats a store that holds data on its own. If a store will not open, use Settings > Format storage.
+Before every restart the board finishes its writes. At start it checks its storage and repairs a damaged copy from the good one. It never decides by itself to format a store that holds data. If a store will not open, use Settings > Format storage.
 
 Format storage erases the 128 MB NAND in about 15 seconds and removes drive logs left on the flash. What R.E.V learned and your settings stay. Import your drives first.
 
 ### The battery
 
-The board has a small 3.7 V, 65 mAh cell with a fuel gauge, and it is meant to run on the car's USB power. The status bar shows the cell's voltage. The Board page shows its current and temperature and marks the gauge as uncalibrated, because the gauge is not set up for this cell yet.
+The board has a small 3.7 V, 65 mAh cell with a fuel gauge, and it is meant to run on the car's USB power. You see the cell's voltage in the status bar. The Board page shows its current and temperature and marks the gauge as uncalibrated, because the gauge is not set up for this cell yet.
 
 Battery protection is on ([Health checks and messages](#os)). Running on the battery when the car's USB power drops, and finishing the save before turning off, is prepared but switched off in this release.
 

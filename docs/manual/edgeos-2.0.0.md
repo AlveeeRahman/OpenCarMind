@@ -288,7 +288,7 @@ Values straight from the car, with no model in between.
 
 Fuel use now and for this drive, and how your fill-ups correct it.
 
-- **Source tag:** top right: where the fuel figure comes from. NO SOURCE means there is none yet.
+- **Source tag:** at the top right, where the fuel figure comes from. NO SOURCE means there is none yet.
 - **Fuel rate now:** fuel use in L/h
 - **Use now:** the same figure as economy, in L/100 km
 - **This drive:** economy for this drive in your chosen unit (km/L here)
@@ -321,7 +321,7 @@ This drive so far. The top right says "Logging" during a drive and "Not in a dri
 - **Fuel used:** litres used this drive
 - **Economy:** this drive's economy, in your chosen unit
 - **Session:** the drive's number (sNNNNNN) and how many rows it has logged
-- **When the drive ends:** a reminder: hold End drive for 1 second, and the Summary opens with the graphs
+- **When the drive ends:** a reminder to hold End drive for 1 second, after which the Summary opens with the graphs
 
 ### Engine
 
@@ -531,7 +531,7 @@ During a drive the board refuses and says "A drive is active. End the drive firs
 
 A model has to give its answer within 1 second, while the board also reads the car and R.E.V learns. Before it loads a model, the board takes the model's measured run time from its self-test, doubles it for safety, and checks that every job on that core still finishes on time. If one would not, the board keeps the model it has and says, for example, "Not switched: CarMind E.V refused: ml would miss its deadline." Here "ml" is the name of the model's job.
 
-You should not see this with the two models that ship. Measured on the board, OpenCarMind EdgeOS 2.0.0 4aeff43: the check gave R.E.V a worst case of 4.2 ms against its 1,000 ms deadline.
+You should not see this with the two models that ship. Measured on the board (OpenCarMind EdgeOS 2.0.0 4aeff43), the check gave R.E.V a worst case of 4.2 ms against its 1,000 ms deadline.
 
 <a id="os"></a>
 
@@ -565,7 +565,7 @@ The board is always in one or more of these states. The Board page shows the mai
 
 - **Boot:** the first seconds after a start, until start-up has finished
 - **Parked:** none of the others. Everything is allowed.
-- **Driving:** a drive is being recorded, or the car's computer answers and the board logs rows. Searching for the adapter, connecting to it, or an adapter in a parked car with the engine off keep the board Parked.
+- **Driving:** a drive is being recorded, or the car's computer answers and the board logs rows. The board stays Parked while it searches for the adapter or connects to it, and while the adapter sits in a parked car with the engine off.
 - **Safe:** the board started in safe mode after three crashes in a row. Logging stays on, the model and R.E.V's learning stay off.
 - **Update:** a restart, a firmware download or Format storage is running
 - **Saving:** the battery is too warm, so the board saves power. The screen dims, Wi-Fi waits and R.E.V's learning pauses. The board goes back to Parked by itself when the battery has cooled. See Battery protection below.
@@ -611,7 +611,7 @@ Every 2 seconds the board reads the cell's voltage, current and temperature from
 - **"Battery too hot (60 C): stopped":** at 60 °C the board saves its logs and stops writing. After 30 seconds at 57 °C or below it restarts by itself.
 - **"Battery over-voltage (4250 mV): charger fault, stopped":** the cell reached 4.25 V or more, which points to a charger fault. The board saves and stops until you restart it. Unplug it and have the board checked.
 
-These limits are placeholders until the cell's datasheet is known. The board cannot stop or limit charging: the charger has no control line. A cell kept full in a hot car ages faster, so keep the board out of direct sun.
+These limits are placeholders until the cell's datasheet is known. The board cannot stop or limit charging, because the charger has no control line. A cell kept full in a hot car ages faster, so keep the board out of direct sun.
 
 ### One safe restart
 
@@ -673,7 +673,7 @@ Format storage erases the 128 MB NAND in about 15 seconds and removes drive logs
 
 ### The battery
 
-The board has a small 3.7 V, 65 mAh cell with a fuel gauge, and it is meant to run on the car's USB power. The status bar shows the cell's voltage. The Board page shows its current and temperature and marks the gauge as uncalibrated, because the gauge is not set up for this cell yet.
+The board has a small 3.7 V, 65 mAh cell with a fuel gauge, and it is meant to run on the car's USB power. The status bar shows the cell's voltage. On the Board page you see its current and temperature, with the gauge marked as uncalibrated because the gauge is not set up for this cell yet.
 
 Battery protection is on ([Health checks and messages](#os)). Running on the battery when the car's USB power drops, and finishing the save before turning off, is prepared but switched off in this release.
 
