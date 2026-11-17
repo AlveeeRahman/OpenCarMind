@@ -1,6 +1,6 @@
 # Battery charge, health and anomaly
 
-The ESP-Mosaico has a small cell and a fuel gauge. OpenCarMind EdgeOS 2.1.0 estimates the cell's state of charge and state of health, and checks it for faults. You see the results in plain words in the [Health app](health-app.md). The fixed [battery protection](edgeos.md#the-parts-and-why-each-exists) stays in charge of power: none of these models acts on it.
+The ESP-Mosaico has a small cell and a fuel gauge. OpenCarMind EdgeOS 2.1.0 estimates the cell's state of charge and state of health, and checks it for faults. You see the results in plain words in the [Health app](health-app.md). The fixed [battery protection](edgeos.md#the-parts-and-why-each-exists) stays in charge of power, and none of these models acts on it.
 
 ## How the charge estimator works
 

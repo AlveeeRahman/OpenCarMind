@@ -13,4 +13,4 @@ Steps for the desktop app are in the [manual chapter on updating](../manuals/esp
 
 ## ESP-Mosaico
 
-You find the commands on [ESP-Mosaico](esp-mosaico.md#flash-the-firmware). Writing the merged image erases the NVS partition, so the pairing with the desktop app, the saved Wi-Fi networks and the settings go, and you pair again. Drive logs on the NAND are not written. The desktop app's Flash firmware button is for the ESP32-S3 only, so do not use it for the ESP-Mosaico.
+You find the commands on [ESP-Mosaico](esp-mosaico.md#flash-the-firmware). Writing the merged image erases the NVS partition. The pairing with the desktop app, the saved Wi-Fi networks and the settings are lost, and you pair again. Drive logs on the NAND are not written. The desktop app's Flash firmware button is for the ESP32-S3 only, so do not use it for the ESP-Mosaico.

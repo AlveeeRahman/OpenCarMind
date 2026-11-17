@@ -1,6 +1,6 @@
 # Research
 
-Here are the public results, with how the models score, what was measured on the boards and the papers the methods come from. Every number here is from the README and the documents it links. Training code and data stay in a private repository.
+This section has the public results: how the models score, what was measured on the boards and the papers the methods come from. Every number here is from the README and the documents it links. Training code and data stay in a private repository.
 
 ## Status
 

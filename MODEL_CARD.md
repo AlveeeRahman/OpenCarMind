@@ -120,5 +120,5 @@ Public data, the HCRL Driving Dataset (Kwak, Woo and Kim, PST 2016) and the Vehi
 
 - The classifier gains are measured on one car, mine, with labels from a rule on the raw signals, which cannot see the brake pedal.
 - Outside one data set there is no brake-switch signal, so braking and cruising stay partly ambiguous. Brake pressure (R² 0.46 for E.V) is the weakest estimate.
-- No diesel car is in the data. Physics torque is for petrol engines and was checked on one public car. R.E.V learns the engine size the physics uses (about 2.1 L on my car's last two drives), not the torque itself. A learned torque read-out from cars that report torque (PIDs 0x62 and 0x63) is planned, not built. Cars without those PIDs, like my Sentra, have no torque label, so physics or an accelerometer label stays needed there.
+- No diesel car is in the data. Physics torque is for petrol engines and was checked on one public car. R.E.V learns the engine size the physics uses (about 2.1 L on my car's last two drives), not the torque itself. A learned torque read-out from cars that report torque (PIDs 0x62 and 0x63) is planned, not built. Cars without those PIDs, like my Sentra, have no torque label, so those cars still need physics or an accelerometer label.
 - CarMind E.V still calls steady cruising "braking". Only R.E.V got the corrected head.

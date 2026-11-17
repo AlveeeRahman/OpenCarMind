@@ -1,6 +1,6 @@
 # Test drives
 
-Two additional drives serve as a held-out test set for the models on `main`. No model saw them during training or tuning.
+Two additional drives are a held-out test set for the models on `main`. No model saw them during training or tuning.
 
 ## Signals
 

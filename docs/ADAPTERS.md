@@ -32,7 +32,7 @@ Only the LELink has been driven with this board. Every other row is based on the
 
 ## Adapters
 
-Prices are in US dollars, taken from US listings seen on 3 November 2026 and change often. "Not found" means no current price showed up. Amazon links are plain product pages with no affiliate tag. Each one was opened on 3 November 2026 and showed the named product. Where the title does not name the model or the page showed the item unavailable, the Status column says so.
+Prices are in US dollars, taken from US listings seen on 3 November 2026. They change often. "Not found" means no current price showed up. Amazon links are plain product pages with no affiliate tag. Each one was opened on 3 November 2026 and showed the named product. Where the title does not name the model or the page showed the item unavailable, the Status column says so.
 
 | Adapter | Radio | Layout | Status | Price seen | Buy |
 |---|---|---|---|---|---|
