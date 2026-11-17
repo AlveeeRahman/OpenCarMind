@@ -54,6 +54,7 @@ The same firmware also runs on Espressif's ESP-Mosaico touch-screen board. Its n
 <li><a href="#edge-learning-rev-picks-what-to-learn">Edge learning: R.E.V picks what to learn</a></li>
 </ol>
 </li>
+<li><a href="#in-the-works">In the works</a></li>
 <li><a href="#status">Status</a></li>
 <li><a href="#opencarmind-edgeos-210-esp-mosaico">OpenCarMind EdgeOS 2.1.0 (ESP-Mosaico)</a>
 <ol type="A">
@@ -358,6 +359,14 @@ Three ideas of mine failed, and each was meant to be the new part:
 
 Status: the rules run in simulation only. The board code, the buffer in PSRAM and the drift alarm are not written, and none of this is in the firmware on `main`.
 
+## In the works
+
+Three things run on my ESP-Mosaico in test builds. Neither is in a release or on `main` yet.
+
+- **Active E.V (A.E.V).** The next model for the ESP-Mosaico: a student of about 28,000 parameters that learns more of your car than E.V. Its classifier head got a targeted correction for cars it had not seen, and on the board its answers match the desktop simulation on 95 to 97 % of windows.
+- **Brake pad wear.** The Brakes app estimates how much of the pads is used from the friction energy of your braking, the way pad wear is usually modelled: wear grows with the work the pads do. From the car's speed the board works out how hard you slow down, takes away what drag and engine braking do on their own, and adds up the rest while you brake. You tap **Record pad change** when new pads go on; each change you record turns the guessed pad life into a measured one for your car and your driving. The app shows the share used, kilometres since the change, hard brakes and an estimate of the kilometres left, with Check soon at 70 % and Replace soon at 90 %. Until you record a change it is an estimate, and it has not been checked against a real pad measurement yet.
+- **A neural health check.** One small network of about 25,000 parameters reads the last 64 seconds of the battery gauge, the Bluetooth and Wi-Fi guard's counters and the car's readings together. Every 16 seconds it gives the battery's health, the guard's state and the current manoeuvre, in about 6 ms on the board. It is a second opinion next to the EdgeOS 2.1.0 AI services, not a replacement: it never raises a banner or acts, and the Health app's AI page shows it as experimental. Its battery-health output got a targeted correction so that a running guard no longer pulls the reading down. On my board it now reads 93 to 101 % where the board's own estimator says about 98 %, and the guard reads normal with no false alarms. Its battery-fault output is not reliable yet. Each start, the board checks the network against the quantised reference on a test input before it uses it. Before a release it still has to pass real drives and a run on battery.
+
 ## Status
 
 Checked on the bench or in code: the build, the host unit tests (including R.E.V's learners with faulty readings), the switch to miles and mpg, the 10-second save, "Safe to turn off" and the time server rules. CI builds the desktop app on Windows, macOS and Linux. I have driven the board with the drive-end, power-off, fuel economy and units features, and R.E.V on two drives in my car.
@@ -439,21 +448,6 @@ The rules live in one plain C file, `main/os_core.c`, with no ESP-IDF calls in i
 
 <p align="center"><img src="docs/images/edgeos-runlevels.png" width="900" alt="How the OS decides what may run, drawn as a hand-drawn flow. Step 1, inputs the OS reads: fresh on every check, from start-up, the count of abnormal resets, the drive log and the car link, the battery gauge and USB power, and the reset path and the format, read in rl_inputs() in main/os.c. Step 2, it sets the active runlevels: Boot when start-up has not finished, Safe after 3 abnormal resets in a row, Driving when a drive is recorded or the car's computer answers, Saving when the battery is hot or over-voltage or USB is lost (UPS option, off), Update when a reset, a door entry or a format is running, and Parked when none of these holds. Several can hold at once, for example Safe while Driving. Step 3, a service asks to run: model switch, clock, format, Wi-Fi edit, Wi-Fi radio, USB door, model or R.E.V learner, one mask each in MASK[] in main/os_core.c. Step 4, os_allows(service): every active runlevel must allow the service, and one that does not is enough to stop it. Step 5, yes: the service runs. No: refused with the phrase of the highest blocking runlevel, highest first: Update, an update or format is running. Saving, the board is saving power. Driving, a drive is running, or the car link is up when only the link is on. Safe, safe mode is on. Boot, the board is starting. Parked never blocks, because every service allows it. Separately, once per boot: step 6, boot health at 65 s rates the board good, degraded or bad. Step 7, good or degraded: the Wi-Fi task starts. Bad: Wi-Fi is held until you start it, and a start you make yourself in the Wi-Fi app is never held."></p>
 
-Which runlevels each service may run in, from the mask table in `main/os_core.c`:
-
-| Service | Boot | Safe | Parked | Driving | Saving | Update |
-|---|---|---|---|---|---|---|
-| Model switch (screen, desktop app) | no | no | yes | no | no | no |
-| Set the clock by hand | yes | yes | yes | no | no | no |
-| Format storage | no | yes | yes | no | no | no |
-| Add or forget a Wi-Fi network | yes | yes | yes | no | no | no |
-| Wi-Fi radio (search, join, clock sync) | yes | yes | yes | no | no | no |
-| USB door commands after pairing | yes | yes | yes | no | no | no |
-| Load the model at boot | yes | no | yes | yes | yes | no |
-| R.E.V learner | yes | no | yes | yes | no | no |
-
-Safe still allows a format, the clock, the door and Wi-Fi, so a board in safe mode can always be repaired.
-
 ### Model admission by response-time analysis
 
 A model is a real-time job. It has to answer once per second while the OBD poll and the learner share its core. When a model loads at boot or on a switch, the OS takes its self-test run time, doubles it (one measured run is not a worst case), and uses that as the model's worst-case CPU time C. Then it runs the response-time analysis of Joseph and Pandya<sup>[[5]](#ref-5)</sup> for every job on that core:
@@ -470,17 +464,7 @@ On the board, the first boot of a 2.0.0 build before the rename (09ec8f5) logged
 
 <p align="center"><img src="docs/images/edgeos-scheduler.png" width="900" alt="Scheduler budgets per core, drawn as Gantt lanes. Core 1, one 1,000 ms window on an axis broken at 40 ms: obd_poll, priority 5, period 1,000 ms, deadline 30,000 ms, not run on the bench. The ml job, priority 3, period and deadline 1,000 ms, self-test 2.1 ms doubled to a budget of 4.2 ms, admitted with R 4.2 ms on 4aeff43. The rev job, the R.E.V learner, priority 2, period 1,000 ms, deadline 30,000 ms, a 2 % share of 20 ms per second with bursts of at most 30 ms, no run on the bench. Core 0, one 100 ms window: the ui screen job, priority 2, period and deadline 50 ms, worst response 7.8 ms and worst CPU 4.98 ms over 9,597 runs in the 10-minute soak on 06ddf1d, 0 misses. The LVGL refresh every 16 ms. Slow jobs over the first 120 s: boot on 4aeff43 with Wi-Fi held from 4.3 s, the health verdict due at 65 s and good at 68.0 s, the Wi-Fi driver up from 88.1 to 106.5 s and the clock synced at 98.0 s. The learner's 30 s deadline windows and 60 s stall limit. The model's 10 s stall limit. The link_search, obd_poll and ecu_pick deadlines are of 90, 30 and 10 s. The board task every 2 s and the scheduler summary every 60 s."></p>
 
-Every timed job registers a period T and a deadline D with the scheduler monitor. The task it runs in sets its core and priority. The chart takes those from the code and puts the board's measurements inside them. The model gets 1,000 ms and its admission budget is 4.2 ms, so the first 40 ms of the core 1 axis are drawn 23 times wider, or the bar would be thinner than a pixel. No car was connected on the bench, so the OBD jobs, the model and the learner never ran as periodic jobs there. Their bars are the code's budgets. The measured ones are the model's self-test at admission and the screen job over the soak.
-
-| Job | Task, core, priority | T | D | Budget in the code | On the board |
-|---|---|---|---|---|---|
-| `obd_poll` | OBD, core 1, 5 | 1,000 ms | 30,000 ms | none | not run, no car |
-| `link_search`, `ecu_pick` | OBD, core 1, 5 | 90 s, 10 s | 90 s, 10 s | one run per search or connect | not run |
-| `ml` | model, core 1, 3 | 1,000 ms | 1,000 ms | C = 2 × self-test, stall 10 s | self-test 2.1 ms, C 4.2 ms, R 4.2 ms, admitted (4aeff43) |
-| `rev` | learner, core 1, 2 | 1,000 ms | 30,000 ms | 20 per mille of a core in 30 ms bursts, stall 60 s | contract logged, no runs (4aeff43) |
-| `ui` | screen, core 0, 2 | 50 ms | 50 ms | none | 9,597 runs, worst response 7.8 ms, worst CPU 4.98 ms, 0 misses (06ddf1d) |
-
-The screen job's 7.8 ms is wall time from the start of a run to its end, and 4.98 ms is the CPU the screen task used in it. The difference is time the task waited for other tasks on core 0. The response-time analysis counts only registered jobs, so it reports 4.98 ms for `ui`. The board task (every 2 s), the Wi-Fi task and the scheduler monitor run on core 0 outside the job table.
+Every timed job registers a period T and a deadline D with the scheduler monitor. The task it runs in sets its core and priority. The chart takes those from the code and puts the board's measurements inside them. The model gets 1,000 ms and its admission budget is 4.2 ms, so the first 40 ms of the core 1 axis are drawn 23 times wider, or the bar would be thinner than a pixel. No car was connected on the bench, so the OBD jobs, the model and the learner never ran as periodic jobs there. Their bars are the code's budgets. Two were measured. The model's self-test at admission took 2.1 ms, doubled to that 4.2 ms budget, and the model was admitted with a response time of 4.2 ms. The screen job ran 9,597 times over the soak with no missed deadline. Its worst response, the wall time from the start of a run to its end, was 7.8 ms, while the screen task itself used at most 4.98 ms of CPU; the difference is time it waited for other tasks on core 0. The response-time analysis counts only registered jobs, so it reports 4.98 ms for `ui`. The board task (every 2 s), the Wi-Fi task and the scheduler monitor run on core 0 outside the registered jobs.
 
 <a id="ai-services-and-the-battery-estimator"></a>
 
@@ -754,57 +738,6 @@ The ladder drops the screen rate first and the model last, and climbs back one r
 <p align="center"><img src="docs/images/edgeos-ram.png" width="900" alt="Internal RAM per phase, the lowest free internal RAM in each of 9 phases on a debug build of 4aeff43, in KB: first minute before Wi-Fi 124.4, first Wi-Fi round with the adapter search 81.0, adapter search alone 110.3, adapter search and Sync clock now together 80.9, Sync clock now alone 81.0, Wi-Fi search 86.7, theme switch 110.2, switch to E.V 100.0, launcher slide 110.0, all above the 60 KB target. Below it, the 28 rows of the board table: 21 verified, 3 partly, 4 not run or off in this release."></p>
 
 Every phase stays above the 60 KB target. The lowest is 80.9 KB, with an adapter search and a clock sync running at once.
-
-<details><summary><b>Full board results table</b> (all 36 rows, with the build each one ran on)</summary>
-
-| Part | Result | What the board showed | Build |
-|---|---|---|---|
-| Boot and name | VERIFIED | `OpenCarMind EdgeOS 2.0.0 running` at 4.3 s after a power-on, 0 USB drops in 185 s | 4aeff43 |
-| Boot health, good | VERIFIED | `boot health good \| model self-test 1, flash FAT 1 (0 repaired), NAND 1, first UI tick 1365 ms, touch ok, 0 misses, 0 stalls, schedulable, runlevel Parked` at 68.0 s | 4aeff43 |
-| Boot health, bad | VERIFIED | `boot health bad: safe mode`, then `Wi-Fi held: boot health bad`. Sync clock now still started Wi-Fi by hand | scratch, forced bad |
-| Wi-Fi boot hold | VERIFIED | held at 4.3 s with no driver, released at 68.0 s with 131,975 B of internal RAM free, driver up at 88.1 s and down again at 106.5 s | 4aeff43 |
-| No addresses in the log | VERIFIED | no access-point address and no board address in the boot and Wi-Fi log | 4aeff43 |
-| Model admission, admitted | VERIFIED | `C 4248 us (self-test 2124 us x 2.0) on core 1, R: ml 4.2/1000 ms, margin 995.8 ms (ml): admitted` | 4aeff43 |
-| Model admission, refused | VERIFIED | the boot load logged `REFUSED`, and a switch to E.V got `ERR CarMind E.V refused: ml would miss its deadline` while R.E.V stayed | scratch, safety factor raised from 2 to 2,000 |
-| Service contract | VERIFIED | `service R.E.V learner: job rev, T 1000 ms, D 30000 ms, stall 60000 ms, CPU 20 per mille in 30 ms bursts, prio 2 core 1` | 4aeff43 |
-| Runlevels and refusals during a drive | VERIFIED | `runlevel Driving (active 0x08)` and back to `runlevel Parked`. The USB door answered `ERR busy: a drive is running, try again when parked`. The screen showed "Not now: a drive is running. Try again later." for the clock sync and Format | scratch, forced drive |
-| Degradation ladder | VERIFIED | events "UI slowed (2 misses)" at 110.6 s, "learner paused (6 misses)" at 122.6 s, "model paused (10 misses)" at 134.6 s, then one step back at a time to "normal" at 348.6 s. One model load in the whole run | scratch, extra model load |
-| Battery protection | VERIFIED, test limits | "Battery hot (34.2 C on USB): load shed" with Wi-Fi off, the learner paused and the screen dimmed, runlevel Saving, then "Battery cooled (33.7 C)" and Parked, and "Battery over-voltage (4188 mV): charger fault, stopped". The real limits (45 °C, 60 °C, 4.25 V) were not reached | scratch, test limits |
-| Desktop app | VERIFIED | connect with `fw=EdgeOS-2.0.0`, a wrong token refused, a model switch both ways, two files read at their listed sizes | 4aeff43 |
-| Internal RAM above 60 KB | VERIFIED | lowest 82,883 B over 9 phases (see [What it costs](#what-it-costs)) | debug build of 4aeff43 |
-| PPA and 2D-DMA | PARTLY | on at boot, `failures dma 0 ppa 0` in all 18 reports. A clean A/B on the same build: composing one slide frame takes 5.5 ms with the accelerator and 8.4 to 9.0 ms without, but a whole slide runs at 8.4 to 9.0 fps with it and 11.7 to 12.5 fps without, and its slowest frame is about 45 ms longer. Under investigation | 06ddf1d |
-| Resets through `sys_reset` | VERIFIED | `the last run ended with sys_reset(REBOOT: door REBOOT)` after a door REBOOT, and `the last run ended with sys_reset(door: USB door)` after a download-door entry | 4aeff43, 06ddf1d |
-| Feature gate | PARTLY | the gate starts and Smart swipe's warm-up runs. No verdict yet | 4aeff43 |
-| Version on screen | VERIFIED | `OpenCarMind EdgeOS 2.0.0` in the boot line, on the Board page and in Settings, and `fw=EdgeOS-2.0.0` over USB | 4aeff43, 06ddf1d |
-| 10-minute soak | VERIFIED | 10 min 02 s on the release: 0 restarts, 0 USB drops, 0 UI misses, every job within its deadline. The Wi-Fi round ran on the next boot: clock synced, internal RAM 90,959 B free at its low | 06ddf1d |
-| Critical battery stop | VERIFIED, test limit | with the limit lowered to 26 °C: `Battery too hot (28 C): stopped` and `logs flushed, storage stopped`, no power-off. The real 60 °C was not reached | scratch, lowered limit |
-| Where the gauge temperature comes from | VERIFIED | the gauge chip's own sensor: `Temperature()` equals `InternalTemperature()` in all 25 readings (28.1 to 31.4 °C). The board has no thermistor on the cell, so this is the temperature next to the cell, not of the cell | debug builds |
-| Board page "lowest" after the fix | PARTLY | the Board page reads 108 KB, the all-internal figure (110,631 B) and no longer 32 KB low. Not shown after a Wi-Fi round | debug build of 06ddf1d |
-| Wi-Fi with no known network in reach | NOT | not run | |
-| Going back to mossREV 1.2.0 | NOT | not tried | |
-| A/B rollback, UPS, GPIO57 power-off | NOT | off in this release | |
-| Pairing: a weak adapter is ignored | VERIFIED | over the soak and the next boot: 0 connection tries, 0 pairing questions and 0 Driving spells, `automatic adapter search: not paired, strong signal only` | 06ddf1d |
-| Pairing: offering and saving your adapter | NOT | needs the owner's adapter next to the board | |
-| Model names and 16 px text on screen | VERIFIED | 37 board captures: "active-estimator" and "ev-frozen" on the model pages, no text under 16 px, nothing in a 60 px corner. One overlap on Home (fixed in ce58ca7, host-checked) | 06ddf1d |
-| The download door in every state | VERIFIED | the 1200-baud door entered the ROM download mode on the release, in Saving, during a forced drive and after a battery safety stop | 4aeff43, 06ddf1d, scratch |
-| Boot health, with the AI services | VERIFIED | rated good at 68.9 s | 13757fd |
-| Wi-Fi boot hold, with the AI services | VERIFIED | Wi-Fi released after the good verdict with 130,623 B of internal RAM free | 13757fd |
-| AI worker admission | VERIFIED | admitted on core 1 with R 2.00 ms against its 1,000 ms deadline, a margin of 998 ms | 13757fd |
-| Battery estimator self-test | VERIFIED | 570 µs against its 2 ms budget | 13757fd |
-| Battery SoC and SoH on the Board page | BEING CHECKED | built, being checked on the board. The parameters are placeholders until the cell's curve is fitted | 13757fd |
-| Ladder rung "AI services slowed" | BEING CHECKED | built, being checked on the board | 13757fd |
-| Pairing safety: fingerprint, no silent re-pair, clock jump guard | BEING CHECKED | built, being checked on the board | 13757fd |
-| Network intrusion detector | BEING CHECKED | in the firmware since 2.1.0 as the network guard, see the 2.1.0 rows | 73db232 |
-| 2.1.0: boot health and AI admission | VERIFIED | health good at 68.8 s; bat, banom and ids admitted on core 1, R 5.00 ms against 1,000 ms, margin 995 ms; self-tests (fastest of 5) 229, 19 and 58 µs, the IDS self-test replays 64 vectors | 73db232 |
-| 2.1.0: 10-minute soak | VERIFIED | 640 s, 0 restarts, 0 USB drops, 0 UI misses in 64 windows, 0 scheduler misses; bat 536, banom 537 and ids 108 runs, 0 deadline misses, worst response 12.9, 13.0 and 11.9 ms | 73db232 |
-| 2.1.0: network guard in its shadow | VERIFIED | scan score 0 to 34 of 256 over 112 windows (22,585 adverts), 0 blocks, 0 "would block"; the first Wi-Fi scan (15 networks) scored 256, at the threshold, not over it; no pairing prompt; the clock sync was accepted | 73db232 |
-| 2.1.0: internal RAM, lowest per phase | VERIFIED | debug build of 73db232 with the RAM monitor: 122,795 B at the boot verdict, 109,643 B as the AI services and the guard start, 78,227 B over a Wi-Fi round with the Health app open (13757fd round: 81,531 B), 108,327 B on Board and Settings; all above 60 KB. The AI worker's stack never used 2,648 of its 4,096 B | 73db232 |
-| 2.1.0: Health app on the board | VERIFIED | 3 pages in both themes captured from the board, no overlap, 16 px text | 73db232 |
-| 2.1.0: Health in plain words | VERIFIED | real states on the board (battery learning, guard learning this place, AI on time) and, on a debug build that puts a state into the Health view only, battery good, worn, three anomaly reasons, guard watching, blocking and adapter mismatch, AI slowed, in both themes. The banner with Open Health opened the right page, a swipe closed it. The first Wi-Fi scan after a start is no longer scored (0 scans, "no data", 73db232 showed 290 of 256) | 81017a5 |
-| 2.1.0: battery anomaly detector | BEING CHECKED | admitted, in its 24 h warm-up | 73db232 |
-| 2.1.0: SoH regressor, counted SoH and DCIR | NOT | the cell stayed full at 0 mA, so no charge cycle, no capacity sample and no DCIR sample yet (0 of 10 reference cycles) | 73db232 |
-
-</details>
 
 ## Limitations and future work
 
