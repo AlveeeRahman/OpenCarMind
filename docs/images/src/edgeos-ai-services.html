@@ -1,20 +1,20 @@
 <!doctype html>
-<!-- OpenCarMind EdgeOS figure: where the AI services run, hand-drawn like edgeos-runlevels.html.
+<!-- OpenCarMind EdgeOS figure: where the AI services run (technical figure, helpers in edgeos-fig.js).
      Render with docs/images/render.sh. Facts from main/ai_svc.c (priority 1, one worker, admission as one job),
      main/ai_svc_core.c (deadline-monotonic release table, skip on overrun), main/bat_est.c (T 1000 ms, D 1000 ms,
      budget 2000 us), main/os_core.c (ladder names) and the board test of build 13757fd (R 2.00 ms, self-test 570 us,
      boot health good at 68.9 s, Wi-Fi released with 130,623 B free). The ids row is the contract row in the
      net IDS study (T 5 s, D 1 s); it is not in the firmware yet. -->
 <html lang="en"><head><meta charset="utf-8"><title>Where the AI services run</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Kalam:wght@400;700&family=Patrick+Hand&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=STIX+Two+Text:wght@400;500&display=swap">
 <style>
-html, body { margin: 0; background: #FBF4E4; }
+html, body { margin: 0; background: #FFFFFF; }
 svg { display: block; }
 </style></head><body>
-<svg id="fig" width="1200" height="1410" viewBox="0 0 1200 1410" xmlns="http://www.w3.org/2000/svg"></svg>
-<script src="edgeos-ai-draw.js"></script>
+<svg id="fig" width="1200" height="1430" viewBox="0 0 1200 1430" xmlns="http://www.w3.org/2000/svg"></svg>
+<script src="edgeos-fig.js"></script>
 <script>
-const W = 1200, H = 1410;
+const W = 1200, H = 1430;
 seed = 20261113;
 
 function draw() {
@@ -103,9 +103,9 @@ function draw() {
   roughLine([[752, r2 + 110], [806, r2 + 110]], C.ink);
 
   y = card(4, 810, r2, 350, h2, C.blue, 'Out: results', 'Outputs');
-  y = bullet(836, y + 32, 'a lock-free result struct that the screen reads', 300, C.blue);
-  y = bullet(836, y + 28, 'log rows into a ring that drops and counts when full', 300, C.blue);
-  bullet(836, y + 28, 'the board task writes them to the NAND', 300, C.blue);
+  y = bullet(836, y + 32, 'a lock-free result struct that the screen reads', 318, C.blue);
+  y = bullet(836, y + 28, 'log rows into a ring that drops and counts when full', 318, C.blue);
+  bullet(836, y + 28, 'the board task writes them to the NAND', 318, C.blue);
 
   // ---- 5 ladder ----
   const r3 = 1000;
@@ -130,7 +130,7 @@ function draw() {
   wrap(640, ny, 'An overrun finishes and skips its next release, so work never piles up. If neither core admits ' +
     'the worker, the board runs without AI services and says why.', 500, 23, { size: 17.5, color: C.soft });
 
-  wrap(60, H - 24, 'Board, build 13757fd: boot health good at 68.9 s, worker admitted on core 1 with R 2.00 ms (998 ms margin), ' +
+  wrap(60, H - 44, 'Board, build 13757fd: boot health good at 68.9 s, worker admitted on core 1 with R 2.00 ms (998 ms margin), ' +
     'battery self-test 570 µs, Wi-Fi released with 130,623 B free.', 1080, 22, { size: 17, color: C.soft });
 }
 start(draw, W, H);

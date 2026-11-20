@@ -1,18 +1,18 @@
 <!doctype html>
-<!-- OpenCarMind EdgeOS figure: battery state of health, hand-drawn like edgeos-runlevels.html.
+<!-- OpenCarMind EdgeOS figure: battery state of health (technical figure, helpers in edgeos-fig.js).
      Render with docs/images/render.sh. On-board parts from main/bat_est_core.c and main/bat_model.h (capacity between
      two anchors at least 0.3 of z apart, DCIR from current steps). Results from the battery study on the Mac:
      phase 1 (full-charge count 0.12 % on the 18650 set and 1.2 % on NASA, DCIR r = -0.88) and phase 3
      (partial-charge ridge 1.45 %, DCIR trend 6.42 %, full ends 0.08 %, NASA 13.9-25.0 % vs 8.5-19.2 %,
      forward CV ridge 0.83 %, GBDT 1.96 %, MLP 20 %, cost 8 MAC + 16 ops, 100 B). -->
 <html lang="en"><head><meta charset="utf-8"><title>Battery health estimate</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Kalam:wght@400;700&family=Patrick+Hand&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=STIX+Two+Text:wght@400;500&display=swap">
 <style>
-html, body { margin: 0; background: #FBF4E4; }
+html, body { margin: 0; background: #FFFFFF; }
 svg { display: block; }
 </style></head><body>
 <svg id="fig" width="1200" height="1050" viewBox="0 0 1200 1050" xmlns="http://www.w3.org/2000/svg"></svg>
-<script src="edgeos-ai-draw.js"></script>
+<script src="edgeos-fig.js"></script>
 <script>
 const W = 1200, H = 1050;
 seed = 20261115;

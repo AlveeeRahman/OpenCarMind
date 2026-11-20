@@ -1,17 +1,17 @@
 <!doctype html>
-<!-- OpenCarMind EdgeOS figure: the battery charge (SoC) estimator, hand-drawn like edgeos-runlevels.html.
+<!-- OpenCarMind EdgeOS figure: the battery charge (SoC) estimator (technical figure, helpers in edgeos-fig.js).
      Render with docs/images/render.sh. Equations from main/bat_est_core.c (filter_step), sizes from main/bat_model.h
      (41-point OCV table, placeholder parameters). Results from the battery study on the Mac: phase 1 and 2 gates
      (EKF RMSE, wrong start, NASA cross-cell), phase 2 candidates (residual MLP 375 MAC-eq, 984 B) and phase 3
      (residual MLP with simulated cells, 3-state EKF with a current-offset state). -->
 <html lang="en"><head><meta charset="utf-8"><title>Battery charge estimator</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Kalam:wght@400;700&family=Patrick+Hand&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=STIX+Two+Text:wght@400;500&display=swap">
 <style>
-html, body { margin: 0; background: #FBF4E4; }
+html, body { margin: 0; background: #FFFFFF; }
 svg { display: block; }
 </style></head><body>
 <svg id="fig" width="1200" height="1560" viewBox="0 0 1200 1560" xmlns="http://www.w3.org/2000/svg"></svg>
-<script src="edgeos-ai-draw.js"></script>
+<script src="edgeos-fig.js"></script>
 <script>
 const W = 1200, H = 1560;
 seed = 20261114;

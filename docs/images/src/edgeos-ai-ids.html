@@ -1,18 +1,18 @@
 <!doctype html>
-<!-- OpenCarMind EdgeOS figure: the network intrusion detector (IDS) over BLE and Wi-Fi, hand-drawn like
-     edgeos-runlevels.html. Render with docs/images/render.sh. Detector facts and results from the net IDS study on
+<!-- OpenCarMind EdgeOS figure: the network intrusion detector (IDS) over BLE and Wi-Fi (technical figure,
+     helpers in edgeos-fig.js). Render with docs/images/render.sh. Detector facts and results from the net IDS study on
      the Mac (rotation features, frugal median/MAD, prior >= 15 single-use new per 5 s, 3 of 6 windows, 2 h shadow,
      clamped medians, block actions, 446 h / 2 x 120 h / 769 h benign, 80/80, 71/80, 4.9 adverts/s, 15/15,
      40 B + 512 B, about 60 ops). Rules R1, R2 and R6 from main/adapter_guard.c and the clock guard (pairing-hardening).
      The detector is not in the firmware yet. -->
 <html lang="en"><head><meta charset="utf-8"><title>Network intrusion detector</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Kalam:wght@400;700&family=Patrick+Hand&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=STIX+Two+Text:wght@400;500&display=swap">
 <style>
-html, body { margin: 0; background: #FBF4E4; }
+html, body { margin: 0; background: #FFFFFF; }
 svg { display: block; }
 </style></head><body>
 <svg id="fig" width="1200" height="1440" viewBox="0 0 1200 1440" xmlns="http://www.w3.org/2000/svg"></svg>
-<script src="edgeos-ai-draw.js"></script>
+<script src="edgeos-fig.js"></script>
 <script>
 const W = 1200, H = 1440;
 seed = 20261117;
@@ -76,8 +76,8 @@ function draw() {
   y = card(6, 40, r3, 1120, h3, C.red, 'What a block does: only safe, reversible steps', 'Outcome');
   const doL = ['no pairing offers and no re-pair requests', 'the scan narrowed to the paired adapter',
                'the Wi-Fi round aborted, the current time kept', 'rows kept out of the learner'];
-  doL.forEach((s, i) => bullet(66 + (i % 2) * 360, y + 34 + Math.floor(i / 2) * 28, s, 340, C.red));
-  wrap(66, y + 106, 'It lifts 10 min after the last bad window, and you can clear it from the banner.', 680, 23, { size: 18, color: C.soft });
+  doL.forEach((s, i) => bullet(66 + (i % 2) * 392, y + 34 + Math.floor(i / 2) * 28, s, 330 + (i % 2 ? 0 : 50), C.red));
+  wrap(66, y + 112, 'It lifts 10 min after the last bad window, and you can clear it from the banner.', 680, 23, { size: 18, color: C.soft });
   text(800, y + 34, 'Never:', { font: TITLE, weight: 700, size: 19, color: C.red });
   wrap(800, y + 62, 'cut the paired adapter while driving, transmit anything, or pair on its own.', 340, 23, { size: 18.5 });
 
