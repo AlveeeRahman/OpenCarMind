@@ -10,7 +10,3 @@ Since 2.1.0, OpenCarMind EdgeOS runs three small AI models as services: the batt
 ```{include} ../_gen/readme-deadlines.md
 ```
 
-## Models tested and not shipped
-
-```{include} ../_gen/readme-not-shipped.md
-```
