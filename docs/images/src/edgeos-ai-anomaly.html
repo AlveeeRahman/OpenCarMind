@@ -1,17 +1,17 @@
 <!doctype html>
-<!-- OpenCarMind EdgeOS figure: the battery anomaly detector, hand-drawn like edgeos-runlevels.html.
+<!-- OpenCarMind EdgeOS figure: the battery anomaly detector (technical figure, helpers in edgeos-fig.js).
      Render with docs/images/render.sh. Every number is from phase 3 of the battery study on the Mac (final):
      60 s windows, 9 features, 3 detectors, 3 windows in a row, 24 h warm-up, 388 h benign held-out, detection rate
      and median time per injected fault, cost < 400 ops per window, 280 B state + 640 B parameters.
      It is trained and tested on the Mac and not in the firmware yet. -->
 <html lang="en"><head><meta charset="utf-8"><title>Battery anomaly detector</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Kalam:wght@400;700&family=Patrick+Hand&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=STIX+Two+Text:wght@400;500&display=swap">
 <style>
-html, body { margin: 0; background: #FBF4E4; }
+html, body { margin: 0; background: #FFFFFF; }
 svg { display: block; }
 </style></head><body>
 <svg id="fig" width="1200" height="1360" viewBox="0 0 1200 1360" xmlns="http://www.w3.org/2000/svg"></svg>
-<script src="edgeos-ai-draw.js"></script>
+<script src="edgeos-fig.js"></script>
 <script>
 const W = 1200, H = 1360;
 seed = 20261116;
@@ -46,8 +46,8 @@ function draw() {
     wrap(492, dy + 52, w, 300, 22, { size: 17.5, color: C.soft });
     dy += (i ? 64 : 88) + 14;
   });
-  wrap(476, dy + 20, 'False alarms on 388 h of held-out normal data: autoencoder 0.0026 per hour (95 % upper bound 0.012), ' +
-    'robust z 0.245 and Gaussian 0.126. Those two drift with ageing, so they only log.', 330, 22, { size: 17.5 });
+  wrap(476, dy + 16, 'False alarms on 388 h of held-out normal data: autoencoder 0.0026 per hour (95 % upper bound 0.012), ' +
+    'robust z 0.245 and Gaussian 0.126. Those two drift with ageing, so they only log.', 336, 21, { size: 17.5 });
   roughLine([[832, r1 + 200], [866, r1 + 200]], C.ink);
 
   // ---- 3 learning and alarm ----

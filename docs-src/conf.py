@@ -47,6 +47,7 @@ html_logo = str(REPO / "docs" / "assets" / "icon.png")
 html_favicon = str(REPO / "docs" / "assets" / "icon.png")
 html_static_path = ["_static"]
 html_css_files = ["ocm.css"]
+html_js_files = [("ocm.js", {"defer": "defer"})]
 html_copy_source = False
 html_show_sourcelink = False
 html_last_updated_fmt = None

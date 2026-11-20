@@ -35,9 +35,9 @@ OpenCarMind EdgeOS is the firmware for the ESP-Mosaico. It runs on FreeRTOS's pr
 ```{include} ../_gen/readme-on-board.md
 ```
 
-## What it costs
+## Internal RAM at run time
 
-```{include} ../_gen/readme-costs.md
+```{include} ../_gen/readme-ram.md
 ```
 
 ## Prepared but off: A/B rollback and the battery as a UPS
